@@ -139,6 +139,34 @@ export function impactBand(score: number): 'Foundational' | 'Significant' | 'Mod
   return 'Light';
 }
 
+/**
+ * Plain-language copy for the importance stars so they never read as
+ * "favorites" or a quality rating. Criteria match how org analytics are
+ * seeded/scored: involvement, influence on the user, and how often the
+ * group shows up in recent memory.
+ */
+export const ORGANIZATION_IMPORTANCE_CRITERIA =
+  'How central this group is in your life — based on how involved you are, how much it shapes your story, and how often it shows up in your memories. Not a favorite rating or a quality score.';
+
+export function importanceDisplay(score: number | undefined | null): {
+  stars: number;
+  band: ReturnType<typeof impactBand>;
+  score: number;
+  shortLabel: string;
+  tooltip: string;
+} {
+  const resolved = score != null && Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : 60;
+  const stars = importanceStars(resolved);
+  const band = impactBand(resolved);
+  return {
+    stars,
+    band,
+    score: Math.round(resolved),
+    shortLabel: `${band} in your life`,
+    tooltip: `${band} (${stars}/5) — ${ORGANIZATION_IMPORTANCE_CRITERIA}`,
+  };
+}
+
 function titleCase(value: string): string {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }

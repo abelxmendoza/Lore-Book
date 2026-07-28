@@ -13,6 +13,14 @@ export type StorySafetyAttempt = {
   createdAt: string;
 };
 
+// In-flight sends, tracked in memory (module scope) rather than a component
+// ref: a client-side route change (e.g. navigating to /chat/:threadId once a
+// new thread is created) can unmount and remount the composer mid-send, and a
+// fresh instance's ref can't remember that this attempt is still outstanding.
+// A module-level set survives that remount but still resets on a real page
+// reload, which is exactly when we want the vault to offer recovery again.
+const inFlightAttemptIds = new Set<string>();
+
 function storageAvailable(): boolean {
   return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 }
@@ -95,21 +103,27 @@ export function preserveStoryAttempt(attempt: StorySafetyAttempt): { ok: boolean
       !(row.ownerId === attempt.ownerId && row.threadId === attempt.threadId && row.text === attempt.text)
   );
   attempts.push(attempt);
+  inFlightAttemptIds.add(attempt.id);
   return { ok: writeAttempts(attempts) };
 }
 
 export function clearStoryAttempt(id: string): void {
+  inFlightAttemptIds.delete(id);
   writeAttempts(readAttempts().filter((attempt) => attempt.id !== id));
 }
 
 export function latestRecoverableStory(ownerId: string, threadId?: string): StorySafetyAttempt | null {
   const matches = readAttempts().filter(
-    (attempt) => attempt.ownerId === ownerId && (!threadId || attempt.threadId === threadId)
+    (attempt) =>
+      attempt.ownerId === ownerId &&
+      (!threadId || attempt.threadId === threadId) &&
+      !inFlightAttemptIds.has(attempt.id)
   );
   return matches.length > 0 ? matches[matches.length - 1]! : null;
 }
 
 export function requestStoryRecovery(attempt: StorySafetyAttempt): void {
+  inFlightAttemptIds.delete(attempt.id);
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent<StorySafetyAttempt>(RECOVERY_EVENT, { detail: attempt }));
 }
@@ -122,6 +136,7 @@ export function subscribeStoryRecovery(listener: (attempt: StorySafetyAttempt) =
 }
 
 export function resetStorySafetyVaultForTests(): void {
+  inFlightAttemptIds.clear();
   if (!storageAvailable()) return;
   window.localStorage.removeItem(VAULT_KEY);
 }

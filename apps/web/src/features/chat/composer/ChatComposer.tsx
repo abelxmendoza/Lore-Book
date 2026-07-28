@@ -49,6 +49,11 @@ type ChatComposerProps = {
   initialPrompt?: string | null;
   /** Called once the initialPrompt has been injected, so the source can clear it (one-shot prefill). */
   onInitialPromptApplied?: () => void;
+  /** One-shot image seed (e.g. Post Event flyer handoff). */
+  initialImages?: ChatImageAttachment[] | null;
+  /** When true, auto-send once prompt/images are ready. */
+  autoSubmit?: boolean;
+  onAutoSubmitDone?: () => void;
   initialDate?: string | null;
   /** Tighter layout for character/org modals — hides upload chrome, reduces padding */
   variant?: 'default' | 'embedded';
@@ -75,6 +80,9 @@ export const ChatComposer = ({
   onUploadComplete,
   initialPrompt,
   onInitialPromptApplied,
+  initialImages,
+  autoSubmit = false,
+  onAutoSubmitDone,
   initialDate,
   variant = 'default',
   placeholder,
@@ -113,6 +121,7 @@ export const ChatComposer = ({
     imageInputRef,
     addPendingImages,
     removePendingImage,
+    seedPendingImages,
     maxImages,
   } = useChatComposer(onSubmit, initialPrompt, { submitOnEnter: !isMobile, threadId });
 
@@ -212,6 +221,54 @@ export const ChatComposer = ({
     onInitialPromptApplied?.();
     return () => clearTimeout(focusTimer);
   }, [initialPrompt, setInput, textareaRef, isMobile, embedded, onInitialPromptApplied]);
+
+  // One-shot image seed from Post Event (or similar) handoffs.
+  const appliedInitialImagesRef = useRef<ChatImageAttachment[] | null>(null);
+  useEffect(() => {
+    if (!initialImages?.length) {
+      appliedInitialImagesRef.current = null;
+      return;
+    }
+    if (appliedInitialImagesRef.current === initialImages) return;
+    appliedInitialImagesRef.current = initialImages;
+    seedPendingImages(initialImages);
+  }, [initialImages, seedPendingImages]);
+
+  // Auto-send once after prompt/images are seeded (Post Event → main chat).
+  const autoSubmitFiredRef = useRef(false);
+  useEffect(() => {
+    if (!autoSubmit) {
+      autoSubmitFiredRef.current = false;
+      return;
+    }
+    if (autoSubmitFiredRef.current) return;
+
+    // Ensure images are in pending state before submit (handleSubmit reads pendingImages).
+    if (initialImages?.length && pendingImages.length === 0) {
+      seedPendingImages(initialImages);
+      return;
+    }
+
+    const readyText = input.trim();
+    if (!readyText && pendingImages.length === 0) return;
+
+    // Wait a beat so new-thread handoff settles.
+    const timer = window.setTimeout(() => {
+      if (autoSubmitFiredRef.current) return;
+      autoSubmitFiredRef.current = true;
+      handleSubmit();
+      onAutoSubmitDone?.();
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [
+    autoSubmit,
+    initialImages,
+    input,
+    pendingImages,
+    seedPendingImages,
+    handleSubmit,
+    onAutoSubmitDone,
+  ]);
 
   const resolvedPlaceholder = placeholder ?? (embedded ? EMBEDDED_PLACEHOLDER : DEFAULT_PLACEHOLDER);
   const stats = getComposerStats(input);

@@ -9,7 +9,7 @@ import {
   Calendar, Clock, MapPin, Users, Sparkles, AlertCircle, Search,
   RefreshCw, ChevronLeft, ChevronRight, Filter, X, Cake, PartyPopper,
   Music2, Building2, Briefcase, Plane, Heart,
-  Repeat2, Star, TrendingUp, BookOpen, ArrowLeft, ArrowRight,
+  Repeat2, Star, TrendingUp, BookOpen, ArrowLeft, ArrowRight, Plus,
 } from 'lucide-react';
 import {
   formatDistanceToNow,
@@ -45,6 +45,8 @@ import {
 import { Input } from '../ui/input';
 import { EventDetailModal } from './EventDetailModal';
 import { EventProfileCard, type Event } from './EventProfileCard';
+import { PostEventComposer } from './PostEventComposer';
+import { listDemoUserPostedEvents } from '../../mocks/userPostedEventsDemo';
 
 const ITEMS_PER_PAGE = 18;
 const EVENTS_CARD_VIEW_STORAGE_KEY = 'lorebook.eventsBook.cardViewMode';
@@ -476,11 +478,16 @@ export const EventsBook: React.FC = () => {
   const isMockDataEnabled = useShouldUseMockData();
   const [localLoading, setLocalLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPostComposer, setShowPostComposer] = useState(false);
+  const [postedRefresh, setPostedRefresh] = useState(0);
 
   const events = useMemo((): Event[] => {
-    if (isMockDataEnabled) return MOCK_EVENTS;
+    if (isMockDataEnabled) {
+      const posted = listDemoUserPostedEvents() as unknown as Event[];
+      return [...posted, ...MOCK_EVENTS];
+    }
     return (serverEvents as Event[]) ?? [];
-  }, [isMockDataEnabled, serverEvents]);
+  }, [isMockDataEnabled, serverEvents, postedRefresh]);
 
   const loading = bookLoading || localLoading || isAssembling;
 
@@ -716,7 +723,7 @@ export const EventsBook: React.FC = () => {
               Moments
             </h2>
             <p className="mt-1 max-w-2xl text-sm text-white/55">
-              Scenes from your conversations — filter, search, and spot patterns.
+              Scenes from your conversations — and events you post with a date, place, and story.
             </p>
             <p className="mt-2 text-xs text-white/40">
               {events.length} {events.length === 1 ? 'moment' : 'moments'}
@@ -727,6 +734,18 @@ export const EventsBook: React.FC = () => {
                 </>
               )}
             </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 bg-amber-500/20 border border-amber-400/35 text-amber-50 hover:bg-amber-500/30"
+                onClick={() => setShowPostComposer(true)}
+                data-testid="events-book-post-event"
+              >
+                <Plus className="h-3.5 w-3.5 mr-1.5" />
+                Post event
+              </Button>
+            </div>
             <nav
               aria-label="Also see"
               className="mt-3 flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-white/40"
@@ -1518,7 +1537,25 @@ export const EventsBook: React.FC = () => {
           event={selectedEvent}
           onClose={() => setSelectedEvent(null)}
           onDeleted={() => { setSelectedEvent(null); void refetchEvents(); }}
+          onUpdated={(next) => {
+            setSelectedEvent(next);
+            setPostedRefresh((n) => n + 1);
+            if (!isMockDataEnabled) void refetchEvents();
+          }}
         />
+      )}
+      {showPostComposer && (
+      <PostEventComposer
+        open={showPostComposer}
+        onClose={() => setShowPostComposer(false)}
+        onCreated={(created) => {
+          setShowPostComposer(false);
+          setPostedRefresh((n) => n + 1);
+          if (!isMockDataEnabled) void refetchEvents();
+          // Chat handoff is opened by PostEventComposer (LLM ingest).
+          void created;
+        }}
+      />
       )}
     </div>
   );

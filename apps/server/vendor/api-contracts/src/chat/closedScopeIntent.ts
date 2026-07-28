@@ -16,7 +16,8 @@ export type ClosedScopeReason =
   | 'skill_write_request'
   | 'quest_write_request'
   | 'family_write_request'
-  | 'romance_write_request';
+  | 'romance_write_request'
+  | 'event_write_request';
 
 /**
  * Deliberately narrow: a window/thread-scoped noun ("in this story/thread/
@@ -282,6 +283,29 @@ export function isRomanceWriteRequest(message: string): boolean {
   return ROMANCE_STATUS_RE.test(text) || ROMANCE_BREAKUP_RE.test(text) || ROMANCE_DELETE_RE.test(text);
 }
 
+const EVENT_POST_RE =
+  /\b(?:post|add|save|create)\s+(?:an?\s+)?(?:life\s*log\s+)?event\b/i;
+const EVENT_PLAYED_AT_RE =
+  /\b(?:we|i)\s+(?:played|hosted|threw)\s+(?:a\s+|an\s+|the\s+)?.{1,80}?\s+(?:at|@)\s+.{1,60}$/i;
+const EVENT_NAMED_HAPPENING_RE =
+  /\b(?:we|i)\s+(?:went\s+to|had)\s+(?:a\s+|an\s+|the\s+)?(?:show|gig|concert|party|festival|event|birthday|wedding|meetup|open\s*mic)\s+(?:at|@)\s+.{1,60}$/i;
+const EVENT_SAVE_AT_RE =
+  /\b(?:save|add|post)\s+(?:an?\s+)?event\s+(?:called\s+|named\s+)?.{1,80}?\s+(?:at|@)\s+.{1,60}$/i;
+
+export function isEventWriteRequest(message: string): boolean {
+  const text = message.trim();
+  if (!text) return false;
+  if (isLocationWriteRequest(text) || isProjectWriteRequest(text) || isOrganizationGroupWriteRequest(text)) {
+    return false;
+  }
+  return (
+    EVENT_POST_RE.test(text) ||
+    EVENT_PLAYED_AT_RE.test(text) ||
+    EVENT_NAMED_HAPPENING_RE.test(text) ||
+    EVENT_SAVE_AT_RE.test(text)
+  );
+}
+
 export function isClosedScopeQuery(message: string): { closedScope: boolean; reason?: ClosedScopeReason } {
   if (isEntityReclassifyWriteRequest(message)) {
     return { closedScope: true, reason: 'entity_reclassify_write_request' };
@@ -306,6 +330,9 @@ export function isClosedScopeQuery(message: string): { closedScope: boolean; rea
   }
   if (isRomanceWriteRequest(message)) {
     return { closedScope: true, reason: 'romance_write_request' };
+  }
+  if (isEventWriteRequest(message)) {
+    return { closedScope: true, reason: 'event_write_request' };
   }
   if (isCastRosterQuery(message)) return { closedScope: true, reason: 'cast_roster_query' };
   if (isCharacterBookWriteRequest(message)) return { closedScope: true, reason: 'character_book_write_request' };

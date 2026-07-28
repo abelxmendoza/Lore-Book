@@ -248,6 +248,29 @@ describe('OrganizationDetailModal — People / Character Book link', () => {
     );
   });
 
+  it('surfaces RTK mutation errors instead of a generic link failure', async () => {
+    mockAddOrganizationMember.mockRejectedValue({
+      status: 500,
+      message: 'Character not found in your Character Book',
+    });
+    const user = userEvent.setup();
+    renderModal();
+
+    const peopleTabs = await screen.findAllByRole('button', { name: /people/i });
+    fireEvent.click(peopleTabs[0]!);
+    fireEvent.click(screen.getByTestId('org-add-member-toggle'));
+
+    const search = await screen.findByTestId('org-add-member-character-search');
+    await user.click(search);
+    await user.type(search, 'Mina');
+    fireEvent.mouseDown(await screen.findByRole('option', { name: 'Mina' }));
+    fireEvent.click(screen.getByTestId('org-add-member-submit'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /character not found in your character book/i,
+    );
+  });
+
   it('keeps indexed people when the heavy Character Book request fails', async () => {
     mockFetchCharacterList.mockRejectedValue(new Error('timeout'));
     mockFetchJson.mockImplementation(async (url: string) => {

@@ -1484,13 +1484,18 @@ router.get(
     for (const event of events || []) {
       const metadata = (event.metadata ?? {}) as Record<string, unknown>;
       const storedLifeLog = (metadata.life_log ?? {}) as Record<string, unknown>;
+      const userPosted = metadata.created_via === 'user_posted';
       const eligibility = evaluateLifeLogEligibility({
         text: [event.summary, event.title].filter(Boolean).join(' '),
         title: event.title,
         type: event.type,
         metadata,
       });
-      if (storedLifeLog.publication_status === 'quarantined' || !eligibility.eligible || !isPublishableLifeLogTitle(event.title)) {
+      if (
+        storedLifeLog.publication_status === 'quarantined' ||
+        !eligibility.eligible ||
+        (!userPosted && !isPublishableLifeLogTitle(event.title))
+      ) {
         continue;
       }
       const isArchived = await metaControlService.hasOverride(
@@ -1569,6 +1574,173 @@ router.get(
   })
 );
 
+const optionalUuid = z
+  .string()
+  .uuid()
+  .optional()
+  .nullable()
+  .or(z.literal(''))
+  .transform((v) => (v ? v : null));
+
+const userPostedEventBodySchema = z
+  .object({
+    title: z.string().max(200).optional().nullable().or(z.literal('')),
+    start_time: z.string().max(80).optional().nullable().or(z.literal('')),
+    when_text: z.string().max(200).optional().nullable().or(z.literal('')),
+    summary: z.string().max(4000).optional().nullable(),
+    flyer_url: z.string().url().optional().nullable().or(z.literal('')),
+    photo_urls: z.array(z.string().url()).max(8).optional().nullable(),
+    photos: z
+      .array(
+        z.object({
+          dataUrl: z.string().min(32).max(6_000_000),
+          fileName: z.string().max(200).optional().nullable(),
+        }),
+      )
+      .max(8)
+      .optional()
+      .nullable(),
+    location_id: optionalUuid,
+    location_name: z.string().max(200).optional().nullable(),
+    organization_id: optionalUuid,
+    organization_name: z.string().max(200).optional().nullable(),
+    story: z.string().max(8000).optional().nullable(),
+    venue_stops: z
+      .array(
+        z.object({
+          location_id: optionalUuid,
+          location_name: z.string().min(1).max(200),
+          role: z.enum(['afterparty', 'other']).optional(),
+        }),
+      )
+      .max(8)
+      .optional(),
+  })
+  .superRefine((val, ctx) => {
+    const hasStory = Boolean(val.story?.trim());
+    const hasTitle = Boolean(val.title?.trim());
+    const hasMedia =
+      Boolean(val.flyer_url?.trim()) ||
+      (val.photo_urls?.length ?? 0) > 0 ||
+      (val.photos?.length ?? 0) > 0;
+    if (!hasStory && !hasTitle && !hasMedia) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Write what happened, or add a title / photo.',
+        path: ['story'],
+      });
+    }
+  });
+
+/**
+ * POST /api/conversation/events
+ * Create a user-posted Life Log event (flyer show, birthday, festival, …).
+ */
+router.post(
+  '/events',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const parsed = userPostedEventBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid event payload', details: parsed.error.flatten() });
+    }
+    const { createUserPostedEvent } = await import('../services/events/userPostedEventService');
+    try {
+      const event = await createUserPostedEvent(userId, {
+        ...parsed.data,
+        title: parsed.data.title || null,
+        start_time: parsed.data.start_time || null,
+        when_text: parsed.data.when_text || null,
+        flyer_url: parsed.data.flyer_url || null,
+        photo_urls: parsed.data.photo_urls ?? null,
+        photos: parsed.data.photos ?? null,
+      });
+      return res.status(201).json({
+        success: true,
+        event: {
+          ...event,
+          people: [],
+          locations: event.locations,
+          source_count: 0,
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not create event';
+      return res.status(400).json({ error: message });
+    }
+  }),
+);
+
+const eventStoryBodySchema = z.object({
+  body: z.string().min(1).max(8000),
+  media_url: z.string().url().optional().nullable().or(z.literal('')),
+  location_id: z.string().uuid().optional().nullable(),
+  location_name: z.string().max(200).optional().nullable(),
+});
+
+/**
+ * POST /api/conversation/events/:id/stories
+ * Attach a story to a Life Log event.
+ */
+router.post(
+  '/events/:id/stories',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const eventId = req.params.id as string;
+    const parsed = eventStoryBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid story payload', details: parsed.error.flatten() });
+    }
+    const { addStoryToUserPostedEvent } = await import('../services/events/userPostedEventService');
+    try {
+      const story = await addStoryToUserPostedEvent(userId, eventId, parsed.data.body, {
+        media_url: parsed.data.media_url || null,
+        location_id: parsed.data.location_id ?? null,
+        location_name: parsed.data.location_name ?? null,
+      });
+      return res.status(201).json({ success: true, story });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not add story';
+      const status = /not found/i.test(message) ? 404 : 400;
+      return res.status(status).json({ error: message });
+    }
+  }),
+);
+
+const eventVenueBodySchema = z.object({
+  location_id: z.string().uuid().optional().nullable(),
+  location_name: z.string().min(1).max(200),
+  role: z.enum(['afterparty', 'other']).optional(),
+});
+
+/**
+ * POST /api/conversation/events/:id/venues
+ * Append a venue stop (e.g. afterparty) onto an event.
+ */
+router.post(
+  '/events/:id/venues',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const eventId = req.params.id as string;
+    const parsed = eventVenueBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid venue payload', details: parsed.error.flatten() });
+    }
+    const { addVenueStopToUserPostedEvent } = await import('../services/events/userPostedEventService');
+    try {
+      const venue_stops = await addVenueStopToUserPostedEvent(userId, eventId, parsed.data);
+      return res.status(201).json({ success: true, venue_stops });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not add venue';
+      const status = /not found/i.test(message) ? 404 : 400;
+      return res.status(status).json({ error: message });
+    }
+  }),
+);
+
 /** Dry-run classification for safe legacy cleanup; never mutates user data. */
 router.get(
   '/events/eligibility-audit',
@@ -1629,13 +1801,14 @@ router.get(
       return res.status(404).json({ error: 'Event not found' });
     }
     const eventMetadata = (event.metadata ?? {}) as Record<string, unknown>;
+    const userPosted = eventMetadata.created_via === 'user_posted';
     const eventEligibility = evaluateLifeLogEligibility({
       text: [event.summary, event.title].filter(Boolean).join(' '),
       title: event.title,
       type: event.type,
       metadata: eventMetadata,
     });
-    if (!eventEligibility.eligible || !isPublishableLifeLogTitle(event.title)) {
+    if (!eventEligibility.eligible || (!userPosted && !isPublishableLifeLogTitle(event.title))) {
       return res.status(404).json({ error: 'Event not found' });
     }
 

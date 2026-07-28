@@ -4,7 +4,9 @@ import {
   readOrganizationWorld,
   deriveOrganizationWorld,
   importanceStars,
+  importanceDisplay,
   impactBand,
+  ORGANIZATION_IMPORTANCE_CRITERIA,
   vanguardRoboticsWorld,
   type OrgWorldInput,
 } from './organizationLore';
@@ -39,6 +41,17 @@ describe('impactBand', () => {
     expect(impactBand(65)).toBe('Significant');
     expect(impactBand(40)).toBe('Moderate');
     expect(impactBand(10)).toBe('Light');
+  });
+});
+
+describe('importanceDisplay', () => {
+  it('labels stars as life-centrality, not favorites', () => {
+    const d = importanceDisplay(82);
+    expect(d.stars).toBe(4);
+    expect(d.band).toBe('Foundational');
+    expect(d.shortLabel).toBe('Foundational in your life');
+    expect(d.tooltip).toContain(ORGANIZATION_IMPORTANCE_CRITERIA);
+    expect(d.tooltip).toMatch(/not a favorite rating/i);
   });
 });
 

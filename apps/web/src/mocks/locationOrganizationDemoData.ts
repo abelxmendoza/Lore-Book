@@ -92,26 +92,43 @@ let demoLinks: DemoLocationOrganizationLink[] = [
 ];
 
 export function getDemoLocationOrganizationLinks(locationId: string): DemoLocationOrganizationLink[] {
+  if (!locationId) return [];
   return demoLinks.filter((link) => link.location_id === locationId);
 }
 
 export function getDemoOrganizationLocationLinks(organizationId: string) {
   return demoLinks
     .filter((link) => link.organization_id === organizationId)
-    .map(({ organization: _organization, ...link }) => link);
+    .map(({ organization: _organization, ...link }) => ({
+      ...link,
+      location_id: link.location_id || undefined,
+    }));
 }
 
 export function linkDemoLocationOrganization(
   location: { id: string; name: string },
   organizationId: string,
+  organizationHint?: Partial<Omit<DemoOrganizationSummary, 'id' | 'type'>> | null,
 ): DemoLocationOrganizationLink {
   const existing = demoLinks.find(
     (link) => link.location_id === location.id && link.organization_id === organizationId,
   );
   if (existing) return existing;
 
-  const organization = demoOrganizationOptions.find((option) => option.id === organizationId);
-  if (!organization) throw new Error('Choose a group from the Groups & Organizations Book.');
+  let organization = demoOrganizationOptions.find((option) => option.id === organizationId);
+  if (!organization) {
+    // Demo book has many groups beyond the location-modal picker list — still allow linking.
+    organization = {
+      id: organizationId,
+      name: organizationHint?.name?.trim() || 'Group',
+      type: 'organization',
+      group_type: organizationHint?.group_type || 'other',
+      status: organizationHint?.status || 'active',
+      user_relationship: organizationHint?.user_relationship || 'member',
+      description: organizationHint?.description || '',
+    };
+    demoOrganizationOptions.push(organization);
+  }
 
   const link: DemoLocationOrganizationLink = {
     id: `demo-org-location-${location.id}-${organizationId}`,
@@ -124,6 +141,69 @@ export function linkDemoLocationOrganization(
   demoLinks = [link, ...demoLinks];
   return link;
 }
+
+/** Name-only place row when the place is not in the demo Places Book yet. */
+export function linkDemoOrganizationLocationByName(
+  organizationId: string,
+  locationName: string,
+  organizationHint?: Partial<Omit<DemoOrganizationSummary, 'id' | 'type'>> | null,
+): OrganizationLocationLike {
+  const name = locationName.trim();
+  const existing = demoLinks.find(
+    (link) =>
+      link.organization_id === organizationId &&
+      !link.location_id &&
+      link.location_name.toLowerCase() === name.toLowerCase(),
+  );
+  if (existing) {
+    return {
+      id: existing.id,
+      organization_id: existing.organization_id,
+      location_id: existing.location_id || undefined,
+      location_name: existing.location_name,
+      visit_count: existing.visit_count,
+    };
+  }
+
+  let organization = demoOrganizationOptions.find((option) => option.id === organizationId);
+  if (!organization) {
+    organization = {
+      id: organizationId,
+      name: organizationHint?.name?.trim() || 'Group',
+      type: 'organization',
+      group_type: organizationHint?.group_type || 'other',
+      status: organizationHint?.status || 'active',
+      user_relationship: organizationHint?.user_relationship || 'member',
+      description: organizationHint?.description || '',
+    };
+    demoOrganizationOptions.push(organization);
+  }
+
+  const row: DemoLocationOrganizationLink = {
+    id: `demo-org-location-name-${organizationId}-${Date.now()}`,
+    organization_id: organizationId,
+    location_id: '',
+    location_name: name,
+    visit_count: 1,
+    organization,
+  };
+  demoLinks = [row, ...demoLinks];
+  return {
+    id: row.id,
+    organization_id: row.organization_id,
+    location_id: undefined,
+    location_name: row.location_name,
+    visit_count: row.visit_count,
+  };
+}
+
+type OrganizationLocationLike = {
+  id: string;
+  organization_id: string;
+  location_id?: string;
+  location_name: string;
+  visit_count: number;
+};
 
 export function unlinkDemoLocationOrganization(linkId: string): void {
   demoLinks = demoLinks.filter((link) => link.id !== linkId);

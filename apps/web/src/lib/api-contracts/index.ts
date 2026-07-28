@@ -43,6 +43,7 @@ export {
   isQuestWriteRequest,
   isFamilyWriteRequest,
   isRomanceWriteRequest,
+  isEventWriteRequest,
   isClosedScopeQuery,
   isFocusEntityRelevant,
   countListedNameLikeTokens,

@@ -125,6 +125,13 @@ describe('isClosedScopeQuery', () => {
       reason: 'location_write_request',
     });
   });
+
+  it('tags event writes', () => {
+    expect(isClosedScopeQuery('we played a backyard show at Northwind Depot')).toEqual({
+      closedScope: true,
+      reason: 'event_write_request',
+    });
+  });
 });
 
 describe('isFocusEntityRelevant', () => {

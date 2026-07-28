@@ -4,12 +4,13 @@ import {
   X, Clock, MapPin, Users, MessageSquare, Send, Sparkles,
   Calendar, ArrowRight, ArrowLeft, Eye, Heart, Link2, FileText,
   Lightbulb, GitBranch, CheckCircle2, Quote, UserCircle2, Trash2,
-  Compass,
+  Compass, ImagePlus, Loader2, BookOpen, Plus,
 } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import { Textarea } from '../ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { UnknownField } from '../ui/UnknownField';
 import { fetchJson } from '../../lib/api';
@@ -112,6 +113,29 @@ interface Event {
     chapter_id?: string;
     chapter_title?: string;
   } | null;
+  metadata?: {
+    created_via?: string;
+    flyer_url?: string | null;
+    photo_urls?: string[];
+    primary_place?: { id: string | null; name: string } | null;
+    venue_stops?: Array<{
+      location_id?: string | null;
+      location_name: string;
+      order: number;
+      role: 'primary' | 'afterparty' | 'other';
+    }>;
+    organization_ids?: string[];
+    organization_names?: string[];
+    stories?: Array<{
+      id: string;
+      body: string;
+      created_at: string;
+      media_url?: string | null;
+      location_id?: string | null;
+      location_name?: string | null;
+    }>;
+    [key: string]: unknown;
+  };
 }
 
 interface EventDetailModalProps {
@@ -121,6 +145,8 @@ interface EventDetailModalProps {
   breadcrumb?: string;
   /** Called after the event is deleted so the parent list can refresh. */
   onDeleted?: (id: string) => void;
+  /** Called when stories/venues are added so parent lists stay in sync. */
+  onUpdated?: (event: Event) => void;
 }
 
 type LinkedEventStub = { id: string; title: string; summary: string | null; start_time: string };
@@ -626,16 +652,25 @@ function renderWithChips(text: string, entities: ChatEntity[]): React.ReactNode 
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, breadcrumb, onDeleted }) => {
+export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, breadcrumb, onDeleted, onUpdated }) => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [deleting, setDeleting] = useState(false);
+  const [storyDraft, setStoryDraft] = useState('');
+  const [venueDraft, setVenueDraft] = useState('');
+  const [postingStory, setPostingStory] = useState(false);
+  const [postingVenue, setPostingVenue] = useState(false);
 
   const handleDeleteEvent = async () => {
     if (deleting) return;
     if (!window.confirm('Delete this event? This can’t be undone.')) return;
     setDeleting(true);
     try {
+      if (event.id.startsWith('demo-posted-event-') || event.id.startsWith('event-')) {
+        onDeleted?.(event.id);
+        onClose();
+        return;
+      }
       await fetchJson(`/api/conversation/events/${event.id}`, { method: 'DELETE' });
       onDeleted?.(event.id);
       onClose();
@@ -725,16 +760,28 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
   };
 
   const loadEvent = async () => {
-    if (event.id.startsWith('event-')) {
+    if (event.id.startsWith('event-') || event.id.startsWith('demo-posted-event-')) {
+      if (event.id.startsWith('demo-posted-event-')) {
+        try {
+          const { getDemoUserPostedEvent } = await import('../../mocks/userPostedEventsDemo');
+          const live = getDemoUserPostedEvent(event.id);
+          if (live) {
+            const next = { ...enrichForDemo(event), ...live, metadata: live.metadata };
+            setEventData(next);
+            primeChat(next);
+            return;
+          }
+        } catch { /* fall through */ }
+      }
       const enriched = enrichForDemo(event);
       setEventData(enriched);
-      primeChat(enriched); // demo events have no real history
+      primeChat(enriched);
       return;
     }
     try {
       const [eventResult] = await Promise.all([
         fetchJson<{ success: boolean; event: Event }>(`/api/conversation/events/${event.id}`),
-        loadChatHistory(event as Event), // fire in parallel with event load
+        loadChatHistory(event as Event),
       ]);
       if (eventResult.success) setEventData(eventResult.event);
 
@@ -748,6 +795,83 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
       const fallback = enrichForDemo(event);
       setEventData(fallback);
       primeChat(fallback);
+    }
+  };
+
+  const isUserPosted = eventData.metadata?.created_via === 'user_posted' || eventData.id.startsWith('demo-posted-event-');
+
+  const handleAddStory = async () => {
+    if (!storyDraft.trim() || postingStory) return;
+    setPostingStory(true);
+    try {
+      if (eventData.id.startsWith('demo-posted-event-')) {
+        const { addDemoEventStory, getDemoUserPostedEvent } = await import('../../mocks/userPostedEventsDemo');
+        addDemoEventStory(eventData.id, storyDraft.trim());
+        const live = getDemoUserPostedEvent(eventData.id);
+        if (live) {
+          const next = { ...eventData, ...live, metadata: live.metadata };
+          setEventData(next);
+          onUpdated?.(next);
+        }
+      } else {
+        const res = await fetchJson<{ success: boolean; story: { id: string; body: string; created_at: string } }>(
+          `/api/conversation/events/${eventData.id}/stories`,
+          { method: 'POST', body: JSON.stringify({ body: storyDraft.trim() }) },
+        );
+        const stories = [...(eventData.metadata?.stories ?? []), res.story];
+        const next = {
+          ...eventData,
+          metadata: { ...eventData.metadata, created_via: eventData.metadata?.created_via ?? 'user_posted', stories },
+        };
+        setEventData(next);
+        onUpdated?.(next);
+      }
+      setStoryDraft('');
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Could not add story');
+    } finally {
+      setPostingStory(false);
+    }
+  };
+
+  const handleAddVenue = async () => {
+    if (!venueDraft.trim() || postingVenue) return;
+    setPostingVenue(true);
+    try {
+      if (eventData.id.startsWith('demo-posted-event-')) {
+        const { addDemoEventVenue, getDemoUserPostedEvent } = await import('../../mocks/userPostedEventsDemo');
+        addDemoEventVenue(eventData.id, { location_name: venueDraft.trim(), role: 'afterparty' });
+        const live = getDemoUserPostedEvent(eventData.id);
+        if (live) {
+          const next = { ...eventData, ...live, metadata: live.metadata };
+          setEventData(next);
+          onUpdated?.(next);
+        }
+      } else {
+        const res = await fetchJson<{
+          success: boolean;
+          venue_stops: NonNullable<Event['metadata']>['venue_stops'];
+        }>(`/api/conversation/events/${eventData.id}/venues`, {
+          method: 'POST',
+          body: JSON.stringify({ location_name: venueDraft.trim(), role: 'afterparty' }),
+        });
+        const next = {
+          ...eventData,
+          locations: [...eventData.locations, venueDraft.trim()],
+          metadata: {
+            ...eventData.metadata,
+            created_via: eventData.metadata?.created_via ?? 'user_posted',
+            venue_stops: res.venue_stops,
+          },
+        };
+        setEventData(next);
+        onUpdated?.(next);
+      }
+      setVenueDraft('');
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Could not add place');
+    } finally {
+      setPostingVenue(false);
     }
   };
 
@@ -1154,6 +1278,149 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
                     Summary
                   </h3>
                   <UnknownField label="What happened" prompt={`About the event "${displayTitle}": `} />
+                </section>
+              )}
+
+              {/* ── Flyer / photos (user-posted) ── */}
+              {(eventData.metadata?.flyer_url ||
+                (Array.isArray(eventData.metadata?.photo_urls) &&
+                  (eventData.metadata.photo_urls as string[]).length > 0)) && (
+                <section data-testid="event-flyer">
+                  <h3 className="text-xs font-bold text-white/60 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <ImagePlus className="w-3.5 h-3.5 text-amber-300/70" />
+                    Flyer & photos
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {(
+                      Array.isArray(eventData.metadata?.photo_urls) &&
+                      (eventData.metadata.photo_urls as string[]).length > 0
+                        ? (eventData.metadata.photo_urls as string[])
+                        : eventData.metadata?.flyer_url
+                          ? [eventData.metadata.flyer_url]
+                          : []
+                    ).map((url, idx) => (
+                      <div
+                        key={`${url}-${idx}`}
+                        className="overflow-hidden rounded-xl border border-amber-400/25 bg-black/40"
+                      >
+                        <img
+                          src={url}
+                          alt={`Photo ${idx + 1} for ${displayTitle}`}
+                          className="max-h-56 w-full object-contain bg-black/60"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* ── Venue stops ── */}
+              {(isUserPosted || (eventData.metadata?.venue_stops?.length ?? 0) > 0) && (
+                <section data-testid="event-venue-stops">
+                  <h3 className="text-xs font-bold text-emerald-400/70 uppercase tracking-widest mb-2.5 flex items-center gap-2">
+                    <MapPin className="w-3.5 h-3.5" />
+                    Venues
+                  </h3>
+                  {(eventData.metadata?.venue_stops?.length ?? 0) > 0 ? (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {(eventData.metadata?.venue_stops ?? []).map((stop, idx) => (
+                        <span key={`${stop.location_name}-${idx}`} className="flex items-center gap-1.5">
+                          {idx > 0 && <ArrowRight className="h-3 w-3 text-white/25" />}
+                          <Badge
+                            variant="outline"
+                            className={`text-xs ${
+                              stop.role === 'primary'
+                                ? 'bg-emerald-500/20 text-emerald-100 border-emerald-400/40'
+                                : 'bg-teal-500/15 text-teal-100 border-teal-400/30'
+                            }`}
+                          >
+                            {stop.role === 'afterparty' ? 'Then · ' : ''}
+                            {stop.location_name}
+                          </Badge>
+                        </span>
+                      ))}
+                    </div>
+                  ) : eventData.locations.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {eventData.locations.map((l) => (
+                        <Badge key={l} variant="outline" className="text-xs bg-emerald-500/15 text-emerald-200 border-emerald-500/35">
+                          {l}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-white/40">No places linked yet.</p>
+                  )}
+                  {isUserPosted && (
+                    <div className="mt-3 flex gap-2">
+                      <Input
+                        placeholder="Then we went to…"
+                        value={venueDraft}
+                        onChange={(e) => setVenueDraft(e.target.value)}
+                        className="h-9 bg-black/50 border-white/12 text-white"
+                        data-testid="event-add-venue-input"
+                      />
+                      <Button
+                        size="sm"
+                        className="h-9 shrink-0"
+                        disabled={!venueDraft.trim() || postingVenue}
+                        onClick={() => void handleAddVenue()}
+                        data-testid="event-add-venue-submit"
+                      >
+                        {postingVenue ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                      </Button>
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {/* ── Stories on this Event ── */}
+              {(isUserPosted || (eventData.metadata?.stories?.length ?? 0) > 0) && (
+                <section data-testid="event-stories">
+                  <h3 className="text-xs font-bold text-amber-300/70 uppercase tracking-widest mb-2.5 flex items-center gap-2">
+                    <BookOpen className="w-3.5 h-3.5" />
+                    Stories
+                  </h3>
+                  <div className="space-y-2">
+                    {(eventData.metadata?.stories ?? []).length === 0 ? (
+                      <p className="text-xs text-white/40">No stories yet — what happened?</p>
+                    ) : (
+                      (eventData.metadata?.stories ?? []).map((story) => (
+                        <div
+                          key={story.id}
+                          className="rounded-xl border border-amber-400/20 bg-amber-500/[0.06] px-3.5 py-2.5"
+                        >
+                          <p className="text-sm text-white/85 leading-relaxed whitespace-pre-wrap">{story.body}</p>
+                          <p className="text-[10px] text-white/35 mt-1.5">
+                            {format(parseISO(story.created_at), 'MMM d, yyyy')}
+                            {story.location_name ? ` · ${story.location_name}` : ''}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {isUserPosted && (
+                    <div className="mt-3 space-y-2">
+                      <Textarea
+                        placeholder="What happened?"
+                        value={storyDraft}
+                        onChange={(e) => setStoryDraft(e.target.value)}
+                        rows={3}
+                        className="bg-black/50 border-white/12 text-white"
+                        data-testid="event-add-story-input"
+                      />
+                      <Button
+                        size="sm"
+                        className="h-9 bg-amber-500/20 border border-amber-400/30 text-amber-50 hover:bg-amber-500/30"
+                        disabled={!storyDraft.trim() || postingStory}
+                        onClick={() => void handleAddStory()}
+                        data-testid="event-add-story-submit"
+                      >
+                        {postingStory ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Plus className="h-3.5 w-3.5 mr-1.5" />}
+                        Add story
+                      </Button>
+                    </div>
+                  )}
                 </section>
               )}
 

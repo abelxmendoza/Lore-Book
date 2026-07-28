@@ -363,6 +363,72 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
+/**
+ * Reclassify / switch entity type for a group that ended up in the wrong
+ * book. E.g. a person who was created as an organization. Creates-or-merges
+ * into the target book, then deletes the source organization card.
+ */
+router.post('/:id/reclassify', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const organizationId = String(req.params.id);
+    const { targetDomain } = req.body || {};
+    const {
+      isOrganizationReclassifyTarget,
+      validateOrganizationReclassification,
+      reclassifyOrganizationService,
+    } = await import('../services/organizations/reclassifyOrganizationService');
+
+    if (!isOrganizationReclassifyTarget(targetDomain)) {
+      return res.status(400).json({
+        error: 'targetDomain required (character, location, project, skill, event)',
+      });
+    }
+
+    const existing = await organizationService.getOrganization(userId, organizationId);
+    if (!existing) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    const context = [existing.description, (existing.metadata as Record<string, unknown> | null)?.context]
+      .filter(Boolean)
+      .join(' ');
+    const validation = validateOrganizationReclassification(existing.name, context, targetDomain);
+    if (!validation.allowed) {
+      return res.status(422).json({
+        error: validation.reason ?? `"${existing.name}" does not pass the ${targetDomain} book's rules.`,
+        rulesFired: validation.rulesFired ?? [],
+      });
+    }
+
+    const outcome = await reclassifyOrganizationService.performReclassification(
+      userId,
+      {
+        id: existing.id,
+        name: existing.name,
+        description: existing.description,
+        aliases: existing.aliases,
+        metadata: existing.metadata,
+      },
+      targetDomain,
+    );
+
+    // The target book already accepted the record — safe to remove the
+    // source organization card now (same delete path as the Delete tab).
+    await organizationService.deleteOrganization(userId, organizationId, `reclassified_to_${targetDomain}`);
+
+    res.json({
+      success: true,
+      reclassified_to: targetDomain,
+      target: outcome,
+    });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to reclassify organization');
+    const message = error instanceof Error ? error.message : 'Failed to reclassify organization';
+    res.status(500).json({ error: message });
+  }
+});
+
 // ── Members ──────────────────────────────────────────
 
 // POST /api/organizations/:id/members
@@ -406,9 +472,19 @@ router.post('/:id/members', requireAuth, async (req: AuthenticatedRequest, res) 
   } catch (error: any) {
     const status = typeof error?.statusCode === 'number' ? error.statusCode : 500;
     logger.error({ error, userId }, 'Failed to add member');
-    res.status(status).json({
+    const pgMessage =
+      typeof error?.message === 'string' && error.message.length > 0 ? error.message : null;
+    const clientMessage =
+      status === 404 || status === 400
+        ? error.message
+        : typeof error?.code === 'string' && /invalid input syntax for type uuid/i.test(pgMessage || '')
+          ? 'This group isn’t saved yet. Save the group, then link people.'
+          : pgMessage && !/Failed to add member/i.test(pgMessage)
+            ? pgMessage
+            : 'Failed to add member';
+    res.status(status === 500 && /invalid input syntax for type uuid/i.test(pgMessage || '') ? 400 : status).json({
       success: false,
-      error: status === 404 || status === 400 ? error.message : 'Failed to add member',
+      error: clientMessage,
     });
   }
 });
@@ -437,7 +513,29 @@ router.get('/:id/derived-context', requireAuth, async (req: AuthenticatedRequest
   const organizationId = String(req.params.id);
   try {
     const context = await organizationService.getDerivedContext(userId, organizationId);
-    res.json({ success: true, ...context });
+    const { listUserPostedEventsForOrganization } = await import(
+      '../services/events/userPostedEventService'
+    );
+    const posted = await listUserPostedEventsForOrganization(userId, organizationId);
+    const existingIds = new Set((context.events ?? []).map((e) => e.id));
+    const postedDerived = posted
+      .filter((e) => !existingIds.has(e.id))
+      .map((e) => ({
+        id: e.id,
+        title: e.title,
+        date: e.start_time,
+        type: e.type,
+        summary: e.summary ?? undefined,
+        involved: e.people ?? [],
+        audience: 'with_user' as const,
+        user_was_present: true,
+        source: 'user_posted' as const,
+      }));
+    res.json({
+      success: true,
+      ...context,
+      events: [...postedDerived, ...(context.events ?? [])],
+    });
   } catch (error) {
     logger.error({ error, userId }, 'Failed to get derived context');
     res.status(500).json({ success: false, error: 'Failed to get derived context' });

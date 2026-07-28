@@ -1,14 +1,12 @@
 import {
-  Building2, Users, ChevronRight, Hash, BookOpen, CalendarDays,
-  TrendingUp, TrendingDown, Minus, Star, Award, Heart,
+  Building2, Users, ChevronRight, BookOpen, CalendarDays,
+  Star, Heart,
   Music, Shield, Zap, Globe, GraduationCap, Layers,
   Calendar, MapPin, Tag, Truck,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/card';
-import { Badge } from '../ui/badge';
-import { format, parseISO } from 'date-fns';
-import { readOrganizationWorld, importanceStars } from '../../lib/organizationLore';
 import { resolveOrganizationStance } from '../../lib/organizationStance';
+import { OrganizationImportanceBadge } from './OrganizationImportanceBadge';
 
 // ── G1 canonical types ────────────────────────────────────────────────
 export type GroupType =
@@ -309,6 +307,11 @@ const STANCE_BADGE_LABEL: Record<string, string> = {
   mentioned: 'Mentioned',
 };
 
+// Card surface is a scan/decide index — identity, relationship, and the
+// one-line "why it matters". Everything analytical (life score breakdown,
+// confidence, mention frequency, trend, membership model, hierarchy, cultural
+// influence, extended stats) lives in the modal, with plain-language
+// descriptions, once someone has already decided to open this group.
 export const OrganizationProfileCard = ({ organization, onClick, selectionMode, selected, highlighted }: OrganizationProfileCardProps) => {
   const gt = organization.group_type ?? 'other';
   const visual = TYPE_VISUALS[gt] ?? TYPE_VISUALS.other;
@@ -316,26 +319,14 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
   const rel = organization.user_relationship;
   const stance = resolveOrganizationStance(organization);
 
-  const formatDate = (dateString: string) => {
-    try { return format(parseISO(dateString), 'MMM d, yyyy'); }
-    catch { return dateString; }
-  };
-
   const isFamily = gt === 'family';
   const isPublic = organization.is_public_entity;
-  const isFuzzy  = organization.membership_model === 'fuzzy';
   const isFormer = rel === 'former_member' || rel === 'alumnus';
   const isObserver = rel === 'fan' || rel === 'aware_of' || rel === 'referenced';
 
-  // World/lore layer — archetype nickname, importance, and the "why it matters" line.
-  const world = readOrganizationWorld(organization);
-  const stars = importanceStars(organization.analytics?.importance_score ?? world.influence.impactScore);
-  const keyPeople = (organization.members ?? [])
-    .map((m) => m.character_name)
-    .filter(Boolean)
-    .slice(0, 4);
-  const storyLine =
-    organization.profile?.mission || organization.description || world.lore.roleInStory;
+  // Importance from real analytics only — never invent a score from templates.
+  const importanceScore = organization.analytics?.importance_score;
+  const storyLine = organization.profile?.mission || organization.description || '';
 
   return (
     <Card
@@ -361,45 +352,6 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
       <div className={`relative h-12 sm:h-16 bg-gradient-to-br ${visual.grad} flex items-center justify-center flex-shrink-0`}>
         <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
         <Icon className={`h-6 w-6 sm:h-10 sm:w-10 ${visual.iconCls} transition-colors relative z-10`} />
-
-        {/* Top-right: analytics + confidence */}
-        <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 z-10 items-center gap-1 hidden sm:flex">
-          {organization.analytics && !isObserver && (
-            <>
-              <Badge
-                variant="outline"
-                className={`${organization.analytics.importance_score >= 70 ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : organization.analytics.importance_score >= 40 ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-gray-500/20 text-gray-400 border-gray-500/30'} text-[10px] px-1.5 py-0.5 flex items-center gap-1`}
-              >
-                {organization.analytics.importance_score >= 70 ? <Star className="h-2.5 w-2.5" /> : organization.analytics.importance_score >= 40 ? <Award className="h-2.5 w-2.5" /> : null}
-                {organization.analytics.importance_score}
-              </Badge>
-              {organization.analytics.trend === 'increasing' && <TrendingUp className="h-3 w-3 text-green-400" />}
-              {organization.analytics.trend === 'decreasing' && <TrendingDown className="h-3 w-3 text-red-400" />}
-              {organization.analytics.trend === 'stable'     && <Minus className="h-3 w-3 text-gray-400" />}
-            </>
-          )}
-          {/* Confidence — skip for public/reference-only orgs */}
-          {!isPublic && !isObserver && (
-            <Badge
-              variant="outline"
-              className={`${organization.confidence >= 0.7 ? 'bg-green-500/20 text-green-400 border-green-500/30' : organization.confidence >= 0.4 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'} text-[10px] px-1.5 py-0.5`}
-            >
-              {organization.confidence >= 0.7 ? 'High' : organization.confidence >= 0.4 ? 'Med' : 'Low'}
-            </Badge>
-          )}
-          {isPublic && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
-              Public
-            </Badge>
-          )}
-        </div>
-
-        {/* Fuzzy/scene indicator */}
-        {isFuzzy && (
-          <div className="absolute bottom-1 left-2 hidden sm:block">
-            <span className="text-[9px] text-white/40 uppercase tracking-wider">participatory</span>
-          </div>
-        )}
       </div>
 
       <CardHeader className="pb-0 sm:pb-1.5 pt-1.5 sm:pt-2.5 px-2 sm:px-4 flex-1 min-h-0 flex flex-col justify-center">
@@ -412,19 +364,14 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
               {organization.name}
             </h3>
 
-            {/* Archetype nickname + importance — "the world node" identity */}
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="text-[10px] text-violet-300/70 italic truncate" title={world.archetype.essence}>
-                "{world.archetype.nickname}"
-              </span>
-              {!isObserver && (
-                <span className="text-[9px] leading-none text-amber-300 shrink-0" aria-label={`Importance ${stars} of 5`}>
-                  {'★'.repeat(stars)}<span className="text-white/15">{'★'.repeat(5 - stars)}</span>
-                </span>
-              )}
-            </div>
+            {/* Importance in your life (not favorites) — only when scored */}
+            {importanceScore != null && !isObserver && (
+              <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                <OrganizationImportanceBadge score={importanceScore} size="sm" className="shrink-0" />
+              </div>
+            )}
 
-            {/* Group type + stance + relationship badges — visible on all breakpoints */}
+            {/* Group type + stance + relationship badges */}
             <div className="flex items-center gap-1 mt-0.5 flex-wrap">
               <p className="text-[10px] text-white/50 truncate capitalize">
                 {gt.replace(/_/g, ' ')}
@@ -438,11 +385,6 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
               {rel && rel !== 'member' && (
                 <span className={`text-[9px] px-1.5 py-0.5 rounded border ${relBadgeCls(rel)}`}>
                   {REL_LABELS[rel]}
-                </span>
-              )}
-              {(organization.hierarchy_enabled || organization.metadata?.hierarchy_enabled) && (
-                <span className="text-[9px] px-1.5 py-0.5 rounded border bg-emerald-500/15 text-emerald-300 border-emerald-500/25">
-                  hierarchy
                 </span>
               )}
             </div>
@@ -470,47 +412,7 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
               <span>{organization.member_count ?? 0} {(organization.member_count ?? 0) === 1 ? 'member' : 'members'}</span>
             </>
           )}
-          {!isPublic && (
-            <>
-              <span className="text-white/40">•</span>
-              <span className="inline-flex items-center gap-0.5">
-                <Hash className="h-2.5 w-2.5" />
-                {organization.usage_count}
-              </span>
-            </>
-          )}
         </div>
-
-        {/* Mobile — importance score (badges already shown in header row) */}
-        <div className="flex items-center gap-1.5 text-[10px] text-white/50 sm:hidden">
-          {organization.analytics && !isObserver && (
-            <span
-              className={`text-[9px] px-1.5 py-0.5 rounded border flex items-center gap-0.5 ${
-                organization.analytics.importance_score >= 70
-                  ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                  : organization.analytics.importance_score >= 40
-                    ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-                    : 'bg-gray-500/20 text-gray-400 border-gray-500/30'
-              }`}
-            >
-              {organization.analytics.importance_score >= 70 && <Star className="h-2 w-2" />}
-              Score {organization.analytics.importance_score}
-            </span>
-          )}
-          {isPublic && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded border bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
-              Public
-            </span>
-          )}
-        </div>
-
-        {/* Key people — "who's involved" */}
-        {!isFamily && !isPublic && keyPeople.length > 0 && (
-          <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-white/55 min-w-0">
-            <Users className="h-3 w-3 text-primary/70 flex-shrink-0" />
-            <span className="truncate">{keyPeople.join(' • ')}</span>
-          </div>
-        )}
 
         {/* Story line — "why it matters", always visible */}
         {storyLine && (
@@ -519,7 +421,7 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
           </p>
         )}
 
-        {/* Compact stat pills — mobile + desktop */}
+        {/* Compact stat pills */}
         <div className="flex flex-wrap gap-1 sm:gap-1.5">
           {organization.stories && organization.stories.length > 0 && (
             <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 border border-primary/20 px-1.5 py-0.5 text-[10px] text-primary/90">
@@ -544,68 +446,6 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
               <MapPin className="h-2.5 w-2.5 shrink-0" />
               {organization.location}
             </span>
-          )}
-          {organization.profile?.values && organization.profile.values.length > 0 && (
-            organization.profile.values.slice(0, 2).map((v) => (
-              <span
-                key={v}
-                className="rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 text-[9px] text-white/45 truncate max-w-[80px]"
-              >
-                {v}
-              </span>
-            ))
-          )}
-        </div>
-
-        {/* Extended metadata — desktop only */}
-        <div className="flex-wrap gap-2 text-[10px] text-white/50 hidden sm:flex">
-          {organization.analytics && !isObserver && (
-            <>
-              <div className="flex items-center gap-1">
-                <Award className="h-2.5 w-2.5 text-amber-400" />
-                <span className="text-amber-400">Rank #{organization.analytics.user_ranking}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Users className="h-2.5 w-2.5" />
-                <span>{organization.analytics.user_involvement_score}% involved</span>
-              </div>
-            </>
-          )}
-          {organization.analytics && isObserver && (
-            <div className="flex items-center gap-1">
-              <TrendingUp className="h-2.5 w-2.5 text-pink-400" />
-              <span className="text-pink-400">{organization.analytics.group_influence_on_user}% cultural influence</span>
-            </div>
-          )}
-          {organization.founded_year && (
-            <div className="flex items-center gap-1">
-              <Calendar className="h-2.5 w-2.5" />
-              <span>Est. {organization.founded_year}</span>
-            </div>
-          )}
-          {!organization.founded_year && (
-            <div className="flex items-center gap-1">
-              <Calendar className="h-2.5 w-2.5" />
-              <span>Last seen: {formatDate(organization.last_seen)}</span>
-            </div>
-          )}
-          {organization.stories && organization.stories.length > 0 && (
-            <div className="flex items-center gap-1">
-              <BookOpen className="h-2.5 w-2.5" />
-              <span>{organization.stories.length} {organization.stories.length === 1 ? 'story' : 'stories'}</span>
-            </div>
-          )}
-          {organization.events && organization.events.length > 0 && (
-            <div className="flex items-center gap-1">
-              <CalendarDays className="h-2.5 w-2.5" />
-              <span>{organization.events.length} {organization.events.length === 1 ? 'event' : 'events'}</span>
-            </div>
-          )}
-          {organization.location && (
-            <div className="flex items-center gap-1">
-              <MapPin className="h-2.5 w-2.5" />
-              <span className="truncate max-w-[100px]">{organization.location}</span>
-            </div>
           )}
         </div>
       </CardContent>

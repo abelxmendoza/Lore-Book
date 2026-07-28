@@ -2,7 +2,7 @@ import { Building2, Users, Home, MapPin, CalendarDays, TreePine, Briefcase, Glob
 import type { Organization } from './OrganizationProfileCard';
 import {
   computeChildHouseholds,
-  getLinkedVenueNames,
+  getLinkedVenues,
   getSocialCategory,
   isCommunityGroup,
   isCompanyGroup,
@@ -20,6 +20,8 @@ type Props = {
   onOpenLocationsTab?: () => void;
   onOpenTimelineTab?: () => void;
   onOpenFamilyTab?: () => void;
+  /** Open a place's modal — id preferred, name works as fallback. */
+  onOpenLocation?: (args: { locationId?: string; locationName?: string }) => void;
   compact?: boolean;
 };
 
@@ -31,6 +33,7 @@ export const GroupDetailPanel = ({
   onOpenLocationsTab,
   onOpenTimelineTab,
   onOpenFamilyTab,
+  onOpenLocation,
   compact = false,
 }: Props) => {
   const category = getSocialCategory(organization);
@@ -43,7 +46,7 @@ export const GroupDetailPanel = ({
   if (!isFamily && !isCommunity && !isCompany && !isHousehold) return null;
 
   const households = isFamily ? computeChildHouseholds(organization, allOrganizations) : [];
-  const venues = isCommunity ? getLinkedVenueNames(organization) : [];
+  const venues = isCommunity ? getLinkedVenues(organization) : [];
   const members = organization.members ?? [];
   const parentFamily = organization.parent_group_id
     ? allOrganizations.find((o) => o.id === organization.parent_group_id)
@@ -91,11 +94,27 @@ export const GroupDetailPanel = ({
               🏠 {hh.name}
             </button>
           ))}
-          {isCommunity && (venues.length > 0 ? venues : (organization.locations ?? []).map((l) => l.location_name)).slice(0, 5).map((name) => (
-            <span key={name} className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/25 text-violet-200">
-              {name}
-            </span>
-          ))}
+          {isCommunity && venues.slice(0, 5).map((venue) =>
+            onOpenLocation ? (
+              <button
+                key={venue.name}
+                type="button"
+                onClick={() =>
+                  onOpenLocation({
+                    locationId: venue.locationId,
+                    locationName: venue.name,
+                  })
+                }
+                className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/25 text-violet-200 hover:bg-violet-500/20 hover:border-violet-400/40 transition touch-manipulation"
+              >
+                {venue.name}
+              </button>
+            ) : (
+              <span key={venue.name} className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/25 text-violet-200">
+                {venue.name}
+              </span>
+            )
+          )}
           {isCompany && onOpenTimelineTab && (
             <button type="button" onClick={onOpenTimelineTab} className="text-[10px] px-2 py-1 rounded-lg border border-blue-500/25 bg-blue-500/10 text-blue-200 flex items-center gap-1">
               <CalendarDays className="h-3 w-3" /> Timeline
@@ -205,11 +224,27 @@ export const GroupDetailPanel = ({
             Venues & places
           </p>
           <div className="flex flex-wrap gap-2">
-            {(venues.length > 0 ? venues : (organization.locations ?? []).map((l) => l.location_name)).map((name) => (
-              <span key={name} className="text-xs px-2.5 py-1 rounded-full bg-violet-500/10 border border-violet-500/25 text-violet-200">
-                {name}
-              </span>
-            ))}
+            {venues.map((venue) =>
+              onOpenLocation ? (
+                <button
+                  key={venue.name}
+                  type="button"
+                  onClick={() =>
+                    onOpenLocation({
+                      locationId: venue.locationId,
+                      locationName: venue.name,
+                    })
+                  }
+                  className="text-xs px-2.5 py-1 rounded-full bg-violet-500/10 border border-violet-500/25 text-violet-200 hover:bg-violet-500/20 hover:border-violet-400/40 transition touch-manipulation"
+                >
+                  {venue.name}
+                </button>
+              ) : (
+                <span key={venue.name} className="text-xs px-2.5 py-1 rounded-full bg-violet-500/10 border border-violet-500/25 text-violet-200">
+                  {venue.name}
+                </span>
+              )
+            )}
           </div>
           {onOpenLocationsTab && (
             <button type="button" onClick={onOpenLocationsTab} className="mt-2 text-[11px] text-teal-300/80 hover:text-teal-200">

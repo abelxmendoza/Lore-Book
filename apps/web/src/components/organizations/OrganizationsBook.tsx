@@ -26,7 +26,6 @@ import { FocusedEntityChatLauncher } from '../chat/FocusedEntityChatLauncher';
 import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
 import { openFocusedEntityChat } from '../../lib/openFocusedEntityChat';
 import { OntologyCompliancePanel } from '../ontology/OntologyCompliancePanel';
-import { deriveOrganizationProfile } from '../../lib/organizationProfile';
 import { isEventGroup, isTopLevelGroup } from '../../lib/groupTaxonomy';
 import { buildOrganizationBookClipboardText } from '../../lib/organizationBookClipboard';
 import { clipboardFilterLines } from '../../lib/listClipboard';
@@ -144,20 +143,9 @@ const normalizeOrganization = (raw: Partial<Organization>): Organization => {
   const events = Array.isArray(raw.events) ? raw.events : [];
   const locations = Array.isArray(raw.locations) ? raw.locations : [];
   const metadata = raw.metadata ?? {};
-  let profile = raw.profile ?? metadata.profile;
-
-  if (!profile) {
-    try {
-      profile = deriveOrganizationProfile({
-        name: raw.name ?? 'Untitled Group',
-        group_type: groupType,
-        members: members.map(member => member.character_name),
-        context: raw.description,
-      });
-    } catch {
-      profile = undefined;
-    }
-  }
+  // Never invent Mission / Values / Traditions from type templates — empty
+  // means empty. Demo enrichment still fills profiles when mock data is on.
+  const profile = raw.profile ?? metadata.profile;
 
   return {
     id: raw.id ?? `org-${raw.name ?? 'unknown'}`,
@@ -780,11 +768,37 @@ const MOCK_ORGANIZATIONS: Organization[] = [
       { id: 'm3', character_name: 'Tanya', role: 'Purple belt', status: 'active' },
     ],
     stories: [
-      { id: 's1', title: 'First stripe on my white belt', summary: 'Six months of embarrassing myself on the mat. Felt like something finally clicked this week. Lima noticed.', date: subDays(new Date(), 14).toISOString() },
+      {
+        id: 's1',
+        title: 'First stripe on my white belt',
+        summary:
+          'Six months of embarrassing myself on the mat, then something finally clicked this week. Lima noticed before I did — that stripe felt louder than it looked.',
+        date: subDays(new Date(), 14).toISOString(),
+      },
+      {
+        id: 's2',
+        title: 'Seminar with a visiting black belt',
+        summary:
+          'Packed mats and a notebook full of half-legible arrows. Took notes the whole time; Tanya asked the best questions and made the room feel smarter.',
+        date: subDays(new Date(), 28).toISOString(),
+      },
+      {
+        id: 's3',
+        title: 'First drop-in at Eastside BJJ',
+        summary:
+          'Signed the waiver, borrowed a gi, and got smashed for an hour. Left sore, bruised, and weirdly excited to come back.',
+        date: subDays(new Date(), 340).toISOString(),
+      },
     ],
     events: [
       { id: 'e1', title: 'Tuesday class', date: subDays(new Date(), 3).toISOString(), type: 'other' },
-      { id: 'e2', title: 'Saturday open mat', date: subDays(new Date(), 5).toISOString(), type: 'other' },
+      { id: 'e2', title: 'Saturday open mat', date: subDays(new Date(), 5).toISOString(), type: 'social' },
+      { id: 'e3', title: 'Thursday fundamentals', date: subDays(new Date(), 220).toISOString(), type: 'other' },
+      { id: 'e4', title: 'Open mat with visitors', date: subDays(new Date(), 95).toISOString(), type: 'social' },
+      { id: 'e5', title: 'In-house positional sparring night', date: subDays(new Date(), 185).toISOString(), type: 'game' },
+      { id: 'e6', title: 'Competition team trip', date: subDays(new Date(), 120).toISOString(), type: 'other' },
+      { id: 'e7', title: 'Recovery week / light drilling', date: subDays(new Date(), 48).toISOString(), type: 'other' },
+      { id: 'e8', title: 'Coach Lima ran a guard-passing clinic', date: subDays(new Date(), 260).toISOString(), type: 'meeting' },
     ],
     locations: [{ id: 'l1', location_name: 'Eastside BJJ Gym', visit_count: 48, last_visited: subDays(new Date(), 3).toISOString() }],
     analytics: mkAnalytics(78, 82, 'increasing', ['Physical discipline', 'Consistent weekly structure', 'Humility practice']),
@@ -2042,154 +2056,155 @@ export const OrganizationsBook: React.FC = () => {
           </div>
         </div>
 
-        {/* Category tabs — kind of group (company / band / family…) */}
+        {/* Category tabs — kind of group (company / band / family…)
+            Mobile: 4-col compact stacked grid (~4 rows). Desktop: wrapping chips. */}
         <Tabs value={activeCategory} onValueChange={(value) => setActiveCategory(value as OrganizationCategory)}>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-white/35 mb-1.5">
             Group type
           </p>
-          <TabsList className="w-full bg-black/40 border border-border/50 p-1.5 h-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:flex lg:flex-wrap gap-1.5 sm:gap-2 justify-start [&_[role=tab]]:text-xs [&_[role=tab]]:sm:text-sm [&_[role=tab]]:px-2.5 [&_[role=tab]]:sm:px-3 [&_[role=tab]]:justify-center [&_[role=tab]]:w-full lg:[&_[role=tab]]:w-auto lg:[&_[role=tab]]:shrink-0">
+          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto grid grid-cols-4 sm:grid-cols-4 md:grid-cols-5 lg:flex lg:flex-wrap gap-1 sm:gap-1.5 justify-start [&_[role=tab]]:min-h-0 [&_[role=tab]]:h-auto [&_[role=tab]]:whitespace-normal sm:[&_[role=tab]]:whitespace-nowrap [&_[role=tab]]:text-[9px] [&_[role=tab]]:leading-tight [&_[role=tab]]:sm:text-xs [&_[role=tab]]:md:text-sm [&_[role=tab]]:px-1 [&_[role=tab]]:py-1.5 [&_[role=tab]]:sm:px-2.5 [&_[role=tab]]:sm:py-2 [&_[role=tab]]:justify-center [&_[role=tab]]:w-full lg:[&_[role=tab]]:w-auto lg:[&_[role=tab]]:shrink-0 [&_[role=tab]_svg]:h-3 [&_[role=tab]_svg]:w-3 [&_[role=tab]_svg]:sm:h-3.5 [&_[role=tab]_svg]:sm:w-3.5 [&_[role=tab]_svg]:shrink-0">
             {availableCategories.includes('all') && (
               <TabsTrigger 
                 value="all" 
-                className="flex items-center gap-1.5 data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
+                className="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
               >
-                <Hash className="h-4 w-4" />
-                All types
+                <Hash className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="text-center truncate max-w-full">All types</span>
               </TabsTrigger>
             )}
             {availableCategories.includes('crews') && (
               <TabsTrigger
                 value="crews"
-                className="flex items-center gap-2 data-[state=active]:bg-blue-500/20 data-[state=active]:text-blue-400"
+                className="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 data-[state=active]:bg-blue-500/20 data-[state=active]:text-blue-400"
               >
-                <Users className="h-4 w-4" />
-                Crews
+                <Users className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="text-center truncate max-w-full">Crews</span>
               </TabsTrigger>
             )}
             {availableCategories.includes('bands') && (
               <TabsTrigger
                 value="bands"
-                className="flex items-center gap-2 data-[state=active]:bg-fuchsia-500/20 data-[state=active]:text-fuchsia-400"
+                className="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 data-[state=active]:bg-fuchsia-500/20 data-[state=active]:text-fuchsia-400"
               >
-                <Music className="h-4 w-4" />
-                Bands
+                <Music className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="text-center truncate max-w-full">Bands</span>
               </TabsTrigger>
             )}
             {availableCategories.includes('scenes') && (
               <TabsTrigger
                 value="scenes"
-                className="flex items-center gap-2 data-[state=active]:bg-violet-500/20 data-[state=active]:text-violet-400"
+                className="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 data-[state=active]:bg-violet-500/20 data-[state=active]:text-violet-400"
               >
-                <Zap className="h-4 w-4" />
-                Scenes
+                <Zap className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="text-center truncate max-w-full">Scenes</span>
               </TabsTrigger>
             )}
             {availableCategories.includes('communities') && (
               <TabsTrigger
                 value="communities"
-                className="flex items-center gap-2 data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400"
+                className="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400"
               >
-                <Users className="h-4 w-4" />
-                Communities
+                <Users className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="text-center truncate max-w-full">Communities</span>
               </TabsTrigger>
             )}
             {availableCategories.includes('companies') && (
               <TabsTrigger 
                 value="companies" 
-                className="flex items-center gap-2 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-400"
+                className="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-400"
               >
-                <Building2 className="h-4 w-4" />
-                Companies
+                <Building2 className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="text-center truncate max-w-full">Companies</span>
               </TabsTrigger>
             )}
             {availableCategories.includes('families') && (
               <TabsTrigger
                 value="families"
-                className="flex items-center gap-2 data-[state=active]:bg-rose-500/20 data-[state=active]:text-rose-400"
+                className="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 data-[state=active]:bg-rose-500/20 data-[state=active]:text-rose-400"
               >
-                <Heart className="h-4 w-4" />
-                Families
+                <Heart className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="text-center truncate max-w-full">Families</span>
               </TabsTrigger>
             )}
             {availableCategories.includes('households') && (
               <TabsTrigger
                 value="households"
-                className="flex items-center gap-2 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-300"
+                className="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-300"
               >
-                <TreePine className="h-4 w-4" />
-                Households
+                <TreePine className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="text-center truncate max-w-full">Households</span>
               </TabsTrigger>
             )}
             {availableCategories.includes('teams') && (
               <TabsTrigger
                 value="teams"
-                className="flex items-center gap-2 data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400"
+                className="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400"
               >
-                <Users className="h-4 w-4" />
-                Teams
+                <Users className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="text-center truncate max-w-full">Teams</span>
               </TabsTrigger>
             )}
             {availableCategories.includes('brands') && (
               <TabsTrigger
                 value="brands"
-                className="flex items-center gap-2 data-[state=active]:bg-fuchsia-500/20 data-[state=active]:text-fuchsia-400"
+                className="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 data-[state=active]:bg-fuchsia-500/20 data-[state=active]:text-fuchsia-400"
               >
-                <Tag className="h-4 w-4" />
-                Brands
+                <Tag className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="text-center truncate max-w-full">Brands</span>
               </TabsTrigger>
             )}
             {availableCategories.includes('vendors') && (
               <TabsTrigger
                 value="vendors"
-                className="flex items-center gap-2 data-[state=active]:bg-lime-500/20 data-[state=active]:text-lime-400"
+                className="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 data-[state=active]:bg-lime-500/20 data-[state=active]:text-lime-400"
               >
-                <Truck className="h-4 w-4" />
-                Vendors
+                <Truck className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="text-center truncate max-w-full">Vendors</span>
               </TabsTrigger>
             )}
             {availableCategories.includes('sports_teams') && (
               <TabsTrigger 
                 value="sports_teams" 
-                className="flex items-center gap-2 data-[state=active]:bg-green-500/20 data-[state=active]:text-green-400"
+                className="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 data-[state=active]:bg-green-500/20 data-[state=active]:text-green-400"
               >
-                <Users className="h-4 w-4" />
-                Sports Teams
+                <Users className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="text-center truncate max-w-full">Sports Teams</span>
               </TabsTrigger>
             )}
             {availableCategories.includes('clubs') && (
               <TabsTrigger 
                 value="clubs" 
-                className="flex items-center gap-2 data-[state=active]:bg-yellow-500/20 data-[state=active]:text-yellow-400"
+                className="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 data-[state=active]:bg-yellow-500/20 data-[state=active]:text-yellow-400"
               >
-                <Users className="h-4 w-4" />
-                Clubs
+                <Users className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="text-center truncate max-w-full">Clubs</span>
               </TabsTrigger>
             )}
             {availableCategories.includes('nonprofits') && (
               <TabsTrigger 
                 value="nonprofits" 
-                className="flex items-center gap-2 data-[state=active]:bg-pink-500/20 data-[state=active]:text-pink-400"
+                className="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 data-[state=active]:bg-pink-500/20 data-[state=active]:text-pink-400"
               >
-                <Building2 className="h-4 w-4" />
-                Nonprofits
+                <Building2 className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="text-center truncate max-w-full">Nonprofits</span>
               </TabsTrigger>
             )}
             {availableCategories.includes('public_entities') && (
               <TabsTrigger
                 value="public_entities"
-                className="flex items-center gap-2 data-[state=active]:bg-cyan-500/20 data-[state=active]:text-cyan-400"
+                className="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 data-[state=active]:bg-cyan-500/20 data-[state=active]:text-cyan-400"
               >
-                <Globe className="h-4 w-4" />
-                Public Entities
+                <Globe className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="text-center truncate max-w-full">Public Entities</span>
               </TabsTrigger>
             )}
             {availableCategories.includes('recent') && (
               <TabsTrigger 
                 value="recent" 
-                className="flex items-center gap-2 data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-400"
+                className="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-400"
               >
-                <Calendar className="h-4 w-4" />
-                Recent
+                <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="text-center truncate max-w-full">Recent</span>
               </TabsTrigger>
             )}
           </TabsList>

@@ -82,10 +82,20 @@ export function computeChildHouseholds(parent: Organization, all: Organization[]
     .sort((a, b) => b.usage_count - a.usage_count);
 }
 
-export function getLinkedVenueNames(org: Organization): string[] {
+export type LinkedVenue = { name: string; locationId?: string };
+
+/**
+ * Venue names for a community group, with their Places Book id when known so
+ * callers can link straight to that location's modal instead of just naming it.
+ */
+export function getLinkedVenues(org: Organization): LinkedVenue[] {
+  if (Array.isArray(org.locations) && org.locations.length > 0) {
+    return org.locations.map((l) => ({ name: l.location_name, locationId: l.location_id }));
+  }
   const meta = org.metadata ?? {};
-  if (Array.isArray(meta.linked_venue_names)) return meta.linked_venue_names as string[];
-  if (Array.isArray(org.locations)) return org.locations.map((l) => l.location_name);
+  if (Array.isArray(meta.linked_venue_names)) {
+    return (meta.linked_venue_names as string[]).map((name) => ({ name }));
+  }
   return [];
 }
 

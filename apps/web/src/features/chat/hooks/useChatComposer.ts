@@ -206,6 +206,11 @@ export const useChatComposer = (
     setImageError(null);
   }, []);
 
+  const seedPendingImages = useCallback((images: ChatImageAttachment[]) => {
+    setPendingImages(images.slice(0, MAX_CHAT_IMAGES_PER_TURN));
+    setImageError(null);
+  }, []);
+
   const handleSubmit = useCallback((e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const text = input.trim();
@@ -313,6 +318,7 @@ export const useChatComposer = (
     addPendingImages,
     removePendingImage,
     clearPendingImages,
+    seedPendingImages,
     maxImages: MAX_CHAT_IMAGES_PER_TURN,
   };
 };
