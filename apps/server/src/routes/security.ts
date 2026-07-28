@@ -1,5 +1,6 @@
 import { Router } from 'express';
 
+import { isDevelopmentRuntime } from '../config/runtimePolicy';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { createCsrfTokenForUser } from '../middleware/csrf';
 import { logSecurityEvent } from '../services/securityLog';
@@ -17,10 +18,7 @@ const router = Router();
  * In production, returns the live token stored for req.user.id.
  */
 router.get('/csrf-token', requireAuth, (req: AuthenticatedRequest, res) => {
-  const isDev = process.env.NODE_ENV === 'development' ||
-    (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
-
-  if (isDev) {
+  if (isDevelopmentRuntime()) {
     return res.json({ ok: true, csrfToken: null, note: 'CSRF disabled in development' });
   }
 

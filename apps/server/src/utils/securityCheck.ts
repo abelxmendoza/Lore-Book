@@ -1,4 +1,5 @@
 import { config } from '../config';
+import { isDevelopmentRuntime, isProductionRuntime } from '../config/runtimePolicy';
 import { logger } from '../logger';
 
 /**
@@ -8,20 +9,24 @@ import { logger } from '../logger';
 export const performSecurityCheck = (): { passed: boolean; warnings: string[]; errors: string[] } => {
   const warnings: string[] = [];
   const errors: string[] = [];
-  
-  const isDevelopment = process.env.NODE_ENV === 'development' || process.env.API_ENV === 'dev';
-  const isProduction = !isDevelopment && (
-    process.env.NODE_ENV === 'production' || process.env.API_ENV === 'production'
-  );
+
+  const isProduction = isProductionRuntime();
 
   // CRITICAL: Check if authentication is disabled in production
-  if (isProduction && process.env.DISABLE_AUTH_FOR_DEV === 'true') {
+  if ((isProduction || process.env.NODE_ENV === 'production') && process.env.DISABLE_AUTH_FOR_DEV === 'true') {
     errors.push('🚨 CRITICAL: Authentication is disabled in production! Set DISABLE_AUTH_FOR_DEV=false');
   }
 
   // CRITICAL: Dev AI fallback must never run in production
-  if (isProduction && process.env.DEV_AI_FALLBACK === 'true') {
+  if ((isProduction || process.env.NODE_ENV === 'production') && process.env.DEV_AI_FALLBACK === 'true') {
     errors.push('🚨 CRITICAL: DEV_AI_FALLBACK=true in production is not allowed! Remove it before deploying.');
+  }
+
+  // Mis-set API_ENV=dev under NODE_ENV=production must never unlock bypasses
+  if (process.env.NODE_ENV === 'production' && process.env.API_ENV === 'dev') {
+    errors.push(
+      '🚨 CRITICAL: API_ENV=dev with NODE_ENV=production is not allowed (auth/AI bypasses would be ambiguous)',
+    );
   }
 
   // Check required environment variables in production
@@ -57,12 +62,8 @@ export const performSecurityCheck = (): { passed: boolean; warnings: string[]; e
 
   // Check for development settings in production
   if (isProduction) {
-    if (process.env.NODE_ENV !== 'production') {
+    if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== undefined) {
       warnings.push(`NODE_ENV is "${process.env.NODE_ENV}" but should be "production"`);
-    }
-
-    if (process.env.API_ENV === 'dev') {
-      warnings.push('API_ENV is "dev" in production - this may disable security features');
     }
   }
 

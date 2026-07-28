@@ -21,6 +21,21 @@ const filesToScan = [
   'apps/web/src/components/love',
   'apps/web/src/components/groups',
   'apps/web/src/components/family',
+  'apps/web/src/services/mockDataService.ts',
+  'apps/web/src/routes/Demo.tsx',
+  'apps/web/src/contexts/MockDataContext.tsx',
+  'apps/web/src/features/chat/services/chatLifecycleSimulation.ts',
+  'apps/web/src/lib/demoRuntime.ts',
+  'apps/web/src/lib/demoFocusChat.ts',
+  'apps/web/src/lib/demoEntityFallbacks.ts',
+  'apps/web/src/lib/demoAgentTrace.ts',
+  'apps/web/src/lib/demoCertifiedIndex.ts',
+  'apps/web/src/lib/demoLorebookFocusReadiness.ts',
+  'apps/web/src/lib/projectQueryDemo.ts',
+  'apps/web/src/lib/romanceQueryDemo.ts',
+  'apps/web/src/lib/skillQueryDemo.ts',
+  'apps/web/src/lib/storyForge/demoLorebookWorkflow.ts',
+  'apps/web/src/lib/storyForge/demoCoreLorebookStore.ts',
 ];
 
 const blockedTerms = [

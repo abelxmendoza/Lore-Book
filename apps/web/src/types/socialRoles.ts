@@ -46,7 +46,7 @@ export interface FamilyMember {
   is_placeholder?: boolean;
   inference_status?: 'asserted' | 'inferred' | 'placeholder';
   notes?: string;
-  side?: 'maternal' | 'paternal' | 'both' | 'other';
+  side?: 'maternal' | 'paternal' | 'both' | 'other' | 'partner';
   /** True when this node maps to a real, saved character row. */
   has_card?: boolean;
   /** Explicit parent this node connects to (user-asserted). Empty = inferred. */

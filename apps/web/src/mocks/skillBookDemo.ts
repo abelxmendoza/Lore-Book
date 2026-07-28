@@ -1,6 +1,7 @@
 /**
  * Curated demo skills — realistic profiles users actually care about in the Skills book.
  */
+import type { SkillType, SkillTrajectory } from '../lib/skillProfile';
 import type { Skill, SkillCategory } from '../types/skill';
 
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
@@ -11,6 +12,26 @@ function xpForLevel(level: number): number {
 
 function makeSkill(partial: Skill): Skill {
   return partial;
+}
+
+function categoryToSkillType(category: SkillCategory): SkillType {
+  switch (category) {
+    case 'professional':
+      return 'professional';
+    case 'creative':
+    case 'artistic':
+      return 'creative';
+    case 'physical':
+      return 'physical';
+    case 'social':
+      return 'social';
+    case 'technical':
+      return 'technical';
+    case 'practical':
+      return 'survival';
+    default:
+      return 'hobby';
+  }
 }
 
 type SkillSeed = {
@@ -26,11 +47,11 @@ type SkillSeed = {
   is_active?: boolean;
   confidence_score?: number;
   monetization?: 'paid' | 'potentially_paid' | 'hobby_only';
-  trajectory?: 'improving' | 'stable' | 'declining' | 'unknown';
+  trajectory?: SkillTrajectory;
   proficiency?: number;
   enjoyment?: number;
   usage_frequency?: 'daily' | 'weekly' | 'monthly' | 'rarely';
-  skill_type?: string;
+  skill_type?: SkillType;
   location?: { id: string; name: string };
   why?: string;
   teacher?: { id: string; name: string };
@@ -71,7 +92,7 @@ function skillFromSeed(seed: SkillSeed): Skill {
     is_active: seed.is_active ?? true,
     metadata: {
       skill_profile: {
-        skill_type: seed.skill_type ?? seed.skill_category,
+        skill_type: seed.skill_type ?? categoryToSkillType(seed.skill_category),
         monetization: seed.monetization ?? 'hobby_only',
         proficiency: seed.proficiency ?? Math.min(95, seed.current_level * 11 + 18),
         enjoyment: seed.enjoyment ?? 65 + (seed.current_level % 5) * 5,
@@ -227,7 +248,7 @@ const curatedSkillBookDemoSkills: Skill[] = [
       },
       skill_details: {
         years_practiced: 1.5,
-        learned_when: { date: daysAgo(540), context: 'First session with Alex Rivera' },
+        learned_when: { date: daysAgo(540), entry_id: 'demo', context: 'First session with Alex Rivera' },
         why_started: {
           reason: 'Wanted a creative outlet that felt yours — not just work code.',
           entry_id: 'demo',
@@ -421,7 +442,7 @@ const curatedSkillBookDemoSkills: Skill[] = [
         proficiency: 58,
         enjoyment: 80,
         usage_frequency: 'daily',
-        trajectory: 'stable',
+        trajectory: 'stagnant',
       },
       skill_details: {
         why_started: { reason: 'Takeout got expensive — and cooking became a way to unwind.', entry_id: 'demo', extracted_at: daysAgo(900) },
@@ -523,7 +544,7 @@ const curatedSkillBookDemoSkills: Skill[] = [
         proficiency: 44,
         enjoyment: 85,
         usage_frequency: 'monthly',
-        trajectory: 'stable',
+        trajectory: 'stagnant',
       },
       skill_details: {
         practiced_at: [
@@ -585,7 +606,7 @@ const curatedSkillBookDemoSkills: Skill[] = [
         proficiency: 60,
         enjoyment: 72,
         usage_frequency: 'weekly',
-        trajectory: 'stable',
+        trajectory: 'stagnant',
       },
       skill_details: {
         practiced_at: [
@@ -639,13 +660,13 @@ const additionalSkillSeeds: SkillSeed[] = [
   { id: 'skill-demo-piano', skill_name: 'Piano', skill_category: 'artistic', current_level: 2, description: 'Basic chords — mostly weekend noodling.', startedDaysAgo: 180, practicedDaysAgo: 21, practice_count: 14, trajectory: 'improving', location: { id: 'dummy-loc-3', name: 'Home Studio' }, why: 'Wanted to understand music theory beyond production.' },
   { id: 'skill-demo-yoga', skill_name: 'Yoga', skill_category: 'physical', current_level: 4, description: 'Vinyasa classes and recovery after BJJ.', startedDaysAgo: 220, practicedDaysAgo: 3, practice_count: 38, location: { id: 'dummy-loc-6', name: 'Mission Climbing Gym' } },
   { id: 'skill-demo-climbing', skill_name: 'Rock Climbing', skill_category: 'physical', current_level: 3, description: 'Top-rope sessions with Ethan on weekends.', startedDaysAgo: 150, practicedDaysAgo: 9, practice_count: 20, teacher: { id: 'dummy-9', name: 'Ethan Walker' }, location: { id: 'dummy-loc-6', name: 'Mission Climbing Gym' } },
-  { id: 'skill-demo-swim', skill_name: 'Swimming', skill_category: 'physical', current_level: 2, description: 'Laps for low-impact cardio.', startedDaysAgo: 90, practicedDaysAgo: 18, practice_count: 11, trajectory: 'stable' },
+  { id: 'skill-demo-swim', skill_name: 'Swimming', skill_category: 'physical', current_level: 2, description: 'Laps for low-impact cardio.', startedDaysAgo: 90, practicedDaysAgo: 18, practice_count: 11, trajectory: 'stagnant' },
   { id: 'skill-demo-weights', skill_name: 'Weight Training', skill_category: 'physical', current_level: 5, description: 'Compound lifts — consistency over PRs.', startedDaysAgo: 400, practicedDaysAgo: 4, practice_count: 62, location: { id: 'dummy-loc-6', name: 'Mission Climbing Gym' } },
   { id: 'skill-demo-negotiation', skill_name: 'Negotiation', skill_category: 'social', current_level: 4, description: 'Salary talks, vendor contracts, and boundary-setting.', startedDaysAgo: 360, practicedDaysAgo: 45, practice_count: 12, monetization: 'paid', proficiency: 50 },
   { id: 'skill-demo-networking', skill_name: 'Networking', skill_category: 'social', current_level: 3, description: 'Meetups, intros, and staying in touch without cringe.', startedDaysAgo: 300, practicedDaysAgo: 20, practice_count: 15, enjoyment: 40 },
   { id: 'skill-demo-data', skill_name: 'Data Analysis', skill_category: 'intellectual', current_level: 5, description: 'SQL, spreadsheets, and making sense of journal metrics.', startedDaysAgo: 450, practicedDaysAgo: 8, practice_count: 29, monetization: 'potentially_paid', location: { id: 'dummy-loc-1', name: 'Novara HQ' } },
   { id: 'skill-demo-chess', skill_name: 'Chess', skill_category: 'intellectual', current_level: 3, description: 'Online blitz and occasional park boards.', startedDaysAgo: 200, practicedDaysAgo: 2, practice_count: 48, location: { id: 'dummy-loc-2', name: 'Golden Gate Park' } },
-  { id: 'skill-demo-finance', skill_name: 'Personal Finance', skill_category: 'practical', current_level: 5, description: 'Budgeting, investing basics, and tax prep.', startedDaysAgo: 800, practicedDaysAgo: 6, practice_count: 55, trajectory: 'stable', why: 'Needed control after a chaotic year.' },
+  { id: 'skill-demo-finance', skill_name: 'Personal Finance', skill_category: 'practical', current_level: 5, description: 'Budgeting, investing basics, and tax prep.', startedDaysAgo: 800, practicedDaysAgo: 6, practice_count: 55, trajectory: 'stagnant', why: 'Needed control after a chaotic year.' },
   { id: 'skill-demo-baking', skill_name: 'Sourdough Baking', skill_category: 'practical', current_level: 4, description: 'Starter maintenance and weekend loaves.', startedDaysAgo: 280, practicedDaysAgo: 10, practice_count: 32, location: { id: 'dummy-loc-3', name: 'Home Studio' } },
   { id: 'skill-demo-espresso', skill_name: 'Espresso Craft', skill_category: 'practical', current_level: 3, description: 'Dialing in shots — morning ritual.', startedDaysAgo: 120, practicedDaysAgo: 0, practice_count: 90, usage_frequency: 'daily', location: { id: 'dummy-loc-3', name: 'Home Studio' } },
   { id: 'skill-demo-garden', skill_name: 'Urban Gardening', skill_category: 'practical', current_level: 2, description: 'Balcony herbs and tomato experiments.', startedDaysAgo: 100, practicedDaysAgo: 14, practice_count: 16, trajectory: 'improving' },
@@ -656,7 +677,7 @@ const additionalSkillSeeds: SkillSeed[] = [
   { id: 'skill-demo-french', skill_name: 'French', skill_category: 'intellectual', current_level: 2, description: 'Travel prep and podcast listening.', startedDaysAgo: 80, practicedDaysAgo: 3, practice_count: 22, usage_frequency: 'daily' },
   { id: 'skill-demo-japanese', skill_name: 'Japanese', skill_category: 'intellectual', current_level: 1, description: 'Hiragana and basic phrases — early days.', startedDaysAgo: 45, practicedDaysAgo: 1, practice_count: 18, proficiency: 15 },
   { id: 'skill-demo-sign', skill_name: 'Sign Language', skill_category: 'social', current_level: 2, description: 'ASL basics for inclusive communication.', startedDaysAgo: 200, practicedDaysAgo: 30, practice_count: 8, trajectory: 'improving' },
-  { id: 'skill-demo-first-aid', skill_name: 'First Aid', skill_category: 'practical', current_level: 3, description: 'Certified — hope you never need it.', startedDaysAgo: 500, practicedDaysAgo: 120, practice_count: 4, usage_frequency: 'rarely', trajectory: 'stable' },
+  { id: 'skill-demo-first-aid', skill_name: 'First Aid', skill_category: 'practical', current_level: 3, description: 'Certified — hope you never need it.', startedDaysAgo: 500, practicedDaysAgo: 120, practice_count: 4, usage_frequency: 'rarely', trajectory: 'stagnant' },
   { id: 'skill-demo-home-repair', skill_name: 'Home Repair', skill_category: 'practical', current_level: 4, description: 'Drywall patches, IKEA builds, and leaky faucets.', startedDaysAgo: 600, practicedDaysAgo: 22, practice_count: 19, why: 'Renting taught you to fix small things yourself.' },
   { id: 'skill-demo-improv', skill_name: 'Improv Comedy', skill_category: 'social', current_level: 3, description: 'Wednesday night class — yes-and energy.', startedDaysAgo: 130, practicedDaysAgo: 7, practice_count: 14, enjoyment: 78 },
   { id: 'skill-demo-salsa', skill_name: 'Salsa Dancing', skill_category: 'physical', current_level: 2, description: 'Social dance nights — learning to lead.', startedDaysAgo: 90, practicedDaysAgo: 13, practice_count: 12, location: { id: 'dummy-loc-8', name: 'Catch One' } },

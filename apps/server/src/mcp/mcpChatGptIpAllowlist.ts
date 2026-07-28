@@ -5,6 +5,7 @@
 import type { NextFunction, Request, Response } from 'express';
 
 import { config } from '../config';
+import { isDevelopmentRuntime } from '../config/runtimePolicy';
 import { logger } from '../logger';
 
 type PrefixEntry = { ipv4Prefix?: string; ipv6Prefix?: string };
@@ -134,9 +135,8 @@ export async function mcpChatGptIpAllowlistMiddleware(
   }
 
   const isDev =
-    process.env.NODE_ENV === 'development' ||
-    process.env.API_ENV === 'dev' ||
-    process.env.NODE_ENV === 'test';
+    process.env.NODE_ENV === 'test' ||
+    isDevelopmentRuntime();
 
   if (isDev) {
     next();

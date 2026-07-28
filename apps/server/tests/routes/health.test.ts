@@ -30,9 +30,9 @@ describe('buildHealthPayload', () => {
       OPENAI_API_KEY: 'sk-x',
     });
     expect(payload.port).toBe(8080);
-    expect(payload.envPresent.SUPABASE_URL).toBe(true);
-    expect(payload.envPresent.OPENAI_API_KEY).toBe(true);
-    expect(payload.envPresent.STRIPE_SECRET_KEY).toBe(false);
+    expect(payload.envPresent?.SUPABASE_URL).toBe(true);
+    expect(payload.envPresent?.OPENAI_API_KEY).toBe(true);
+    expect(payload.envPresent?.STRIPE_SECRET_KEY).toBe(false);
   });
 
   it('reports a null port when PORT is unset/invalid', () => {
@@ -42,12 +42,32 @@ describe('buildHealthPayload', () => {
 
   it('defaults deploymentEnv to "unknown"', () => {
     expect(buildHealthPayload(0, {}).deploymentEnv).toBe('unknown');
-    expect(buildHealthPayload(0, { NODE_ENV: 'production' }).deploymentEnv).toBe('production');
   });
 
   it('surfaces API_ENV as environment (staging identity)', () => {
     expect(buildHealthPayload(0, { API_ENV: 'staging' }).environment).toBe('staging');
-    expect(buildHealthPayload(0, { API_ENV: 'production' }).environment).toBe('production');
+  });
+
+  it('returns a minimal payload in production and hosted environments', () => {
+    const production = buildHealthPayload(0, {
+      NODE_ENV: 'production',
+      OPENAI_API_KEY: 'secret',
+      SUPABASE_SERVICE_ROLE_KEY: 'secret',
+    });
+    expect(production).toEqual({
+      status: 'ok',
+      timestamp: expect.any(String),
+    });
+
+    const hosted = buildHealthPayload(0, {
+      API_ENV: 'dev',
+      RAILWAY_ENVIRONMENT: 'production',
+      STRIPE_SECRET_KEY: 'secret',
+    });
+    expect(hosted).toEqual({
+      status: 'ok',
+      timestamp: expect.any(String),
+    });
   });
 });
 
@@ -101,7 +121,7 @@ describe('buildDbHealthPayload', () => {
 
 describe('GET /api/health (router)', () => {
   const app = express();
-  app.use(createHealthRouter(Date.now()));
+  app.use(createHealthRouter(Date.now(), '/api/health', { NODE_ENV: 'test' }));
 
   it('returns 200 with the health contract', async () => {
     const res = await request(app).get('/api/health').expect(200);
@@ -125,4 +145,3 @@ describe('GET /api/health (router)', () => {
     expect(res.body.storage).toHaveProperty('quotaBytes');
   });
 });
-

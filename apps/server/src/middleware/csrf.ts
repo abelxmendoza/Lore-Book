@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 
 import type { Request, Response, NextFunction } from 'express';
 
+import { isDevelopmentRuntime } from '../config/runtimePolicy';
 import { logSecurityEvent } from '../services/securityLog';
 
 // Store CSRF tokens in memory. This is sufficient for the current single-instance deployment.
@@ -17,11 +18,8 @@ export const generateCsrfToken = (): string => {
 };
 
 // SECURITY: Properly detect production environment
-const isDevelopment = () => process.env.NODE_ENV === 'development' || 
-                      process.env.NODE_ENV === 'test' ||
-                      (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
-const isProduction = () => process.env.NODE_ENV === 'production' || 
-                     process.env.API_ENV === 'production';
+const isDevelopment = () =>
+  process.env.NODE_ENV === 'test' || isDevelopmentRuntime();
 
 type CsrfRecord = { token: string; expiresAt: number };
 

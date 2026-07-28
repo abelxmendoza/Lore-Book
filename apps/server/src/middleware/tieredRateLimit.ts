@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 
+import { isDevelopmentRuntime } from '../config/runtimePolicy';
 import {
   checkRateLimit,
   createRateLimitStore,
@@ -13,9 +14,8 @@ const FIFTEEN_MIN = 15 * 60 * 1000;
 const ONE_MIN = 60 * 1000;
 
 const isDevelopment = () =>
-  process.env.NODE_ENV === 'development' ||
   process.env.NODE_ENV === 'test' ||
-  (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
+  isDevelopmentRuntime();
 
 const isRateLimitDisabled = () =>
   process.env.DISABLE_RATE_LIMIT === 'true' ||

@@ -1,6 +1,6 @@
-import type { Request, Response } from 'express';
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 
+import { isProductionRuntime } from '../config/runtimePolicy';
 import { verifySchema, getLastSchemaCheck } from '../db/schemaVerification';
 import {
   probeDatabaseOps,
@@ -33,12 +33,12 @@ import {
 export type HealthPayload = {
   status: 'ok';
   timestamp: string;
-  uptimeSeconds: number;
-  deploymentEnv: string;
+  uptimeSeconds?: number;
+  deploymentEnv?: string;
   /** Explicit API environment: dev | staging | production */
-  environment: string;
-  port: number | null;
-  envPresent: Record<string, boolean>;
+  environment?: string;
+  port?: number | null;
+  envPresent?: Record<string, boolean>;
 };
 
 export type DbHealthStatus = 'ok' | 'degraded' | 'warn' | 'critical';
@@ -61,6 +61,13 @@ export function buildHealthPayload(
   const portRaw = env.PORT ? Number(env.PORT) : NaN;
 
   const apiEnv = (env.API_ENV ?? env.RAILWAY_ENVIRONMENT ?? env.NODE_ENV ?? 'unknown').toLowerCase();
+
+  if (isProductionRuntime(env)) {
+    return {
+      status: 'ok',
+      timestamp: new Date(now).toISOString(),
+    };
+  }
 
   return {
     status: 'ok',
@@ -167,15 +174,15 @@ export async function handleDbHealth(_req: Request, res: Response): Promise<void
  */
 export function createHealthRouter(
   startTime: number,
-  routePath = '/api/health'
+  routePath = '/api/health',
+  env: NodeJS.ProcessEnv = process.env,
 ): Router {
   const router = Router();
   router.get(routePath, (_req, res) => {
-    res.status(200).json(buildHealthPayload(startTime));
+    res.status(200).json(buildHealthPayload(startTime, env));
   });
   router.get('/api/health/db', (req, res, next) => {
     void handleDbHealth(req, res).catch(next);
   });
   return router;
 }
-

@@ -1,20 +1,31 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 
 import { buildOpenAiPolicySnapshot } from '../config/openaiPolicy';
+import { isDevelopmentRuntime, isProductionRuntime } from '../config/runtimePolicy';
+import { requireAuth } from '../middleware/auth';
+import { requireAdmin } from '../middleware/rbac';
 import { getRegisteredRoutes } from './routeRegistry';
 
 const router = Router();
+
+/** Public only in local development; otherwise auth + admin. */
+const runtimeDiagnosticsGate: RequestHandler[] = (() => {
+  if (isDevelopmentRuntime() && !isProductionRuntime()) {
+    return [];
+  }
+  return [requireAuth, requireAdmin];
+})();
 
 /**
  * GET /api/runtime/routes
  *
  * Lists all routes in the registry with their classification and active status.
- * Useful for diagnosing 404s in production — shows which routes are disabled
- * because ENABLE_EXPERIMENTAL_RUNTIME=false.
+ * Useful for diagnosing 404s — shows which routes are disabled because
+ * ENABLE_EXPERIMENTAL_RUNTIME=false.
  *
- * No auth required — diagnostic endpoint.
+ * Public only in development; production requires auth + admin.
  */
-router.get('/routes', (_req, res) => {
+router.get('/routes', ...runtimeDiagnosticsGate, (_req, res) => {
   const routes = getRegisteredRoutes();
   const active = routes.filter((r) => r.active);
   const disabled = routes.filter((r) => !r.active);
@@ -42,8 +53,10 @@ router.get('/routes', (_req, res) => {
  *
  * Read-only OpenAI integration policy — conversation state mode, cost guards,
  * and opt-in platform flags. Use post-deploy to verify production matches intent.
+ *
+ * Public only in development; production requires auth + admin.
  */
-router.get('/openai-policy', (_req, res) => {
+router.get('/openai-policy', ...runtimeDiagnosticsGate, (_req, res) => {
   res.json({ ok: true, ...buildOpenAiPolicySnapshot() });
 });
 

@@ -1,8 +1,10 @@
 import type { RequestHandler } from 'express';
 
 import { config } from '../config';
-import { requireDevAccess } from './rbac';
+import { isDevelopmentRuntime } from '../config/runtimePolicy';
+
 import { createRateLimiter } from './rateLimit';
+import { requireDevAccess } from './rbac';
 
 const FIFTEEN_MIN = 15 * 60 * 1000;
 const ONE_MIN = 60 * 1000;
@@ -80,6 +82,6 @@ export function guardOpenAiRoute(): RequestHandler[] {
  * Dev tooling routes: open in local dev, privileged accounts only elsewhere.
  */
 export const requireDevToolingAccess: RequestHandler = (req, res, next) => {
-  if (config.apiEnv === 'dev') return next();
+  if (isDevelopmentRuntime()) return next();
   return requireDevAccess(req, res, next);
 };

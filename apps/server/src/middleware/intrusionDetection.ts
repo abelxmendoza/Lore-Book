@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 
+import { isDevelopmentRuntime } from '../config/runtimePolicy';
 import { logger } from '../logger';
 import { logSecurityEvent } from '../services/securityLog';
 
@@ -15,8 +16,7 @@ const suspiciousActivities = new Map<string, SuspiciousActivity>();
 const BLOCK_THRESHOLD = 10; // Number of suspicious patterns before blocking
 const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
-const isDevelopment = () =>
-  process.env.NODE_ENV === 'development' || process.env.API_ENV === 'dev';
+const isDevelopment = () => isDevelopmentRuntime();
 
 const isLoopbackIp = (ip: string | undefined): boolean => {
   if (!ip) return false;

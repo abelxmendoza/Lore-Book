@@ -3,11 +3,13 @@
  * Source of truth: packages/api-contracts/src/**
  * Mirror: apps/web/src/lib/api-contracts/**
  */
+/// <reference types="node" />
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const monorepoRoot = path.resolve(__dirname, "../../../../../");
+const monorepoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../../");
 const packageSrc = path.join(monorepoRoot, "packages/api-contracts/src");
 const mirrorSrc = path.join(monorepoRoot, "apps/web/src/lib/api-contracts");
 
@@ -17,6 +19,7 @@ const FILES = [
   "chat/durability.ts",
   "chat/streamEvents.ts",
   "chat/closedScopeIntent.ts",
+  "chat/closedScopeIntent.test.ts",
   "characters/characterQuery.ts",
   "organizations/organizationQuery.ts",
   "family/familyQuery.ts",
@@ -25,6 +28,7 @@ const FILES = [
   "projects/projectQuery.ts",
   "skills/skillQuery.ts",
   "quests/questQuery.ts",
+  "books/bookQuery.ts",
   // ingestion is package-primary; mirror must include after sync
   "ingestion/common.ts",
   "ingestion/semanticGuards.ts",

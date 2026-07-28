@@ -10,10 +10,8 @@
 
 import type { Response } from 'express';
 import { formatSseDataLine } from '@lorebook/api-contracts';
+import { isDevelopmentRuntime } from '../config/runtimePolicy';
 import { logger } from '../logger';
-
-const isDevelopment =
-  process.env.NODE_ENV === 'development' || process.env.API_ENV === 'dev';
 
 export function isFallbackEnabled(): boolean {
   if (process.env.DEV_AI_FALLBACK !== 'true') return false;
@@ -21,7 +19,7 @@ export function isFallbackEnabled(): boolean {
   // Hard-fail gate: refuse to activate in production.
   // This is checked again at startup in securityCheck.ts, but we guard here too
   // in case the flag is set at runtime.
-  if (!isDevelopment) {
+  if (!isDevelopmentRuntime()) {
     logger.error('[AI] CRITICAL: DEV_AI_FALLBACK=true in production is not allowed. Fallback disabled.');
     return false;
   }

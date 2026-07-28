@@ -17,9 +17,9 @@ export const DEMO_ENTITY_FALLBACKS: DemoEntityFallback[] = [
   { pattern: /\bjamie\b/i, id: 'demo-char-jamie', name: 'Jamie', type: 'character' },
   { pattern: /\bmarcus\b/i, id: 'demo-char-marcus', name: 'Marcus', type: 'character' },
   {
-    pattern: /\bkelly\b/i,
-    id: 'demo-char-kelly',
-    name: 'Kelly',
+    pattern: /\btaylor\b/i,
+    id: 'demo-char-taylor',
+    name: 'Taylor',
     type: 'character',
     characterVariant: 'romantic',
   },
@@ -50,7 +50,7 @@ export const DEMO_ENTITY_FALLBACKS: DemoEntityFallback[] = [
     name: 'Technical Storytelling',
     type: 'skill',
   },
-  { pattern: /\bmuay thai\b/i, id: 'demo-skill-muay', name: 'Muay Thai', type: 'skill' },
+  { pattern: /\bbrazilian jiu[- ]?jitsu\b|\bbjj\b/i, id: 'demo-skill-bjj', name: 'Brazilian Jiu-Jitsu', type: 'skill' },
   {
     pattern: /\bnorthwind labs\b/i,
     id: 'demo-org-northwind',

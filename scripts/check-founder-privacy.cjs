@@ -64,7 +64,9 @@ const blockedPublicSimulationLiterals = [
 const allowedLinePatterns = [
   /check-founder-privacy/,
   /founderGuard/,
-  /OWNER_EMAIL|FOUNDER_EMAIL|DEVELOPER_EMAIL/,
+  // Identifier names only — do NOT allow the real address string on the same line.
+  // Matches `export const FOUNDER_EMAIL` / docs mentioning the name without the value.
+  /\b(OWNER_EMAIL|FOUNDER_EMAIL|DEVELOPER_EMAIL)\b(?!.*@)/,
   /blockedExact|blockedInLiterals/,
   /founder-data-isolation/,
 ];

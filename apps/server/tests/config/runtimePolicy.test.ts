@@ -7,9 +7,25 @@ import {
 } from '../../src/config/runtimePolicy';
 
 describe('runtimePolicy', () => {
-  it('treats NODE_ENV=development and API_ENV=dev as development', () => {
+  it('treats NODE_ENV=development as development', () => {
     expect(isDevelopmentRuntime({ NODE_ENV: 'development' })).toBe(true);
+  });
+
+  it('treats API_ENV=dev as development when NODE_ENV is not production', () => {
     expect(isDevelopmentRuntime({ API_ENV: 'dev' })).toBe(true);
+    expect(isDevelopmentRuntime({ API_ENV: 'dev', NODE_ENV: 'test' })).toBe(true);
+  });
+
+  it('does not treat API_ENV=dev as development when NODE_ENV=production', () => {
+    expect(isDevelopmentRuntime({ API_ENV: 'dev', NODE_ENV: 'production' })).toBe(false);
+    expect(isProductionRuntime({ API_ENV: 'dev', NODE_ENV: 'production' })).toBe(true);
+  });
+
+  it('lets production and hosted markers override conflicting development flags', () => {
+    expect(isDevelopmentRuntime({ NODE_ENV: 'development', API_ENV: 'production' })).toBe(false);
+    expect(isDevelopmentRuntime({ API_ENV: 'dev', RAILWAY_ENVIRONMENT: 'production' })).toBe(false);
+    expect(isProductionRuntime({ NODE_ENV: 'development', RAILWAY_ENVIRONMENT: 'production' })).toBe(true);
+    expect(isProductionRuntime({ API_ENV: 'dev', VERCEL: '1' })).toBe(true);
   });
 
   it('treats hosted non-dev runtime as production', () => {

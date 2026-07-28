@@ -16,6 +16,7 @@ import type {
  *  journal semantic > assembled context. */
 const SOURCE_WEIGHT: Record<ExecutorKind, number> = {
   structured: 1.0,
+  books: 0.92,
   thread: 0.95,
   crystallized: 0.85,
   semantic: 0.75,

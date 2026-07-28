@@ -4,6 +4,7 @@ import { config } from '../config';
 import { logger } from '../logger';
 import { authMiddleware } from '../middleware/auth';
 import type { AuthenticatedRequest } from '../middleware/auth';
+import { mcpOAuthLimit } from '../middleware/apiProtection';
 import { asyncHandler } from '../utils/asyncHandler';
 
 import {
@@ -50,19 +51,19 @@ function oauthError(res: import('express').Response, error: string, description?
   });
 }
 
-mcpOAuthRouter.get('/.well-known/oauth-authorization-server', (req, res) => {
+mcpOAuthRouter.get('/.well-known/oauth-authorization-server', mcpOAuthLimit, (req, res) => {
   res.json(buildOAuthAuthorizationServerMetadata(requestBaseUrl(req)));
 });
 
-mcpOAuthRouter.get('/.well-known/openid-configuration', (req, res) => {
+mcpOAuthRouter.get('/.well-known/openid-configuration', mcpOAuthLimit, (req, res) => {
   res.json(buildOpenIdConfigurationMetadata(requestBaseUrl(req)));
 });
 
-mcpOAuthRouter.get('/oauth/jwks', (_req, res) => {
+mcpOAuthRouter.get('/oauth/jwks', mcpOAuthLimit, (_req, res) => {
   res.json({ keys: [] });
 });
 
-mcpOAuthRouter.get('/oauth/authorize', async (req, res) => {
+mcpOAuthRouter.get('/oauth/authorize', mcpOAuthLimit, async (req, res) => {
   try {
     const clientId = String(req.query.client_id ?? '');
     const redirectUri = String(req.query.redirect_uri ?? '');
@@ -119,7 +120,7 @@ mcpOAuthRouter.get('/oauth/authorize', async (req, res) => {
   }
 });
 
-mcpOAuthRouter.get('/oauth/consent', (req, res) => {
+mcpOAuthRouter.get('/oauth/consent', mcpOAuthLimit, (req, res) => {
   const pending = String(req.query.pending ?? '');
   const webApproveUrl = `${requestBaseUrl(req)}/api/mcp/oauth/approve`;
 
@@ -176,7 +177,7 @@ mcpOAuthRouter.get('/oauth/consent', (req, res) => {
 </html>`);
 });
 
-mcpOAuthRouter.post('/oauth/token', async (req, res) => {
+mcpOAuthRouter.post('/oauth/token', mcpOAuthLimit, async (req, res) => {
   try {
     const grantType = String(req.body?.grant_type ?? '');
     const clientId = String(req.body?.client_id ?? '');
@@ -216,7 +217,7 @@ mcpOAuthRouter.post('/oauth/token', async (req, res) => {
   }
 });
 
-mcpOAuthRouter.post('/oauth/register', async (req, res) => {
+mcpOAuthRouter.post('/oauth/register', mcpOAuthLimit, async (req, res) => {
   try {
     const clientName = String(req.body?.client_name ?? 'MCP Client');
     const redirectUris = Array.isArray(req.body?.redirect_uris)

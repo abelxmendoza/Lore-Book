@@ -99,14 +99,14 @@ export const DEMO_FAMILY_SUMMARY: FamilySummaryMock = {
 };
 
 export const DEMO_FAMILY_CHARACTERS_BY_ID: Record<string, Character> = {
-  'mom-elena': { id: 'mom-elena', name: 'Elena Solenne', role: 'parent', status: 'active', user_id: '', summary: 'Warm, practical, and keeps everyone connected.', tags: ['family', 'caregiver'], memory_count: 14 },
-  'dad-carlos': { id: 'dad-carlos', name: 'Carlos Thornwick', role: 'parent', status: 'active', user_id: '', summary: 'Reserved but dependable, especially around big decisions.', tags: ['family', 'mentor'], memory_count: 10 },
-  'sis-maya': { id: 'sis-maya', name: 'Maya Thornwick', role: 'sibling', status: 'active', user_id: '', summary: 'Closest sibling and frequent collaborator.', tags: ['family', 'sibling'], memory_count: 12 },
-  'bro-noah': { id: 'bro-noah', name: 'Noah Thornwick', role: 'half_sibling', status: 'active', user_id: '', summary: 'Younger half-brother, still building closeness.', tags: ['family', 'sibling'], memory_count: 7 },
-  'gma-lucia': { id: 'gma-lucia', name: 'Lucia Solenne', role: 'grandparent', status: 'active', user_id: '', summary: 'Family anchor and regular host for gatherings.', tags: ['family', 'elder'], memory_count: 15 },
-  'gpa-raul': { id: 'gpa-raul', name: 'Raul Solenne', role: 'grandparent', status: 'inactive', user_id: '', summary: 'Remembered through stories and traditions.', tags: ['family', 'legacy'], memory_count: 6 },
-  'uncle-javier': { id: 'uncle-javier', name: 'Javier Solenne', role: 'uncle', status: 'active', user_id: '', summary: 'Hands-on helper during family logistics.', tags: ['family', 'support'], memory_count: 8 },
-  'cousin-lina': { id: 'cousin-lina', name: 'Lina Solenne', role: 'cousin', status: 'active', user_id: '', summary: 'Frequent check-ins and co-organizer of meetups.', tags: ['family', 'cousin'], memory_count: 9 },
-  'partner-sam': { id: 'partner-sam', name: 'Sam Park', role: 'partner', status: 'active', user_id: '', summary: 'Primary partner and strongest relationship signal.', tags: ['family', 'partner'], memory_count: 21 },
-  'child-ivy': { id: 'child-ivy', name: 'Ivy Park', role: 'child', status: 'active', user_id: '', summary: 'Center of your current household routines.', tags: ['family', 'child'], memory_count: 17 },
+  'mom-elena': { id: 'mom-elena', name: 'Elena Solenne', role: 'parent', status: 'active', summary: 'Warm, practical, and keeps everyone connected.', tags: ['family', 'caregiver'], memory_count: 14 },
+  'dad-carlos': { id: 'dad-carlos', name: 'Carlos Thornwick', role: 'parent', status: 'active', summary: 'Reserved but dependable, especially around big decisions.', tags: ['family', 'mentor'], memory_count: 10 },
+  'sis-maya': { id: 'sis-maya', name: 'Maya Thornwick', role: 'sibling', status: 'active', summary: 'Closest sibling and frequent collaborator.', tags: ['family', 'sibling'], memory_count: 12 },
+  'bro-noah': { id: 'bro-noah', name: 'Noah Thornwick', role: 'half_sibling', status: 'active', summary: 'Younger half-brother, still building closeness.', tags: ['family', 'sibling'], memory_count: 7 },
+  'gma-lucia': { id: 'gma-lucia', name: 'Lucia Solenne', role: 'grandparent', status: 'active', summary: 'Family anchor and regular host for gatherings.', tags: ['family', 'elder'], memory_count: 15 },
+  'gpa-raul': { id: 'gpa-raul', name: 'Raul Solenne', role: 'grandparent', status: 'inactive', summary: 'Remembered through stories and traditions.', tags: ['family', 'legacy'], memory_count: 6 },
+  'uncle-javier': { id: 'uncle-javier', name: 'Javier Solenne', role: 'uncle', status: 'active', summary: 'Hands-on helper during family logistics.', tags: ['family', 'support'], memory_count: 8 },
+  'cousin-lina': { id: 'cousin-lina', name: 'Lina Solenne', role: 'cousin', status: 'active', summary: 'Frequent check-ins and co-organizer of meetups.', tags: ['family', 'cousin'], memory_count: 9 },
+  'partner-sam': { id: 'partner-sam', name: 'Sam Park', role: 'partner', status: 'active', summary: 'Primary partner and strongest relationship signal.', tags: ['family', 'partner'], memory_count: 21 },
+  'child-ivy': { id: 'child-ivy', name: 'Ivy Park', role: 'child', status: 'active', summary: 'Center of your current household routines.', tags: ['family', 'child'], memory_count: 17 },
 };

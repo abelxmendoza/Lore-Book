@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: '24'
   HUSKY: '0'
   CYPRESS_INSTALL_BINARY: '0'
 

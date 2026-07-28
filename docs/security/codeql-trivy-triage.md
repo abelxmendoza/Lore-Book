@@ -67,12 +67,33 @@ fixed**; if it persists, it is scanning a stale lockfile snapshot.
 
 ---
 
+## Accepted / deferred (2026-07-28 tech-debt sprint)
+
+### `react-router` / `react-router-dom` 6.30.x (moderate) — deferred
+
+Advisories GHSA-wrjc-x8rr-h8h6 (open redirect via backslash) and
+GHSA-337j-9hxr-rhxg (SSR `deserializeErrors` constructor injection). Patched
+releases start at **7.18.x**; no patched 6.x exists. LoreBook web is a
+client-side Vite SPA on `react-router-dom@^6.30.4` (~150 import sites). A
+major bump needs a dedicated migration PR (not `npm audit fix --force`).
+
+**Mitigation until then:** avoid passing untrusted absolute URLs into
+`navigate()` / `<Navigate to>`; SSR constructor path does not apply to the
+Vite CSR app.
+
+### Dependency overrides (applied)
+
+Root/server highs cleared via lockfile fixes + overrides:
+`brace-expansion@^5.0.8`, `minimatch@^10.2.2`, `js-yaml@^4.3.0`,
+`@modelcontextprotocol/sdk@^1.30.0` (pulls patched Hono).
+
+---
+
 ## Follow-ups (not security-blocking)
 
-- **Stale `apps/web/pnpm-lock.yaml` (Jun 10)** coexists with the canonical
-  `apps/web/package-lock.json` (npm, Jun 20). It is not a vulnerability source
-  (esbuild 0.27.7, dompurify 3.4.8 there) but gives scanners a second,
-  divergent dependency graph. Consider removing it if the project is npm-only.
+- **Stale `apps/web/pnpm-lock.yaml`** coexists with the canonical
+  `apps/web/package-lock.json` (npm). Prefer removing it if the project is npm-only.
+- **React Router v7 migration** to clear GHSA-wrjc / GHSA-337j.
 
 ---
 

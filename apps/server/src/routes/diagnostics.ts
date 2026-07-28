@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 
 import { config } from '../config';
+import { isDevelopmentRuntime, isProductionRuntime } from '../config/runtimePolicy';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { requireAdmin, requireDevAccess } from '../middleware/rbac';
 import { requireSelfUserIdParam } from '../middleware/tenantGuard';
@@ -16,23 +17,28 @@ import { entityContinuityVerifier } from '../services/entityContinuityVerifier';
 import { ingestionQueue } from '../services/ingestion/ingestionQueue';
 import { supabaseAdmin } from '../services/supabaseClient';
 
-const isDev = process.env.NODE_ENV === 'development' ||
-  (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
+const isDev = isDevelopmentRuntime();
 
 const router = Router();
 
 /**
  * GET /api/diagnostics
- * Public diagnostic endpoint to help troubleshoot deployment issues
- * Returns non-sensitive information about the server configuration
+ * Public diagnostic endpoint to help troubleshoot deployment issues.
+ * Production returns a minimal status payload (no env/key-presence leakage).
  */
 router.get('/', (req: Request, res: Response) => {
-  const isProduction = process.env.NODE_ENV === 'production' || 
-                       process.env.API_ENV === 'production';
-  const isDevelopment = process.env.NODE_ENV === 'development' || 
-                        (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
+  const isProduction = isProductionRuntime();
+  const isDevelopment = isDevelopmentRuntime();
 
-  // Return diagnostic information (no sensitive data)
+  if (isProduction || process.env.NODE_ENV === 'production') {
+    return res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      message: 'Server is running.',
+    });
+  }
+
+  // Non-production: richer diagnostics for local/staging troubleshooting
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
@@ -69,6 +75,10 @@ router.get('/', (req: Request, res: Response) => {
  * Test CORS configuration
  */
 router.get('/cors', (req: Request, res: Response) => {
+  if (isProductionRuntime() || process.env.NODE_ENV === 'production') {
+    return res.json({ status: 'ok', message: 'CORS probe available in non-production only.' });
+  }
+
   const origin = req.headers.origin;
   const allowedOrigins = [
     process.env.FRONTEND_URL,

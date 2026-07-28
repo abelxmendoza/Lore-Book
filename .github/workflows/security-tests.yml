@@ -27,7 +27,7 @@ on:
   workflow_dispatch:
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: '24'
 
 jobs:
   backend-security-tests:
@@ -181,4 +181,3 @@ jobs:
           echo "- ✅ Security E2E Tests" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Status**: ${{ needs.backend-security-tests.result }} / ${{ needs.frontend-security-tests.result }}" >> $GITHUB_STEP_SUMMARY
-

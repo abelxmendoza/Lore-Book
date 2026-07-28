@@ -1,9 +1,14 @@
-/** Public founder contact — legal, Chronicle, Lore, and support surfaces. */
-export const FOUNDER_EMAIL = 'abelxmendoza@gmail.com';
+/** Public product contact — legal, Chronicle, Lore, and support surfaces. */
+
+/** Fallback when VITE_CONTACT_EMAIL is unset (never a personal founder inbox). */
+export const DEFAULT_CONTACT_EMAIL = 'support@lorebook.app';
 
 /** Public contact email for user support, privacy, and general inquiries. */
 export const CONTACT_EMAIL =
-  import.meta.env.VITE_CONTACT_EMAIL?.trim() || FOUNDER_EMAIL;
+  import.meta.env.VITE_CONTACT_EMAIL?.trim() || DEFAULT_CONTACT_EMAIL;
+
+/** @deprecated Use CONTACT_EMAIL — kept for older imports. */
+export const FOUNDER_EMAIL = CONTACT_EMAIL;
 
 /** Gmail compose — avoids opening the OS default mail client (e.g. Outlook). */
 export const CONTACT_GMAIL_URL =

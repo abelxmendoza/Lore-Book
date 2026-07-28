@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 
 import { config } from '../config';
+import { isDevelopmentRuntime } from '../config/runtimePolicy';
 import { createServerSupabaseClient } from '../lib/createServerSupabaseClient';
 import type { AuthUser } from '../types/runtime/express';
 
@@ -37,8 +38,7 @@ function parseScopes(header: string | undefined): string[] {
 }
 
 function devBypassUser(): AuthUser | null {
-  const isDevelopment = process.env.NODE_ENV === 'development' || process.env.API_ENV === 'dev';
-  if (!isDevelopment || process.env.DISABLE_AUTH_FOR_DEV !== 'true') return null;
+  if (!isDevelopmentRuntime() || process.env.DISABLE_AUTH_FOR_DEV !== 'true') return null;
   return {
     id: '00000000-0000-0000-0000-000000000000',
     email: 'dev@example.com',

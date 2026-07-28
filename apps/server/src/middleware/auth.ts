@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { NextFunction, Request, Response } from 'express';
 
 import { config } from '../config';
+import { isDevelopmentRuntime } from '../config/runtimePolicy';
 import { createServerSupabaseClient } from '../lib/createServerSupabaseClient';
 import type { AuthUser } from '../types/runtime/express';
 import { logSecurityEvent, redactSensitive } from '../services/securityLog';
@@ -38,8 +39,8 @@ export const authMiddleware = async (
 ) => {
   try {
     // SECURITY: Auth bypass is only allowed in non-production environments.
-    const isDevelopment = process.env.NODE_ENV === 'development' ||
-                          process.env.API_ENV === 'dev';
+    // API_ENV=dev alone must NOT unlock bypass when NODE_ENV=production.
+    const isDevelopment = isDevelopmentRuntime();
     const bypassRequested = process.env.DISABLE_AUTH_FOR_DEV === 'true';
 
     // Hard-fail if bypass is attempted in production — never silently ignore.
@@ -124,7 +125,7 @@ export const optionalAuth = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  const isDevelopment = process.env.NODE_ENV === 'development' || process.env.API_ENV === 'dev';
+  const isDevelopment = isDevelopmentRuntime();
 
   try {
     await authMiddleware(req, res, next);

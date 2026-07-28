@@ -1,5 +1,4 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import ws from 'ws';
 
 /**
  * Server-side Supabase client. Node.js < 22 needs `ws` for Realtime transport.
@@ -11,6 +10,5 @@ export function createServerSupabaseClient(
 ): SupabaseClient {
   return createClient(supabaseUrl, supabaseKey, {
     auth: { persistSession: false },
-    realtime: { transport: ws },
   });
 }

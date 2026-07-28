@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 
+import { isDevelopmentRuntime } from '../config/runtimePolicy';
 import { logSecurityEvent } from '../services/securityLog';
 
 // Maximum request sizes
@@ -22,11 +23,8 @@ export const dateRangeSchema = z.object({
 
 // Development mode - relaxed limits
 // SECURITY: Properly detect production environment
-const isDevelopment = () => process.env.NODE_ENV === 'development' || 
-                      process.env.NODE_ENV === 'test' ||
-                      (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
-const isProduction = () => process.env.NODE_ENV === 'production' || 
-                     process.env.API_ENV === 'production';
+const isDevelopment = () =>
+  process.env.NODE_ENV === 'test' || isDevelopmentRuntime();
 const DEV_MAX_BODY_SIZE = 50 * 1024 * 1024; // 50MB in dev
 
 // Middleware to validate request sizes
@@ -125,4 +123,3 @@ export const validateCommonPatterns = (req: Request, res: Response, next: NextFu
 
   next();
 };
-

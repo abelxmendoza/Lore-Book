@@ -1,6 +1,7 @@
 import type { Response, NextFunction } from 'express';
 
 import { config } from '../config';
+import { isDevelopmentRuntime } from '../config/runtimePolicy';
 import {
   type PlatformRole,
   resolveAccountAuthority,
@@ -61,9 +62,7 @@ export const requireAdmin = async (
   res: Response,
   next: NextFunction
 ) => {
-  if (config.apiEnv === 'dev' || config.apiEnv === 'development') {
-    return next();
-  }
+  if (isDevelopmentRuntime()) return next();
   return requireRole('owner', 'admin', 'developer')(req, res, next);
 };
 
@@ -79,7 +78,7 @@ export function requireDevAccess(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  if (config.apiEnv === 'dev') {
+  if (isDevelopmentRuntime()) {
     return next();
   }
 

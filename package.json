@@ -2,6 +2,9 @@
   "name": "lorekeeper",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "dev": "concurrently -n \"web,server\" -c \"cyan,green\" \"npm run dev:web\" \"npm run dev:server\"",
     "dev:web": "cd apps/web && npm run dev",

@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 
 import { assertConfig, config } from './config';
+import { isDevelopmentRuntime, isProductionRuntime } from './config/runtimePolicy';
 import { swaggerSpec } from './config/swagger';
 import { memoryExtractionWorker } from './jobs/memoryExtractionWorker';
 import { registerSyncJob } from './jobs/syncJob';
@@ -14,7 +15,6 @@ import { csrfTokenMiddleware, csrfProtection } from './middleware/csrf';
 import { errorHandler } from './middleware/errorHandler';
 import { intrusionDetection } from './middleware/intrusionDetection';
 import { tieredRateLimit } from './middleware/tieredRateLimit';
-import { mcpOAuthLimit } from './middleware/apiProtection';
 import { validateRequestSize, validateCommonPatterns } from './middleware/requestValidation';
 import { createJsonBodyParser } from './middleware/bodyLimits';
 import { inputSanitizer } from './middleware/sanitize';
@@ -55,18 +55,18 @@ process.on('unhandledRejection', (reason) => {
 });
 
 // SECURITY: Detect environment before any logic that uses it
-const isDevelopment = process.env.NODE_ENV === 'development' || process.env.API_ENV === 'dev';
-const isProduction = !isDevelopment && (
-  process.env.NODE_ENV === 'production' || process.env.API_ENV === 'production'
-);
+const isDevelopment = isDevelopmentRuntime();
+const isProduction = isProductionRuntime();
 
-// Perform security check on startup
+// Perform security check on startup — hard-fail in production
 const securityCheck = performSecurityCheck();
 if (!securityCheck.passed) {
-  logger.error('🚨 Security check failed - server starting but may be vulnerable');
-  if (isProduction) {
-    logger.error('⚠️  PRODUCTION MODE: Fix security issues before deploying');
+  logger.error({ errors: securityCheck.errors }, '🚨 Security check failed');
+  if (isProduction || process.env.NODE_ENV === 'production') {
+    logger.fatal('PRODUCTION MODE: refusing to start with failed security check');
+    process.exit(1);
   }
+  logger.error('Non-production: continuing after failed security check (fix before deploy)');
 }
 
 const app = express();
@@ -198,7 +198,7 @@ app.use('/api/runtime', runtimeRouter);
 if (config.mcpEnabled) {
   app.use('/mcp', mcpRouter);
   if (config.mcpOAuthEnabled && config.mcpOAuthJwtSecret) {
-    app.use(mcpOAuthLimit, mcpOAuthRouter);
+    app.use(mcpOAuthRouter);
     app.use('/api/mcp/oauth', mcpOAuthApproveRouter);
     logger.info('MCP OAuth 2.1 enabled (/.well-known/oauth-authorization-server)');
   } else if (config.mcpOAuthEnabled) {

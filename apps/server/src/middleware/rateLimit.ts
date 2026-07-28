@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 
+import { isDevelopmentRuntime } from '../config/runtimePolicy';
 import {
   checkRateLimit,
   createRateLimitStore,
@@ -13,9 +14,8 @@ startRateLimitStoreJanitor();
 
 // SECURITY: Properly detect production environment
 const isDevelopment = () =>
-  process.env.NODE_ENV === 'development' ||
   process.env.NODE_ENV === 'test' ||
-  (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
+  isDevelopmentRuntime();
 
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const DEFAULT_ANONYMOUS_MAX = 100;

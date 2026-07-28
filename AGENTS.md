@@ -68,10 +68,10 @@ Standard commands live in `README.md`, `docs/guides/LOCAL_DEVELOPMENT.md`, and t
 
 ### Node version (important)
 
-- Repo requires **Node 20** (`.nvmrc`). The default shell `node` is a v22 shim at `/exec-daemon/node`.
-  Node 20 is installed via nvm and `~/.bashrc` prepends `~/.nvm/versions/node/v20.20.2/bin` to PATH,
-  so interactive/login shells (incl. tmux `bash -l`) get Node 20 automatically. If a non-login shell
-  shows v22, run `export PATH="$HOME/.nvm/versions/node/v20.20.2/bin:$PATH"`.
+- Repo requires **Node 24** (`.nvmrc` and package `engines`). Supabase client
+  libraries no longer support Node 20, and Vercel also builds the web app with
+  Node 24. Use `nvm use` before installs, builds, and tests so local, CI,
+  Railway, and Vercel behavior stay aligned.
 
 ### Dependencies
 

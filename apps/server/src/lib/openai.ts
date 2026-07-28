@@ -181,12 +181,15 @@ if (openai.chat?.completions?.create) {
     const routeToResponses =
       config.useResponsesApi &&
       _rawResponsesCreate != null &&
-      shouldRouteChatCompletionToResponses(normalized);
+      shouldRouteChatCompletionToResponses(
+        normalized as OpenAI.Chat.ChatCompletionCreateParams,
+      );
 
     return openaiSemaphore.run(() =>
       guardedOpenAiCall(async () => {
         if (!routeToResponses) {
-          return _rawCreate(normalized, ...rest);
+          // normalizeOpenAIChatParams returns TokenParams; SDK create expects ChatCompletionCreateParams.
+          return _rawCreate(normalized as OpenAI.Chat.ChatCompletionCreateParams, ...rest);
         }
         const response = await _rawResponsesCreate!(
           chatCompletionParamsToResponses(
