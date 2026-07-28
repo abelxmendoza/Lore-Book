@@ -761,7 +761,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                     This is you
                   </Badge>
                 </div>
-                <p className="truncate text-[11px] text-amber-200/60">{roleLine}</p>
+                <p className="break-words text-[11px] text-amber-200/60">{roleLine}</p>
               </div>
             </div>
 

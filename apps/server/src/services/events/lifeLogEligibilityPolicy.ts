@@ -61,6 +61,16 @@ export function evaluateLifeLogEligibility(input: {
   const metadata = input.metadata ?? {};
   const text = autobiographicalClause(raw);
 
+  // Explicit user posts always publish into Life Log (flyer shows, birthdays, etc.).
+  if (metadata.created_via === 'user_posted') {
+    return {
+      eligible: true,
+      reason: 'attended_event',
+      confidence: 1,
+      autobiographicalText: text || title || raw,
+    };
+  }
+
   if (AUDIT.test(`${input.type ?? ''} ${title} ${raw}`) || metadata.audit_only) {
     return { eligible: false, reason: 'rejected_audit_record', confidence: 0.99, autobiographicalText: '' };
   }

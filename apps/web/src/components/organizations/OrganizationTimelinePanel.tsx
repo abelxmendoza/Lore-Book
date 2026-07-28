@@ -32,6 +32,8 @@ interface Props {
   title?: string;
   /** Override auto description from stance voice. */
   description?: string;
+  /** Open Event detail or moment panel when a timeline row is clicked. */
+  onEventSelect?: (event: OrgDerivedEvent) => void;
 }
 
 const GROUP_WIDE_BADGE = 'bg-amber-500/15 text-amber-300 border-amber-500/30';
@@ -92,12 +94,16 @@ export function OrganizationTimelinePanel({
   loading: externalLoading,
   title: titleOverride,
   description: descriptionOverride,
+  onEventSelect,
 }: Props) {
   const controlled = externalEvents !== undefined;
   const [derivedEvents, setDerivedEvents] = useState<OrgDerivedEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('swimlanes');
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    if (typeof window === 'undefined') return 'list';
+    return window.matchMedia('(min-width: 640px)').matches ? 'swimlanes' : 'list';
+  });
 
   const voice = useMemo(() => getOrganizationTimelineVoice(organization), [organization]);
 
@@ -179,7 +185,7 @@ export function OrganizationTimelinePanel({
 
   return (
     <div className="space-y-4" data-testid="org-timeline-stance" data-stance={voice.stance}>
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h3 className="text-sm sm:text-base font-semibold text-white flex items-center gap-2">
             <Clock className="h-4 w-4 text-purple-400 shrink-0" />
@@ -198,11 +204,11 @@ export function OrganizationTimelinePanel({
           </div>
           <p className="text-xs text-white/45 mt-1.5">{subtitle}</p>
         </div>
-        <div className="flex rounded-lg border border-white/10 overflow-hidden shrink-0">
+        <div className="flex rounded-lg border border-white/10 overflow-hidden self-start shrink-0">
           <button
             type="button"
             onClick={() => setViewMode('list')}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs transition ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs transition touch-manipulation ${
               viewMode === 'list'
                 ? 'bg-white/10 text-white'
                 : 'text-white/45 hover:text-white/70'
@@ -214,14 +220,15 @@ export function OrganizationTimelinePanel({
           <button
             type="button"
             onClick={() => setViewMode('swimlanes')}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border-l border-white/10 transition ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border-l border-white/10 transition touch-manipulation ${
               viewMode === 'swimlanes'
                 ? 'bg-white/10 text-white'
                 : 'text-white/45 hover:text-white/70'
             }`}
           >
             <Waves className="h-3.5 w-3.5" />
-            Swimlanes
+            <span className="sm:hidden">Lanes</span>
+            <span className="hidden sm:inline">Swimlanes</span>
           </button>
         </div>
       </div>
@@ -249,7 +256,17 @@ export function OrganizationTimelinePanel({
                   <span
                     className={`absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full ring-2 ring-black/80 ${dotColor}`}
                   />
-                  <div className="rounded-lg border border-white/10 bg-black/25 p-3 hover:bg-black/35 transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => onEventSelect?.(event)}
+                    disabled={!onEventSelect}
+                    className={`w-full text-left rounded-lg border border-white/10 bg-black/25 p-3 transition-colors ${
+                      onEventSelect
+                        ? 'hover:bg-black/40 hover:border-white/20 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/40'
+                        : ''
+                    }`}
+                    data-testid="org-timeline-list-event"
+                  >
                     <div className="flex flex-wrap items-center gap-2 mb-1">
                       <time className="text-xs font-mono text-primary/80">{fmtEventDate(event.date)}</time>
                       <Badge variant="outline" className={`text-[10px] ${audienceBadgeClass(audience)}`}>
@@ -260,10 +277,17 @@ export function OrganizationTimelinePanel({
                           {event.type}
                         </Badge>
                       )}
+                      {event.source === 'user_posted' && (
+                        <Badge variant="outline" className="text-[10px] border-amber-400/35 text-amber-200">
+                          Posted
+                        </Badge>
+                      )}
                     </div>
                     <h4 className="text-sm font-semibold text-white">{event.title}</h4>
                     {event.summary && (
-                      <p className="text-xs text-white/60 mt-1 leading-relaxed">{event.summary}</p>
+                      <p className="text-xs text-white/60 mt-1 leading-relaxed line-clamp-4 sm:line-clamp-none">
+                        {event.summary}
+                      </p>
                     )}
                     {event.involved.length > 0 && (
                       <p className="text-[10px] text-white/40 mt-2">
@@ -271,7 +295,7 @@ export function OrganizationTimelinePanel({
                         {event.involved.length > 4 ? ` +${event.involved.length - 4}` : ''}
                       </p>
                     )}
-                  </div>
+                  </button>
                   {idx < sortedEvents.length - 1 && <span className="sr-only">then</span>}
                 </li>
               );
@@ -288,6 +312,14 @@ export function OrganizationTimelinePanel({
           events={swimEvents}
           emptyTitle={voice.emptyTitle}
           emptyHint={voice.emptyHint}
+          onEventSelect={
+            onEventSelect
+              ? (swim) => {
+                  const full = events.find((e) => e.id === swim.id);
+                  if (full) onEventSelect(full);
+                }
+              : undefined
+          }
         />
       )}
 

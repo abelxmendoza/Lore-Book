@@ -38,4 +38,19 @@ describe('locationOrganizationDemoData', () => {
       ),
     ).toBe(false);
   });
+
+  it('links places to demo groups outside the hardcoded picker list', () => {
+    const link = linkDemoLocationOrganization(
+      { id: 'dummy-loc-8', name: 'Catch One' },
+      'mock-21',
+      { name: 'Code Harbor Academy', group_type: 'community' },
+    );
+
+    expect(link.organization.name).toBe('Code Harbor Academy');
+    expect(
+      getDemoOrganizationLocationLinks('mock-21').some((row) => row.location_id === 'dummy-loc-8'),
+    ).toBe(true);
+
+    unlinkDemoLocationOrganization(link.id);
+  });
 });

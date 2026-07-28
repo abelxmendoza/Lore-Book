@@ -22,6 +22,28 @@ export type Event = {
   source_count: number;
   created_at: string;
   updated_at: string;
+  metadata?: {
+    created_via?: string;
+    flyer_url?: string | null;
+    primary_place?: { id: string | null; name: string } | null;
+    venue_stops?: Array<{
+      location_id?: string | null;
+      location_name: string;
+      order: number;
+      role: 'primary' | 'afterparty' | 'other';
+    }>;
+    organization_ids?: string[];
+    organization_names?: string[];
+    stories?: Array<{
+      id: string;
+      body: string;
+      created_at: string;
+      media_url?: string | null;
+      location_id?: string | null;
+      location_name?: string | null;
+    }>;
+    [key: string]: unknown;
+  };
   impact?: {
     type: 'direct_participant' | 'indirect_affected' | 'related_person_affected' | 'observer' | 'ripple_effect';
     connectionCharacter?: string;
@@ -185,6 +207,18 @@ export const EventProfileCard = ({ event, onClick }: EventProfileCardProps) => {
             <TypeIcon className="h-7 w-7 text-primary cursor-help" />
           </Tooltip>
         </div>
+
+        {event.metadata?.created_via === 'user_posted' && (
+          <div className="absolute top-2 left-2 z-10">
+            <Badge
+              variant="outline"
+              className="border-amber-400/40 bg-amber-500/20 text-amber-100 text-[10px] px-1.5 py-0.5"
+              data-testid="event-posted-badge"
+            >
+              Posted
+            </Badge>
+          </div>
+        )}
 
         {/* Confidence badge */}
         {showConfidence && (

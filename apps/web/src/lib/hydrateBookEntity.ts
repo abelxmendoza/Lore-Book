@@ -13,6 +13,7 @@ export function isEphemeralEntityId(id: string | undefined): boolean {
     id.startsWith('dummy-') ||
     id.startsWith('temp-') ||
     id.startsWith('demo-') ||
+    id.startsWith('mock-') ||
     id.startsWith('candidate-') ||
     id.startsWith('org-') // local-only optimistic org ids
   );

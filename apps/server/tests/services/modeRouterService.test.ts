@@ -545,6 +545,12 @@ describe("ModeRouterService", () => {
       await expect(
         modeRouterService.routeMessage("user-1", "mark Jamie as dating"),
       ).resolves.toMatchObject({ mode: "ROMANCE_WRITE" });
+      await expect(
+        modeRouterService.routeMessage(
+          "user-1",
+          "we played a backyard show at Northwind Depot",
+        ),
+      ).resolves.toMatchObject({ mode: "EVENT_WRITE" });
     });
 
     it("still routes ordinary group create to ORGANIZATION_GROUP_WRITE", async () => {

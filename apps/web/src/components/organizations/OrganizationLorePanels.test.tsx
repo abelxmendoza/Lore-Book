@@ -80,12 +80,14 @@ describe('logged-in users (derived world, no demo data)', () => {
   });
 });
 
-// Guard: the differentiator tabs ship to ALL users (in the base tab set, not
-// behind a demo flag), so they can't silently regress out for logged-in users.
-describe('organization modal tabs reach logged-in users', () => {
-  it('includes Influence, Insights and Lore in the base tab set', async () => {
+// These tabs were template metaphor theater (The Forge / Themes / Symbols) —
+// keep them out of the modal until they are backed by real user lore.
+describe('organization modal tabs', () => {
+  it('does not ship Influence, Insights, or Lore in the base tab set', async () => {
     const { ORG_MODAL_BASE_TABS } = await import('./OrganizationModalNav');
     const keys = ORG_MODAL_BASE_TABS.map((t) => t.key);
-    expect(keys).toEqual(expect.arrayContaining(['influence', 'insights', 'lore']));
+    expect(keys).not.toContain('influence');
+    expect(keys).not.toContain('insights');
+    expect(keys).not.toContain('lore');
   });
 });

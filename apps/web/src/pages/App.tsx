@@ -33,7 +33,6 @@ import { MockDataToggle } from '../components/settings/MockDataToggle';
 import { useMockData } from '../contexts/MockDataContext';
 import { useGuest } from '../contexts/GuestContext';
 import { ChatFirstInterface } from '../features/chat/components/ChatFirstInterface';
-import { ConversationPersistenceInspector } from '../features/chat/components/ConversationPersistenceInspector';
 import { CharacterBook } from '../components/characters/CharacterBook';
 import { LocationBook } from '../components/locations/LocationBook';
 import { ProjectBook } from '../components/projects/ProjectBook';
@@ -586,7 +585,6 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
       <ChatGPTExportReminder />
       <OnboardingDemoSimulator />
       <ChatGPTImportDemoSimulator />
-      {import.meta.env.DEV && <ConversationPersistenceInspector />}
     </div>
   );
 };

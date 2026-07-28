@@ -17,7 +17,13 @@ import { CharacterDetailModal } from '../characters/CharacterDetailModal';
 import { LocationDetailModal } from '../locations/LocationDetailModal';
 import { fetchJson } from '../../lib/api';
 import { fetchCharacterList } from '../../api/characterList';
-import { fetchLocationById, fetchOrganizationById, isEphemeralEntityId } from '../../lib/hydrateBookEntity';
+import {
+  fetchLocationById,
+  fetchOrganizationById,
+  isEphemeralEntityId,
+  locationStub,
+  normalizeLocationProfile,
+} from '../../lib/hydrateBookEntity';
 import { apiCache } from '../../lib/cache';
 import { format, parseISO } from 'date-fns';
 import { onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
@@ -45,19 +51,20 @@ import {
   normalizeOrgModalTab,
   type OrgModalTabKey,
 } from './OrganizationModalNav';
-import {
-  OrganizationInfluencePanel,
-  OrganizationInsightsPanel,
-  OrganizationLorePanel,
-} from './OrganizationLorePanels';
 import { OrganizationModalOverview } from './OrganizationModalOverview';
 import { OrganizationActivityPanel } from './OrganizationActivityPanel';
+import { PostEventComposer, type PostEventComposerPrefill } from '../events/PostEventComposer';
+import { listDemoUserPostedEventsForOrganization, getDemoUserPostedEvent } from '../../mocks/userPostedEventsDemo';
+import { OrgTimelineMomentPanel } from './OrgTimelineMomentPanel';
+import { buildOrgTimelineMomentChatPrompt } from './orgTimelineMomentChat';
+import type { OrgDerivedEvent } from '../../mocks/organizationTimeline';
 import {
   FOCUSED_ENTITY_CHAT_PRESETS,
   ORGANIZATION_ROSTER_KNOWLEDGE_SCOPE,
   organizationRosterChatPrompt,
 } from '../chat/focusedEntityChatPresets';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import { mutationErrorMessage } from '../../store/rtkMutationUtils';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { getMockOrganizationDerivedEvents } from '../../mocks/organizationTimeline';
@@ -70,10 +77,12 @@ import {
 import {
   getDemoOrganizationLocationLinks,
   linkDemoLocationOrganization,
+  linkDemoOrganizationLocationByName,
   unlinkDemoLocationOrganization,
 } from '../../mocks/locationOrganizationDemoData';
 import { mockDataService } from '../../services/mockDataService';
 import { locationAliasesForDisplay } from '../../lib/locationMergeMetadata';
+import { highlightTextTerms } from '../../lib/highlightTextTerms';
 import { FamilyTreePanel } from '../family/FamilyTreePanel';
 import { OrganizationGroupNetwork } from './OrganizationGroupNetwork';
 import type { Organization, OrganizationMember, OrganizationStory, OrganizationEvent, OrganizationLocation, OrganizationRelationship, OrgRelationshipType } from './OrganizationProfileCard';
@@ -103,7 +112,7 @@ type DerivedEvent = {
   audience?: 'with_user' | 'without_user' | 'group_wide';
   scope?: 'direct' | 'subgroup' | 'hierarchy';
   subgroup_names?: string[];
-  source: 'conversation';
+  source: 'conversation' | 'user_posted';
 };
 
 type DerivedHierarchyNode = {
@@ -221,6 +230,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     list.push({ key: 'danger', label: 'Delete', shortLabel: 'Delete', icon: Trash2 });
     return list;
   }, [editedOrg.group_type]);
+
   const [activeTab, setActiveTabState] = useState<TabKey>('info');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -228,6 +238,12 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const [identityError, setIdentityError] = useState<string | null>(null);
   const [identitySaved, setIdentitySaved] = useState<string | null>(null);
   const [aliasInputError, setAliasInputError] = useState<string | null>(null);
+
+  // Reclassify state (controlled via the EntityTypeSwitcher in the header)
+  const [reclassifyTarget, setReclassifyTarget] = useState('');
+  const [reclassifyBusy, setReclassifyBusy] = useState(false);
+  const [reclassifyError, setReclassifyError] = useState<string | null>(null);
+  const [reclassifySuccess, setReclassifySuccess] = useState(false);
 
   /** Close modal and open main chat with this group focused. */
   const openOrgMainChat = useCallback(
@@ -311,6 +327,71 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const [showAddStory, setShowAddStory] = useState(false);
   const [newStory, setNewStory] = useState({ title: '', summary: '', date: new Date().toISOString().split('T')[0] });
   const [storyLoading, setStoryLoading] = useState(false);
+  const [showPostComposer, setShowPostComposer] = useState(false);
+  const [postComposerPrefill, setPostComposerPrefill] = useState<PostEventComposerPrefill | null>(null);
+  const [timelineMoment, setTimelineMoment] = useState<OrgDerivedEvent | null>(null);
+  const [postedStoriesTick, setPostedStoriesTick] = useState(0);
+  const [liveEventLinkedStories, setLiveEventLinkedStories] = useState<
+    Array<{ id: string; title: string; summary: string; date: string; eventId: string }>
+  >([]);
+
+  const demoEventLinkedStories = useMemo(() => {
+    void postedStoriesTick;
+    return listDemoUserPostedEventsForOrganization(editedOrg.id, editedOrg.name).flatMap((ev) =>
+      (ev.metadata.stories ?? []).map((s) => ({
+        id: s.id,
+        title: ev.title,
+        summary: s.body,
+        date: s.created_at,
+        eventId: ev.id,
+      })),
+    );
+  }, [editedOrg.id, editedOrg.name, postedStoriesTick]);
+
+  const eventLinkedStories = isMockDataEnabled ? demoEventLinkedStories : liveEventLinkedStories;
+
+  useEffect(() => {
+    if (isMockDataEnabled || activeTab !== 'stories' || !editedOrg.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetchJson<{
+          success: boolean;
+          events: Array<{
+            id: string;
+            title: string;
+            metadata?: {
+              created_via?: string;
+              organization_ids?: string[];
+              stories?: Array<{ id: string; body: string; created_at: string }>;
+            };
+          }>;
+        }>('/api/conversation/events');
+        if (cancelled) return;
+        const linked = (res.events ?? [])
+          .filter(
+            (e) =>
+              e.metadata?.created_via === 'user_posted' &&
+              (e.metadata.organization_ids ?? []).includes(editedOrg.id),
+          )
+          .flatMap((ev) =>
+            (ev.metadata?.stories ?? []).map((s) => ({
+              id: s.id,
+              title: ev.title,
+              summary: s.body,
+              date: s.created_at,
+              eventId: ev.id,
+            })),
+          );
+        setLiveEventLinkedStories(linked);
+      } catch {
+        if (!cancelled) setLiveEventLinkedStories([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, editedOrg.id, isMockDataEnabled, postedStoriesTick]);
 
   // Events state (recorded milestones on the Timeline tab)
   const [events, setEvents] = useState<OrganizationEvent[]>(resolvedOrganization.events || []);
@@ -378,6 +459,26 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const [mentionsLoading, setMentionsLoading] = useState(false);
   const [mentionsLoaded, setMentionsLoaded] = useState(false);
 
+  /** Name + aliases used to mark the entity inside mention / fact snippets. */
+  const sourceHighlightTerms = useMemo(() => {
+    const labels = [
+      editedOrg.name,
+      ...(editedOrg.aliases ?? []),
+      ...(mentionTrace?.labels ?? []),
+    ];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const label of labels) {
+      const trimmed = String(label ?? '').trim();
+      if (trimmed.length < 2) continue;
+      const key = trimmed.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(trimmed);
+    }
+    return out;
+  }, [editedOrg.name, editedOrg.aliases, mentionTrace?.labels]);
+
   // Modal states for nested entities
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [selectedLinkedOrg, setSelectedLinkedOrg] = useState<Organization | null>(null);
@@ -400,6 +501,10 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
         (link) => !link.location_id || !linkedIds.has(link.location_id),
       ),
     ]);
+    setReclassifyTarget('');
+    setReclassifyBusy(false);
+    setReclassifyError(null);
+    setReclassifySuccess(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: id-scoped reset only
   }, [organization.id]);
 
@@ -442,14 +547,33 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
       return;
     }
     if (isMockDataEnabled) {
-      setDerivedEvents(getMockOrganizationDerivedEvents(organization));
+      const mockDerived = getMockOrganizationDerivedEvents(organization);
+      const posted = listDemoUserPostedEventsForOrganization(organization.id, organization.name).map(
+        (e) => ({
+          id: e.id,
+          title: e.title,
+          date: e.start_time,
+          type: e.type,
+          summary: e.summary ?? undefined,
+          involved: e.people,
+          audience: 'with_user' as const,
+          user_was_present: true,
+          source: 'user_posted' as const,
+        }),
+      );
+      const existing = new Set(mockDerived.map((e) => e.id));
+      setDerivedEvents([...posted.filter((e) => !existing.has(e.id)), ...mockDerived]);
       setDerivedLocations(
-        (organization.locations ?? []).map((loc) => ({
-          id: loc.id,
-          name: loc.location_name,
-          involved: [],
-          source: 'conversation' as const,
-        })),
+        (organization.locations ?? [])
+          .filter((loc) => Boolean(loc.location_id))
+          .map((loc) => ({
+            // Use the Places Book entity id (not the org↔location link id) so
+            // these cards can open the same modal as the linked-locations list.
+            id: loc.location_id!,
+            name: loc.location_name,
+            involved: [],
+            source: 'conversation' as const,
+          })),
       );
       setDerivedHierarchy({ subgroups: [], related: [] });
       setDerivedLoaded(true);
@@ -848,6 +972,38 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     }
   };
 
+  /** Wrong book? Move this group to Person, Place, Project, Skill, or Event. */
+  const handleReclassify = async (target: string) => {
+    if (!target || reclassifyBusy || reclassifySuccess || !organization.id) return;
+    setReclassifyTarget(target);
+    setReclassifyBusy(true);
+    setReclassifyError(null);
+    try {
+      const result = await fetchJson<{
+        success: boolean;
+        reclassified_to: string;
+        target?: { mergedIntoExisting?: boolean; targetName?: string };
+        error?: string;
+      }>(`/api/organizations/${organization.id}/reclassify`, {
+        method: 'POST',
+        body: JSON.stringify({ targetDomain: target }),
+      });
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to reclassify group');
+      }
+      setReclassifySuccess(true);
+      apiCache.deletePattern(/\/api\/(organizations|locations|characters|projects|skills|knowledge|conversation|counts|books)/);
+      dispatchStoryDataUpdated({ scopes: ['organizations'], organizationIds: [organization.id] });
+      onUpdate?.();
+      setTimeout(() => onClose(), 600);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to reclassify group';
+      setReclassifyError(message);
+    } finally {
+      setReclassifyBusy(false);
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setIdentityError(null);
@@ -1089,7 +1245,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
       setMemberAddError('Choose a person from your Character Book.');
       return;
     }
-    if (isEphemeralEntityId(organization.id)) {
+    if (isEphemeralEntityId(organization.id) && !isMockDataEnabled) {
       setMemberAddError('Save this group first before linking people.');
       return;
     }
@@ -1097,6 +1253,32 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     setMemberSaving(true);
     setMemberAddError(null);
     try {
+      if (isMockDataEnabled) {
+        const saved: OrganizationMember = {
+          id: `demo-member-${Date.now()}`,
+          character_id: chosen.id,
+          character_name: chosen.name,
+          role: newMember.role.trim() || undefined,
+          status: 'active',
+        };
+        setMembers((prev) => {
+          const withoutDup = prev.filter(
+            (m) =>
+              m.id !== saved.id &&
+              m.character_id !== saved.character_id &&
+              m.character_name.toLowerCase() !== saved.character_name.toLowerCase(),
+          );
+          return [...withoutDup, saved];
+        });
+        setSelectedBookCharacterId('');
+        setCharacterBookSearch('');
+        setNewMember({ character_name: '', role: '', status: 'active' });
+        setShowAddMember(false);
+        setMemberAddSuccess(`${chosen.name} linked to this group.`);
+        notifyMembershipChanged([chosen.id]);
+        return;
+      }
+
       const result = (await addOrganizationMember({
         organizationId: organization.id,
         member: {
@@ -1141,7 +1323,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     } catch (error) {
       console.error('Failed to add member from Character Book:', error);
       setMemberAddError(
-        error instanceof Error ? error.message : 'Could not link this person to the group.',
+        mutationErrorMessage(error) || 'Could not link this person to the group.',
       );
     } finally {
       setMemberSaving(false);
@@ -1151,7 +1333,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   /** Name-only fallback when the person is not in the Character Book yet. */
   const handleAddMember = async () => {
     if (!newMember.character_name.trim() || memberSaving) return;
-    if (isEphemeralEntityId(organization.id)) {
+    if (isEphemeralEntityId(organization.id) && !isMockDataEnabled) {
       setMemberAddError('Save this group first before adding people.');
       return;
     }
@@ -1159,6 +1341,31 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     setMemberSaving(true);
     setMemberAddError(null);
     try {
+      if (isMockDataEnabled) {
+        const name = newMember.character_name.trim();
+        const bookHit = characterBookOptions.find(
+          (c) => c.name.toLowerCase() === name.toLowerCase(),
+        );
+        const saved: OrganizationMember = {
+          id: `demo-member-${Date.now()}`,
+          character_id: bookHit?.id,
+          character_name: bookHit?.name || name,
+          role: newMember.role.trim() || undefined,
+          status: newMember.status,
+        };
+        setMembers((prev) => [...prev.filter((m) => m.id !== saved.id), saved]);
+        setNewMember({ character_name: '', role: '', status: 'active' });
+        setShowAddMember(false);
+        setShowNameOnlyAdd(false);
+        setMemberAddSuccess(
+          saved.character_id
+            ? `${saved.character_name} matched Character Book and was linked.`
+            : `${saved.character_name} added by name (unlinked).`,
+        );
+        notifyMembershipChanged(saved.character_id ? [saved.character_id] : []);
+        return;
+      }
+
       const result = (await addOrganizationMember({
         organizationId: organization.id,
         member: {
@@ -1194,7 +1401,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
       notifyMembershipChanged(saved?.character_id ? [saved.character_id] : []);
     } catch (error) {
       console.error('Failed to add member:', error);
-      setMemberAddError(error instanceof Error ? error.message : 'Could not add member.');
+      setMemberAddError(mutationErrorMessage(error) || 'Could not add member.');
     } finally {
       setMemberSaving(false);
     }
@@ -1214,7 +1421,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     } catch (error) {
       console.error('Failed to remove member:', error);
       setMembers(previous);
-      setMemberAddError('Could not remove member. Try again.');
+      setMemberAddError(mutationErrorMessage(error) || 'Could not remove member. Try again.');
     }
   };
 
@@ -1508,6 +1715,14 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     });
   }, [locationBookOptions, locationBookSearch, locations, rosterLocationIds]);
 
+  const demoOrgHint = () => ({
+    name: editedOrg.name,
+    group_type: editedOrg.group_type ?? 'other',
+    status: editedOrg.status ?? 'active',
+    user_relationship: editedOrg.user_relationship ?? 'member',
+    description: editedOrg.description ?? '',
+  });
+
   /** Add from Places Book — posts location_id for an official durable link. */
   const handleAddExistingLocation = async () => {
     if (!selectedBookLocationId || locationLoading) return;
@@ -1525,9 +1740,14 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     setLocationAddError(null);
     try {
       if (isMockDataEnabled) {
-        const saved = linkDemoLocationOrganization(chosen, organization.id);
+        const saved = linkDemoLocationOrganization(chosen, organization.id, demoOrgHint());
         setLocations((prev) => [
-          saved,
+          {
+            id: saved.id,
+            location_id: saved.location_id,
+            location_name: saved.location_name,
+            visit_count: saved.visit_count,
+          },
           ...prev.filter(
             (link) =>
               link.id !== saved.id &&
@@ -1580,7 +1800,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     } catch (error) {
       console.error('Failed to add location from Places Book:', error);
       setLocationAddError(
-        error instanceof Error ? error.message : 'Could not link this place to the group.',
+        mutationErrorMessage(error) || 'Could not link this place to the group.',
       );
     } finally {
       setLocationLoading(false);
@@ -1590,7 +1810,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   /** Name-only fallback when the place is not in the Places Book yet. */
   const handleAddLocation = async () => {
     if (!newLocation.location_name.trim() || locationLoading) return;
-    if (isEphemeralEntityId(organization.id)) {
+    if (isEphemeralEntityId(organization.id) && !isMockDataEnabled) {
       setLocationAddError('Save this group first before adding places.');
       return;
     }
@@ -1602,6 +1822,35 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
       const exact = locationBookOptions.find(
         (loc) => loc.name.toLowerCase() === newLocation.location_name.trim().toLowerCase(),
       );
+
+      if (isMockDataEnabled) {
+        const saved = exact
+          ? linkDemoLocationOrganization(exact, organization.id, demoOrgHint())
+          : linkDemoOrganizationLocationByName(
+              organization.id,
+              newLocation.location_name.trim(),
+              demoOrgHint(),
+            );
+        setLocations((prev) => [
+          {
+            id: saved.id,
+            location_id: saved.location_id || undefined,
+            location_name: saved.location_name,
+            visit_count: saved.visit_count,
+          },
+          ...prev.filter((l) => l.id !== saved.id),
+        ]);
+        setNewLocation({ location_name: '' });
+        setShowAddLocation(false);
+        setShowNameOnlyLocationAdd(false);
+        setLocationAddSuccess(
+          exact
+            ? `${exact.name} linked to this group from your Places Book.`
+            : 'Place added. Link it from Places Book later for a durable connection.',
+        );
+        return;
+      }
+
       const result = (await addOrganizationLocation({
         organizationId: organization.id,
         location: exact
@@ -1644,14 +1893,67 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     }
   };
 
-  const openLinkedLocation = async (loc: OrganizationLocation) => {
-    if (!loc.location_id) return;
+  const openLinkedLocation = async (opts: {
+    locationId?: string | null;
+    locationName?: string | null;
+  }) => {
+    const locationId = opts.locationId?.trim() || '';
+    const locationName = opts.locationName?.trim() || '';
+    if (!locationId && !locationName) return;
+
+    setLocationAddError(null);
     try {
-      const full = await fetchLocationById(loc.location_id);
-      setSelectedLocation(full);
+      if (isMockDataEnabled) {
+        const locs = mockDataService.get.locations();
+        const found =
+          (locationId ? locs.find((l) => l.id === locationId) : undefined) ||
+          (locationName
+            ? locs.find((l) => l.name.toLowerCase() === locationName.toLowerCase())
+            : undefined);
+        if (found) {
+          setSelectedLocation(normalizeLocationProfile(found));
+          return;
+        }
+        setSelectedLocation(
+          normalizeLocationProfile(
+            locationStub(locationId || `demo-place-${locationName}`, locationName || 'Place'),
+          ),
+        );
+        return;
+      }
+
+      if (locationId && !isEphemeralEntityId(locationId)) {
+        const full = await fetchLocationById(locationId);
+        setSelectedLocation(full);
+        return;
+      }
+
+      if (locationName) {
+        const index = await fetchJson<{
+          entities?: Array<{ id: string; name: string }>;
+        }>('/api/entities/book-index?types=location&limit=100');
+        const hit = (index.entities ?? []).find(
+          (e) => e.name.toLowerCase() === locationName.toLowerCase(),
+        );
+        if (hit?.id) {
+          const full = await fetchLocationById(hit.id);
+          setSelectedLocation(full);
+          return;
+        }
+      }
+
+      setSelectedLocation(
+        normalizeLocationProfile(locationStub(locationId || `place-${Date.now()}`, locationName || 'Place')),
+      );
     } catch (error) {
       console.error('Failed to open linked place:', error);
-      setLocationAddError('Could not open that place from Places Book.');
+      // Still open a stub so the user can see the place name instead of a dead click.
+      setSelectedLocation(
+        normalizeLocationProfile(
+          locationStub(locationId || `place-${Date.now()}`, locationName || 'Place'),
+        ),
+      );
+      setLocationAddError('Opened a lightweight place card — full Places Book details were unavailable.');
     }
   };
 
@@ -1700,6 +2002,14 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
             !isMockDataEnabled
           }
           onOpenChat={() => setActiveTab('chat')}
+          reclassify={{
+            busy: reclassifyBusy,
+            success: reclassifySuccess,
+            error: reclassifyError,
+            target: reclassifyTarget,
+            onSelect: (value) => void handleReclassify(value),
+            onOpenMenu: () => setReclassifyError(null),
+          }}
         />
 
         <OrganizationModalNav
@@ -1711,33 +2021,30 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
         />
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(normalizeOrgModalTab(v as TabKey))} className="flex-1 flex flex-col overflow-hidden min-h-0">
-          <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-6 sm:py-4 min-h-0">
+          <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-3 pb-4 sm:px-6 sm:py-4 min-h-0">
             {/* Overview Tab */}
             <TabsContent value="info" className="mt-0 space-y-3">
-              <Card className="overflow-hidden border-white/10 bg-black/50">
+              <Card className="overflow-hidden border-white/10 bg-gradient-to-b from-amber-500/[0.05] via-black/45 to-black/50">
                 <CardContent className="p-0">
-                  <div className="border-b border-white/8 bg-white/[0.03] px-3 py-3 sm:px-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-amber-400/20 bg-amber-400/10">
-                            <Edit2 className="h-3.5 w-3.5 text-amber-300" />
-                          </span>
-                          <h3 className="text-sm font-semibold text-white">Canonical identity</h3>
-                          <Badge
-                            variant="outline"
-                            className={`text-[10px] ${
-                              editedOrg.metadata?.identity_locked_by_user
-                                ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200'
-                                : 'border-sky-500/25 bg-sky-500/10 text-sky-200'
-                            }`}
-                          >
-                            {editedOrg.metadata?.identity_locked_by_user ? 'User corrected' : 'Auto learned'}
-                          </Badge>
-                        </div>
-                        <p className="mt-1 text-xs leading-relaxed text-white/45">
-                          Edits here become the trusted group identity and feed future detection.
-                        </p>
+                  <div className="border-b border-white/8 bg-white/[0.02] px-3 py-2.5 sm:px-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2 min-w-0">
+                        <h3 className="text-sm font-semibold text-white">Name & aliases</h3>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] ${
+                            editedOrg.metadata?.identity_locked_by_user
+                              ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200'
+                              : 'border-white/15 bg-white/[0.04] text-white/50'
+                          }`}
+                          title={
+                            editedOrg.metadata?.identity_locked_by_user
+                              ? 'You corrected this name — LoreBook treats it as trusted for detection.'
+                              : 'Detected from what you shared. Edit to lock the name and aliases.'
+                          }
+                        >
+                          {editedOrg.metadata?.identity_locked_by_user ? 'You set this' : 'Detected'}
+                        </Badge>
                       </div>
                       {editingIdentity ? (
                         <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
@@ -1766,11 +2073,11 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                       ) : (
                         <>
                         {identitySaved && (
-                          <p className="w-full text-xs text-emerald-400" data-testid="identity-saved-confirmation">✓ {identitySaved}</p>
+                          <p className="text-xs text-emerald-400" data-testid="identity-saved-confirmation">✓ {identitySaved}</p>
                         )}
-                        <Button variant="outline" size="sm" className="h-9 w-full border-white/10 sm:w-auto" onClick={() => setEditingIdentity(true)}>
+                        <Button variant="ghost" size="sm" className="h-8 shrink-0 text-white/55 hover:text-white" onClick={() => setEditingIdentity(true)}>
                           <Edit2 className="h-3.5 w-3.5 mr-1.5" />
-                          Edit identity
+                          Edit
                         </Button>
                         </>
                       )}
@@ -1778,16 +2085,16 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                   </div>
 
                   {/* Always-visible alias chips — add/remove without full identity form */}
-                  <div className="border-b border-white/8 px-3 py-3 sm:px-4">
-                    <p className="text-[10px] uppercase tracking-wider text-white/35 mb-1.5">
-                      Also known as
-                    </p>
+                  <div className="border-b border-white/8 px-3 py-2.5 sm:px-4">
                     <div
                       className="flex flex-wrap items-center gap-1.5"
                       data-testid="org-alias-editor"
                     >
+                      <span className="text-[10px] uppercase tracking-wider text-white/35 mr-0.5">
+                        Also known as
+                      </span>
                       {(editedOrg.aliases ?? []).length === 0 && (
-                        <span className="text-xs text-white/35">No aliases yet</span>
+                        <span className="text-xs text-white/30">—</span>
                       )}
                       {(editedOrg.aliases ?? []).map((alias) => (
                         <span
@@ -1843,9 +2150,6 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                         {aliasInputError}
                       </p>
                     )}
-                    <p className="mt-1.5 text-[10px] text-white/30">
-                      Press Enter to add. Aliases help chat and detection recognize other names for this group.
-                    </p>
                   </div>
 
                   {editingIdentity ? (
@@ -1958,32 +2262,32 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                     </div>
                   ) : (
                     <div className="space-y-3 p-3 sm:p-4">
-                      {editedOrg.description && (
-                        <p className="text-sm leading-relaxed text-white/70 line-clamp-3">
+                      {editedOrg.description ? (
+                        <p className="text-[15px] sm:text-base leading-relaxed text-white/85">
                           {editedOrg.description}
                         </p>
+                      ) : (
+                        <p className="text-sm text-white/40 italic">
+                          No description yet — edit identity or tell LoreBook what this group is.
+                        </p>
                       )}
-                      <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-                      <div className="rounded-lg border border-white/8 bg-white/[0.03] p-2.5">
-                        <p className={FIELD_LABEL}>Type</p>
-                        <p className="mt-1 font-medium text-white capitalize">{String(editedOrg.group_type ?? editedOrg.type).replace(/_/g, ' ')}</p>
-                      </div>
-                      <div className="rounded-lg border border-white/8 bg-white/[0.03] p-2.5">
-                        <p className={FIELD_LABEL}>Relationship</p>
-                        <p className="mt-1 font-medium text-white capitalize">{String(editedOrg.user_relationship ?? 'referenced').replace(/_/g, ' ')}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setActiveTab('sources')}
-                        className="rounded-lg border border-white/8 bg-white/[0.03] p-2.5 text-left transition hover:border-primary/35 hover:bg-primary/5"
-                      >
-                        <p className={FIELD_LABEL}>Mentions</p>
-                        <p className="mt-1 font-semibold text-white tabular-nums">{mentionsLoading ? '...' : mentionTrace?.total_mentions ?? 0}</p>
-                      </button>
-                      <div className="rounded-lg border border-white/8 bg-white/[0.03] p-2.5">
-                        <p className={FIELD_LABEL}>Scope</p>
-                        <p className="mt-1 font-medium text-white">{editedOrg.is_public_entity ? 'Official' : 'Personal'}</p>
-                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/70 capitalize">
+                          {String(editedOrg.group_type ?? editedOrg.type).replace(/_/g, ' ')}
+                        </span>
+                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/70 capitalize">
+                          {String(editedOrg.user_relationship ?? 'referenced').replace(/_/g, ' ')}
+                        </span>
+                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/55">
+                          {editedOrg.is_public_entity ? 'Official' : 'Personal'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('sources')}
+                          className="rounded-full border border-sky-300/50 bg-sky-500/20 px-2.5 py-1 text-[11px] font-semibold text-sky-100 shadow-[0_0_12px_-2px_rgba(56,189,248,0.45)] hover:bg-sky-500/30 hover:border-sky-200/60"
+                        >
+                          {mentionsLoading ? '…' : mentionTrace?.total_mentions ?? 0} mentions
+                        </button>
                       </div>
                     </div>
                   )}
@@ -2002,6 +2306,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                 onTabChange={setActiveTab}
                 onMemberClick={(member) => void openMemberCharacter(member)}
                 onOpenChat={(prompt) => openOrgMainChat(prompt)}
+                onOpenLocation={(args) => void openLinkedLocation(args)}
               />
             </TabsContent>
 
@@ -2342,72 +2647,176 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
 
             {/* Stories Tab */}
             <TabsContent value="stories" className={TAB_PANEL}>
-              <div className="flex items-center justify-between gap-2">
-                <h3 className={TAB_HEADING}>Stories ({stories.length})</h3>
-                <Button variant="outline" size="sm" onClick={() => setShowAddStory(v => !v)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Story
-                </Button>
-              </div>
+              <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-amber-500/[0.07] via-black/40 to-black/50 overflow-hidden">
+                <div className="flex flex-col gap-3 border-b border-white/8 px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+                  <div className="min-w-0">
+                    <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                      <BookOpen className="h-4 w-4 text-amber-300 shrink-0" />
+                      Stories
+                      <span className="rounded-full border border-white/12 bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium tabular-nums text-white/55">
+                        {stories.length + eventLinkedStories.length}
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-white/40 mt-0.5 sm:truncate">
+                      Stories about this group — from Events, or freeform notes
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 sm:shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-9 flex-1 sm:flex-none px-3 text-xs border-amber-400/25 text-amber-100/90 hover:bg-amber-500/15"
+                      onClick={() => {
+                        setPostComposerPrefill({
+                          organization_id: editedOrg.id,
+                          organization_name: editedOrg.name,
+                        });
+                        setShowPostComposer(true);
+                      }}
+                      data-testid="org-stories-post-event"
+                    >
+                      <Calendar className="h-3.5 w-3.5 mr-1.5" />
+                      Post event
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="h-9 flex-1 sm:flex-none px-3 text-xs bg-amber-500/20 border border-amber-400/30 text-amber-100 hover:bg-amber-500/30"
+                      onClick={() => setShowAddStory(v => !v)}
+                      data-testid="org-add-story-toggle"
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1.5" />
+                      {showAddStory ? 'Close' : 'Add note'}
+                    </Button>
+                  </div>
+                </div>
 
-              {showAddStory && (
-                <Card className="bg-black/40 border-border/50">
-                  <CardContent className="pt-6 space-y-3">
+                {showAddStory && (
+                  <div className="border-b border-white/8 bg-black/35 px-3.5 py-3.5 sm:px-4 space-y-3">
+                    <p className="text-[11px] text-white/45">
+                      Freeform group note (not attached to a Life Log Event). Prefer posting an Event when there’s a date and place.
+                    </p>
                     <Input
                       placeholder="Title *"
                       value={newStory.title}
                       onChange={e => setNewStory(v => ({ ...v, title: e.target.value }))}
-                      className="bg-black/60 border-border/50 text-white"
+                      className="h-10 bg-black/55 border-white/12 text-white rounded-xl"
                     />
                     <Textarea
                       placeholder="Summary *"
                       value={newStory.summary}
                       onChange={e => setNewStory(v => ({ ...v, summary: e.target.value }))}
-                      className="bg-black/60 border-border/50 text-white"
+                      className="bg-black/55 border-white/12 text-white rounded-xl"
                       rows={3}
                     />
                     <Input
                       type="date"
                       value={newStory.date}
                       onChange={e => setNewStory(v => ({ ...v, date: e.target.value }))}
-                      className="bg-black/60 border-border/50 text-white"
+                      className="h-10 bg-black/55 border-white/12 text-white rounded-xl"
                     />
                     <div className="flex gap-2">
-                      <Button onClick={() => void handleAddStory()} disabled={storyLoading} className="flex-1">
-                        {storyLoading ? 'Saving...' : 'Save Story'}
+                      <Button
+                        onClick={() => void handleAddStory()}
+                        disabled={storyLoading}
+                        className="flex-1 h-9 bg-amber-500/25 border border-amber-400/35 text-amber-100 hover:bg-amber-500/35"
+                      >
+                        {storyLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save note'}
                       </Button>
-                      <Button variant="outline" onClick={() => setShowAddStory(false)}>Cancel</Button>
+                      <Button variant="outline" className="h-9" onClick={() => setShowAddStory(false)}>Cancel</Button>
                     </div>
-                  </CardContent>
-                </Card>
-              )}
+                  </div>
+                )}
 
-              {stories.length === 0 && !showAddStory ? (
-                <Card className="bg-black/40 border-border/50">
-                  <CardContent className="pt-6 text-center text-white/60">
-                    No stories yet. Add one above.
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-3">
-                  {stories.map((story) => (
-                    <Card key={story.id} className="bg-black/40 border-border/50">
-                      <CardContent className="pt-4 pb-4">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1">
-                            <div className="font-semibold text-white mb-1">{story.title}</div>
-                            <p className="text-sm text-white/70 mb-1">{story.summary}</p>
-                            <div className="text-xs text-white/40">{formatDate(story.date)}</div>
+                <div className="p-2 sm:p-2.5 space-y-1.5">
+                  {stories.length === 0 && eventLinkedStories.length === 0 && !showAddStory ? (
+                    <div className="rounded-xl border border-dashed border-white/12 bg-black/25 px-4 py-10 text-center">
+                      <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-amber-400/20 bg-amber-500/10">
+                        <BookOpen className="h-5 w-5 text-amber-300/80" />
+                      </div>
+                      <p className="text-sm font-medium text-white/75">No stories yet</p>
+                      <p className="mt-1 text-xs text-white/40 max-w-xs mx-auto leading-relaxed">
+                        Post an Event for {editedOrg.name} (date + place), then add what happened — or save a freeform note.
+                      </p>
+                      <div className="mt-4 flex flex-wrap justify-center gap-2">
+                        <Button
+                          size="sm"
+                          className="h-9"
+                          onClick={() => {
+                            setPostComposerPrefill({
+                              organization_id: editedOrg.id,
+                              organization_name: editedOrg.name,
+                            });
+                            setShowPostComposer(true);
+                          }}
+                        >
+                          <Calendar className="h-3.5 w-3.5 mr-1.5" />
+                          Post event
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-9" onClick={() => setShowAddStory(true)}>
+                          <Plus className="h-3.5 w-3.5 mr-1.5" />
+                          Add note
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {eventLinkedStories.map((story) => (
+                        <div
+                          key={`event-story-${story.id}`}
+                          className="group rounded-xl border border-amber-400/25 bg-amber-500/[0.07] px-3 py-2.5 sm:px-3.5"
+                          data-testid="org-event-linked-story"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="shrink-0 h-9 w-9 rounded-full bg-gradient-to-br from-amber-500/25 to-orange-500/15 border border-amber-400/25 flex items-center justify-center">
+                              <Calendar className="h-4 w-4 text-amber-200" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <div className="font-semibold text-white text-sm">{story.title}</div>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-amber-400/30 text-amber-200/80">
+                                  From event
+                                </span>
+                              </div>
+                              <p className="text-sm text-white/60 mt-0.5 leading-snug">{story.summary}</p>
+                              <div className="text-[11px] text-white/35 mt-1.5">{formatDate(story.date)}</div>
+                            </div>
                           </div>
-                          <Button variant="ghost" size="sm" onClick={() => void handleRemoveStory(story.id)}>
-                            <Trash2 className="h-4 w-4 text-red-400" />
-                          </Button>
                         </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                      ))}
+                      {stories.map((story) => (
+                      <div
+                        key={story.id}
+                        className="group rounded-xl border border-white/[0.07] bg-black/30 px-3 py-2.5 sm:px-3.5 transition hover:border-amber-400/30 hover:bg-amber-500/[0.06]"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="shrink-0 h-9 w-9 rounded-full bg-gradient-to-br from-amber-500/25 to-orange-500/15 border border-amber-400/25 flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+                            <BookOpen className="h-4 w-4 text-amber-200" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <div className="font-semibold text-white text-sm">{story.title}</div>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-white/15 text-white/45">
+                                Freeform
+                              </span>
+                            </div>
+                            <p className="text-sm text-white/60 mt-0.5 leading-snug">{story.summary}</p>
+                            <div className="text-[11px] text-white/35 mt-1.5">{formatDate(story.date)}</div>
+                          </div>
+                          <button
+                            type="button"
+                            aria-label={`Remove ${story.title}`}
+                            className="shrink-0 h-8 w-8 rounded-lg flex items-center justify-center text-white/25 opacity-70 transition hover:bg-red-500/15 hover:text-red-400 group-hover:opacity-100"
+                            onClick={() => void handleRemoveStory(story.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    </>
+                  )}
                 </div>
-              )}
+              </div>
             </TabsContent>
 
             {/* Timeline Tab — with you / without you + recorded milestones */}
@@ -2423,13 +2832,31 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                 onRemoveEvent={handleRemoveEvent}
                 formatDate={formatDate}
                 eventSaving={eventLoading}
+                onPostEvent={() => {
+                  setPostComposerPrefill({
+                    organization_id: editedOrg.id,
+                    organization_name: editedOrg.name,
+                  });
+                  setShowPostComposer(true);
+                }}
+                onEventSelect={(event) => {
+                  const demo = getDemoUserPostedEvent(event.id);
+                  const stories = demo?.metadata.stories ?? [];
+                  const storyBody = stories.map((s) => s.body).filter(Boolean).join('\n\n');
+                  setTimelineMoment({
+                    ...event,
+                    summary: event.summary || demo?.summary || storyBody || undefined,
+                    involved:
+                      event.involved.length > 0 ? event.involved : demo?.people ?? event.involved,
+                  });
+                }}
               />
             </TabsContent>
 
             {/* Locations Tab */}
             <TabsContent value="locations" className={TAB_PANEL}>
               <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-teal-500/[0.07] via-black/40 to-black/50 overflow-hidden">
-                <div className="flex items-center justify-between gap-3 border-b border-white/8 px-3.5 py-3 sm:px-4">
+                <div className="flex flex-col gap-3 border-b border-white/8 px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
                   <div className="min-w-0">
                     <h3 className="text-base font-semibold text-white flex items-center gap-2">
                       <MapPin className="h-4 w-4 text-teal-300 shrink-0" />
@@ -2438,13 +2865,13 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                         {locations.length}
                       </span>
                     </h3>
-                    <p className="text-[11px] text-white/40 mt-0.5 truncate">
+                    <p className="text-[11px] text-white/40 mt-0.5 sm:truncate">
                       Linked places for {editedOrg.name}
                     </p>
                   </div>
                   <Button
                     size="sm"
-                    className="shrink-0 h-9 px-3 text-xs bg-teal-500/20 border border-teal-400/30 text-teal-100 hover:bg-teal-500/30"
+                    className="h-9 w-full sm:w-auto sm:shrink-0 px-3 text-xs bg-teal-500/20 border border-teal-400/30 text-teal-100 hover:bg-teal-500/30"
                     onClick={() => void openAddLocationPanel()}
                     data-testid="org-add-location-toggle"
                   >
@@ -2588,7 +3015,9 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                   </div>
                 ) : (
                   <div className="divide-y divide-white/6">
-                    {locations.map((location) => (
+                    {locations.map((location) => {
+                      const canOpen = Boolean(location.location_id || location.location_name?.trim());
+                      return (
                       <div
                         key={location.id}
                         className="flex items-center justify-between gap-3 px-3.5 sm:px-4 py-3"
@@ -2596,20 +3025,36 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                       >
                         <button
                           type="button"
-                          className="min-w-0 text-left flex-1 disabled:cursor-default"
-                          disabled={!location.location_id}
-                          onClick={() => void openLinkedLocation(location)}
-                          title={location.location_id ? 'Open in Places Book' : undefined}
+                          className="min-w-0 text-left flex-1 rounded-lg -mx-1 px-1 py-0.5 hover:bg-white/[0.04] disabled:cursor-default disabled:hover:bg-transparent touch-manipulation"
+                          disabled={!canOpen}
+                          onClick={() =>
+                            canOpen &&
+                            void openLinkedLocation({
+                              locationId: location.location_id,
+                              locationName: location.location_name,
+                            })
+                          }
+                          title={canOpen ? 'Open in Places Book' : undefined}
+                          data-testid={`org-location-open-${location.id}`}
                         >
                           <div className="font-semibold text-white flex items-center gap-2 min-w-0">
                             <MapPin className="h-3.5 w-3.5 text-teal-300/80 shrink-0" />
-                            <span className="truncate">{location.location_name}</span>
-                            {location.location_id && (
+                            <span className="truncate underline-offset-2 decoration-teal-400/40 hover:underline">
+                              {location.location_name}
+                            </span>
+                            {location.location_id ? (
                               <Badge
                                 variant="outline"
                                 className="text-[10px] border-teal-400/25 text-teal-200/90 shrink-0"
                               >
                                 Linked
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] border-white/15 text-white/45 shrink-0"
+                              >
+                                Open
                               </Badge>
                             )}
                           </div>
@@ -2627,7 +3072,8 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                           <Trash2 className="h-4 w-4 text-red-400" />
                         </Button>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -2654,7 +3100,16 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                 ) : (
                   <div className="space-y-3">
                     {derivedLocations.map((loc) => (
-                      <Card key={loc.id} className="bg-purple-500/5 border-purple-500/20">
+                      <Card
+                        key={loc.id}
+                        className="bg-purple-500/5 border-purple-500/20 transition hover:border-purple-400/40 hover:bg-purple-500/10 cursor-pointer"
+                        onClick={() =>
+                          void openLinkedLocation({
+                            locationId: loc.id,
+                            locationName: loc.name,
+                          })
+                        }
+                      >
                         <CardContent className="pt-4 pb-4">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
@@ -2683,200 +3138,228 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
 
             {/* Relationships Tab */}
             <TabsContent value="relationships" className={TAB_PANEL}>
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <h3 className="text-lg font-semibold text-white">Relationships</h3>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void handleReconcileRelationships()}
-                    disabled={reconcilingRelationships}
-                    title="Re-scan conversations for subgroup and hierarchy links"
-                  >
-                    {reconcilingRelationships
-                      ? <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                      : <Sparkles className="h-4 w-4 mr-1" />}
-                    Learn from chat
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setShowAddRelationship(v => !v)}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Relationship
-                  </Button>
+              <div className="rounded-xl border border-white/10 bg-black/50 p-3 sm:p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-indigo-400/20 bg-indigo-400/10">
+                      <Link2 className="h-4 w-4 text-indigo-300" />
+                    </span>
+                    <div className="min-w-0">
+                      <h3 className={TAB_HEADING}>Relationships</h3>
+                      <p className="text-xs text-white/45">How {editedOrg.name} connects to other groups</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 border-indigo-400/25 text-indigo-100 hover:bg-indigo-500/15"
+                      onClick={() => void handleReconcileRelationships()}
+                      disabled={reconcilingRelationships}
+                      title="Re-scan conversations for subgroup and hierarchy links"
+                    >
+                      {reconcilingRelationships
+                        ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                        : <Sparkles className="h-4 w-4 mr-1.5" />}
+                      Learn from chat
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="h-9 bg-indigo-500/20 border border-indigo-400/30 text-indigo-100 hover:bg-indigo-500/30"
+                      onClick={() => setShowAddRelationship(v => !v)}
+                    >
+                      <Plus className="h-4 w-4 mr-1.5" />
+                      {showAddRelationship ? 'Close' : 'Add relationship'}
+                    </Button>
+                  </div>
                 </div>
               </div>
 
               {/* Hierarchy learned from chat */}
               {(derivedHierarchy.parent || (derivedHierarchy.subgroups?.length ?? 0) > 0) && (
-                <Card className="bg-indigo-500/5 border-indigo-500/25">
-                  <CardContent className="pt-4 pb-4 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-indigo-400" />
-                      <p className="text-sm font-semibold text-white/85">Group structure</p>
+                <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/[0.06] p-3.5 sm:p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-indigo-300" />
+                    <p className="text-sm font-semibold text-white/85">Group structure</p>
+                  </div>
+                  {derivedHierarchy.parent && (
+                    <div className="text-sm">
+                      <span className="text-white/45">Part of </span>
+                      <button
+                        type="button"
+                        onClick={() => openLinkedOrg(derivedHierarchy.parent!.id)}
+                        className="font-semibold text-indigo-300 hover:text-indigo-200 underline-offset-2 hover:underline"
+                      >
+                        {derivedHierarchy.parent.name}
+                      </button>
+                      {derivedHierarchy.parent.inferred && (
+                        <Badge variant="outline" className="ml-2 text-[10px] border-indigo-500/30 text-indigo-300/70">
+                          from chat
+                        </Badge>
+                      )}
                     </div>
-                    {derivedHierarchy.parent && (
-                      <div className="text-sm">
-                        <span className="text-white/45">Part of </span>
-                        <button
-                          type="button"
-                          onClick={() => openLinkedOrg(derivedHierarchy.parent!.id)}
-                          className="font-semibold text-indigo-300 hover:text-indigo-200 underline-offset-2 hover:underline"
-                        >
-                          {derivedHierarchy.parent.name}
-                        </button>
-                        {derivedHierarchy.parent.inferred && (
-                          <Badge variant="outline" className="ml-2 text-[10px] border-indigo-500/30 text-indigo-300/70">
-                            from chat
-                          </Badge>
-                        )}
+                  )}
+                  {derivedHierarchy.subgroups.length > 0 && (
+                    <div>
+                      <p className="text-xs text-white/45 mb-2">Subgroups</p>
+                      <div className="flex flex-wrap gap-2">
+                        {derivedHierarchy.subgroups.map(sg => (
+                          <button
+                            key={sg.id}
+                            type="button"
+                            onClick={() => openLinkedOrg(sg.id)}
+                            className="px-2.5 py-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 text-xs text-indigo-200 hover:bg-indigo-500/20 transition text-left"
+                          >
+                            {sg.name}
+                            {sg.member_count != null && (
+                              <span className="ml-1.5 text-indigo-300/50">· {sg.member_count} members</span>
+                            )}
+                            {sg.inferred && <span className="ml-1 text-indigo-300/40">· learned</span>}
+                          </button>
+                        ))}
                       </div>
-                    )}
-                    {derivedHierarchy.subgroups.length > 0 && (
-                      <div>
-                        <p className="text-xs text-white/45 mb-2">Subgroups</p>
-                        <div className="flex flex-wrap gap-2">
-                          {derivedHierarchy.subgroups.map(sg => (
-                            <button
-                              key={sg.id}
-                              type="button"
-                              onClick={() => openLinkedOrg(sg.id)}
-                              className="px-2.5 py-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 text-xs text-indigo-200 hover:bg-indigo-500/20 transition text-left"
-                            >
-                              {sg.name}
-                              {sg.member_count != null && (
-                                <span className="ml-1.5 text-indigo-300/50">· {sg.member_count} members</span>
-                              )}
-                              {sg.inferred && <span className="ml-1 text-indigo-300/40">· learned</span>}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                    </div>
+                  )}
+                </div>
               )}
 
-              <OrganizationGroupNetwork
-                rootOrgId={organization.id}
-                compact
-                title={`${organization.name} in context`}
-                onOrgClick={openLinkedOrg}
-              />
+              <div className="rounded-xl border border-white/10 bg-black/40 p-3 sm:p-4">
+                <OrganizationGroupNetwork
+                  rootOrgId={organization.id}
+                  compact
+                  title={`${organization.name} in context`}
+                  onOrgClick={openLinkedOrg}
+                />
+              </div>
 
               {showAddRelationship && (
-                <Card className="bg-black/40 border-border/50">
-                  <CardContent className="pt-6 space-y-3">
-                    <p className="text-xs text-white/50">
-                      {organization.name} <span className="text-white/30">is</span>{' '}
-                      <span className="text-indigo-300">{REL_TYPE_LABELS[newRelationship.relationship_type].toLowerCase()}</span>{' '}
-                      <span className="text-white/30">→</span>{' '}
-                      {newRelationship.to_org_id ? orgNameById(newRelationship.to_org_id) : '…'}
-                    </p>
-                    <select
-                      value={newRelationship.to_org_id}
-                      onChange={e => setNewRelationship(v => ({ ...v, to_org_id: e.target.value }))}
-                      aria-label="Connected organization"
-                      className="w-full px-3 py-2 bg-black/60 border border-border/50 rounded-lg text-white text-sm"
+                <div className="rounded-xl border border-indigo-400/20 bg-indigo-500/[0.05] p-3.5 sm:p-4 space-y-3">
+                  <p className="text-xs text-white/50">
+                    {organization.name} <span className="text-white/30">is</span>{' '}
+                    <span className="text-indigo-300">{REL_TYPE_LABELS[newRelationship.relationship_type].toLowerCase()}</span>{' '}
+                    <span className="text-white/30">→</span>{' '}
+                    {newRelationship.to_org_id ? orgNameById(newRelationship.to_org_id) : '…'}
+                  </p>
+                  <select
+                    value={newRelationship.to_org_id}
+                    onChange={e => setNewRelationship(v => ({ ...v, to_org_id: e.target.value }))}
+                    aria-label="Connected organization"
+                    className={FIELD_SELECT}
+                  >
+                    <option value="">Select an organization…</option>
+                    {relatedOrgs.map(org => (
+                      <option key={org.id} value={org.id}>{org.name}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={newRelationship.relationship_type}
+                    onChange={e => setNewRelationship(v => ({ ...v, relationship_type: e.target.value as OrgRelationshipType }))}
+                    aria-label="Relationship type"
+                    className={FIELD_SELECT}
+                  >
+                    {ORG_REL_TYPE_OPTIONS.map(type => (
+                      <option key={type} value={type}>{REL_TYPE_LABELS[type]}</option>
+                    ))}
+                  </select>
+                  <Input
+                    placeholder="Notes (optional)"
+                    value={newRelationship.notes}
+                    onChange={e => setNewRelationship(v => ({ ...v, notes: e.target.value }))}
+                    className={FIELD_INPUT}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => void handleAddRelationship()}
+                      disabled={relationshipSaving || !newRelationship.to_org_id}
+                      className="flex-1 h-10 bg-indigo-500/25 border border-indigo-400/35 text-indigo-100 hover:bg-indigo-500/35"
                     >
-                      <option value="">Select an organization…</option>
-                      {relatedOrgs.map(org => (
-                        <option key={org.id} value={org.id}>{org.name}</option>
-                      ))}
-                    </select>
-                    <select
-                      value={newRelationship.relationship_type}
-                      onChange={e => setNewRelationship(v => ({ ...v, relationship_type: e.target.value as OrgRelationshipType }))}
-                      aria-label="Relationship type"
-                      className="w-full px-3 py-2 bg-black/60 border border-border/50 rounded-lg text-white text-sm"
-                    >
-                      {ORG_REL_TYPE_OPTIONS.map(type => (
-                        <option key={type} value={type}>{REL_TYPE_LABELS[type]}</option>
-                      ))}
-                    </select>
-                    <Input
-                      placeholder="Notes (optional)"
-                      value={newRelationship.notes}
-                      onChange={e => setNewRelationship(v => ({ ...v, notes: e.target.value }))}
-                      className="bg-black/60 border-border/50 text-white"
-                    />
-                    <div className="flex gap-2">
-                      <Button onClick={() => void handleAddRelationship()} disabled={relationshipSaving || !newRelationship.to_org_id} className="flex-1">
-                        {relationshipSaving ? 'Saving...' : 'Save Relationship'}
-                      </Button>
-                      <Button variant="outline" onClick={() => setShowAddRelationship(false)}>Cancel</Button>
-                    </div>
-                  </CardContent>
-                </Card>
+                      {relationshipSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save relationship'}
+                    </Button>
+                    <Button variant="outline" className="h-10" onClick={() => setShowAddRelationship(false)}>Cancel</Button>
+                  </div>
+                </div>
               )}
 
               {relationshipsLoading ? (
-                <Card className="bg-black/40 border-border/50">
-                  <CardContent className="pt-6 text-center text-white/60 flex items-center justify-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading relationships...
-                  </CardContent>
-                </Card>
+                <div className="rounded-xl border border-white/10 bg-black/40 py-10 flex items-center justify-center gap-2 text-white/55 text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading relationships…
+                </div>
               ) : relationships.length === 0 && !showAddRelationship ? (
-                <Card className="bg-black/40 border-border/50">
-                  <CardContent className="pt-6 text-center text-white/60">
-                    No relationships yet. Connect this organization to another one above.
-                  </CardContent>
-                </Card>
+                <div className="rounded-xl border border-dashed border-white/12 bg-black/25 px-4 py-10 text-center">
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-400/20 bg-indigo-500/10">
+                    <Link2 className="h-5 w-5 text-indigo-300/80" />
+                  </div>
+                  <p className="text-sm font-medium text-white/75">No relationships yet</p>
+                  <p className="mt-1 text-xs text-white/40 max-w-xs mx-auto leading-relaxed">
+                    Connect {editedOrg.name} to another group above, or let LoreBook learn structure from chat.
+                  </p>
+                </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-1.5">
                   {relationships.map((rel) => {
                     const outgoing = rel.from_org_id === organization.id;
                     const otherOrgId = outgoing ? rel.to_org_id : rel.from_org_id;
                     const otherOrgName = orgNameById(otherOrgId);
                     const inferred = rel.notes?.startsWith('[auto-inferred]');
                     return (
-                      <Card key={rel.id} className="bg-black/40 border-border/50">
-                        <CardContent className="pt-4 pb-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2 text-sm flex-wrap">
-                                <button
-                                  type="button"
-                                  onClick={() => openLinkedOrg(outgoing ? organization.id : otherOrgId)}
-                                  className="font-semibold text-white truncate hover:text-indigo-300 transition"
-                                >
-                                  {outgoing ? organization.name : otherOrgName}
-                                </button>
-                                {outgoing
-                                  ? <ArrowRight className="h-3.5 w-3.5 text-white/40 shrink-0" />
-                                  : <ArrowLeft className="h-3.5 w-3.5 text-white/40 shrink-0" />}
-                                <button
-                                  type="button"
-                                  onClick={() => openLinkedOrg(outgoing ? otherOrgId : organization.id)}
-                                  className="font-semibold text-white truncate hover:text-indigo-300 transition"
-                                >
-                                  {outgoing ? otherOrgName : organization.name}
-                                </button>
-                              </div>
-                              <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                                <Badge variant="outline" className="bg-indigo-500/20 text-indigo-300 border-indigo-500/40">
-                                  {REL_TYPE_LABELS[rel.relationship_type]}
+                      <div
+                        key={rel.id}
+                        className="group rounded-xl border border-white/[0.07] bg-black/30 px-3 py-2.5 sm:px-3.5 transition hover:border-indigo-400/30 hover:bg-indigo-500/[0.06]"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="shrink-0 h-9 w-9 rounded-full bg-gradient-to-br from-indigo-500/25 to-blue-500/15 border border-indigo-400/25 flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+                            <Link2 className="h-4 w-4 text-indigo-200" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 text-sm flex-wrap">
+                              <button
+                                type="button"
+                                onClick={() => openLinkedOrg(outgoing ? organization.id : otherOrgId)}
+                                className="font-semibold text-white truncate hover:text-indigo-300 transition"
+                              >
+                                {outgoing ? organization.name : otherOrgName}
+                              </button>
+                              {outgoing
+                                ? <ArrowRight className="h-3.5 w-3.5 text-white/40 shrink-0" />
+                                : <ArrowLeft className="h-3.5 w-3.5 text-white/40 shrink-0" />}
+                              <button
+                                type="button"
+                                onClick={() => openLinkedOrg(outgoing ? otherOrgId : organization.id)}
+                                className="font-semibold text-white truncate hover:text-indigo-300 transition"
+                              >
+                                {outgoing ? otherOrgName : organization.name}
+                              </button>
+                            </div>
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                              <Badge variant="outline" className="bg-indigo-500/20 text-indigo-300 border-indigo-500/40">
+                                {REL_TYPE_LABELS[rel.relationship_type]}
+                              </Badge>
+                              {inferred && (
+                                <Badge variant="outline" className="text-[10px] border-purple-500/30 text-purple-300/80">
+                                  learned from chat
                                 </Badge>
-                                {inferred && (
-                                  <Badge variant="outline" className="text-[10px] border-purple-500/30 text-purple-300/80">
-                                    learned from chat
-                                  </Badge>
-                                )}
-                              </div>
-                              {rel.notes && !inferred && (
-                                <div className="text-xs text-white/50 mt-1.5">{rel.notes}</div>
-                              )}
-                              {rel.notes && inferred && (
-                                <div className="text-xs text-white/40 mt-1.5 italic">
-                                  {rel.notes.replace(/^\[auto-inferred\]\s*/, '')}
-                                </div>
                               )}
                             </div>
-                            <Button variant="ghost" size="sm" onClick={() => void handleRemoveRelationship(rel.id)}>
-                              <Trash2 className="h-4 w-4 text-red-400" />
-                            </Button>
+                            {rel.notes && !inferred && (
+                              <div className="text-xs text-white/50 mt-1.5">{rel.notes}</div>
+                            )}
+                            {rel.notes && inferred && (
+                              <div className="text-xs text-white/40 mt-1.5 italic">
+                                {rel.notes.replace(/^\[auto-inferred\]\s*/, '')}
+                              </div>
+                            )}
                           </div>
-                        </CardContent>
-                      </Card>
+                          <button
+                            type="button"
+                            aria-label={`Remove relationship with ${otherOrgName}`}
+                            className="shrink-0 h-8 w-8 rounded-lg flex items-center justify-center text-white/25 opacity-70 transition hover:bg-red-500/15 hover:text-red-400 group-hover:opacity-100"
+                            onClick={() => void handleRemoveRelationship(rel.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
@@ -2885,16 +3368,21 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
 
             {/* Sources Tab */}
             <TabsContent value="sources" className={TAB_PANEL}>
-              <div className="rounded-xl border border-white/10 bg-black/50 p-3 sm:p-4">
+              <div className="rounded-xl border border-sky-400/35 bg-gradient-to-br from-sky-500/20 via-sky-500/[0.07] to-black/50 p-3.5 sm:p-5 shadow-[0_0_0_1px_rgba(56,189,248,0.12),0_8px_28px_-12px_rgba(14,165,233,0.45)]">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-sky-400/20 bg-sky-400/10">
-                        <Search className="h-4 w-4 text-sky-300" />
+                    <div className="flex items-start gap-3">
+                      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-sky-300/40 bg-sky-400/20 shadow-[0_0_20px_-4px_rgba(56,189,248,0.55)]">
+                        <Search className="h-5 w-5 text-sky-200" />
                       </span>
-                      <div>
-                        <h3 className={TAB_HEADING}>Sources and mentions</h3>
-                        <p className="text-xs text-white/45">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-200/70">
+                          Evidence trail
+                        </p>
+                        <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                          Sources and mentions
+                        </h3>
+                        <p className="mt-1 text-sm text-sky-50/70 leading-snug max-w-md">
                           Evidence for this identity across chats, older threads, and extracted facts.
                         </p>
                       </div>
@@ -2903,7 +3391,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-9 w-full border-white/10 sm:w-auto"
+                    className="h-9 w-full border-sky-400/40 bg-sky-500/15 text-sky-100 hover:bg-sky-500/25 hover:text-white sm:w-auto"
                     disabled={mentionsLoading}
                     onClick={() => {
                       setMentionsLoaded(false);
@@ -2967,7 +3455,13 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                         <div className="space-y-2">
                           {mentionTrace.facts.slice(0, 12).map((fact: any) => (
                             <div key={fact.id} className="rounded-lg border border-white/8 bg-white/[0.03] p-3">
-                              <p className="text-sm leading-relaxed text-white/80">{fact.fact}</p>
+                              <p className="text-sm leading-relaxed text-white/80">
+                                {highlightTextTerms(String(fact.fact ?? ''), sourceHighlightTerms, {
+                                  className:
+                                    'rounded-sm bg-amber-400/35 text-amber-50 px-0.5 font-semibold ring-1 ring-amber-400/50',
+                                  markTestId: 'org-mention-name-highlight',
+                                })}
+                              </p>
                               <div className="mt-2 flex flex-wrap gap-1.5">
                                 {fact.category && <Badge variant="outline" className="border-white/10 text-[10px] text-white/45">{fact.category}</Badge>}
                                 {typeof fact.confidence === 'number' && <Badge variant="outline" className="border-emerald-500/20 text-[10px] text-emerald-200/75">{Math.round(fact.confidence * 100)}%</Badge>}
@@ -3009,7 +3503,20 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                                 {mention.thread_title && (
                                   <p className="mb-1 truncate text-xs font-medium text-white/65">{mention.thread_title}</p>
                                 )}
-                                <p className="text-sm leading-relaxed text-white/75 whitespace-pre-wrap">{mention.snippet}</p>
+                                <p className="text-sm leading-relaxed text-white/75 whitespace-pre-wrap">
+                                  {highlightTextTerms(
+                                    mention.snippet,
+                                    [
+                                      mention.matched_label,
+                                      ...sourceHighlightTerms,
+                                    ],
+                                    {
+                                      className:
+                                        'rounded-sm bg-amber-400/35 text-amber-50 px-0.5 font-semibold ring-1 ring-amber-400/50',
+                                      markTestId: 'org-mention-name-highlight',
+                                    },
+                                  )}
+                                </p>
                                 <div className="mt-2 flex items-center gap-2 text-[10px] text-white/30">
                                   {mention.created_at && <span>{formatDate(mention.created_at)}</span>}
                                   <span className="h-1 w-1 rounded-full bg-white/20" />
@@ -3031,14 +3538,18 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
 
             {/* Family Tree Tab (family groups) */}
             <TabsContent value="family" className={TAB_PANEL}>
-              <div>
-                <h3 className={`${TAB_HEADING} flex items-center gap-2`}>
-                  <TreePine className="h-4 w-4 text-emerald-400" />
-                  Family tree
-                </h3>
-                <p className="text-xs text-white/45 mt-1">
-                  Built from your conversations — share who is related to whom.
-                </p>
+              <div className="rounded-xl border border-white/10 bg-black/50 p-3 sm:p-4">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-400/20 bg-emerald-400/10">
+                    <TreePine className="h-4 w-4 text-emerald-300" />
+                  </span>
+                  <div className="min-w-0">
+                    <h3 className={TAB_HEADING}>Family tree</h3>
+                    <p className="text-xs text-white/45">
+                      Built from your conversations — share who is related to whom.
+                    </p>
+                  </div>
+                </div>
               </div>
               <FamilyTreePanel
                 scope="organization"
@@ -3055,27 +3566,14 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
               />
             </TabsContent>
 
-            {/* Influence Tab — how this group changed the user */}
-            <TabsContent value="influence" className={TAB_PANEL}>
-              <OrganizationInfluencePanel organization={resolvedOrganization} />
-            </TabsContent>
-
-            {/* Insights Tab — AI-style observations (curated/derived for now) */}
-            <TabsContent value="insights" className={TAB_PANEL}>
-              <OrganizationInsightsPanel organization={resolvedOrganization} />
-            </TabsContent>
-
-            {/* Lore Tab — archetype, themes, symbols, story role */}
-            <TabsContent value="lore" className={TAB_PANEL}>
-              <OrganizationLorePanel organization={resolvedOrganization} />
-            </TabsContent>
-
             {/* Delete Tab — two-step confirmation, away from the close button */}
             <TabsContent value="danger" className={TAB_PANEL}>
-              <Card className="bg-red-500/5 border-red-500/25">
+              <Card className="border-red-500/25 bg-gradient-to-br from-red-500/10 via-black/40 to-black/50 overflow-hidden">
                 <CardContent className="p-5 space-y-4">
                   <div className="flex items-start gap-3">
-                    <AlertTriangle className="h-5 w-5 text-red-400 mt-0.5 flex-shrink-0" />
+                    <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-red-500/25 bg-red-500/10">
+                      <AlertTriangle className="h-5 w-5 text-red-400" />
+                    </span>
                     <div className="min-w-0">
                       {deleteStep === 'warn' && (
                         <>
@@ -3187,6 +3685,77 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
         onClose={() => setSelectedLinkedOrg(null)}
         onUpdate={onUpdate}
       />
+    )}
+
+    {timelineMoment && (
+      <OrgTimelineMomentPanel
+        event={timelineMoment}
+        organizationName={editedOrg.name}
+        onClose={() => setTimelineMoment(null)}
+        onContinueInChat={() => {
+          const moment = timelineMoment;
+          setTimelineMoment(null);
+          openOrgMainChat(
+            buildOrgTimelineMomentChatPrompt(moment, editedOrg.name),
+            'group timeline moment — recount, correct, and update knowledge',
+          );
+        }}
+        onPostAsEvent={
+          timelineMoment.source === 'user_posted'
+            ? undefined
+            : () => {
+                const moment = timelineMoment;
+                setTimelineMoment(null);
+                setPostComposerPrefill({
+                  organization_id: editedOrg.id,
+                  organization_name: editedOrg.name,
+                  title: moment.title,
+                  start_time: moment.date ?? undefined,
+                  story: moment.summary,
+                });
+                setShowPostComposer(true);
+              }
+        }
+      />
+    )}
+
+    {showPostComposer && (
+    <PostEventComposer
+      open={showPostComposer}
+      onClose={() => {
+        setShowPostComposer(false);
+        setPostComposerPrefill(null);
+      }}
+      prefill={
+        postComposerPrefill ?? {
+          organization_id: editedOrg.id,
+          organization_name: editedOrg.name,
+        }
+      }
+      onCreated={(created) => {
+        setShowPostComposer(false);
+        setPostComposerPrefill(null);
+        setPostedStoriesTick((n) => n + 1);
+        setDerivedEvents((prev) => [
+          {
+            id: created.id,
+            title: created.title,
+            date: created.start_time,
+            type: 'attended_event',
+            summary: undefined,
+            involved: [],
+            audience: 'with_user',
+            user_was_present: true,
+            source: 'user_posted',
+          },
+          ...prev.filter((e) => e.id !== created.id),
+        ]);
+        setDerivedLoaded(true);
+        onUpdate?.();
+        // PostEventComposer opens main chat for LLM ingest — close the group modal.
+        onClose();
+      }}
+    />
     )}
   </>
   );

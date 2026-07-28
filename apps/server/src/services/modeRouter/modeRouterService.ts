@@ -28,6 +28,7 @@ import {
   isQuestWriteRequest,
   isFamilyWriteRequest,
   isRomanceWriteRequest,
+  isEventWriteRequest,
 } from '@lorebook/api-contracts';
 import { isReplyToGroupNamingPrompt } from '../chat/groupWriteService';
 import {
@@ -52,6 +53,7 @@ export type ChatMode =
   | 'QUEST_WRITE'            // Explicit Quest Log create/update/delete/status
   | 'FAMILY_WRITE'           // Explicit Family Tree kinship writes
   | 'ROMANCE_WRITE'          // Explicit Dating & Romance status writes
+  | 'EVENT_WRITE'            // Explicit Life Log user-posted Event create
   | 'SUGGESTION_DISMISS_WRITE' // Explicit "that suggestion is wrong" correction
   | 'ORGANIZATION_QUERY'     // Relational read over the Groups & Organizations Book
   | 'FAMILY_QUERY'           // Relational read over Family + Family Tree
@@ -224,6 +226,14 @@ class ModeRouterService {
         mode: 'ROMANCE_WRITE',
         confidence: 0.95,
         reasoning: 'Explicit Dating & Romance write request detected',
+      };
+    }
+
+    if (isEventWriteRequest(message)) {
+      return {
+        mode: 'EVENT_WRITE',
+        confidence: 0.95,
+        reasoning: 'Explicit Life Log Event post request detected',
       };
     }
 
@@ -701,6 +711,7 @@ Modes:
 10f. QUEST_WRITE - Explicit Quest Log create/rename/delete/status: "add Ship MemoVault as a quest", "mark the quest X as done".
 10g. FAMILY_WRITE - Explicit Family Tree kinship write: "mark Marcus as my cousin".
 10h. ROMANCE_WRITE - Explicit Dating & Romance status write: "mark Jamie as dating", "we broke up with Jamie".
+10i. EVENT_WRITE - Explicit Life Log Event post: "we played a backyard show at Northwind Depot", "post an event: House Show at Ritual Coffee".
 11. ORGANIZATION_QUERY - Read-only query over the Groups & Organizations Book: "which groups am I in?", "what organizations is Marcus connected to?", "show unlinked bands".
 12. FAMILY_QUERY - Read-only query over Family and Family Tree: "who is on my maternal side?", "show my cousins", "who lives in the Solenne House?", "which relatives need review?".
 13. LOCATION_QUERY - Read-only query over Places and Locations: "which places did I visit with Marcus?", "show places linked to Vanguard Robotics", "which locations need coordinates?".
@@ -741,7 +752,7 @@ Respond with JSON:
       const result = JSON.parse(response.choices[0].message.content || '{}');
       
       // Validate mode
-      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'CURRENT_STORY_CAST', 'CHARACTER_BOOK_WRITE', 'ORGANIZATION_GROUP_WRITE', 'ENTITY_RECLASSIFY_WRITE', 'LOCATION_WRITE', 'PROJECT_WRITE', 'SKILL_WRITE', 'QUEST_WRITE', 'FAMILY_WRITE', 'ROMANCE_WRITE', 'SUGGESTION_DISMISS_WRITE', 'ORGANIZATION_QUERY', 'FAMILY_QUERY', 'LOCATION_QUERY', 'ROMANCE_QUERY', 'PROJECT_QUERY', 'SKILL_QUERY', 'QUEST_QUERY', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
+      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'CURRENT_STORY_CAST', 'CHARACTER_BOOK_WRITE', 'ORGANIZATION_GROUP_WRITE', 'ENTITY_RECLASSIFY_WRITE', 'LOCATION_WRITE', 'PROJECT_WRITE', 'SKILL_WRITE', 'QUEST_WRITE', 'FAMILY_WRITE', 'ROMANCE_WRITE', 'EVENT_WRITE', 'SUGGESTION_DISMISS_WRITE', 'ORGANIZATION_QUERY', 'FAMILY_QUERY', 'LOCATION_QUERY', 'ROMANCE_QUERY', 'PROJECT_QUERY', 'SKILL_QUERY', 'QUEST_QUERY', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
       const mode = validModes.includes(result.mode) ? result.mode : 'UNKNOWN';
       
       return {

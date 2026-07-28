@@ -794,8 +794,12 @@ class OmegaChatService {
       chatFocus.sourceSurface === 'organizations' || chatFocus.entityType === 'organization'
         ? ' Prioritize accurate roster and affiliation for this group: help name people, create/update Character Book entries from what the user shares, link membership when they affirm affiliation, and respect corrections that someone is NOT in the group. Do not invent members or affiliations. Prefer short clarifying questions over guessing. Durable facts should follow Living Memory write rules (review before canon for high-risk claims).'
         : '';
+    const eventNote =
+      chatFocus.sourceSurface === 'events' || chatFocus.entityType === 'event'
+        ? ' The user already saved this Life Log event. Do not create a duplicate. Read any attached flyer/photos, extract people/places/groups/what happened from evidence only, and enrich timelines plus related knowledge bases for this existing event.'
+        : '';
     return `\n\n**USER NAVIGATION FOCUS**
-The user opened chat from **${chatFocus.sourceLabel}** (${chatFocus.sourceSurface}), actively focusing on **${chatFocus.entityName}**.${relationshipLine}${scopeLine}${deepening}${loveNote}${organizationNote}
+The user opened chat from **${chatFocus.sourceLabel}** (${chatFocus.sourceSurface}), actively focusing on **${chatFocus.entityName}**.${relationshipLine}${scopeLine}${deepening}${loveNote}${organizationNote}${eventNote}
 When updating relationship analytics or emotional signals from this thread, weight this focus context heavily.`;
   }
 

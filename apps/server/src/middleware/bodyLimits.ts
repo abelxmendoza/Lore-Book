@@ -22,6 +22,9 @@ const CHAT_VISION_PATHS = new Set(['/api/chat/stream', '/api/chat']);
 /** Character media still accepts JSON dataUrl fallbacks (prefer multipart). */
 const CHARACTER_MEDIA_PATH = /^\/api\/characters\/[^/]+\/media\/?$/;
 
+/** User-posted Life Log events may include inline flyer/photo data URLs. */
+const EVENT_POST_PATH = '/api/conversation/events';
+
 export function createJsonBodyParser(isDevelopment: boolean) {
   const chatParser = express.json({
     limit: isDevelopment ? JSON_LIMIT_DEV : JSON_LIMIT_PROD_CHAT,
@@ -38,6 +41,10 @@ export function createJsonBodyParser(isDevelopment: boolean) {
     }
     if (req.method === 'POST' && CHARACTER_MEDIA_PATH.test(req.path)) {
       return mediaParser(req, res, next);
+    }
+    if (req.method === 'POST' && req.path === EVENT_POST_PATH) {
+      // Same budget as chat vision — up to ~8 compressed flyers/photos.
+      return chatParser(req, res, next);
     }
     return defaultParser(req, res, next);
   };

@@ -52,6 +52,11 @@ export interface ChatFocus {
   relationshipName?: string;
   knowledgeScope?: string;
   initialPrompt?: string;
+  /**
+   * When true, main chat auto-sends `initialPrompt` (plus any stashed post-event images)
+   * once after the focus arrival handoff.
+   */
+  autoSubmit?: boolean;
   sessionStats: ChatFocusSessionStats;
   baseline?: ChatFocusBaseline;
   /** Set when navigating modal → chat; drives arrival animations. */

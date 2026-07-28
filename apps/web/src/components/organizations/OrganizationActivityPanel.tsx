@@ -7,7 +7,6 @@ import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { OrganizationTimelinePanel } from './OrganizationTimelinePanel';
 import type { OrgDerivedEvent } from '../../mocks/organizationTimeline';
@@ -29,6 +28,10 @@ type Props = {
   onRemoveEvent: (eventId: string) => Promise<void> | void;
   formatDate: (dateString?: string) => string;
   eventSaving?: boolean;
+  /** Opens the shared Life Log Event composer with this group prefilled. */
+  onPostEvent?: () => void;
+  /** Open Event detail or moment panel for a timeline row. */
+  onEventSelect?: (event: OrgDerivedEvent) => void;
 };
 
 export function OrganizationActivityPanel({
@@ -42,6 +45,8 @@ export function OrganizationActivityPanel({
   onRemoveEvent,
   formatDate,
   eventSaving = false,
+  onPostEvent,
+  onEventSelect,
 }: Props) {
   const [showAdd, setShowAdd] = useState(false);
   const [draft, setDraft] = useState({
@@ -67,12 +72,33 @@ export function OrganizationActivityPanel({
 
   return (
     <div className="space-y-6" data-testid="org-timeline-panel">
+      {onPostEvent && (
+        <div className="flex flex-col gap-3 rounded-xl border border-amber-400/20 bg-amber-500/[0.06] px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-amber-50">Post an Event</p>
+            <p className="text-[11px] text-white/45 mt-0.5">
+              Flyer, date, and place — shows on this group’s timeline and in Life Log.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            className="h-9 w-full sm:w-auto sm:shrink-0 bg-amber-500/25 border border-amber-400/35 text-amber-50 hover:bg-amber-500/35"
+            onClick={onPostEvent}
+            data-testid="org-post-event"
+          >
+            <Plus className="h-3.5 w-3.5 mr-1.5" />
+            Post event
+          </Button>
+        </div>
+      )}
+
       <OrganizationTimelinePanel
         organization={organization}
         mockMode={mockMode}
         active={active}
         events={derivedEvents}
         loading={derivedLoading}
+        onEventSelect={onEventSelect}
       />
 
       <section
@@ -98,46 +124,48 @@ export function OrganizationActivityPanel({
         </div>
 
         {showAdd && (
-          <Card className="bg-black/30 border-white/10">
-            <CardContent className="pt-4 space-y-3">
+          <div className="rounded-xl border border-purple-400/20 bg-purple-500/[0.05] p-3.5 space-y-3">
+            <Input
+              placeholder="Milestone title *"
+              value={draft.title}
+              onChange={(e) => setDraft((v) => ({ ...v, title: e.target.value }))}
+              className="h-10 bg-black/55 border-white/12 text-white rounded-xl"
+            />
+            <div className="flex gap-2">
               <Input
-                placeholder="Milestone title *"
-                value={draft.title}
-                onChange={(e) => setDraft((v) => ({ ...v, title: e.target.value }))}
-                className="bg-black/60 border-border/50 text-white"
+                type="date"
+                value={draft.date}
+                onChange={(e) => setDraft((v) => ({ ...v, date: e.target.value }))}
+                className="flex-1 h-10 bg-black/55 border-white/12 text-white rounded-xl"
               />
-              <div className="flex gap-2">
-                <Input
-                  type="date"
-                  value={draft.date}
-                  onChange={(e) => setDraft((v) => ({ ...v, date: e.target.value }))}
-                  className="flex-1 bg-black/60 border-border/50 text-white"
-                />
-                <select
-                  value={draft.type}
-                  onChange={(e) =>
-                    setDraft((v) => ({ ...v, type: e.target.value as OrganizationEvent['type'] }))
-                  }
-                  aria-label="Event type"
-                  className="px-3 py-2 bg-black/60 border border-border/50 rounded-lg text-white text-sm"
-                >
-                  <option value="meeting">Meeting</option>
-                  <option value="game">Game</option>
-                  <option value="social">Social</option>
-                  <option value="work">Work</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-              <div className="flex gap-2">
-                <Button onClick={() => void handleSave()} disabled={eventSaving} className="flex-1">
-                  {eventSaving ? 'Saving...' : 'Save'}
-                </Button>
-                <Button variant="outline" onClick={() => setShowAdd(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+              <select
+                value={draft.type}
+                onChange={(e) =>
+                  setDraft((v) => ({ ...v, type: e.target.value as OrganizationEvent['type'] }))
+                }
+                aria-label="Event type"
+                className="h-10 rounded-xl border border-white/12 bg-black/55 px-3 text-sm text-white focus:border-purple-400/50 focus:outline-none focus:ring-2 focus:ring-purple-400/20"
+              >
+                <option value="meeting">Meeting</option>
+                <option value="game">Game</option>
+                <option value="social">Social</option>
+                <option value="work">Work</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => void handleSave()}
+                disabled={eventSaving}
+                className="flex-1 h-9 bg-purple-500/25 border border-purple-400/35 text-purple-100 hover:bg-purple-500/35"
+              >
+                {eventSaving ? 'Saving...' : 'Save'}
+              </Button>
+              <Button variant="outline" className="h-9" onClick={() => setShowAdd(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
         )}
 
         {recordedEvents.length === 0 && !showAdd ? (
@@ -149,7 +177,7 @@ export function OrganizationActivityPanel({
             {recordedEvents.map((event) => (
               <div
                 key={event.id}
-                className="flex items-center justify-between gap-2 rounded-lg border border-white/8 bg-black/20 px-2.5 py-2"
+                className="flex items-center justify-between gap-2 rounded-lg border border-white/8 bg-black/20 px-2.5 py-2 transition hover:border-purple-400/25 hover:bg-purple-500/[0.05]"
               >
                 <div className="min-w-0">
                   <div className="font-medium text-white/85 text-sm truncate">{event.title}</div>

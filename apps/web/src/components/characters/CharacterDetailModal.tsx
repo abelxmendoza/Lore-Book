@@ -2822,21 +2822,21 @@ export const CharacterDetailModal = ({
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <h2 className="text-base font-bold text-white truncate">
+                <div className="flex items-start gap-1.5 min-w-0 flex-wrap">
+                  <h2 className="text-base font-bold text-white break-words">
                     {displayName === editedCharacter.name ? (
                       <EditableEntityName
                         name={editedCharacter.name}
                         onSave={handleRenameCharacter}
                         label="character name"
-                        className="truncate"
+                        className="break-words"
                       />
                     ) : (
                       displayName
                     )}
                   </h2>
                   {isMainCharacter && (
-                    <Star className="h-3.5 w-3.5 shrink-0 fill-amber-300 text-amber-300" aria-hidden />
+                    <Star className="h-3.5 w-3.5 shrink-0 fill-amber-300 text-amber-300 mt-0.5" aria-hidden />
                   )}
                   {!isMainCharacter && (
                     <EntityTypeSwitcher
@@ -2850,9 +2850,9 @@ export const CharacterDetailModal = ({
                   )}
                 </div>
                 {editedCharacter.role ? (
-                  <p className="text-[11px] text-white/50 truncate">{editedCharacter.role}</p>
+                  <p className="text-[11px] text-white/50 break-words">{editedCharacter.role}</p>
                 ) : editedCharacter.archetype ? (
-                  <p className="text-[11px] text-white/50 truncate">{editedCharacter.archetype}</p>
+                  <p className="text-[11px] text-white/50 break-words">{editedCharacter.archetype}</p>
                 ) : null}
               </div>
             </div>

@@ -84,6 +84,9 @@ class ModeHandlers {
       case 'ROMANCE_WRITE':
         return await this.handleRomanceWrite(userId, message);
 
+      case 'EVENT_WRITE':
+        return await this.handleEventWrite(userId, message);
+
       case 'SUGGESTION_DISMISS_WRITE':
         return await this.handleSuggestionDismissWrite(userId, message, options?.threadId);
 
@@ -761,6 +764,27 @@ class ModeHandlers {
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Could not update Dating & Romance.';
       return { content: msg, response_mode: 'ROMANCE_WRITE', confidence: 0.55 };
+    }
+  }
+
+  private async handleEventWrite(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const { writeEventFromChat } = await import('../chat/eventWriteService');
+      const result = await writeEventFromChat(userId, message);
+      return {
+        content: result.summary,
+        response_mode: 'EVENT_WRITE',
+        confidence: 0.92,
+        metadata: {
+          eventWriteOperation: result.operation,
+          eventId: result.eventId,
+          eventTitle: result.eventTitle,
+          locationName: result.locationName,
+        },
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Could not post that Life Log event.';
+      return { content: msg, response_mode: 'EVENT_WRITE', confidence: 0.55 };
     }
   }
 

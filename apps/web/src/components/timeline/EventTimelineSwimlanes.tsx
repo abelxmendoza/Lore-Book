@@ -30,6 +30,7 @@ import {
   PRESENT_VIEWPORT_ANCHOR,
   presentYearZoomLevel,
   scrollLeftForPresent,
+  yearAtViewportCenter,
 } from './timelinePresentViewport';
 
 export type LaneAccent = 'emerald' | 'sky' | 'violet' | 'amber' | 'rose' | 'cyan' | 'slate';
@@ -58,6 +59,11 @@ interface Props {
   loading?: boolean;
   emptyTitle?: string;
   emptyHint?: string;
+  /**
+   * When set, pill clicks call this instead of the built-in detail strip.
+   * Character/org parents that open a richer panel should pass this.
+   */
+  onEventSelect?: (event: SwimlaneEvent) => void;
 }
 
 // ─── Visual constants ───────────────────────────────────────────────────────
@@ -65,7 +71,8 @@ const BASE_PPD = 3;     // px/day at 1× (~1100px/yr)
 const AXIS_H = TIMELINE_RULER_AXIS_H;
 const ROW_H = 48;       // taller rows to fit a title + a prominent date line
 const ROW_VPAD = 6;
-const LABEL_W = 120;
+const LABEL_W_DESKTOP = 120;
+const LABEL_W_MOBILE = 72;
 const PILL_W = 184;     // nominal pill width used for packing point events
 const PILL_GAP = 10;
 const MIN_ZOOM = 0.3;
@@ -100,13 +107,34 @@ function fmtPillDate(d: string): string {
 
 interface Placement { event: SwimlaneEvent; x: number; width: number; row: number; }
 
-export const EventTimelineSwimlanes = ({ lanes, events, loading, emptyTitle, emptyHint }: Props) => {
+export const EventTimelineSwimlanes = ({
+  lanes,
+  events,
+  loading,
+  emptyTitle,
+  emptyHint,
+  onEventSelect,
+}: Props) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const didInitialScroll = useRef(false);
   const pendingZoomAnchor = useRef<{ days: number; viewportX: number } | null>(null);
   const [zoom, setZoom] = useState(1);
+  const [viewportYear, setViewportYear] = useState(() => new Date().getFullYear());
   const [hovered, setHovered] = useState<SwimlaneEvent | null>(null);
   const [selected, setSelected] = useState<SwimlaneEvent | null>(null);
+  const [labelW, setLabelW] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 640px)').matches
+      ? LABEL_W_DESKTOP
+      : LABEL_W_MOBILE,
+  );
+
+  useEffect(() => {
+    const mql = window.matchMedia('(min-width: 640px)');
+    const sync = () => setLabelW(mql.matches ? LABEL_W_DESKTOP : LABEL_W_MOBILE);
+    sync();
+    mql.addEventListener('change', sync);
+    return () => mql.removeEventListener('change', sync);
+  }, []);
 
   const ppd = BASE_PPD * zoom;
 
@@ -184,6 +212,13 @@ export const EventTimelineSwimlanes = ({ lanes, events, loading, emptyTitle, emp
     [timelineStart, today],
   );
 
+  const syncViewportYear = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || el.clientWidth <= 0 || ppd <= 0) return;
+    const next = yearAtViewportCenter(el.scrollLeft, el.clientWidth, timelineStart, ppd);
+    setViewportYear((prev) => (prev === next ? prev : next));
+  }, [timelineStart, ppd]);
+
   useEffect(() => {
     const anchor = pendingZoomAnchor.current;
     const el = scrollRef.current;
@@ -193,7 +228,8 @@ export const EventTimelineSwimlanes = ({ lanes, events, loading, emptyTitle, emp
     el.style.scrollBehavior = 'auto';
     el.scrollLeft = Math.max(0, anchor.days * ppd - anchor.viewportX);
     el.style.scrollBehavior = prevBehavior;
-  }, [ppd]);
+    syncViewportYear();
+  }, [ppd, syncViewportYear]);
 
   // Open on the present whenever this canvas mounts with events.
   useEffect(() => {
@@ -217,6 +253,7 @@ export const EventTimelineSwimlanes = ({ lanes, events, loading, emptyTitle, emp
         el.scrollLeft = scrollLeftForPresent(todayX, el.clientWidth);
         el.style.scrollBehavior = prevBehavior;
         pendingZoomAnchor.current = null;
+        syncViewportYear();
       } else {
         setZoom(nextZoom);
       }
@@ -232,7 +269,13 @@ export const EventTimelineSwimlanes = ({ lanes, events, loading, emptyTitle, emp
     return () => {
       cancelled = true;
     };
-  }, [loading, valid.length, todayDays, todayX, totalWidth, zoom]);
+  }, [loading, valid.length, todayDays, todayX, totalWidth, zoom, syncViewportYear]);
+
+  useEffect(() => {
+    if (loading || valid.length === 0) return;
+    const id = requestAnimationFrame(() => syncViewportYear());
+    return () => cancelAnimationFrame(id);
+  }, [loading, valid.length, syncViewportYear, totalWidth]);
 
   if (loading) {
     return (
@@ -270,26 +313,40 @@ export const EventTimelineSwimlanes = ({ lanes, events, loading, emptyTitle, emp
 
   return (
     <div className="flex flex-col rounded-xl border border-white/10 bg-black/40 overflow-hidden">
+      {/* Centered year — updates as the viewport scrolls horizontally */}
+      <div
+        className="flex-shrink-0 flex items-center justify-center border-b border-white/8 bg-gradient-to-b from-primary/10 to-transparent px-4 py-2"
+        data-testid="event-swimlanes-viewport-year"
+        aria-live="polite"
+      >
+        <span
+          key={viewportYear}
+          className="text-xl sm:text-2xl font-bold tracking-tight text-white tabular-nums animate-in fade-in zoom-in-95 duration-200"
+        >
+          {viewportYear}
+        </span>
+      </div>
+
       {/* Zoom controls */}
-      <div className="flex-shrink-0 flex items-center justify-between gap-1 px-3 py-2 border-b border-white/8">
-        <div className="flex items-center gap-3">
+      <div className="flex-shrink-0 flex flex-col gap-2 px-3 py-2 border-b border-white/8 sm:flex-row sm:items-center sm:justify-between sm:gap-1">
+        <div className="flex items-center gap-3 overflow-x-auto scrollbar-none">
           {lanes.map(lane => (
-            <div key={lane.key} className="flex items-center gap-1.5">
+            <div key={lane.key} className="flex items-center gap-1.5 shrink-0">
               <span className={`w-2 h-2 rounded-full ${ACCENTS[lane.accent ?? 'slate'].chip}`} />
-              <span className="text-[11px] text-white/55">{lane.label}</span>
+              <span className="text-[11px] text-white/55 whitespace-nowrap">{lane.label}</span>
             </div>
           ))}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 self-end sm:self-auto">
           <span className="text-[11px] text-white/25 font-mono mr-1">{zoom.toFixed(1)}×</span>
           <button type="button" onClick={zoomOut} disabled={zoom <= MIN_ZOOM} aria-label="Zoom out"
-            className="w-7 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition disabled:opacity-25 flex items-center justify-center">
+            className="w-7 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition disabled:opacity-25 flex items-center justify-center touch-manipulation">
             <ZoomOut className="h-3.5 w-3.5" />
           </button>
           <button type="button" onClick={zoomReset}
-            className="px-2 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition text-xs font-mono">1×</button>
+            className="px-2 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition text-xs font-mono touch-manipulation">1×</button>
           <button type="button" onClick={zoomIn} disabled={zoom >= MAX_ZOOM} aria-label="Zoom in"
-            className="w-7 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition disabled:opacity-25 flex items-center justify-center">
+            className="w-7 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition disabled:opacity-25 flex items-center justify-center touch-manipulation">
             <ZoomIn className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -298,7 +355,7 @@ export const EventTimelineSwimlanes = ({ lanes, events, loading, emptyTitle, emp
       {/* labels | scrollable canvas */}
       <div className="flex" style={{ height: totalHeight + 8 }}>
         {/* Fixed lane labels */}
-        <div className="flex-shrink-0 border-r border-white/8 bg-black/60" style={{ width: LABEL_W }}>
+        <div className="flex-shrink-0 border-r border-white/8 bg-black/60" style={{ width: labelW }}>
           <div style={{ height: AXIS_H }} className="border-b border-white/8" />
           {lanes.map(lane => {
             const rows = laneLayout.get(lane.key)?.rows ?? 1;
@@ -306,19 +363,29 @@ export const EventTimelineSwimlanes = ({ lanes, events, loading, emptyTitle, emp
             const count = laneLayout.get(lane.key)?.placements.length ?? 0;
             const a = ACCENTS[lane.accent ?? 'slate'];
             return (
-              <div key={lane.key} style={{ height: h }} className="flex flex-col justify-center px-3 border-b border-white/4">
-                <div className="flex items-center gap-1.5">
+              <div key={lane.key} style={{ height: h }} className="flex flex-col justify-center px-1.5 sm:px-3 border-b border-white/4">
+                <div className="flex items-center gap-1 sm:gap-1.5">
                   <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${a.chip}`} />
-                  <span className={`text-[11px] font-medium ${a.label}`}>{lane.label}</span>
+                  <span className={`text-[10px] sm:text-[11px] font-medium leading-tight ${a.label}`}>
+                    {lane.label}
+                  </span>
                 </div>
-                <span className="text-[10px] text-white/25 mt-0.5 pl-3">{count} event{count !== 1 ? 's' : ''}</span>
+                <span className="text-[9px] sm:text-[10px] text-white/25 mt-0.5 pl-2.5 sm:pl-3">
+                  {count} event{count !== 1 ? 's' : ''}
+                </span>
               </div>
             );
           })}
         </div>
 
         {/* Scrollable canvas */}
-        <div ref={scrollRef} className="flex-1 overflow-x-auto overflow-y-hidden" style={{ scrollBehavior: 'smooth' }}>
+        <div
+          ref={scrollRef}
+          className="flex-1 overflow-x-auto overflow-y-hidden"
+          style={{ scrollBehavior: 'smooth' }}
+          onScroll={syncViewportYear}
+          data-testid="event-swimlanes-scroll"
+        >
           <div className="relative" style={{ width: totalWidth + 40, height: totalHeight }}>
             <TimelineRulerAxis height={AXIS_H}>
               {axisTicks.map((tick, i) => (
@@ -353,7 +420,13 @@ export const EventTimelineSwimlanes = ({ lanes, events, loading, emptyTitle, emp
                         title={`${event.title}${event.summary ? `\n${event.summary}` : ''}`}
                         onMouseEnter={() => setHovered(event)}
                         onMouseLeave={() => setHovered(null)}
-                        onClick={() => setSelected(event)}
+                        onClick={() => {
+                          if (onEventSelect) {
+                            onEventSelect(event);
+                            return;
+                          }
+                          setSelected(event);
+                        }}
                         style={{ position: 'absolute', left: x, width, top: row * ROW_H + ROW_VPAD, height: ROW_H - 6 }}
                         className={`flex flex-col justify-center gap-0 px-2 py-0.5 rounded-md border text-left transition-all cursor-pointer overflow-hidden ${isBar ? a.bar : a.pill}`}
                       >
@@ -377,8 +450,8 @@ export const EventTimelineSwimlanes = ({ lanes, events, loading, emptyTitle, emp
         </div>
       </div>
 
-      {/* Detail panel */}
-      {selected && (
+      {/* Detail panel — only when parent didn't take ownership of selection */}
+      {selected && !onEventSelect && (
         <div className="flex-shrink-0 border-t border-white/10 bg-black/80 px-4 py-3 flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-primary/80 mb-1">{fmtDate(selected.date)}{selected.endDate ? ` → ${fmtDate(selected.endDate)}` : ''}</p>

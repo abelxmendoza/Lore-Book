@@ -170,7 +170,7 @@ export interface DerivedGroupEvent {
   /** direct roster vs subgroup-only vs spans hierarchy */
   scope?: 'direct' | 'subgroup' | 'hierarchy';
   subgroup_names?: string[];
-  source: 'conversation';
+  source: 'conversation' | 'user_posted';
 }
 
 export type GroupEventAudience = 'with_user' | 'without_user' | 'group_wide';
@@ -883,6 +883,13 @@ export class OrganizationService {
   async addMember(userId: string, organizationId: string, member: Omit<OrganizationMember, 'id' | 'organization_id'>): Promise<OrganizationMember> {
     this.invalidateOrganizations(userId);
     try {
+      const org = await this.getOrganization(userId, organizationId);
+      if (!org) {
+        const err = new Error('Group not found. Save the group first, then link people.');
+        (err as Error & { statusCode?: number }).statusCode = 404;
+        throw err;
+      }
+
       let characterId = member.character_id?.trim() || undefined;
       let characterName = member.character_name?.trim() || '';
 
@@ -983,7 +990,42 @@ export class OrganizationService {
         .select(ORG_MEMBER_COLS)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        // Race / unique (organization_id, character_id): reload and update.
+        const code = (error as { code?: string }).code;
+        if (code === '23505' && characterId) {
+          const { data: raced } = await supabaseAdmin
+            .from('organization_members')
+            .select(ORG_MEMBER_COLS)
+            .eq('user_id', userId)
+            .eq('organization_id', organizationId)
+            .eq('character_id', characterId)
+            .maybeSingle();
+          if (raced) {
+            const { data: updated, error: updErr } = await supabaseAdmin
+              .from('organization_members')
+              .update({
+                character_name: characterName,
+                role: member.role ?? raced.role,
+                status: member.status || raced.status || 'active',
+                notes: member.notes ?? raced.notes,
+              })
+              .eq('id', raced.id)
+              .eq('user_id', userId)
+              .select(ORG_MEMBER_COLS)
+              .single();
+            if (!updErr && updated) {
+              void this.solidifyMembershipKnowledge(userId, organizationId, {
+                characterId,
+                characterName,
+                role: updated.role ?? member.role,
+              });
+              return updated as OrganizationMember;
+            }
+          }
+        }
+        throw error;
+      }
       const saved = data as OrganizationMember;
       if (saved.character_id) {
         void this.solidifyMembershipKnowledge(userId, organizationId, {

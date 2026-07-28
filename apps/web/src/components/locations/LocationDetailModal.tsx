@@ -48,6 +48,10 @@ import { PlaceProfileEditor, type PlaceProfileDraft } from './PlaceProfileEditor
 import { HouseholdDetailPanel } from './HouseholdDetailPanel';
 import { LocationTimeline } from './LocationTimeline';
 import { Button } from '../ui/button';
+import { PostEventComposer } from '../events/PostEventComposer';
+import {
+  listDemoUserPostedEventsForLocation,
+} from '../../mocks/userPostedEventsDemo';
 import { EditableEntityName } from '../common/EditableEntityName';
 import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
@@ -250,6 +254,10 @@ export const LocationDetailModal = ({
   const [reclassifyBusy, setReclassifyBusy] = useState(false);
   const [reclassifyError, setReclassifyError] = useState<string | null>(null);
   const [reclassifySuccess, setReclassifySuccess] = useState(false);
+  const [showPostComposer, setShowPostComposer] = useState(false);
+  const [placePostedEvents, setPlacePostedEvents] = useState(() =>
+    listDemoUserPostedEventsForLocation(locationProp.id, locationProp.name),
+  );
 
   const handleReclassify = async (target: string) => {
     if (!target || reclassifyBusy || reclassifySuccess || !location.id) return;
@@ -975,7 +983,7 @@ export const LocationDetailModal = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-sm overscroll-none"
+      className="fixed inset-0 z-[60] flex items-stretch sm:items-center justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-sm overscroll-none"
       role="dialog"
       aria-modal="true"
       aria-label={`${location.name} details`}
@@ -1564,6 +1572,50 @@ export const LocationDetailModal = ({
           {/* ── TIMELINE ── */}
           {activeTab === 'timeline' && (
             <div className="space-y-3" data-testid="location-timeline-tab">
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-400/20 bg-amber-500/[0.06] px-3.5 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-amber-50">Events here</p>
+                  <p className="text-[11px] text-white/45 mt-0.5">
+                    Post a Life Log Event at {location.name}.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  className="shrink-0 h-9 bg-amber-500/25 border border-amber-400/35 text-amber-50 hover:bg-amber-500/35"
+                  onClick={() => setShowPostComposer(true)}
+                  data-testid="location-post-event"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1.5" />
+                  Post event
+                </Button>
+              </div>
+
+              {placePostedEvents.length > 0 && (
+                <div className="space-y-1.5" data-testid="location-posted-events">
+                  {placePostedEvents.map((ev) => (
+                    <div
+                      key={ev.id}
+                      className="rounded-xl border border-amber-400/20 bg-black/30 px-3.5 py-2.5"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-white">{ev.title}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-amber-400/30 text-amber-200/80">
+                          Posted
+                        </span>
+                      </div>
+                      {ev.start_time && (
+                        <p className="text-[11px] text-white/40 mt-1">
+                          {new Date(ev.start_time).toLocaleDateString()}
+                        </p>
+                      )}
+                      {ev.summary && (
+                        <p className="text-xs text-white/55 mt-1 line-clamp-2">{ev.summary}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="rounded-xl bg-purple-500/8 border border-purple-500/15 px-4 py-3">
                 <p className="text-xs font-semibold text-purple-200">
                   {location.name} across time
@@ -1577,7 +1629,7 @@ export const LocationDetailModal = ({
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Loading place timeline…
                 </div>
-              ) : locationTimelineEntries.length === 0 ? (
+              ) : locationTimelineEntries.length === 0 && placePostedEvents.length === 0 ? (
                 <div className="text-center py-16">
                   <Clock className="h-10 w-10 mx-auto mb-3 text-white/15" />
                   <p className="text-sm font-medium text-white/40">No timeline moments yet</p>
@@ -1585,7 +1637,7 @@ export const LocationDetailModal = ({
                     Memories and visits linked to {location.name} will appear here.
                   </p>
                 </div>
-              ) : (
+              ) : locationTimelineEntries.length > 0 ? (
                 <LocationTimeline
                   entries={locationTimelineEntries}
                   locationName={location.name}
@@ -1595,7 +1647,7 @@ export const LocationDetailModal = ({
                     if (memory) setSelectedMemory(memory);
                   }}
                 />
-              )}
+              ) : null}
             </div>
           )}
 
@@ -2223,6 +2275,60 @@ export const LocationDetailModal = ({
           }}
           allMemories={memoryCards}
         />
+      )}
+
+      {showPostComposer && (
+      <PostEventComposer
+        open={showPostComposer}
+        onClose={() => setShowPostComposer(false)}
+        prefill={{
+          location_id: location.id,
+          location_name: location.name,
+        }}
+        onCreated={(created) => {
+          setShowPostComposer(false);
+          setPlacePostedEvents((prev) => {
+            if (prev.some((e) => e.id === created.id)) return prev;
+            const fromDemo = listDemoUserPostedEventsForLocation(location.id, location.name);
+            if (fromDemo.some((e) => e.id === created.id)) return fromDemo;
+            return [
+              {
+                id: created.id,
+                title: created.title,
+                summary: null,
+                type: 'attended_event',
+                start_time: created.start_time,
+                end_time: null,
+                confidence: 1,
+                people: [],
+                locations: [location.name],
+                activities: [],
+                source_count: 0,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                metadata: {
+                  created_via: 'user_posted' as const,
+                  primary_place: { id: location.id, name: location.name },
+                  organization_ids: [],
+                  organization_names: [],
+                  stories: [],
+                  venue_stops: [
+                    {
+                      location_id: location.id,
+                      location_name: location.name,
+                      order: 0,
+                      role: 'primary' as const,
+                    },
+                  ],
+                },
+              },
+              ...prev,
+            ];
+          });
+          // PostEventComposer opens main chat for LLM ingest — close the place modal.
+          onClose();
+        }}
+      />
       )}
     </div>
   );

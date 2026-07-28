@@ -96,6 +96,7 @@ import {
   selectVisibleComposerMatches,
 } from '../../../store/selectors/composerSelectors';
 import { focusToComposerEntities, focusToEntityContext } from '../../../lib/chatFocusUtils';
+import { takePostEventChatHandoff } from '../../../lib/postEventChatHandoff';
 import { scrubLegacyComposerPrefill } from '../../../lib/scrubLegacyComposerPrefill';
 import { clearComposerDraft } from '../services/storySafetyVault';
 import { runtimeDiagnostics } from '../services/runtimeDiagnostics';
@@ -419,6 +420,10 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   const { correctMessage, saving: correctionSaving, error: correctionError } = useMessageCorrection();
   const [showCognitiveTrace] = useLocalStorage<boolean>('lorekeeper_cognitive_trace', false);
   const [initialPrompt, setInitialPrompt] = useState<string | null>(null);
+  const [initialImages, setInitialImages] = useState<
+    import('../types/chatImageAttachment').ChatImageAttachment[] | null
+  >(null);
+  const [autoSubmitHandoff, setAutoSubmitHandoff] = useState(false);
   const [initialDate, setInitialDate] = useState<string | null>(null);
   const [focusComposerPulse, setFocusComposerPulse] = useState(false);
   const lastFocusArrivalRef = useRef<number | null>(null);
@@ -467,6 +472,15 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       dispatch(setComposerDraft(''));
       setInitialPrompt('');
     }
+
+    const postEventHandoff = takePostEventChatHandoff();
+    if (postEventHandoff?.images?.length) {
+      setInitialImages(postEventHandoff.images);
+    } else {
+      setInitialImages(null);
+    }
+    setAutoSubmitHandoff(Boolean(chatFocus.autoSubmit || postEventHandoff?.autoSubmit));
+
     setFocusComposerPulse(true);
     const timer = window.setTimeout(() => setFocusComposerPulse(false), 2600);
     return () => window.clearTimeout(timer);
@@ -475,6 +489,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     chatFocus?.entityId,
     chatFocus?.sourceSurface,
     chatFocus?.initialPrompt,
+    chatFocus?.autoSubmit,
     chatFocus?.startNewThread,
     activeThreadId,
     dispatch,
@@ -1291,6 +1306,12 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             disabled={isGuest && !canSendChatMessage()}
             initialPrompt={initialPrompt}
             onInitialPromptApplied={() => setInitialPrompt(null)}
+            initialImages={initialImages}
+            autoSubmit={autoSubmitHandoff}
+            onAutoSubmitDone={() => {
+              setAutoSubmitHandoff(false);
+              setInitialImages(null);
+            }}
             initialDate={initialDate}
             threadId={activeThreadId ?? undefined}
             defaultCollapsed={isMobile && messages.length > 0}
