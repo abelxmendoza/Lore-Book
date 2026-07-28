@@ -132,3 +132,15 @@ export {
   type QuestQueryResult,
   type QuestQueryResponse,
 } from "./quests/questQuery";
+
+export {
+  BOOK_QUERY_DOMAINS,
+  universalBookQueryRequestSchema,
+  type BookQueryDomain,
+  type BookQueryEvidence,
+  type BookQueryRelatedEntity,
+  type UniversalBookQueryRequest,
+  type UniversalBookQueryResult,
+  type BookQueryConnection,
+  type UniversalBookQueryResponse,
+} from "./books/bookQuery";

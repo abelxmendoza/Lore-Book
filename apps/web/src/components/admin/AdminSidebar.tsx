@@ -1,15 +1,16 @@
 import {
   LayoutDashboard, Users, FileText, Zap, Settings,
   Flag, DollarSign, Activity, Crown, LogIn, X, Menu, BookOpen, ExternalLink,
-  ShieldCheck,
+  ShieldCheck, SearchCode,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+
 import { cn } from '../../lib/cn';
 
 export type AdminSection =
   | 'dashboard' | 'users' | 'subscribers' | 'login-activity'
   | 'logs' | 'ai-events' | 'engine-health' | 'integrations' | 'tools' | 'feature-flags' | 'finance'
-  | 'cost' | 'chronicle' | 'chat-diagnostics';
+  | 'cost' | 'chronicle' | 'chat-diagnostics' | 'query-inspector';
 
 interface AdminSidebarProps {
   activeSection: AdminSection;
@@ -40,6 +41,7 @@ const MENU_GROUPS = [
       { id: 'ai-events' as AdminSection,     label: 'AI Events',      icon: Zap },
       { id: 'engine-health' as AdminSection, label: 'Engine Health',  icon: Activity },
       { id: 'chat-diagnostics' as AdminSection, label: 'System Health', icon: ShieldCheck },
+      { id: 'query-inspector' as AdminSection, label: 'Query Inspector', icon: SearchCode },
       { id: 'integrations' as AdminSection,  label: 'Integrations',   icon: ExternalLink },
       { id: 'tools' as AdminSection,         label: 'Tools',          icon: Settings },
       { id: 'feature-flags' as AdminSection, label: 'Feature Flags',  icon: Flag },

@@ -375,7 +375,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
           min-w-0 is load-bearing: as a horizontal-flex child, min-width:auto would let
           wide content (long unwrappable lines) blow the layout past the viewport on phones. */}
       <div
-        className={`flex-1 min-w-0 flex flex-col min-h-0 ${
+        className={`flex-1 min-w-0 flex flex-col min-h-0 bg-black ${
           isViewportLocked || isBookScrollSurface ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'
         }`}
       >
@@ -384,12 +384,12 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
       <main
         ref={mainContentRef}
         id="main-content"
-        className={`flex-1 min-h-0 text-white overflow-x-hidden flex flex-col ${
+        className={`flex-1 min-h-0 text-white overflow-x-hidden flex flex-col bg-black ${
           isViewportLocked
             ? 'p-0 overflow-hidden'
             : isHome || isGuide
-              ? 'p-0 pt-14 lg:pt-0 overflow-y-auto'
-              : 'overflow-y-auto flex flex-col p-4 sm:p-6 lg:p-8 xl:p-10 max-lg:bg-black max-lg:pt-[calc(env(safe-area-inset-top,0.75rem)+2.75rem)] sm:pt-6'
+              ? 'p-0 pt-14 lg:pt-0 overflow-y-auto overscroll-y-contain'
+              : 'overflow-y-auto overscroll-y-contain flex flex-col p-4 sm:p-6 lg:p-8 xl:p-10 max-lg:pt-[calc(env(safe-area-inset-top,0.75rem)+2.75rem)] sm:pt-6'
         }`}
         role="main"
         style={
@@ -402,7 +402,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
       >
         <div
           className={
-            isViewportLocked ? 'contents' : 'min-w-0 space-y-3 sm:space-y-6'
+            isViewportLocked ? 'contents' : 'min-w-0 min-h-0 flex-1 space-y-3 sm:space-y-6'
           }
         >
         {activeSurface !== 'chat' && activeSurface !== 'home' && activeSurface !== 'guide' && activeSurface !== 'memoir' && activeSurface !== 'lorebook' && activeSurface !== 'saga' && activeSurface !== 'timeline' && activeSurface !== 'discovery' && activeSurface !== 'quests' && (

@@ -17,12 +17,16 @@
   font-family: 'Space Grotesk', system-ui, sans-serif;
 }
 
-html, body {
+/* Solid app chrome — overscroll / rubber-band must never flash browser gray. */
+html,
+body {
   min-height: 100%;
+  background-color: #000;
+  overscroll-behavior: none;
 }
 
 body {
-  background: transparent;
+  background-color: #000;
   color: #f8f5ff;
   margin: 0;
   padding: 0;
@@ -30,6 +34,8 @@ body {
 
 #root {
   min-height: 100%;
+  min-height: 100dvh;
+  background-color: #000;
 }
 
 .crt-scanlines {

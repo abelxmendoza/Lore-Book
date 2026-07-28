@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import {
   FileText,
   Users,
@@ -8,13 +7,10 @@ import {
   Link2,
   Clock,
   Search,
-  TreePine,
   Trash2,
-  MoreHorizontal,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '../../lib/cn';
-import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 
 export type OrgModalTabKey =
   | 'info'
@@ -58,13 +54,6 @@ const TAB_IDLE_OUTLINE: Partial<Record<OrgModalTabKey, string>> = {
 const DEFAULT_IDLE_OUTLINE =
   'border-white/25 text-white/55 hover:text-white/85 hover:bg-white/[0.06] hover:border-white/40';
 
-const PRIMARY_MOBILE: TabDef[] = [
-  { key: 'info', label: 'Overview', shortLabel: 'Overview', icon: FileText },
-  { key: 'members', label: 'People', shortLabel: 'People', icon: Users },
-  { key: 'locations', label: 'Places', shortLabel: 'Places', icon: MapPin },
-  { key: 'timeline', label: 'Timeline', shortLabel: 'Timeline', icon: Clock },
-];
-
 /** Map legacy Events / Activity tab keys onto the unified Timeline tab. */
 export function normalizeOrgModalTab(tab: OrgModalTabKey): OrgModalTabKey {
   if (tab === 'events' || tab === 'activity') return 'timeline';
@@ -75,6 +64,7 @@ type Props = {
   tabs: TabDef[];
   activeTab: OrgModalTabKey;
   onTabChange: (tab: OrgModalTabKey) => void;
+  /** @deprecated Family is included when present in `tabs`; kept for call-site compat. */
   showFamilyTab?: boolean;
   /** Desktop tabs under header, or mobile bottom bar inside the modal */
   placement?: 'top' | 'bottom';
@@ -84,159 +74,94 @@ export function OrganizationModalNav({
   tabs,
   activeTab,
   onTabChange,
-  showFamilyTab,
   placement = 'top',
 }: Props) {
-  const [moreOpen, setMoreOpen] = useState(false);
-
-  const primaryKeys = new Set(PRIMARY_MOBILE.map((t) => t.key));
-  const moreTabs = tabs.filter((t) => !primaryKeys.has(t.key) && t.key !== 'danger');
+  const sectionTabs = tabs.filter((t) => t.key !== 'danger');
   const dangerTab = tabs.find((t) => t.key === 'danger');
-
-  const mobilePrimary = PRIMARY_MOBILE.filter((t) => tabs.some((x) => x.key === t.key));
-  const isMoreActive = moreTabs.some((t) => t.key === activeTab) || activeTab === 'danger';
 
   if (placement === 'bottom') {
     return (
-      <>
-        <nav
-          className="sm:hidden flex-shrink-0 border-t border-white/10 bg-black/95 backdrop-blur-md z-10"
-          style={{ paddingBottom: 'max(0.35rem, env(safe-area-inset-bottom))' }}
-          aria-label="Organization sections"
-        >
-          <div className="flex items-stretch justify-around px-1 pt-1.5">
-            {mobilePrimary.map((tab) => {
-              const Icon = tab.icon;
-              const active = activeTab === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => onTabChange(tab.key)}
-                  className={cn(
-                    'relative flex flex-1 flex-col items-center gap-0.5 py-1.5 px-0.5 min-h-[44px] touch-manipulation transition-colors',
-                    active ? 'text-primary' : 'text-white/45'
-                  )}
-                >
-                  {active && (
-                    <span className="absolute top-0 h-0.5 w-6 rounded-full bg-gradient-to-r from-primary/60 via-primary to-primary/60" />
-                  )}
-                  <Icon className={cn('h-4 w-4', active && tab.key === 'chat' && 'text-violet-300')} />
-                  <span className="text-[9px] font-medium leading-none">{tab.shortLabel}</span>
-                </button>
-              );
-            })}
-            {(moreTabs.length > 0 || dangerTab) && (
-              <button
-                type="button"
-                onClick={() => setMoreOpen(true)}
-                className={cn(
-                  'relative flex flex-1 flex-col items-center gap-0.5 py-1.5 px-0.5 min-h-[44px] touch-manipulation transition-colors',
-                  isMoreActive ? 'text-primary' : 'text-white/45'
-                )}
-              >
-                {isMoreActive && (
-                  <span className="absolute top-0 h-0.5 w-6 rounded-full bg-gradient-to-r from-primary/60 via-primary to-primary/60" />
-                )}
-                <MoreHorizontal className="h-4 w-4" />
-                <span className="text-[9px] font-medium leading-none">More</span>
-              </button>
-            )}
-          </div>
-        </nav>
-
-        <MobileBottomSheet open={moreOpen} onClose={() => setMoreOpen(false)} title="More sections">
-          <ul className="space-y-1 pb-2">
-            {moreTabs.map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <li key={tab.key}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onTabChange(tab.key);
-                      setMoreOpen(false);
-                    }}
-                    className={cn(
-                      'flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm touch-manipulation',
-                      activeTab === tab.key ? 'bg-primary/15 text-white' : 'text-white/75 hover:bg-white/5'
-                    )}
-                  >
-                    <Icon className="h-4 w-4 shrink-0 text-white/50" />
-                    {tab.label}
-                  </button>
-                </li>
-              );
-            })}
-            {showFamilyTab && !moreTabs.some((t) => t.key === 'family') && (
-              <li>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onTabChange('family');
-                    setMoreOpen(false);
-                  }}
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-white/75 hover:bg-white/5 touch-manipulation"
-                >
-                  <TreePine className="h-4 w-4 shrink-0" />
-                  Family tree
-                </button>
-              </li>
-            )}
-            {dangerTab && (
-              <li className="pt-2 border-t border-white/8 mt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    onTabChange('danger');
-                    setMoreOpen(false);
-                  }}
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-red-300/90 hover:bg-red-500/10 touch-manipulation"
-                >
-                  <Trash2 className="h-4 w-4 shrink-0" />
-                  Delete group
-                </button>
-              </li>
-            )}
-          </ul>
-        </MobileBottomSheet>
-      </>
-    );
-  }
-
-  return (
-    <>
-      <div className="hidden sm:block flex-shrink-0 border-b border-white/8 bg-black/20 px-4 pt-2.5 pb-0 backdrop-blur-sm">
-        <div className="flex gap-1.5 overflow-x-auto scrollbar-none pb-2.5">
-          {tabs.map((tab) => {
+      <nav
+        className="sm:hidden flex-shrink-0 border-t border-white/10 bg-black/95 backdrop-blur-md z-10"
+        style={{ paddingBottom: 'max(0.2rem, env(safe-area-inset-bottom))' }}
+        aria-label="Organization sections"
+      >
+        {/* Two-row wrap: every section visible — no More overflow. */}
+        <div className="grid grid-cols-4 gap-y-0 px-1 pt-1">
+          {sectionTabs.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.key;
-            const isDanger = tab.key === 'danger';
-            const idleOutline = TAB_IDLE_OUTLINE[tab.key] ?? DEFAULT_IDLE_OUTLINE;
             return (
               <button
                 key={tab.key}
                 type="button"
                 onClick={() => onTabChange(tab.key)}
                 className={cn(
-                  'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium transition-all duration-150 border',
-                  isDanger
-                    ? active
-                      ? 'bg-red-500/20 text-red-100 border-red-500/40 shadow-[0_0_0_1px_rgba(239,68,68,0.15),0_4px_12px_-2px_rgba(239,68,68,0.35)]'
-                      : 'text-red-300/70 border-red-500/40 hover:text-red-200 hover:bg-red-500/10 hover:border-red-400/60'
-                    : active
-                      ? 'bg-gradient-to-b from-primary/30 to-primary/15 text-white border-primary/40 shadow-[0_0_0_1px_rgba(139,92,246,0.15),0_4px_14px_-2px_rgba(139,92,246,0.45)]'
-                      : idleOutline
+                  'relative flex flex-col items-center gap-px py-1 px-0.5 min-h-[36px] touch-manipulation transition-colors',
+                  active ? 'text-primary' : 'text-white/45'
                 )}
               >
-                <Icon className={cn('h-3.5 w-3.5', active && !isDanger && 'text-violet-200')} />
-                {tab.label}
+                {active && (
+                  <span className="absolute top-0 h-0.5 w-5 rounded-full bg-gradient-to-r from-primary/60 via-primary to-primary/60" />
+                )}
+                <Icon className={cn('h-3.5 w-3.5', active && tab.key === 'chat' && 'text-violet-300')} />
+                <span className="text-[8px] font-medium leading-none">{tab.shortLabel}</span>
               </button>
             );
           })}
         </div>
+        {dangerTab && (
+          <div className="flex justify-center border-t border-white/6 px-2 pb-0.5 pt-0">
+            <button
+              type="button"
+              onClick={() => onTabChange('danger')}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-medium touch-manipulation transition-colors',
+                activeTab === 'danger'
+                  ? 'text-red-200 bg-red-500/15'
+                  : 'text-red-300/70 hover:text-red-200 hover:bg-red-500/10'
+              )}
+            >
+              <Trash2 className="h-2.5 w-2.5" />
+              Delete group
+            </button>
+          </div>
+        )}
+      </nav>
+    );
+  }
+
+  return (
+    <div className="hidden sm:block flex-shrink-0 border-b border-white/8 bg-black/20 px-4 pt-2.5 pb-0 backdrop-blur-sm">
+      <div className="flex gap-1.5 overflow-x-auto scrollbar-none pb-2.5">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const active = activeTab === tab.key;
+          const isDanger = tab.key === 'danger';
+          const idleOutline = TAB_IDLE_OUTLINE[tab.key] ?? DEFAULT_IDLE_OUTLINE;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => onTabChange(tab.key)}
+              className={cn(
+                'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium transition-all duration-150 border',
+                isDanger
+                  ? active
+                    ? 'bg-red-500/20 text-red-100 border-red-500/40 shadow-[0_0_0_1px_rgba(239,68,68,0.15),0_4px_12px_-2px_rgba(239,68,68,0.35)]'
+                    : 'text-red-300/70 border-red-500/40 hover:text-red-200 hover:bg-red-500/10 hover:border-red-400/60'
+                  : active
+                    ? 'bg-gradient-to-b from-primary/30 to-primary/15 text-white border-primary/40 shadow-[0_0_0_1px_rgba(139,92,246,0.15),0_4px_14px_-2px_rgba(139,92,246,0.45)]'
+                    : idleOutline
+              )}
+            >
+              <Icon className={cn('h-3.5 w-3.5', active && !isDanger && 'text-violet-200')} />
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
-    </>
+    </div>
   );
 }
 

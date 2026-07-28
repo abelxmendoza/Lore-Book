@@ -47,6 +47,7 @@ import type {
   OrganizationQueryResponse,
   OrganizationQueryResult,
 } from '../../lib/api-contracts';
+import { BookQueryPanel } from '../query/BookQueryPanel';
 
 const ITEMS_PER_PAGE = 24;
 const ORG_VIEW_STORAGE_KEY = 'lk_org_view';
@@ -1852,93 +1853,37 @@ export const OrganizationsBook: React.FC = () => {
           </div>
         </div>
 
-        <Card className="border-violet-500/30 bg-gradient-to-r from-violet-950/35 via-black/45 to-black/45">
-          <CardContent className="py-4 space-y-3">
-            <div className="flex items-start gap-3">
-              <div className="rounded-lg bg-violet-500/15 p-2 shrink-0">
-                <Sparkles className="h-4 w-4 text-violet-300" />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-sm font-semibold text-white">Ask your Groups &amp; Organizations Book</h2>
-                <p className="text-xs text-white/45 mt-0.5">
-                  Search relationships, rosters, locations, activity, or records that need cleanup.
-                </p>
-              </div>
-            </div>
-            <form
-              className="flex flex-col sm:flex-row gap-2"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void handleBookQuery();
-              }}
-            >
-              <Input
-                value={bookQuery}
-                onChange={(event) => setBookQuery(event.target.value)}
-                placeholder='Try “Which groups is Marcus connected to?” or “Show unlinked bands”'
-                className="flex-1 bg-black/50 border-violet-500/25 text-white placeholder:text-white/30"
-                aria-label="Ask your Groups and Organizations Book"
-              />
-              <div className="flex gap-2">
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={bookQueryLoading || !bookQuery.trim()}
-                  className="flex-1 sm:flex-none"
-                >
-                  <Sparkles className="h-4 w-4 mr-1.5" />
-                  {bookQueryLoading ? 'Checking...' : 'Ask Book'}
-                </Button>
-                {bookQueryResult && (
-                  <Button type="button" variant="outline" size="sm" onClick={clearBookQuery}>
-                    Clear
-                  </Button>
-                )}
-              </div>
-            </form>
-            {bookQueryError && (
-              <p className="text-xs text-red-300" role="alert">{bookQueryError}</p>
-            )}
-            {bookQueryResult && !bookQueryError && (
-              <div className="rounded-xl border border-white/10 bg-black/35 p-3 space-y-2" aria-live="polite">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm text-white/80">
-                    {bookQueryResult.total === 0
-                      ? 'No matching groups found.'
-                      : `${bookQueryResult.total} matching group${bookQueryResult.total === 1 ? '' : 's'}`}
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {bookQueryResult.facets.stances.map((facet) => (
-                      <span key={facet.value} className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] text-white/50">
-                        {facet.value.replaceAll('_', ' ')} {facet.count}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                {bookQueryResult.results.length > 0 && (
-                  <div className="grid gap-1.5 sm:grid-cols-2">
-                    {bookQueryResult.results.slice(0, 6).map((result) => (
-                      <button
-                        key={result.organizationId}
-                        type="button"
-                        onClick={() => {
-                          const organization = organizations.find((org) => org.id === result.organizationId);
-                          if (organization) setSelectedOrganization(organization);
-                        }}
-                        className="rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-left hover:border-violet-400/30 hover:bg-violet-500/[0.06] transition-colors"
-                      >
-                        <span className="block text-xs font-medium text-white/85 truncate">{result.name}</span>
-                        <span className="block text-[10px] text-white/40 truncate mt-0.5">
-                          {result.matchedReasons[0] ?? `${result.memberCount} members`}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <BookQueryPanel
+          demoMode={isMockDataEnabled}
+          domains={['organization']}
+          title="Ask your Groups & Organizations Book"
+          description="Search relationships, rosters, locations, activity, or records that need cleanup."
+          placeholder='Try “Which groups is Marcus connected to?” or “Show unlinked bands”'
+          inputAriaLabel="Ask your Groups and Organizations Book"
+          submitLabel="Ask Book"
+          resultNoun="group"
+          compact
+          controller={{
+            query: bookQuery,
+            onQueryChange: setBookQuery,
+            onSubmit: handleBookQuery,
+            onClear: clearBookQuery,
+            loading: bookQueryLoading,
+            error: bookQueryError,
+            total: bookQueryResult?.total,
+            results: bookQueryResult?.results.map((result) => ({
+              id: result.organizationId,
+              title: result.name,
+              status: result.stance,
+              reason: result.matchedReasons[0] ?? `${result.memberCount} members`,
+            })),
+            warnings: bookQueryResult?.warnings,
+          }}
+          onSelectResult={(result) => {
+            const organization = organizations.find((item) => item.id === result.id);
+            if (organization) setSelectedOrganization(organization);
+          }}
+        />
 
         {scanNote && (
           <p className="text-xs text-white/60 flex items-center gap-1.5">

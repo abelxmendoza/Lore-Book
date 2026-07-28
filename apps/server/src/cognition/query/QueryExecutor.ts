@@ -11,6 +11,7 @@ import { logger } from '../../logger';
 import type {
   Citation,
   ExecutorKind,
+  GraphNode,
   QueryContext,
   QueryRecord,
   QueryResult,
@@ -72,6 +73,61 @@ export class StructuredRecallExecutor implements QueryExecutor {
         },
       ],
       raw: routed,
+    };
+  }
+}
+
+// ─── Books (normalized entity-book registry) ─────────────────────────────────
+
+export class BookQueryExecutor implements QueryExecutor {
+  kind = 'books' as const;
+
+  async execute(ctx: QueryContext): Promise<QueryResult> {
+    const started = Date.now();
+    const { queryBooksForUser } = await import('../../services/query/bookQueryRegistry');
+    const response = await queryBooksForUser(ctx.userId, {
+      query: ctx.message,
+      limit: 40,
+      perDomainLimit: 10,
+      includeEvidence: true,
+    });
+    const evidence = response.results.flatMap((result) => result.evidence);
+    const confidence = response.results.length
+      ? Math.min(0.88, Math.max(0.55, response.results[0].score / 100))
+      : 0;
+
+    return {
+      ...baseResult(this.kind, started),
+      confidence,
+      latencyMs: Date.now() - started,
+      records: response.results.map((result) => ({
+        id: result.id,
+        type: result.domain,
+        title: result.title,
+        content: [
+          result.subtitle,
+          ...result.matchedReasons,
+        ].filter(Boolean).join(' · '),
+        score: result.score,
+        data: result,
+      })),
+      citations: evidence.map((item) => ({
+        kind: item.sourceTable === 'resolved_events' ? 'event' as const : 'entity' as const,
+        id: item.sourceId,
+        label: item.label,
+        timestamp: item.observedAt ?? undefined,
+      })),
+      provenance: [{
+        origin: 'foundation',
+        method: 'book_query_registry',
+        table: 'lorebook_books',
+        entityIds: response.results.map((result) => result.id),
+        confidence,
+      }],
+      raw: response,
+      error: response.diagnostics.degradedDomains.length
+        ? `degraded books: ${response.diagnostics.degradedDomains.join(', ')}`
+        : undefined,
     };
   }
 }
@@ -231,28 +287,113 @@ export class CrystallizedKnowledgeExecutor implements QueryExecutor {
   }
 }
 
-// ─── Graph (interfaces only — no graph database yet) ─────────────────────────
+// ─── Graph (canonical cross-Book traversal) ──────────────────────────────────
 
 export class GraphExecutor implements QueryExecutor {
   kind = 'graph' as const;
 
-  /**
-   * TODO(graph): implement traversal over character_relationships +
-   * omega entity edges. The plan shape is fixed (TraversalPlan/TraversalResult
-   * in QueryTypes); this executor turns a QueryContext into a TraversalPlan,
-   * walks edges breadth-first with the family-tree connectivity rules, and
-   * returns paths as records ("Abel → Tony → Renna").
-   */
-  async traverse(_plan: TraversalPlan): Promise<TraversalResult> {
-    return { paths: [], visited: 0 };
+  private graphNodeType(type: string | undefined): GraphNode['type'] {
+    const normalized = type?.toLowerCase();
+    if (normalized === 'person') return 'character';
+    if (normalized === 'place') return 'location';
+    if ([
+      'character', 'organization', 'family', 'location', 'romance', 'project',
+      'skill', 'quest', 'event', 'document', 'narrative',
+    ].includes(normalized ?? '')) {
+      return normalized as GraphNode['type'];
+    }
+    return 'entity';
   }
 
-  async execute(_ctx: QueryContext): Promise<QueryResult> {
+  private edgeTypes(message: string): string[] {
+    const types: string[] = [];
+    if (/\bintroduc(?:e|ed|tion)\b/i.test(message)) types.push('introduced');
+    if (/\b(?:member|group|organization|team|band)\b/i.test(message)) types.push('membership');
+    if (/\b(?:place|location|located|where)\b/i.test(message)) types.push('location');
+    if (/\bprojects?\b/i.test(message)) types.push('project');
+    if (/\bskills?\b/i.test(message)) types.push('skill');
+    return types;
+  }
+
+  async traverse(userId: string, plan: TraversalPlan): Promise<TraversalResult> {
+    const { canonicalBookGraphService } = await import(
+      '../../services/query/canonicalBookGraphService'
+    );
+    return canonicalBookGraphService.traverse(userId, plan);
+  }
+
+  async execute(ctx: QueryContext): Promise<QueryResult> {
     const started = Date.now();
-    logger.debug('GraphExecutor is a placeholder — returning empty result');
+    const anchors = (ctx.resolvedEntities ?? []).filter((entity) => entity.id);
+    if (!anchors.length) {
+      return {
+        ...baseResult(this.kind, started),
+        provenance: [{ origin: 'graph', method: 'canonical_book_graph', confidence: 0 }],
+        error: 'graph query had no resolved canonical entity anchor',
+      };
+    }
+
+    const start = anchors[0]!;
+    const target = anchors[1];
+    const plan: TraversalPlan = {
+      startNode: { id: start.id! },
+      edgeTypes: this.edgeTypes(ctx.message),
+      maxDepth: target ? 4 : 2,
+      target: target
+        ? {
+            name: target.canonicalName ?? target.mention,
+            type: this.graphNodeType(target.type),
+          }
+        : undefined,
+    };
+    const traversal = await this.traverse(ctx.userId, plan);
+    const records = traversal.paths.map((path, index) => ({
+      id: `graph-path:${index}:${path.nodes.map((node) => node.id).join(':')}`,
+      type: 'graph_path',
+      title: path.nodes.map((node) => node.name).join(' → '),
+      content: path.edges.map((edge, edgeIndex) => {
+        const from = path.nodes[edgeIndex]?.name ?? edge.fromId;
+        const to = path.nodes[edgeIndex + 1]?.name ?? edge.toId;
+        return `${from} —[${edge.type}]→ ${to}`;
+      }).join(' · '),
+      score: Math.round(
+        Math.min(...path.edges.map((edge) => edge.confidence ?? 0.7)) * 100
+        - Math.max(0, path.edges.length - 1) * 5,
+      ),
+      data: path,
+    }));
+    const evidence = traversal.paths.flatMap((path) =>
+      path.edges.flatMap((edge) => edge.evidence ?? []));
+    const confidence = records.length
+      ? Math.max(0.5, Math.min(0.95, (records[0]?.score ?? 70) / 100))
+      : 0;
+
     return {
       ...baseResult(this.kind, started),
-      provenance: [{ origin: 'graph', method: 'placeholder', confidence: 0 }],
+      confidence,
+      latencyMs: Date.now() - started,
+      records,
+      citations: [...new Map(evidence.map((item) => [
+        `${item.sourceTable}:${item.sourceId}`,
+        {
+          kind: item.sourceTable === 'resolved_events' ? 'event' as const : 'entity' as const,
+          id: item.sourceId,
+          label: item.label,
+          timestamp: item.observedAt ?? undefined,
+        },
+      ])).values()],
+      provenance: traversal.paths.map((path) => ({
+        origin: 'graph' as const,
+        method: 'canonical_book_graph_bfs',
+        table: 'canonical_book_graph',
+        entityIds: path.nodes.map((node) => node.id),
+        traversalPath: path.nodes.map((node) => node.name),
+        confidence: Math.min(...path.edges.map((edge) => edge.confidence ?? 0.7)),
+      })),
+      raw: traversal,
+      error: traversal.degradedSources?.length
+        ? `degraded graph sources: ${traversal.degradedSources.join(', ')}`
+        : undefined,
     };
   }
 }
@@ -307,6 +448,7 @@ export class AnalyticsExecutor implements QueryExecutor {
 export function createDefaultExecutorRegistry(): Map<ExecutorKind, QueryExecutor> {
   const executors: QueryExecutor[] = [
     new StructuredRecallExecutor(),
+    new BookQueryExecutor(),
     new ThreadRecallExecutor(),
     new SemanticRecallExecutor(),
     new WorkingMemoryExecutor(),

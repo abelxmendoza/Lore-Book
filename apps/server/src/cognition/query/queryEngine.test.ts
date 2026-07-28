@@ -15,8 +15,10 @@ import { EntityResolver } from './EntityResolver';
 import { queryInspector } from './QueryInspector';
 
 /** Resolver backed by a fake index — no DB. */
-const fakeResolver = (known: Record<string, { id: string; type: string }> = {}) =>
-  new EntityResolver(async () => new Map(Object.entries(known)));
+const fakeResolver = (known: Record<string, { id: string; type: string }> = {}) => {
+  const loader = async () => new Map(Object.entries(known));
+  return new EntityResolver(loader, loader);
+};
 
 const result = (source: ExecutorKind, over: Partial<QueryResult> = {}): QueryResult => ({
   source,
@@ -49,6 +51,11 @@ describe('IntentClassifier', () => {
     expect(classifyQuery('who introduced me to Ashley?').intent).toBe(QueryType.GRAPH);
   });
 
+  it('routes Book-specific questions into structured Book retrieval', () => {
+    expect(classifyQuery('What skills support my active quests?').intent).toBe(QueryType.ATTRIBUTE);
+    expect(classifyQuery('Which documents mention MemoVault?').intent).toBe(QueryType.ATTRIBUTE);
+  });
+
   it('falls through to SEMANTIC with low confidence when nothing matches', () => {
     const c = classifyQuery('hmm interesting thought about clouds');
     expect(c.intent).toBe(QueryType.SEMANTIC);
@@ -74,9 +81,15 @@ describe('QueryPlanner', () => {
     expect(plan.executors[0]?.kind).toBe('thread');
   });
 
-  it('plans placeholder executors so future capabilities have a stable shape', () => {
+  it('plans the real graph executor for connection questions', () => {
     const plan = planQuery(classifyQuery('who introduced me to Ashley?'));
-    expect(plan.executors.some((e) => e.kind === 'graph' && e.placeholder)).toBe(true);
+    expect(plan.executors.some((e) => e.kind === 'graph' && !e.placeholder)).toBe(true);
+  });
+
+  it('adds the Book registry as an adaptive fallback for Book-specific questions', () => {
+    const plan = planQuery(classifyQuery('What skills support my active quests?'));
+    expect(plan.executors.some((executor) => executor.kind === 'books')).toBe(true);
+    expect(plan.stages.find((stage) => stage.kind === 'books')?.runIf).toBe('if_low_confidence');
   });
 
   it('carries filters extracted by classification', () => {
@@ -170,6 +183,28 @@ describe('QueryEngine', () => {
     expect(out.merged.provenance.some((p) => p.entityResolution?.id === 'character_42')).toBe(true);
   });
 
+  it('discovers a canonical name anywhere in graph-style wording', async () => {
+    const registry = new Map<ExecutorKind, QueryExecutor>([
+      ['structured', fake('structured', { records: [] })],
+      ['books', fake('books', { records: [] })],
+      ['graph', fake('graph', {
+        confidence: 0.9,
+        records: [{ id: 'path-1', type: 'graph_path', content: 'Marcus → MemoVault' }],
+      })],
+    ]);
+    const engine = new QueryEngine(
+      registry,
+      fakeResolver({ marcus: { id: 'character-marcus', type: 'person' } }),
+    );
+    const out = await engine.run({ userId: 'u1', message: 'Who introduced me to Marcus?' });
+
+    expect(out.plan.intent).toBe(QueryType.GRAPH);
+    expect(out.resolvedEntities).toEqual([
+      expect.objectContaining({ id: 'character-marcus', canonicalName: 'marcus' }),
+    ]);
+    expect(out.results.find((item) => item.source === 'graph')?.records).toHaveLength(1);
+  });
+
   it('exposes explainable confidence via the breakdown', async () => {
     const registry = new Map<ExecutorKind, QueryExecutor>([
       ['structured', fake('structured', { confidence: 0.96, records: [{ id: 's', type: 'foundation_context', content: 'x' }] })],
@@ -184,6 +219,7 @@ describe('QueryEngine', () => {
   });
 
   it('records a full trace in the Query Inspector', async () => {
+    queryInspector.clear();
     const registry = new Map<ExecutorKind, QueryExecutor>([
       ['structured', fake('structured', { confidence: 0.95, records: [{ id: 's', type: 'foundation_context', content: 'x' }] })],
       ['crystallized', fake('crystallized', {})],
@@ -198,6 +234,26 @@ describe('QueryEngine', () => {
     expect(trace?.executors.find((e) => e.kind === 'crystallized')?.executed).toBe(false);
     expect(trace?.earlyStopped).toBe(true);
     expect(trace?.finalConfidence).toBeGreaterThan(0.9);
+  });
+
+  it('keeps admin inspector reads scoped to the authenticated user', async () => {
+    queryInspector.clear();
+    const registry = new Map<ExecutorKind, QueryExecutor>([
+      ['structured', fake('structured', {
+        confidence: 0.95,
+        records: [{ id: 's', type: 'foundation_context', content: 'x' }],
+      })],
+    ]);
+    const engine = new QueryEngine(registry, fakeResolver());
+    await engine.run({ userId: 'synthetic-user-one', message: 'who is Marcus?' });
+    await engine.run({ userId: 'synthetic-user-two', message: 'who is Jamie?' });
+
+    expect(queryInspector.getRecentTracesForUser('synthetic-user-one')).toEqual([
+      expect.objectContaining({
+        userId: 'synthetic-user-one',
+        query: 'who is Marcus?',
+      }),
+    ]);
   });
 
   it('isolates executor failures — one bad source never fails the query', async () => {

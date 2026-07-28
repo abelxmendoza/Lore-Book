@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { TreePine, Home, Users, BarChart3, Loader2, GitBranch, Check, X, Sparkles } from 'lucide-react';
+import { TreePine, Home, Users, BarChart3, Loader2, GitBranch, Check, X } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
 import { booksApi, type PossibleFamilyMatch } from '../../api/books';
 import { onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
@@ -18,6 +18,7 @@ import { RelationshipEditor, type RelationshipEdit } from './RelationshipEditor'
 import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
 import type { Character } from '../characters/CharacterProfileCard';
 import type { FamilyQueryResponse, FamilyQueryResult } from '../../lib/api-contracts';
+import { BookQueryPanel } from '../query/BookQueryPanel';
 
 type Tab = 'tree' | 'households' | 'groups' | 'analytics' | 'extended';
 
@@ -427,71 +428,38 @@ export function FamilyBook() {
         </p>
       </header>
 
-      <section className="rounded-2xl border border-emerald-500/25 bg-gradient-to-r from-emerald-950/35 via-black/30 to-black/30 p-4 space-y-3">
-        <div className="flex items-start gap-3">
-          <span className="rounded-lg bg-emerald-500/15 p-2">
-            <Sparkles className="h-4 w-4 text-emerald-300" />
-          </span>
-          <div>
-            <h2 className="text-sm font-semibold text-white">Ask your Family &amp; Family Tree</h2>
-            <p className="text-xs text-white/45 mt-0.5">
-              Search relatives, branches, generations, households, evidence, closeness, or records needing review.
-            </p>
-          </div>
-        </div>
-        <form
-          className="flex flex-col sm:flex-row gap-2"
-          onSubmit={(event) => { event.preventDefault(); void submitFamilyQuery(); }}
-        >
-          <input
-            value={familyQuery}
-            onChange={(event) => setFamilyQuery(event.target.value)}
-            aria-label="Ask your Family and Family Tree"
-            placeholder='Try “Show my maternal cousins” or “Who lives in the Solenne House?”'
-            className="h-10 flex-1 rounded-lg border border-emerald-500/25 bg-black/45 px-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-          />
-          <button
-            type="submit"
-            disabled={!familyQuery.trim() || familyQueryLoading}
-            className="h-10 rounded-lg bg-emerald-500/20 border border-emerald-500/35 px-4 text-sm text-emerald-100 hover:bg-emerald-500/25 disabled:opacity-40"
-          >
-            {familyQueryLoading ? 'Checking…' : 'Ask Family'}
-          </button>
-          {familyQueryResult && (
-            <button
-              type="button"
-              onClick={() => { setFamilyQuery(''); setFamilyQueryResult(null); setFamilyQueryError(null); }}
-              className="h-10 rounded-lg border border-white/10 px-3 text-sm text-white/55 hover:text-white"
-            >
-              Clear
-            </button>
-          )}
-        </form>
-        {familyQueryError && <p className="text-xs text-red-300" role="alert">{familyQueryError}</p>}
-        {familyQueryResult && !familyQueryError && (
-          <div className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2" aria-live="polite">
-            <p className="text-sm text-white/75">
-              {familyQueryResult.total} matching relative{familyQueryResult.total === 1 ? '' : 's'}
-              {familyQueryResult.households.length ? ` · ${familyQueryResult.households.length} household${familyQueryResult.households.length === 1 ? '' : 's'}` : ''}
-            </p>
-            <div className="grid gap-1.5 sm:grid-cols-2">
-              {familyQueryResult.results.slice(0, 8).map((result) => (
-                <button
-                  key={result.characterId}
-                  type="button"
-                  onClick={() => void openCharacter(result.characterId, result.name)}
-                  className="rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-left hover:border-emerald-400/30"
-                >
-                  <span className="block text-xs font-medium text-white/85">{result.name}</span>
-                  <span className="block text-[10px] text-white/40 mt-0.5">
-                    {result.relationLabel}{result.side ? ` · ${result.side}` : ''}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </section>
+      <BookQueryPanel
+        demoMode={shouldUseMock}
+        domains={['family']}
+        title="Ask your Family & Family Tree"
+        description="Search relatives, branches, generations, households, evidence, closeness, or records needing review."
+        placeholder='Try “Show my maternal cousins” or “Who lives in the Solenne House?”'
+        inputAriaLabel="Ask your Family and Family Tree"
+        submitLabel="Ask Family"
+        resultNoun="relative"
+        compact
+        controller={{
+          query: familyQuery,
+          onQueryChange: setFamilyQuery,
+          onSubmit: submitFamilyQuery,
+          onClear: () => {
+            setFamilyQuery('');
+            setFamilyQueryResult(null);
+            setFamilyQueryError(null);
+          },
+          loading: familyQueryLoading,
+          error: familyQueryError,
+          total: familyQueryResult?.total,
+          results: familyQueryResult?.results.map((result) => ({
+            id: result.characterId,
+            title: result.name,
+            status: result.needsReview ? 'needs_review' : result.inferenceStatus,
+            reason: result.matchedReasons[0] ?? result.relationLabel,
+          })),
+          warnings: familyQueryResult?.warnings,
+        }}
+        onSelectResult={(result) => void openCharacter(result.id, result.title)}
+      />
 
       {!!summary?.possibleFamilyMatches?.length && (
         <div className="space-y-2">

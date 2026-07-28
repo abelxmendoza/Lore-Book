@@ -312,7 +312,7 @@ export const EventTimelineSwimlanes = ({
     lanes.find(l => l.key === laneKey)?.accent ?? 'slate';
 
   return (
-    <div className="flex flex-col rounded-xl border border-white/10 bg-black/40 overflow-hidden">
+    <div className="flex flex-col rounded-xl border border-white/10 bg-black/40 overflow-hidden min-w-0 w-full max-w-full">
       {/* Centered year — updates as the viewport scrolls horizontally */}
       <div
         className="flex-shrink-0 flex items-center justify-center border-b border-white/8 bg-gradient-to-b from-primary/10 to-transparent px-4 py-2"
@@ -353,7 +353,7 @@ export const EventTimelineSwimlanes = ({
       </div>
 
       {/* labels | scrollable canvas */}
-      <div className="flex" style={{ height: totalHeight + 8 }}>
+      <div className="flex min-w-0 w-full" style={{ height: totalHeight + 8 }}>
         {/* Fixed lane labels */}
         <div className="flex-shrink-0 border-r border-white/8 bg-black/60" style={{ width: labelW }}>
           <div style={{ height: AXIS_H }} className="border-b border-white/8" />
@@ -364,9 +364,9 @@ export const EventTimelineSwimlanes = ({
             const a = ACCENTS[lane.accent ?? 'slate'];
             return (
               <div key={lane.key} style={{ height: h }} className="flex flex-col justify-center px-1.5 sm:px-3 border-b border-white/4">
-                <div className="flex items-center gap-1 sm:gap-1.5">
+                <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
                   <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${a.chip}`} />
-                  <span className={`text-[10px] sm:text-[11px] font-medium leading-tight ${a.label}`}>
+                  <span className={`text-[10px] sm:text-[11px] font-medium leading-tight truncate ${a.label}`}>
                     {lane.label}
                   </span>
                 </div>
@@ -381,7 +381,7 @@ export const EventTimelineSwimlanes = ({
         {/* Scrollable canvas */}
         <div
           ref={scrollRef}
-          className="flex-1 overflow-x-auto overflow-y-hidden"
+          className="flex-1 min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain [touch-action:pan-x_pan-y]"
           style={{ scrollBehavior: 'smooth' }}
           onScroll={syncViewportYear}
           data-testid="event-swimlanes-scroll"

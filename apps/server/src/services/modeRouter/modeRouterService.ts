@@ -12,10 +12,6 @@
  * - ACTION_LOG: Atomic verb-forward moments ("I said X", "I walked away", "I froze")
  */
 
-import { logger } from '../../logger';
-import { openai } from '../openaiClient';
-import { matchesFoundationRecallQuery } from '../chat/recallIntentPatterns';
-import { classifyQuestionIntent } from '../chat/questionIntentClassifier';
 import {
   isCastRosterQuery,
   isCharacterBookWriteRequest,
@@ -30,11 +26,17 @@ import {
   isRomanceWriteRequest,
   isEventWriteRequest,
 } from '@lorebook/api-contracts';
+
+import { logger } from '../../logger';
 import { isReplyToGroupNamingPrompt } from '../chat/groupWriteService';
+import { classifyQuestionIntent } from '../chat/questionIntentClassifier';
+import { matchesFoundationRecallQuery } from '../chat/recallIntentPatterns';
 import {
   shouldSuppressTherapist,
   shouldPreferBiographyWriter,
 } from '../chat/therapistSuppressionRules';
+import { openai } from '../openaiClient';
+import { isUniversalBookQueryRequest } from '../query/bookQueryIntent';
 
 export type ChatMode =
   | 'EMOTIONAL_EXISTENTIAL'  // Mode 1: Thoughts, fears, insecurities
@@ -62,6 +64,7 @@ export type ChatMode =
   | 'PROJECT_QUERY'          // Grounded read over the Projects Book
   | 'SKILL_QUERY'            // Grounded read over the Skills Book
   | 'QUEST_QUERY'            // Grounded read over the Quest Log
+  | 'BOOK_QUERY'             // Cross-Book or generic People/Event/Document/Narrative read
   | 'EXPERIENCE_INGESTION'   // Mode 4: Lived experiences (macro: duration, context, narrative arc)
   | 'ACTION_LOG'             // Mode 5: Atomic actions (micro: verb-forward, instant)
   | 'NEEDS_CLARIFICATION'    // Ambiguous milestone/achievement: ask what they mean before ingesting
@@ -264,6 +267,17 @@ class ModeRouterService {
         mode: 'SUGGESTION_DISMISS_WRITE',
         confidence: 0.93,
         reasoning: 'Explicit suggestion dismissal/correction request detected',
+      };
+    }
+
+    // Cross-Book questions and Books without dedicated mature handlers use
+    // the normalized registry. This must run before the single-Book checks so
+    // "What skills support my active quests?" is not reduced to Quest-only.
+    if (isUniversalBookQueryRequest(message)) {
+      return {
+        mode: 'BOOK_QUERY',
+        confidence: 0.96,
+        reasoning: 'Cross-Book or generic Book query detected',
       };
     }
 
@@ -719,6 +733,7 @@ Modes:
 15. PROJECT_QUERY - Grounded query over the Projects Book: "show my active software projects", "which projects did I finish in 2025?", "rank my projects by grounded importance".
 16. SKILL_QUERY - Grounded query over the Skills Book: "show my improving technical skills", "which skills do I use for Vanguard Robotics?", "rank my evidence-backed skills by proficiency".
 17. QUEST_QUERY - Grounded query over the Quest Log: "what quests am I currently working on?", "show blocked quests", "which quests are due soon?", "rank my quests by priority".
+18. BOOK_QUERY - Cross-Book query, or a grounded query over People, Life Log, Documents, or Narrative Anchors: "what skills support my active quests?", "which documents mention MemoVault?", "show people connected to Vanguard Robotics".
 
 Key rules:
 - When in doubt between ACTION_LOG/EXPERIENCE and UNKNOWN, always choose UNKNOWN.
@@ -732,6 +747,7 @@ Key rules:
 - Explicit lists, filters, timelines, or rankings over projects are PROJECT_QUERY. "What happened while building X?" remains narrative recall.
 - Explicit lists, filters, growth checks, project associations, or rankings over skills are SKILL_QUERY. Advice about learning a new skill remains ordinary conversation.
 - Explicit lists, filters, progress checks, schedules, or rankings over quests are QUEST_QUERY. Asking for help completing a quest remains ordinary conversation.
+- Questions naming multiple Books, or explicit queries over People, Life Log, Documents, or Narrative Anchors, are BOOK_QUERY.
 
 Respond with JSON:
 {
@@ -752,7 +768,7 @@ Respond with JSON:
       const result = JSON.parse(response.choices[0].message.content || '{}');
       
       // Validate mode
-      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'CURRENT_STORY_CAST', 'CHARACTER_BOOK_WRITE', 'ORGANIZATION_GROUP_WRITE', 'ENTITY_RECLASSIFY_WRITE', 'LOCATION_WRITE', 'PROJECT_WRITE', 'SKILL_WRITE', 'QUEST_WRITE', 'FAMILY_WRITE', 'ROMANCE_WRITE', 'EVENT_WRITE', 'SUGGESTION_DISMISS_WRITE', 'ORGANIZATION_QUERY', 'FAMILY_QUERY', 'LOCATION_QUERY', 'ROMANCE_QUERY', 'PROJECT_QUERY', 'SKILL_QUERY', 'QUEST_QUERY', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
+      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'CURRENT_STORY_CAST', 'CHARACTER_BOOK_WRITE', 'ORGANIZATION_GROUP_WRITE', 'ENTITY_RECLASSIFY_WRITE', 'LOCATION_WRITE', 'PROJECT_WRITE', 'SKILL_WRITE', 'QUEST_WRITE', 'FAMILY_WRITE', 'ROMANCE_WRITE', 'EVENT_WRITE', 'SUGGESTION_DISMISS_WRITE', 'ORGANIZATION_QUERY', 'FAMILY_QUERY', 'LOCATION_QUERY', 'ROMANCE_QUERY', 'PROJECT_QUERY', 'SKILL_QUERY', 'QUEST_QUERY', 'BOOK_QUERY', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
       const mode = validModes.includes(result.mode) ? result.mode : 'UNKNOWN';
       
       return {

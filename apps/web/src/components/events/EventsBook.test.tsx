@@ -131,7 +131,7 @@ describe('EventsBook', () => {
     render(<EventsBook />);
     await screen.findByText('Night out with Jamie');
 
-    expect(screen.getByRole('tablist', { name: /Life Log event categories/i })).toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: /Moment categories/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Birthdays/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Parties/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Concerts|Shows/i })).toBeInTheDocument();

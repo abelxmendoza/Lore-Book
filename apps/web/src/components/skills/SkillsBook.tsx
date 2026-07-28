@@ -23,10 +23,10 @@ import { consumeHighlightItemId, resolveBookHighlightItem } from '../../lib/reso
 
 
 import { BookTrustSummary } from '../trust/BookTrustSummary';
+import { BookQueryPanel } from '../query/BookQueryPanel';
 import { mockDataService } from '../../services/mockDataService';
 import { skillBookDemoSkills } from '../../mocks/skillBookDemo';
 import {
-  formatSkillCertainty,
   levelLabel,
   skillStatus,
   statusLabel,
@@ -474,7 +474,7 @@ export const SkillsBook: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="space-y-5">
+      <div className="mx-auto w-full min-w-0 max-w-7xl space-y-4 sm:space-y-5 pb-4 sm:pb-10">
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
           {Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
             <div key={i} className="min-h-[11rem] rounded-xl bg-white/5 border border-white/8 animate-pulse" />
@@ -484,8 +484,9 @@ export const SkillsBook: React.FC = () => {
     );
   }
 
+
   return (
-    <div className="space-y-5">
+    <div className="mx-auto w-full min-w-0 max-w-7xl space-y-3 sm:space-y-5 pb-4 sm:pb-10">
       <DetectedSkillSuggestions
         demoMode={isMockDataEnabled}
         existingBookEntries={skills.map(s => ({ id: s.id, name: s.skill_name }))}
@@ -525,81 +526,34 @@ export const SkillsBook: React.FC = () => {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-teal-500/25 bg-teal-500/[0.06] p-3 sm:p-4">
-        <div className="flex items-start justify-between gap-3 mb-2.5">
-          <div>
-            <p className="text-sm font-semibold text-white">Ask Skills</p>
-            <p className="text-xs text-white/45 mt-0.5">
-              Search practice, growth, work use, related projects, proficiency, and evidence.
-            </p>
-          </div>
-          {bookQueryResult && (
-            <button
-              type="button"
-              onClick={() => {
-                setBookQuery('');
-                setBookQueryResult(null);
-              }}
-              className="text-xs text-white/45 hover:text-white/75"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <Input
-            value={bookQuery}
-            onChange={(event) => setBookQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') void runBookQuery();
-            }}
-            placeholder="Try “which skills do I use for Vanguard Robotics?”"
-            className="min-h-[44px] bg-black/35 border-white/10 text-white placeholder:text-white/30"
-          />
-          <Button
-            type="button"
-            onClick={() => void runBookQuery()}
-            disabled={bookQueryLoading || !bookQuery.trim()}
-            className="min-h-[44px] sm:min-h-0 bg-teal-600 hover:bg-teal-500"
-          >
-            {bookQueryLoading ? 'Checking…' : 'Ask'}
-          </Button>
-        </div>
-        {bookQueryError && <p className="mt-2 text-xs text-red-300">{bookQueryError}</p>}
-        {bookQueryResult && (
-          <div className="mt-3 border-t border-white/10 pt-3">
-            <p className="text-xs text-white/60">
-              <span className="font-semibold text-teal-300">{bookQueryResult.total}</span>{' '}
-              matching {bookQueryResult.total === 1 ? 'skill' : 'skills'}
-            </p>
-            {bookQueryResult.results.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {bookQueryResult.results.slice(0, 8).map((result) => (
-                  <button
-                    key={result.skillId}
-                    type="button"
-                    onClick={() => {
-                      const skill = skills.find((item) => item.id === result.skillId);
-                      if (skill) setSelectedSkill(skill);
-                    }}
-                    className="rounded-full border border-teal-500/30 bg-teal-500/10 px-2.5 py-1 text-xs text-teal-200 hover:bg-teal-500/20"
-                  >
-                    {result.name}
-                  </button>
-                ))}
-                {bookQueryResult.total > 8 && (
-                  <span className="px-2 py-1 text-xs text-white/40">
-                    +{bookQueryResult.total - 8} more below
-                  </span>
-                )}
-              </div>
-            )}
-            {bookQueryResult.warnings.map((warning) => (
-              <p key={warning} className="mt-2 text-[11px] text-amber-300/85">{warning}</p>
-            ))}
-          </div>
-        )}
-      </div>
+      <BookQueryPanel
+        demoMode={isMockDataEnabled}
+        domains={['skill']}
+        title="Ask Skills"
+        description="Search practice, growth, work use, related projects, proficiency, and evidence."
+        placeholder='Try “which skills do I use for Vanguard Robotics?”'
+        compact
+        controller={{
+          query: bookQuery,
+          onQueryChange: setBookQuery,
+          onSubmit: runBookQuery,
+          onClear: () => { setBookQuery(''); setBookQueryResult(null); },
+          loading: bookQueryLoading,
+          error: bookQueryError,
+          total: bookQueryResult?.total,
+          results: bookQueryResult?.results.map((result) => ({
+            id: result.skillId,
+            title: result.name,
+            status: result.active ? 'active' : 'inactive',
+            reason: result.matchedReasons[0],
+          })),
+          warnings: bookQueryResult?.warnings,
+        }}
+        onSelectResult={(result) => {
+          const skill = skills.find((item) => item.id === result.id);
+          if (skill) setSelectedSkill(skill);
+        }}
+      />
 
       <SearchWithAutocomplete<Skill>
         value={searchTerm}
@@ -623,7 +577,6 @@ export const SkillsBook: React.FC = () => {
         emptyHint="No matching skills"
       />
 
-      {/* Filters — compact stacked grid, no horizontal scroll */}
       <div
         className={cn(
           'rounded-xl border p-2 sm:p-2.5 space-y-2 min-w-0 overflow-x-hidden bg-gradient-to-br from-white/[0.04] via-black/20 to-white/[0.02]',
@@ -801,22 +754,30 @@ export const SkillsBook: React.FC = () => {
         <div
           ref={bookPageRef}
           className={cn(
-            'relative w-full min-w-0 rounded-lg border-2 shadow-2xl overflow-hidden flex flex-col bg-gradient-to-br scroll-mt-4',
-            activeCategory === 'all'
-              ? 'from-violet-950/30 via-black/45 to-cyan-950/25 border-violet-700/35'
-              : cn(bookTheme.bodyGrad, bookTheme.border),
+            // Tall shell + mt-auto footer. Grow with cards (no nested scroll / clipping).
+            'relative w-full min-w-0 min-h-[88dvh] sm:min-h-[640px] lg:min-h-[720px] rounded-lg border-2 shadow-2xl flex flex-col bg-black scroll-mt-4',
+            activeCategory === 'all' ? 'border-violet-700/35' : bookTheme.border,
           )}
         >
-          <div className={cn('absolute inset-x-0 top-0 h-24 bg-gradient-to-b opacity-50 pointer-events-none', bookTheme.headerGrad)} />
-          <div className="relative p-3 flex flex-col flex-1 min-h-0">
-            <div className={cn('flex flex-col gap-2 mb-3 pb-3 border-b', bookTheme.border)}>
+          <div
+            className={cn(
+              'pointer-events-none absolute inset-0 bg-gradient-to-br',
+              activeCategory === 'all'
+                ? 'from-violet-950/80 via-black to-cyan-950/55'
+                : bookTheme.bodyGrad,
+            )}
+            aria-hidden
+          />
+          <div className={cn('pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b opacity-50', bookTheme.headerGrad)} />
+          <div className="relative flex flex-1 flex-col p-3 sm:p-5">
+            <div className={cn('mb-3 flex shrink-0 flex-col gap-2 border-b pb-3', bookTheme.border)}>
               <div className="flex items-center gap-2.5 min-w-0">
                 <BookOpen className={cn('h-5 w-5 shrink-0', bookTheme.icon)} />
                 <div className="min-w-0">
                   <h3 className={cn('text-xs font-semibold uppercase tracking-wider', bookTheme.accentText)}>
                     Skills Book
                   </h3>
-                  <p className={cn('text-[11px] mt-0.5 truncate opacity-80', bookTheme.accentText)}>
+                  <p className={cn('mt-0.5 truncate text-[11px] opacity-80', bookTheme.accentText)}>
                     Page {currentPage} of {totalPages} · {sortedSkills.length} skills
                   </p>
                   <BookTrustSummary domain="skills" className="mt-1" />
@@ -825,42 +786,35 @@ export const SkillsBook: React.FC = () => {
             </div>
 
             {viewMode === 'list' ? (
-              <div className="flex-1 mb-3 min-h-0 rounded-xl border border-white/10 bg-black/30 overflow-hidden divide-y divide-white/6">
+              <div className="mb-3 flex-1 rounded-xl border border-white/10 bg-black/70 divide-y divide-white/6">
                 {paginatedSkills.map((skill) => {
                   const profile = readSkillProfile(skill.metadata);
                   const status = skillStatus(skill, profile);
-                  const relatedProjects = profile?.related_projects?.slice(0, 3) ?? [];
+                  const blurb = (profile?.story_summary || skill.description || profile?.origin_story || '').trim();
                   return (
                     <button
                       key={skill.id}
                       type="button"
                       onClick={() => handleSkillClick(skill)}
-                      className="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-white/5 transition-colors text-left"
+                      className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-white/5"
                     >
-                      <BookOpen className="h-4 w-4 text-violet-300/70 mt-0.5 shrink-0" />
+                      <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-violet-300/70" />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm font-medium text-white truncate">{skill.skill_name}</p>
-                          <span className="text-[10px] text-white/45 shrink-0">
+                          <p className="truncate text-sm font-medium text-white">{skill.skill_name}</p>
+                          <span className="shrink-0 text-[10px] text-white/45">
                             {levelLabel(skill.current_level)}
                           </span>
                         </div>
-                        {(profile?.story_summary || skill.description || profile?.origin_story) && (
-                          <p className="text-xs text-white/50 line-clamp-2 mt-0.5">
-                            {profile?.story_summary || skill.description || profile?.origin_story}
-                          </p>
-                        )}
-                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[10px] text-white/40">
-                          <span>{skill.skill_category}</span>
+                        {blurb ? (
+                          <p className="mt-0.5 line-clamp-2 text-xs text-white/50">{blurb}</p>
+                        ) : null}
+                        <div className="mt-1 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[10px] text-white/40">
+                          <span className="capitalize">{skill.skill_category.replace(/_/g, ' ')}</span>
                           <span>{statusLabel(status)}</span>
-                          <span>{formatSkillCertainty(skill.confidence_score)} certainty</span>
                           <span>{usageCountLabel(skill.practice_count)}</span>
-                          {profile?.usage_frequency && <span>{profile.usage_frequency}</span>}
-                          {relatedProjects.length > 0 && (
-                            <span>Projects: {relatedProjects.join(', ')}</span>
-                          )}
                           {skill.last_practiced_at && (
-                            <span>Last: {new Date(skill.last_practiced_at).toLocaleDateString()}</span>
+                            <span>Last {new Date(skill.last_practiced_at).toLocaleDateString()}</span>
                           )}
                         </div>
                       </div>
@@ -869,7 +823,7 @@ export const SkillsBook: React.FC = () => {
                 })}
               </div>
             ) : (
-              <div className="flex-1 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 mb-3 content-start min-h-0 auto-rows-fr">
+              <div className="mb-3 grid flex-1 content-start grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
                 {paginatedSkills.map((skill) => (
                   <SkillProfileCard
                     key={skill.id}
@@ -882,29 +836,35 @@ export const SkillsBook: React.FC = () => {
               </div>
             )}
 
-            <div className={cn('flex flex-col gap-2 pt-3 border-t mt-auto', bookTheme.border)}>
-              <p className={cn('text-[10px] text-center tabular-nums order-2', bookTheme.accentText, 'opacity-70')}>
+            <div
+              className={cn(
+                'mt-auto flex shrink-0 flex-col gap-2 border-t pt-3',
+                'pb-[max(0.25rem,env(safe-area-inset-bottom,0px))] sm:pb-0',
+                bookTheme.border,
+              )}
+            >
+              <p className={cn('order-2 text-center text-[10px] tabular-nums opacity-70', bookTheme.accentText)}>
                 {visibleStart}–{visibleEnd} of {sortedSkills.length} skills
               </p>
 
-              <div className="flex items-center gap-2 w-full order-1">
+              <div className="order-1 flex w-full items-center gap-2">
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => dispatch(goToPrevPage())}
                   disabled={currentPage === 1}
                   className={cn(
-                    'flex-1 min-h-[40px] touch-manipulation',
+                    'min-h-[44px] flex-1 touch-manipulation sm:min-h-[40px]',
                     bookTheme.accentText,
-                    'opacity-70 hover:opacity-100 hover:bg-white/5 disabled:opacity-30',
+                    'opacity-70 hover:bg-white/5 hover:opacity-100 disabled:opacity-30',
                   )}
                 >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  <ChevronLeft className="mr-1 h-4 w-4" />
                   Prev
                 </Button>
 
-                <div className="flex items-center gap-1 px-2 py-1 bg-black/40 rounded-lg border border-white/10 shrink-0">
-                  <span className={cn('text-[11px] font-medium tabular-nums px-1', bookTheme.accentText)}>
+                <div className="flex shrink-0 items-center gap-1 rounded-lg border border-white/10 bg-black/40 px-2 py-1">
+                  <span className={cn('px-1 text-[11px] font-medium tabular-nums', bookTheme.accentText)}>
                     {currentPage}/{totalPages}
                   </span>
                 </div>
@@ -915,13 +875,13 @@ export const SkillsBook: React.FC = () => {
                   onClick={() => dispatch(goToNextPage(totalPages))}
                   disabled={currentPage === totalPages}
                   className={cn(
-                    'flex-1 min-h-[40px] touch-manipulation',
+                    'min-h-[44px] flex-1 touch-manipulation sm:min-h-[40px]',
                     bookTheme.accentText,
-                    'opacity-70 hover:opacity-100 hover:bg-white/5 disabled:opacity-30',
+                    'opacity-70 hover:bg-white/5 hover:opacity-100 disabled:opacity-30',
                   )}
                 >
                   Next
-                  <ChevronRight className="h-4 w-4 ml-1" />
+                  <ChevronRight className="ml-1 h-4 w-4" />
                 </Button>
               </div>
             </div>
@@ -930,7 +890,7 @@ export const SkillsBook: React.FC = () => {
       )}
 
       {contextRecords.length > 0 && (
-        <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3 sm:p-4 space-y-2">
+        <div className="space-y-2 rounded-xl border border-white/10 bg-black/60 p-3 sm:p-4">
           <div className="flex items-baseline justify-between gap-2">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-white/50">
               Related context (not Skills Book peers)
@@ -941,7 +901,7 @@ export const SkillsBook: React.FC = () => {
             Projects, activities, knowledge areas, responsibilities, and demoted or merged
             records from skill cognition. These no longer inflate your durable skill list.
           </p>
-          <ul className="divide-y divide-white/6 rounded-lg border border-white/8 overflow-hidden">
+          <ul className="divide-y divide-white/6 overflow-hidden rounded-lg border border-white/8">
             {contextRecords.map((skill) => {
               const ont = readSkillOntologyMeta(skill.metadata);
               return (
@@ -949,14 +909,14 @@ export const SkillsBook: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleSkillClick(skill)}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/5 transition-colors"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-white/5"
                   >
-                    <span className="text-sm text-white/80 truncate flex-1">{skill.skill_name}</span>
-                    <span className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-amber-500/30 bg-amber-500/10 text-amber-100/90 shrink-0">
+                    <span className="min-w-0 flex-1 truncate text-sm text-white/80">{skill.skill_name}</span>
+                    <span className="shrink-0 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-amber-100/90">
                       {capabilityEntityTypeLabel(ont.capabilityEntityType)}
                     </span>
                     {ont.migrationStatus && (
-                      <span className="text-[9px] text-white/35 shrink-0 hidden sm:inline">
+                      <span className="hidden shrink-0 text-[9px] text-white/35 sm:inline">
                         {ont.migrationStatus.replace(/_/g, ' ')}
                       </span>
                     )}

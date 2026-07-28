@@ -111,6 +111,12 @@ class QueryInspector {
     return this.traces.slice(-limit);
   }
 
+  getRecentTracesForUser(userId: string, limit = 20): QueryTrace[] {
+    return this.traces
+      .filter((trace) => trace.userId === userId)
+      .slice(-Math.max(1, Math.min(limit, 100)));
+  }
+
   getLastTrace(): QueryTrace | undefined {
     return this.traces[this.traces.length - 1];
   }

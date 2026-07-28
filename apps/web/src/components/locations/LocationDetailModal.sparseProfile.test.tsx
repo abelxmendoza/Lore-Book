@@ -11,7 +11,6 @@ vi.mock('../memory-explorer/MemoryCard', () => ({ MemoryCardComponent: () => nul
 vi.mock('../memory-explorer/MemoryDetailModal', () => ({ MemoryDetailModal: () => null }));
 vi.mock('../../features/chat/composer/ChatComposer', () => ({ ChatComposer: () => null }));
 vi.mock('../../features/chat/message/ChatMessage', () => ({ ChatMessage: () => null }));
-vi.mock('./LocationTimeline', () => ({ LocationTimeline: () => null }));
 
 import { LocationDetailModal } from './LocationDetailModal';
 

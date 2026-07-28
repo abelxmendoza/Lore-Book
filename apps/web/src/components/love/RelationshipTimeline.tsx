@@ -6,6 +6,8 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { TimelineInlineDate } from '../timeline/TimelineDateDisplay';
 import { openCharacterBookModal } from '../../lib/openCharacterBookModal';
+import { EntityTimelinePanel } from '../common/EntityTimelinePanel';
+import type { SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
 
 type DateEvent = {
   id: string;
@@ -15,6 +17,13 @@ type DateEvent = {
   description?: string;
   sentiment?: number;
   was_positive?: boolean;
+};
+
+type LoveSwimEvent = SwimlaneEvent & {
+  dateType: string;
+  location?: string;
+  sentiment?: number;
+  isPositive: boolean;
 };
 
 type RelationshipScores = {
@@ -74,12 +83,6 @@ function intimacyImpactClass(label: string): string {
     return 'bg-red-500/15 text-red-300 border-red-500/30';
   }
   return 'bg-violet-500/15 text-violet-200 border-violet-500/30';
-}
-
-function getDateIcon(type: string) {
-  if (type.includes('breakup') || type.includes('fight')) return TrendingDown;
-  if (INTIMACY_TYPES.has(type) || type.includes('love') || type.includes('kiss')) return Heart;
-  return Calendar;
 }
 
 function getDateColor(type: string, wasPositive?: boolean) {
@@ -224,83 +227,83 @@ export const RelationshipTimeline = ({
       )}
 
       {/* Milestones */}
-      {sortedDates.length === 0 ? (
-        <Card className="border-border/60 bg-black/40">
-          <CardContent className="p-6 sm:p-8 text-center">
-            <Heart className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-3 text-pink-400/30" />
-            <p className="text-white/60 mb-1 text-sm">No intimacy milestones yet</p>
-            <p className="text-white/40 text-xs sm:text-sm max-w-md mx-auto">
-              First dates, deepening moments, and bond shifts appear here as you talk about this relationship in chat.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3 sm:space-y-4">
-          <h3 className="text-base sm:text-lg font-semibold text-white">Intimacy milestones</h3>
-          <div className="relative pl-1">
-            <div className="absolute left-[1.35rem] sm:left-6 top-2 bottom-2 w-0.5 bg-gradient-to-b from-pink-500/40 via-rose-400/30 to-pink-500/20" />
-
-            <div className="space-y-4 sm:space-y-5">
-              {sortedDates.map((date) => {
-                const DateIcon = getDateIcon(date.date_type);
-                const isPositive = date.was_positive ?? (date.sentiment != null ? date.sentiment > 0 : true);
-                const impact = intimacyImpactLabel(date.date_type, date.sentiment, isPositive);
-
-                return (
-                  <div key={date.id} className="relative flex items-start gap-2.5 sm:gap-4 pl-0.5 min-w-0">
-                    <div
-                      className={`relative z-10 w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 flex items-center justify-center shrink-0 ${getDateColor(date.date_type, isPositive)}`}
+      <EntityTimelinePanel<LoveSwimEvent>
+        icon={Heart}
+        title="Intimacy milestones"
+        lanes={[
+          { key: 'growth', label: 'Growth & closeness', accent: 'rose' },
+          { key: 'strain', label: 'Strain & tension', accent: 'slate' },
+        ]}
+        events={sortedDates.map((date): LoveSwimEvent => {
+          const isPositive = date.was_positive ?? (date.sentiment != null ? date.sentiment > 0 : true);
+          const impact = intimacyImpactLabel(date.date_type, date.sentiment, isPositive);
+          const laneKey = impact === 'Strain' || impact === 'Tension' || impact === 'Rupture' ? 'strain' : 'growth';
+          return {
+            id: date.id,
+            title: formatDateType(date.date_type),
+            date: date.date_time,
+            laneKey,
+            type: impact,
+            summary: date.description,
+            dateType: date.date_type,
+            location: date.location,
+            sentiment: date.sentiment,
+            isPositive,
+          };
+        })}
+        emptyTitle="No intimacy milestones yet"
+        emptyHint="First dates, deepening moments, and bond shifts appear here as you talk about this relationship in chat."
+        renderListItem={(event) => (
+          <>
+            <span
+              className={`absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full ring-2 ring-black/80 ${
+                event.laneKey === 'strain' ? 'bg-red-400' : 'bg-pink-400'
+              }`}
+            />
+            <Card className={`w-full min-w-0 border ${getDateColor(event.dateType, event.isPositive)}`}>
+              <CardContent className="p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-2">
+                  <div className="flex flex-wrap items-center gap-2 min-w-0">
+                    <TimelineInlineDate iso={event.date} size="sm" showTime={false} />
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] shrink-0 ${intimacyImpactClass(event.type ?? '')}`}
                     >
-                      <DateIcon className="w-4 h-4 sm:w-5 sm:h-5" />
-                    </div>
-
-                    <Card className={`flex-1 min-w-0 border ${getDateColor(date.date_type, isPositive)}`}>
-                      <CardContent className="p-3 sm:p-4">
-                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-2">
-                          <div className="flex flex-wrap items-center gap-2 min-w-0">
-                            <TimelineInlineDate iso={date.date_time} size="sm" showTime={false} />
-                            <Badge
-                              variant="outline"
-                              className={`text-[10px] shrink-0 ${intimacyImpactClass(impact)}`}
-                            >
-                              {impact}
-                            </Badge>
-                          </div>
-                          {date.sentiment !== undefined && (
-                            <div className="flex items-center gap-1 shrink-0 text-xs text-white/50">
-                              {date.sentiment > 0 ? (
-                                <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-                              ) : date.sentiment < 0 ? (
-                                <TrendingDown className="w-3.5 h-3.5 text-red-400" />
-                              ) : null}
-                              <span>Warmth {Math.round(Math.abs(date.sentiment) * 100)}%</span>
-                            </div>
-                          )}
-                        </div>
-
-                        <h4 className="font-semibold text-white text-sm sm:text-base mb-1 break-words">
-                          {formatDateType(date.date_type)}
-                        </h4>
-
-                        {date.location && (
-                          <div className="flex items-center gap-1.5 text-xs text-white/55 mb-1.5">
-                            <MapPin className="w-3 h-3 shrink-0" />
-                            <span className="truncate">{date.location}</span>
-                          </div>
-                        )}
-
-                        {date.description && (
-                          <p className="text-xs sm:text-sm text-white/75 leading-relaxed break-words">{date.description}</p>
-                        )}
-                      </CardContent>
-                    </Card>
+                      {event.type}
+                    </Badge>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
+                  {event.sentiment !== undefined && (
+                    <div className="flex items-center gap-1 shrink-0 text-xs text-white/50">
+                      {event.sentiment > 0 ? (
+                        <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                      ) : event.sentiment < 0 ? (
+                        <TrendingDown className="w-3.5 h-3.5 text-red-400" />
+                      ) : null}
+                      <span>Warmth {Math.round(Math.abs(event.sentiment) * 100)}%</span>
+                    </div>
+                  )}
+                </div>
+
+                <h4 className="font-semibold text-white text-sm sm:text-base mb-1 break-words">
+                  {event.title}
+                </h4>
+
+                {event.location && (
+                  <div className="flex items-center gap-1.5 text-xs text-white/55 mb-1.5">
+                    <MapPin className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{event.location}</span>
+                  </div>
+                )}
+
+                {event.summary && (
+                  <p className="text-xs sm:text-sm text-white/75 leading-relaxed break-words">{event.summary}</p>
+                )}
+              </CardContent>
+            </Card>
+          </>
+        )}
+        footer={null}
+      />
     </div>
   );
 };

@@ -22,6 +22,7 @@ import {
  *  used for ordering + observability — never for correctness. */
 export const EXECUTOR_PROFILES: Record<ExecutorKind, ExecutorProfile> = {
   structured:     { estimatedLatencyMs: 120, estimatedTokenCost: 0,   expectedConfidenceGain: 0.9,  cacheable: true,  priority: 1 },
+  books:          { estimatedLatencyMs: 180, estimatedTokenCost: 0,   expectedConfidenceGain: 0.75, cacheable: true,  priority: 2 },
   thread:         { estimatedLatencyMs: 60,  estimatedTokenCost: 0,   expectedConfidenceGain: 0.85, cacheable: false, priority: 0 },
   crystallized:   { estimatedLatencyMs: 90,  estimatedTokenCost: 0,   expectedConfidenceGain: 0.5,  cacheable: true,  priority: 2 },
   semantic:       { estimatedLatencyMs: 450, estimatedTokenCost: 400, expectedConfidenceGain: 0.6,  cacheable: false, priority: 3 },
@@ -49,7 +50,8 @@ export const PLANNING_RULES: Record<QueryType, StageRule[]> = {
   ],
   [QueryType.RELATIONSHIP]: [
     { kind: 'structured', source: 'relationships', priority: 1 },
-    { kind: 'graph', placeholder: true, priority: 2 },
+    { kind: 'books', source: 'book_query_registry', priority: 2, runIf: 'if_low_confidence' },
+    { kind: 'graph', source: 'canonical_book_graph', priority: 2, runIf: 'if_low_confidence' },
   ],
   // timeline → structured → semantic
   [QueryType.TIMELINE]: [
@@ -57,24 +59,34 @@ export const PLANNING_RULES: Record<QueryType, StageRule[]> = {
     { kind: 'timeline', placeholder: true, priority: 1 },
     { kind: 'semantic', source: 'journal_entries', priority: 2, runIf: 'if_low_confidence' },
   ],
-  [QueryType.LOCATION]: [{ kind: 'structured', source: 'locations', priority: 1 }],
-  [QueryType.ORGANIZATION]: [{ kind: 'structured', source: 'organizations', priority: 1 }],
+  [QueryType.LOCATION]: [
+    { kind: 'structured', source: 'locations', priority: 1 },
+    { kind: 'books', source: 'book_query_registry', priority: 2, runIf: 'if_low_confidence' },
+  ],
+  [QueryType.ORGANIZATION]: [
+    { kind: 'structured', source: 'organizations', priority: 1 },
+    { kind: 'books', source: 'book_query_registry', priority: 2, runIf: 'if_low_confidence' },
+  ],
   [QueryType.ATTRIBUTE]: [
     { kind: 'structured', source: 'characters', priority: 1 },
+    { kind: 'books', source: 'book_query_registry', priority: 2, runIf: 'if_low_confidence' },
     { kind: 'crystallized', source: 'omega_claims', priority: 2, runIf: 'if_low_confidence' },
   ],
   // structured → claims → semantic
   [QueryType.COMPARISON]: [
     { kind: 'structured', source: 'characters', priority: 1 },
+    { kind: 'books', source: 'book_query_registry', priority: 2, runIf: 'if_low_confidence' },
     { kind: 'semantic', source: 'journal_entries', priority: 2, runIf: 'if_low_confidence' },
     { kind: 'analytics', placeholder: true, priority: 3 },
   ],
   [QueryType.AGGREGATE]: [
     { kind: 'structured', source: 'characters', priority: 1 },
+    { kind: 'books', source: 'book_query_registry', priority: 2, runIf: 'if_low_confidence' },
     { kind: 'analytics', placeholder: true, priority: 2 },
   ],
   [QueryType.NARRATIVE]: [
     { kind: 'structured', source: 'characters', priority: 1 },
+    { kind: 'books', source: 'book_query_registry', priority: 2, runIf: 'if_low_confidence' },
     { kind: 'semantic', source: 'journal_entries', priority: 1 },
     { kind: 'timeline', placeholder: true, priority: 2 },
   ],
@@ -83,8 +95,9 @@ export const PLANNING_RULES: Record<QueryType, StageRule[]> = {
   // structured → graph → semantic (only if needed)
   [QueryType.GRAPH]: [
     { kind: 'structured', source: 'relationships', priority: 1 },
-    { kind: 'graph', placeholder: true, priority: 2 },
-    { kind: 'semantic', source: 'journal_entries', priority: 3, runIf: 'if_no_records' },
+    { kind: 'books', source: 'book_query_registry', priority: 1 },
+    { kind: 'graph', source: 'canonical_book_graph', priority: 1 },
+    { kind: 'semantic', source: 'journal_entries', priority: 2, runIf: 'if_no_records' },
   ],
   [QueryType.WORKING_MEMORY]: [
     { kind: 'thread', source: 'conversation', priority: 0 },

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  AlertTriangle,
   Briefcase,
   X,
   FileText,
@@ -13,7 +14,11 @@ import {
 } from 'lucide-react';
 import { Modal } from '../ui/modal';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
+import { EntityModalBottomNav } from '../common/EntityModalBottomNav';
 import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
+import { Card, CardContent } from '../ui/card';
+import { Input } from '../ui/input';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { fetchProjectById, isEphemeralEntityId } from '../../lib/hydrateBookEntity';
 import {
@@ -44,9 +49,9 @@ import {
 
 const STATUSES = ['active', 'paused', 'completed', 'abandoned'] as const;
 
-type TabKey = 'overview' | 'timeline' | 'people' | 'skills' | 'story' | 'chat';
+type TabKey = 'overview' | 'timeline' | 'people' | 'skills' | 'story' | 'chat' | 'danger';
 
-const TABS: Array<{ key: TabKey; label: string; short: string; icon: typeof FileText }> = [
+const SECTION_TABS: Array<{ key: Exclude<TabKey, 'danger'>; label: string; short: string; icon: typeof FileText }> = [
   { key: 'overview', label: 'Overview', short: 'Brief', icon: FileText },
   { key: 'timeline', label: 'Timeline', short: 'Arc', icon: Clock },
   { key: 'people', label: 'People', short: 'Team', icon: Users },
@@ -66,6 +71,9 @@ type Props = {
 export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskInChat }: Props) {
   const navigate = useNavigate();
   const [deleting, setDeleting] = useState(false);
+  const [deleteStep, setDeleteStep] = useState<null | 'warn' | 'type'>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [lorebookPrefill, setLorebookPrefill] = useState<LorebookCreatorPrefill | null>(null);
   const demo = useShouldUseMockData();
   const enriched = useMemo(
@@ -121,6 +129,9 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
   useEffect(() => {
     setLocal(demo ? enrichProjectForDemo(project) : project);
     setActiveTab('overview');
+    setDeleteStep(null);
+    setDeleteConfirmText('');
+    setDeleteError(null);
   }, [project.id, demo, project]);
 
   useEffect(() => {
@@ -141,10 +152,21 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
 
   const isFallback = local.metadata?.source === 'organizations_fallback';
   const readOnly = isFallback;
+  const canDelete = Boolean(onDelete) && !readOnly;
   const status = (local.status ?? 'active') as keyof typeof STATUS_CONFIG;
   const statusCfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.active;
   const typeKey = (local.type ?? 'default').toLowerCase();
   const gradient = TYPE_GRADIENT[typeKey] ?? TYPE_GRADIENT.default;
+
+  const navTabs = useMemo(() => {
+    const list: Array<{ key: TabKey; label: string; short: string; icon: typeof FileText }> = [
+      ...SECTION_TABS,
+    ];
+    if (canDelete) {
+      list.push({ key: 'danger', label: 'Delete', short: 'Delete', icon: Trash2 });
+    }
+    return list;
+  }, [canDelete]);
 
   const save = async (patch: Partial<ProjectCardData>) => {
     if (readOnly) return;
@@ -156,15 +178,31 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
     onClose();
   };
 
+  const resetDeleteFlow = () => {
+    setDeleteStep(null);
+    setDeleteConfirmText('');
+    setDeleteError(null);
+  };
+
+  const setTab = (tab: TabKey) => {
+    setActiveTab(tab);
+    if (tab === 'danger') {
+      setDeleteStep((prev) => prev ?? 'warn');
+    } else {
+      resetDeleteFlow();
+    }
+  };
+
   const handleDelete = async () => {
     if (deleting || readOnly || !onDelete) return;
-    if (!window.confirm(`Delete "${local.name}"? This can't be undone.`)) return;
+    if (deleteConfirmText.trim() !== local.name) return;
     setDeleting(true);
+    setDeleteError(null);
     try {
       await onDelete(local.id);
       onClose();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Failed to delete project.');
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete project.');
       setDeleting(false);
     }
   };
@@ -178,18 +216,6 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
       >
         {/* Hero — compact on mobile */}
         <div className={`relative shrink-0 border-b border-white/10 bg-gradient-to-br ${gradient}`}>
-          {onDelete && !readOnly && (
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={deleting}
-              className="absolute top-2 right-11 sm:top-3 sm:right-12 text-white/45 hover:text-red-300 p-1.5 rounded-lg hover:bg-red-500/10 z-10 touch-manipulation disabled:opacity-50"
-              aria-label="Delete project"
-              title="Delete project"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          )}
           <button
             type="button"
             onClick={onClose}
@@ -260,18 +286,22 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
           </div>
         )}
 
-        {/* Tabs — stacked grid on mobile */}
+        {/* Tabs — desktop nav; mobile uses the bottom nav */}
         <Tabs
           value={activeTab}
-          onValueChange={(v) => setActiveTab(v as TabKey)}
+          onValueChange={(v) => setTab(v as TabKey)}
           className="flex flex-col flex-1 min-h-0 px-3 sm:px-5 pt-2 sm:pt-3"
         >
-          <TabsList className="w-full flex-shrink-0 h-auto p-1 bg-white/5 border border-white/10 rounded-lg grid grid-cols-3 sm:flex sm:flex-wrap gap-1 mb-2 sm:mb-3 overflow-visible">
-            {TABS.map(({ key, label, short, icon: Icon }) => (
+          <TabsList className="hidden sm:flex w-full flex-shrink-0 h-auto p-1 bg-white/5 border border-white/10 rounded-lg flex-wrap gap-1 mb-2 sm:mb-3 overflow-visible">
+            {navTabs.map(({ key, label, short, icon: Icon }) => (
               <TabsTrigger
                 key={key}
                 value={key}
-                className="flex flex-col sm:flex-row items-center justify-center gap-0 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2 text-[9px] sm:text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary-100 rounded-md min-h-[2.25rem] sm:min-h-0 w-full sm:w-auto"
+                className={
+                  key === 'danger'
+                    ? 'flex flex-col sm:flex-row items-center justify-center gap-0 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2 text-[9px] sm:text-xs data-[state=active]:bg-red-500/20 data-[state=active]:text-red-100 text-red-300/80 rounded-md min-h-[2.25rem] sm:min-h-0 w-full sm:w-auto'
+                    : 'flex flex-col sm:flex-row items-center justify-center gap-0 sm:gap-1.5 px-1 py-1.5 sm:px-3 sm:py-2 text-[9px] sm:text-xs data-[state=active]:bg-primary/20 data-[state=active]:text-primary-100 rounded-md min-h-[2.25rem] sm:min-h-0 w-full sm:w-auto'
+                }
               >
                 <Icon className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
                 <span className="hidden sm:inline">{label}</span>
@@ -326,8 +356,100 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
             <TabsContent value="chat" className="mt-0 focus-visible:outline-none">
               <ProjectChatTab project={local} profile={profile} onAsk={handleAsk} />
             </TabsContent>
+
+            {canDelete && (
+              <TabsContent value="danger" className="mt-0 focus-visible:outline-none">
+                <Card className="border-red-500/25 bg-gradient-to-br from-red-500/10 via-black/40 to-black/50 overflow-hidden">
+                  <CardContent className="p-5 space-y-4">
+                    <div className="flex items-start gap-3">
+                      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-red-500/25 bg-red-500/10">
+                        <AlertTriangle className="h-5 w-5 text-red-400" />
+                      </span>
+                      <div className="min-w-0">
+                        {deleteStep === 'warn' && (
+                          <>
+                            <h3 className="text-lg font-semibold text-white">Delete {local.name}?</h3>
+                            <p className="text-sm text-white/60 mt-1">
+                              Deleting removes this project from your Projects book. Linked moments and chat context may be harder to find. This cannot be undone.
+                            </p>
+                            <p className="text-xs text-white/45 mt-2">
+                              Step 1 of 2 — continue to type the project name.
+                            </p>
+                          </>
+                        )}
+                        {deleteStep === 'type' && (
+                          <>
+                            <h3 className="text-lg font-semibold text-white">Type the name to confirm</h3>
+                            <p className="text-sm text-white/60 mt-1">
+                              Enter <span className="font-mono text-red-200">{local.name}</span> to delete this project.
+                            </p>
+                            <Input
+                              className="mt-3 bg-black/40 border-red-500/20"
+                              value={deleteConfirmText}
+                              onChange={(e) => setDeleteConfirmText(e.target.value)}
+                              placeholder={local.name}
+                              autoFocus
+                              data-testid="project-delete-confirm-input"
+                            />
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {deleteError && (
+                      <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+                        {deleteError}
+                      </div>
+                    )}
+
+                    <div className="flex justify-end gap-2">
+                      <Button variant="ghost" onClick={() => setTab('overview')} disabled={deleting}>
+                        Cancel
+                      </Button>
+                      {deleteStep === 'warn' && (
+                        <Button
+                          onClick={() => setDeleteStep('type')}
+                          className="bg-red-500/15 hover:bg-red-500/25 text-red-100 border border-red-500/30"
+                          data-testid="project-delete-continue"
+                        >
+                          Continue
+                        </Button>
+                      )}
+                      {deleteStep === 'type' && (
+                        <Button
+                          onClick={() => void handleDelete()}
+                          disabled={deleting || deleteConfirmText.trim() !== local.name}
+                          className="bg-red-500/20 hover:bg-red-500/30 text-red-100 border border-red-500/30 disabled:opacity-40"
+                          leftIcon={<Trash2 className="h-4 w-4" />}
+                          data-testid="project-delete-confirm"
+                        >
+                          {deleting ? 'Deleting…' : 'Delete project'}
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
           </div>
         </Tabs>
+
+        <EntityModalBottomNav
+          tabs={SECTION_TABS.map((t) => ({ key: t.key, label: t.label, shortLabel: t.short, icon: t.icon }))}
+          activeTab={activeTab === 'danger' ? null : activeTab}
+          onTabChange={setTab}
+          ariaLabel="Project sections"
+          dangerAction={
+            canDelete
+              ? {
+                  label: 'Delete project',
+                  icon: Trash2,
+                  onClick: () => setTab('danger'),
+                  active: activeTab === 'danger',
+                }
+              : undefined
+          }
+        />
       </div>
     </Modal>
 

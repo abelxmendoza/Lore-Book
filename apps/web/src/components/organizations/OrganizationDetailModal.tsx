@@ -3367,22 +3367,22 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
             </TabsContent>
 
             {/* Sources Tab */}
-            <TabsContent value="sources" className={TAB_PANEL}>
-              <div className="rounded-xl border border-sky-400/35 bg-gradient-to-br from-sky-500/20 via-sky-500/[0.07] to-black/50 p-3.5 sm:p-5 shadow-[0_0_0_1px_rgba(56,189,248,0.12),0_8px_28px_-12px_rgba(14,165,233,0.45)]">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <TabsContent value="sources" className="mt-0 space-y-2 sm:space-y-3">
+              <div className="rounded-lg sm:rounded-xl border border-sky-400/35 bg-gradient-to-br from-sky-500/20 via-sky-500/[0.07] to-black/50 p-2.5 sm:p-5 shadow-[0_0_0_1px_rgba(56,189,248,0.12),0_8px_28px_-12px_rgba(14,165,233,0.45)]">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                   <div className="min-w-0">
-                    <div className="flex items-start gap-3">
-                      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-sky-300/40 bg-sky-400/20 shadow-[0_0_20px_-4px_rgba(56,189,248,0.55)]">
-                        <Search className="h-5 w-5 text-sky-200" />
+                    <div className="flex items-start gap-2 sm:gap-3">
+                      <span className="inline-flex h-7 w-7 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg sm:rounded-xl border border-sky-300/40 bg-sky-400/20 shadow-[0_0_20px_-4px_rgba(56,189,248,0.55)]">
+                        <Search className="h-3.5 w-3.5 sm:h-5 sm:w-5 text-sky-200" />
                       </span>
                       <div className="min-w-0">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-200/70">
+                        <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-[0.14em] sm:tracking-[0.18em] text-sky-200/70">
                           Evidence trail
                         </p>
-                        <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                        <h3 className="text-sm sm:text-xl font-bold text-white tracking-tight leading-tight">
                           Sources and mentions
                         </h3>
-                        <p className="mt-1 text-sm text-sky-50/70 leading-snug max-w-md">
+                        <p className="mt-0.5 sm:mt-1 text-[11px] sm:text-sm text-sky-50/70 leading-snug max-w-md">
                           Evidence for this identity across chats, older threads, and extracted facts.
                         </p>
                       </div>
@@ -3391,38 +3391,38 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-9 w-full border-sky-400/40 bg-sky-500/15 text-sky-100 hover:bg-sky-500/25 hover:text-white sm:w-auto"
+                    className="h-7 sm:h-9 w-full border-sky-400/40 bg-sky-500/15 text-sky-100 hover:bg-sky-500/25 hover:text-white sm:w-auto text-xs"
                     disabled={mentionsLoading}
                     onClick={() => {
                       setMentionsLoaded(false);
                       setMentionTrace(null);
                     }}
                   >
-                    {mentionsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                    <span className="ml-1.5">Rescan</span>
+                    {mentionsLoading ? <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
+                    <span className="ml-1 sm:ml-1.5">Rescan</span>
                   </Button>
                 </div>
               </div>
 
               {mentionsLoading ? (
                 <Card className="border-white/10 bg-black/40">
-                  <CardContent className="py-8 text-center text-white/55">
-                    <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
+                  <CardContent className="py-5 sm:py-8 text-center text-xs sm:text-sm text-white/55">
+                    <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin mx-auto mb-1.5 sm:mb-2" />
                     Searching messages, extracted facts, and older threads...
                   </CardContent>
                 </Card>
               ) : !mentionTrace ? (
                 <Card className="border-white/10 bg-black/40">
-                  <CardContent className="py-8 text-center text-white/55">
+                  <CardContent className="py-5 sm:py-8 text-center text-xs sm:text-sm text-white/55">
                     Open this tab to scan for mentions.
                   </CardContent>
                 </Card>
               ) : (
                 <>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 p-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-100/60">Total</p>
-                      <p className="mt-1 text-2xl font-bold leading-none text-white tabular-nums">{mentionTrace.total_mentions}</p>
+                  <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
+                    <div className="rounded-lg sm:rounded-xl border border-sky-400/20 bg-sky-400/10 p-1.5 sm:p-3">
+                      <p className="text-[8px] sm:text-[10px] font-semibold uppercase tracking-wide text-sky-100/60">Total</p>
+                      <p className="mt-0.5 sm:mt-1 text-base sm:text-2xl font-bold leading-none text-white tabular-nums">{mentionTrace.total_mentions}</p>
                     </div>
                     <SourceMetric label="Chat" value={mentionTrace.source_counts?.chat_messages ?? 0} />
                     <SourceMetric label="Older" value={mentionTrace.source_counts?.conversation_messages ?? 0} />
@@ -3430,9 +3430,9 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                   </div>
 
                   {mentionTrace.labels.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 rounded-xl border border-white/8 bg-white/[0.02] p-2">
+                    <div className="flex flex-wrap gap-1 sm:gap-1.5 rounded-lg sm:rounded-xl border border-white/8 bg-white/[0.02] p-1.5 sm:p-2">
                       {mentionTrace.labels.map(label => (
-                        <Badge key={label} variant="outline" className="border-sky-500/25 bg-sky-500/10 text-sky-200">
+                        <Badge key={label} variant="outline" className="border-sky-500/25 bg-sky-500/10 text-sky-200 text-[10px] sm:text-xs px-1.5 py-0 sm:px-2.5 sm:py-0.5">
                           {label}
                         </Badge>
                       ))}
@@ -3763,9 +3763,9 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
 
 function SourceMetric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-white/35">{label}</p>
-      <p className="mt-1 text-2xl font-bold leading-none text-white tabular-nums">{value}</p>
+    <div className="rounded-lg sm:rounded-xl border border-white/10 bg-white/[0.03] p-1.5 sm:p-3">
+      <p className="text-[8px] sm:text-[10px] font-semibold uppercase tracking-wide text-white/35">{label}</p>
+      <p className="mt-0.5 sm:mt-1 text-base sm:text-2xl font-bold leading-none text-white tabular-nums">{value}</p>
     </div>
   );
 }

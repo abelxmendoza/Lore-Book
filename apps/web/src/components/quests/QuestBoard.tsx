@@ -8,6 +8,7 @@ import { Card, CardContent } from '../ui/card';
 import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 import { QuestDetailPanel } from './QuestDetailPanel';
 import { DetectedQuestSuggestions } from './DetectedQuestSuggestions';
+import { BookQueryPanel } from '../query/BookQueryPanel';
 import { useQuestBoard, useStartQuest, useCompleteQuest, usePauseQuest, useQueryQuestsMutation } from '../../hooks/useQuests';
 import { EMPTY_QUEST_BOARD } from '../../store/hooks/useQuestData';
 import { useBookEntityIndexSearch } from '../../store/hooks/useEntityBooks';
@@ -861,50 +862,32 @@ export const QuestBoard = ({ onOpenAppSidebar }: QuestBoardProps = {}) => {
           data-testid="quest-board-list-pane"
           className="flex min-h-0 flex-1 flex-col overflow-hidden sm:w-[min(100%,28rem)] lg:w-[min(100%,32rem)] sm:border-r border-white/10 bg-black/20"
         >
-          <div className="shrink-0 border-b border-white/10 bg-amber-500/[0.04] px-2 py-2 sm:px-3">
-            <div className="flex items-center gap-2">
-              <Input
-                value={bookQuery}
-                onChange={(event) => setBookQuery(event.target.value)}
-                onKeyDown={(event) => { if (event.key === 'Enter') void runBookQuery(); }}
-                placeholder="Ask Quests: “What am I currently working on?”"
-                aria-label="Ask your Quest Log"
-                className="h-9 min-w-0 flex-1 border-amber-500/20 bg-black/35 text-sm text-white placeholder:text-white/35"
-              />
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => void runBookQuery()}
-                disabled={!bookQuery.trim() || queryState.isLoading}
-                className="h-9 bg-amber-600/80 px-3 hover:bg-amber-500"
-              >
-                {queryState.isLoading ? '…' : 'Ask'}
-              </Button>
-            </div>
-            {bookQueryError && <p className="mt-1.5 text-[11px] text-red-300">{bookQueryError}</p>}
-            {bookQueryResult && (
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] text-white/50">{bookQueryResult.total} found</span>
-                {bookQueryResult.results.slice(0, 6).map((result) => (
-                  <button
-                    key={result.questId}
-                    type="button"
-                    onClick={() => setSelectedQuestId(result.questId)}
-                    className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-200 hover:bg-amber-500/20"
-                  >
-                    {result.title}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => { setBookQuery(''); setBookQueryResult(null); }}
-                  className="text-[10px] text-white/35 hover:text-white/70"
-                >
-                  Clear
-                </button>
-              </div>
-            )}
-          </div>
+          <BookQueryPanel
+            demoMode={useMock}
+            domains={['quest']}
+            title="Ask Quests"
+            inputAriaLabel="Ask your Quest Log"
+            placeholder='Try “What am I currently working on?”'
+            compact
+            className="shrink-0 rounded-none border-x-0 border-t-0"
+            controller={{
+              query: bookQuery,
+              onQueryChange: setBookQuery,
+              onSubmit: runBookQuery,
+              onClear: () => { setBookQuery(''); setBookQueryResult(null); },
+              loading: queryState.isLoading,
+              error: bookQueryError,
+              total: bookQueryResult?.total,
+              results: bookQueryResult?.results.map((result) => ({
+                id: result.questId,
+                title: result.title,
+                status: result.status,
+                reason: result.matchedReasons[0],
+              })),
+              warnings: bookQueryResult?.warnings,
+            }}
+            onSelectResult={(result) => setSelectedQuestId(result.id)}
+          />
 
           <div data-testid="quest-board-suggestions" className="shrink-0 px-2 pt-2 sm:px-3">
             <DetectedQuestSuggestions

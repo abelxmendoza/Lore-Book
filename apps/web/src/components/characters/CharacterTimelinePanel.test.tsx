@@ -138,7 +138,7 @@ describe('CharacterTimelinePanel', () => {
       target: { value: 'nonexistent event' },
     });
 
-    expect(screen.getByText(/no story items match/i)).toBeInTheDocument();
+    expect(screen.getByText(/no events match/i)).toBeInTheDocument();
     expect(screen.queryByText('Dinner with Jerry')).not.toBeInTheDocument();
   });
 

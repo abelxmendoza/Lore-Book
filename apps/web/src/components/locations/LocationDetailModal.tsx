@@ -46,13 +46,15 @@ import {
 } from '../../lib/locationMergeMetadata';
 import { PlaceProfileEditor, type PlaceProfileDraft } from './PlaceProfileEditor';
 import { HouseholdDetailPanel } from './HouseholdDetailPanel';
-import { LocationTimeline } from './LocationTimeline';
+import { EntityTimelinePanel } from '../common/EntityTimelinePanel';
+import type { SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
 import { Button } from '../ui/button';
 import { PostEventComposer } from '../events/PostEventComposer';
 import {
   listDemoUserPostedEventsForLocation,
 } from '../../mocks/userPostedEventsDemo';
 import { EditableEntityName } from '../common/EditableEntityName';
+import { EntityModalBottomNav } from '../common/EntityModalBottomNav';
 import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
@@ -114,17 +116,26 @@ type OrganizationBookOption = {
 
 type TabKey = 'overview' | 'memories' | 'timeline' | 'people' | 'organizations' | 'insights' | 'knowledge' | 'chat' | 'delete';
 
-const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof FileText }> = [
+const tabs: Array<{
+  key: TabKey;
+  label: string;
+  shortLabel: string;
+  icon: typeof FileText;
+  tone?: 'default' | 'danger';
+}> = [
   { key: 'overview',  label: 'Overview',    shortLabel: 'Overview', icon: FileText },
+  { key: 'chat',      label: 'Chat',        shortLabel: 'Chat',     icon: MessageSquare },
   { key: 'knowledge', label: 'What I Know', shortLabel: 'Know',     icon: Brain },
   { key: 'memories',  label: 'Memories',    shortLabel: 'Memories', icon: Calendar },
   { key: 'timeline',  label: 'Timeline',    shortLabel: 'Time',     icon: Clock },
   { key: 'people',    label: 'People',      shortLabel: 'People',   icon: Users },
   { key: 'organizations', label: 'Groups & Organizations', shortLabel: 'Groups', icon: Building2 },
   { key: 'insights',  label: 'Insights',    shortLabel: 'Insights', icon: Sparkles },
-  { key: 'chat',      label: 'Chat',        shortLabel: 'Chat',     icon: MessageSquare },
-  { key: 'delete',    label: 'Delete',      shortLabel: 'Delete',   icon: Trash2 },
+  { key: 'delete',    label: 'Delete',      shortLabel: 'Delete',   icon: Trash2, tone: 'danger' },
 ];
+
+const LOCATION_SECTION_TABS = tabs.filter((t) => t.key !== 'delete');
+const LOCATION_DELETE_TAB = tabs.find((t) => t.key === 'delete')!;
 
 /**
  * Entity types a misfiled place can be moved to. Target books apply their own
@@ -700,7 +711,7 @@ export const LocationDetailModal = ({
     : location.relatedPeople.filter(person => person.character_id);
   const locationTimelineEntries = memoryCards.length > 0
     ? memoryCards.map((memory) => {
-        const body = memory.content ?? memory.summary ?? '';
+        const body = memory.content ?? '';
         const tags = Array.isArray(memory.tags) ? memory.tags : [];
         return {
           id: memory.id,
@@ -1094,23 +1105,37 @@ export const LocationDetailModal = ({
           </div>
         </div>
 
-        {/* ── Tab bar — compact 1-row scroll on mobile; wrapping row on desktop ── */}
+        {/* ── Tab bar — desktop only; mobile uses the bottom nav ── */}
         <nav
-          className="shrink-0 border-b border-white/8 bg-black/20 sm:bg-transparent"
+          className="hidden sm:block shrink-0 border-b border-white/8 bg-black/20 sm:bg-transparent"
           aria-label="Place sections"
         >
           <div className="flex gap-0.5 overflow-x-auto overscroll-x-contain px-1.5 py-1 sm:flex-wrap sm:overflow-visible sm:gap-1.5 sm:px-5 sm:pt-3 sm:pb-0 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:[scrollbar-width:auto]">
-            {tabs.map(({ key, label, shortLabel, icon: Icon }) => (
+            {tabs.map(({ key, label, shortLabel, icon: Icon, tone }) => {
+              const danger = tone === 'danger';
+              const active = activeTab === key;
+              return (
               <button
                 key={key}
                 type="button"
-                onClick={() => setActiveTab(key)}
+                onClick={() => {
+                  setActiveTab(key);
+                  if (key === 'delete') {
+                    setDeleteStep('review');
+                    setDeleteConfirmText('');
+                    setDeleteError(null);
+                  }
+                }}
                 className={`flex flex-shrink-0 flex-col items-center justify-center gap-0 rounded-md px-1.5 py-1 min-w-[2.75rem] min-h-[2.25rem] text-[8px] font-medium leading-none transition-colors touch-manipulation sm:flex-row sm:gap-1.5 sm:rounded-t-lg sm:rounded-b-none sm:px-3 sm:py-2 sm:min-w-0 sm:min-h-0 sm:text-xs sm:border-0 sm:border-b-2 ${
-                  activeTab === key
-                    ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40 sm:bg-transparent sm:border-teal-400'
-                    : 'text-white/45 border border-transparent hover:text-white/70 hover:bg-white/[0.05] sm:border-transparent sm:hover:bg-white/[0.04]'
+                  danger
+                    ? active
+                      ? 'bg-red-500/20 text-red-100 border border-red-500/40 sm:bg-transparent sm:border-red-400'
+                      : 'text-red-300/75 border border-red-500/25 hover:text-red-200 hover:bg-red-500/10 sm:border-transparent sm:hover:bg-red-500/10'
+                    : active
+                      ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40 sm:bg-transparent sm:border-teal-400'
+                      : 'text-white/45 border border-transparent hover:text-white/70 hover:bg-white/[0.05] sm:border-transparent sm:hover:bg-white/[0.04]'
                 }`}
-                aria-current={activeTab === key ? 'page' : undefined}
+                aria-current={active ? 'page' : undefined}
                 aria-label={label}
               >
                 <Icon className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5" />
@@ -1119,7 +1144,8 @@ export const LocationDetailModal = ({
                   <span className="hidden sm:inline">{label}</span>
                 </span>
               </button>
-            ))}
+              );
+            })}
           </div>
         </nav>
 
@@ -1590,64 +1616,39 @@ export const LocationDetailModal = ({
                 </Button>
               </div>
 
-              {placePostedEvents.length > 0 && (
-                <div className="space-y-1.5" data-testid="location-posted-events">
-                  {placePostedEvents.map((ev) => (
-                    <div
-                      key={ev.id}
-                      className="rounded-xl border border-amber-400/20 bg-black/30 px-3.5 py-2.5"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-white">{ev.title}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-amber-400/30 text-amber-200/80">
-                          Posted
-                        </span>
-                      </div>
-                      {ev.start_time && (
-                        <p className="text-[11px] text-white/40 mt-1">
-                          {new Date(ev.start_time).toLocaleDateString()}
-                        </p>
-                      )}
-                      {ev.summary && (
-                        <p className="text-xs text-white/55 mt-1 line-clamp-2">{ev.summary}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="rounded-xl bg-purple-500/8 border border-purple-500/15 px-4 py-3">
-                <p className="text-xs font-semibold text-purple-200">
-                  {location.name} across time
-                </p>
-                <p className="text-xs text-white/40 mt-1">
-                  A chronological view of memories and recorded visits connected to this place.
-                </p>
-              </div>
-              {loadingMemories ? (
-                <div className="flex items-center justify-center gap-2 py-16 text-sm text-white/40">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading place timeline…
-                </div>
-              ) : locationTimelineEntries.length === 0 && placePostedEvents.length === 0 ? (
-                <div className="text-center py-16">
-                  <Clock className="h-10 w-10 mx-auto mb-3 text-white/15" />
-                  <p className="text-sm font-medium text-white/40">No timeline moments yet</p>
-                  <p className="mt-1 text-xs text-white/25">
-                    Memories and visits linked to {location.name} will appear here.
-                  </p>
-                </div>
-              ) : locationTimelineEntries.length > 0 ? (
-                <LocationTimeline
-                  entries={locationTimelineEntries}
-                  locationName={location.name}
-                  compact
-                  onMemoryClick={(entry) => {
-                    const memory = memoryCards.find((card) => card.id === entry.id);
-                    if (memory) setSelectedMemory(memory);
-                  }}
-                />
-              ) : null}
+              <EntityTimelinePanel<SwimlaneEvent>
+                icon={Clock}
+                title={`${location.name} across time`}
+                subtitle="A chronological view of memories and recorded visits connected to this place."
+                lanes={[
+                  { key: 'visits', label: 'Visits & memories', accent: 'sky' },
+                  { key: 'posted', label: 'Posted events', accent: 'amber' },
+                ]}
+                events={[
+                  ...locationTimelineEntries.map((entry): SwimlaneEvent => ({
+                    id: entry.id,
+                    title: entry.title,
+                    date: entry.timestamp,
+                    laneKey: 'visits',
+                    summary: entry.summary,
+                  })),
+                  ...placePostedEvents.map((ev): SwimlaneEvent => ({
+                    id: ev.id,
+                    title: ev.title,
+                    date: ev.start_time ?? '',
+                    laneKey: 'posted',
+                    summary: ev.summary ?? undefined,
+                    meta: 'Posted',
+                  })),
+                ]}
+                loading={loadingMemories}
+                emptyTitle="No timeline moments yet"
+                emptyHint={`Memories and visits linked to ${location.name} will appear here.`}
+                onEventSelect={(event) => {
+                  const memory = memoryCards.find((card) => card.id === event.id);
+                  if (memory) setSelectedMemory(memory);
+                }}
+              />
             </div>
           )}
 
@@ -2263,6 +2264,31 @@ export const LocationDetailModal = ({
           )}
 
         </div>
+
+        <EntityModalBottomNav
+          tabs={LOCATION_SECTION_TABS.map((t) => ({
+            key: t.key,
+            label: t.label,
+            shortLabel: t.shortLabel,
+            icon: t.icon,
+          }))}
+          activeTab={activeTab === 'delete' ? null : activeTab}
+          onTabChange={(key) => {
+            setActiveTab(key);
+          }}
+          ariaLabel="Place sections"
+          dangerAction={{
+            label: 'Delete place',
+            icon: LOCATION_DELETE_TAB.icon,
+            active: activeTab === 'delete',
+            onClick: () => {
+              setActiveTab('delete');
+              setDeleteStep('review');
+              setDeleteConfirmText('');
+              setDeleteError(null);
+            },
+          }}
+        />
       </div>
 
       {selectedMemory && (

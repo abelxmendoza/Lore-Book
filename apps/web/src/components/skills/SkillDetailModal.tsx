@@ -5,11 +5,9 @@
 // =====================================================
 
 import { useState, useEffect, useRef } from 'react';
-import { X, MessageSquare, Clock, FileText, Users, Building2, MapPin, Image as ImageIcon, ChevronRight, Trophy } from 'lucide-react';
-import { ChatComposer } from '../../features/chat/composer/ChatComposer';
+import { X, Clock, FileText, Users, Building2, MapPin, Image as ImageIcon, ChevronRight, Trophy } from 'lucide-react';
 import { readSkillProfile } from '../../lib/skillProfile';
 import { cn } from '../../lib/cn';
-import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Tabs, TabsContent } from '../ui/tabs';
@@ -26,7 +24,6 @@ import {
 import { achievementsApi } from '../../api/achievements';
 import { format, parseISO } from 'date-fns';
 import { useChatStream } from '../../hooks/useChatStream';
-import { MarkdownRenderer } from '../chat/MarkdownRenderer';
 import { useEntityModal } from '../../contexts/EntityModalContext';
 import { organizationStub, projectStub } from '../../lib/skillEntityNavigation';
 import { OrganizationDetailModal } from '../organizations/OrganizationDetailModal';
@@ -37,20 +34,16 @@ import { fetchJson } from '../../lib/api';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 import { LazyImage } from '../ui/LazyImage';
+import { EntityModalBottomNav } from '../common/EntityModalBottomNav';
 import { SkillDetailModalOverview } from './SkillDetailModalOverview';
 import {
   SKILL_DETAIL_TABS,
-  SkillActivityTab,
+  SkillChatTab,
   SkillConnectionsTab,
   SkillEvidenceTab,
-  SkillGrowthTimelineTab,
-  SkillInsightsTab,
-  SkillMemoriesTab,
   SkillMetaTab,
-  SkillPortfolioTab,
-  SkillProficiencyTab,
-  SkillRelationshipsTab,
   SkillStoryTab,
+  SkillTimelineTab,
   type SkillDetailTabKey,
 } from './SkillDetailTabPanels';
 import { skillCategoryTheme } from '../../lib/skillCategoryTheme';
@@ -181,8 +174,11 @@ export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate, onNav
   }, [skill.id]);
 
   useEffect(() => {
-    if (activeTab === 'connections' || activeTab === 'relationships') {
+    if (activeTab === 'connections') {
       void loadConnections();
+    }
+    if (activeTab === 'timeline') {
+      void loadTimelineEvents();
     }
     void loadProgressHistory();
   }, [activeTab, skill.id]);
@@ -712,7 +708,7 @@ When the user provides information about who they learned from, where they pract
       onClick={onClose}
     >
       <div
-        className="bg-[#0a0a0a] border-0 sm:border border-white/10 rounded-none sm:rounded-2xl w-full h-[100dvh] max-h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:max-w-2xl overflow-hidden flex flex-col shadow-2xl"
+        className="bg-[#0a0a0a] border-0 sm:border border-white/10 rounded-none sm:rounded-2xl w-full h-[100dvh] max-h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:max-w-2xl overflow-hidden flex flex-col shadow-2xl min-h-0"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header — compact on mobile */}
@@ -805,8 +801,8 @@ When the user provides information about who they learned from, where they pract
           </div>
         </div>
 
-        {/* Tab nav — 4-col icon grid on mobile (2 rows), wrap on desktop */}
-        <nav className="shrink-0 border-b border-white/8 px-1 sm:px-3 pt-1 pb-1 sm:pt-2" aria-label="Skill sections">
+        {/* Tab nav — desktop only; mobile uses the bottom nav */}
+        <nav className="hidden sm:block shrink-0 border-b border-white/8 px-1 sm:px-3 pt-1 pb-1 sm:pt-2" aria-label="Skill sections">
           <div className="flex gap-1 overflow-x-auto scrollbar-none pb-0.5 snap-x snap-mandatory">
             {visibleTabs.map(({ key, label, shortLabel, icon: Icon }) => (
               <button
@@ -839,27 +835,17 @@ When the user provides information about who they learned from, where they pract
               }}
               className="text-[9px] text-white/25 hover:text-white/45 px-2 py-0.5"
             >
-              Show meta
+              Show debug
             </button>
           )}
         </nav>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as SkillDetailTabKey)} className="flex-1 flex flex-col min-h-0">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as SkillDetailTabKey)} className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
           <div
             ref={contentRef}
-            className="flex-1 min-h-0 touch-pan-y overflow-y-auto overscroll-contain px-3 sm:px-4 py-3 sm:py-4 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]"
+            className="flex-1 min-h-0 min-w-0 touch-pan-y [-webkit-overflow-scrolling:touch] overflow-y-auto overflow-x-hidden overscroll-contain px-3 sm:px-4 py-3 sm:py-4 pb-4"
           >
-            <TabsContent value="overview" className="mt-0 space-y-3">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-full gap-2 border-primary/30 text-xs h-8"
-                onClick={() => openSkillMainChat()}
-              >
-                <MessageSquare className="h-3.5 w-3.5" />
-                Chat about {skill.skill_name}
-              </Button>
+            <TabsContent value="overview" className="mt-0 space-y-3 min-w-0 w-full max-w-full data-[state=inactive]:hidden">
               <SkillDetailModalOverview
                 skill={skill}
                 skillDetails={skillDetails}
@@ -870,22 +856,44 @@ When the user provides information about who they learned from, where they pract
                 loadingProgress={loadingProgress}
                 profile={profile}
                 nav={entityNav}
+                onOpenChatTab={() => setActiveTab('chat')}
               />
             </TabsContent>
 
-            <TabsContent value="story" className="mt-0">
+            <TabsContent value="chat" className="mt-0 min-w-0 w-full max-w-full data-[state=inactive]:hidden">
+              <SkillChatTab skill={skill} onOpenMainChat={openSkillMainChat} />
+            </TabsContent>
+
+            <TabsContent value="story" className="mt-0 min-w-0 w-full max-w-full data-[state=inactive]:hidden">
               <SkillStoryTab skill={skill} profile={profile} details={skillDetails} theme={theme} nav={entityNav} />
             </TabsContent>
 
-            <TabsContent value="evidence" className="mt-0">
+            <TabsContent value="timeline" className="mt-0 min-w-0 w-full max-w-full data-[state=inactive]:hidden">
+              <SkillTimelineTab
+                skill={skill}
+                profile={profile}
+                details={skillDetails}
+                theme={theme}
+                nav={entityNav}
+                loading={loadingTimeline}
+                practiceEvents={timelineEvents}
+                onEventSelect={(ev) => {
+                  if (ev.laneKey === 'practice') {
+                    entityNav.onOpenMemory?.({
+                      id: ev.id,
+                      summary: ev.summary ?? ev.title,
+                      date: ev.date,
+                    });
+                  }
+                }}
+              />
+            </TabsContent>
+
+            <TabsContent value="evidence" className="mt-0 min-w-0 w-full max-w-full data-[state=inactive]:hidden">
               <SkillEvidenceTab skill={skill} profile={profile} details={skillDetails} theme={theme} nav={entityNav} />
             </TabsContent>
 
-            <TabsContent value="timeline" className="mt-0">
-              <SkillGrowthTimelineTab skill={skill} profile={profile} details={skillDetails} theme={theme} nav={entityNav} />
-            </TabsContent>
-
-            <TabsContent value="connections" className="mt-0">
+            <TabsContent value="connections" className="mt-0 min-w-0 w-full max-w-full data-[state=inactive]:hidden">
               {loadingConnections ? (
                 <p className="text-center py-8 text-white/60 text-sm">Loading connections…</p>
               ) : (
@@ -901,41 +909,18 @@ When the user provides information about who they learned from, where they pract
               )}
             </TabsContent>
 
-            <TabsContent value="activity" className="mt-0">
-              <SkillActivityTab skill={skill} profile={profile} details={skillDetails} theme={theme} nav={entityNav} />
-            </TabsContent>
-
-            <TabsContent value="proficiency" className="mt-0">
-              <SkillProficiencyTab skill={skill} profile={profile} details={skillDetails} theme={theme} nav={entityNav} />
-            </TabsContent>
-
-            <TabsContent value="portfolio" className="mt-0">
-              <SkillPortfolioTab skill={skill} profile={profile} details={skillDetails} theme={theme} nav={entityNav} />
-            </TabsContent>
-
-            <TabsContent value="relationships" className="mt-0">
-              <SkillRelationshipsTab
-                skill={skill}
-                profile={profile}
-                details={skillDetails}
-                theme={theme}
-                nav={entityNav}
-              />
-            </TabsContent>
-
-            <TabsContent value="insights" className="mt-0">
-              <SkillInsightsTab skill={skill} profile={profile} details={skillDetails} theme={theme} nav={entityNav} />
-            </TabsContent>
-
-            <TabsContent value="memories" className="mt-0">
-              <SkillMemoriesTab skill={skill} profile={profile} details={skillDetails} theme={theme} nav={entityNav} />
-            </TabsContent>
-
-            <TabsContent value="meta" className="mt-0">
+            <TabsContent value="meta" className="mt-0 min-w-0 w-full max-w-full data-[state=inactive]:hidden">
               <SkillMetaTab skill={skill} />
             </TabsContent>
           </div>
         </Tabs>
+
+        <EntityModalBottomNav
+          tabs={visibleTabs}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          ariaLabel="Skill sections"
+        />
       </div>
 
       {selectedOrganization && (

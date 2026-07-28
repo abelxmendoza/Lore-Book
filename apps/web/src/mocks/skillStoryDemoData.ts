@@ -155,11 +155,15 @@ export function getSkillGrowthTimeline(skill: Skill): Array<{ date: string; labe
     { offsetMonths: 18, level: skill.current_level >= 12 ? 'Expert' : 'Advanced+' },
   ];
 
-  return points.map((p) => ({
-    date: format(subMonths(start, -p.offsetMonths), 'MMM yyyy'),
-    label: p.level,
-    level: p.level,
-  }));
+  return points.map((p) => {
+    const at = subMonths(start, -p.offsetMonths);
+    return {
+      // ISO so EntityTimelinePanel / swimlanes can layout without Invalid Date widths
+      date: format(at, 'yyyy-MM-dd'),
+      label: p.level,
+      level: p.level,
+    };
+  });
 }
 
 export function getSkillActivityBuckets(skill: Skill): SkillActivityBucket[] {

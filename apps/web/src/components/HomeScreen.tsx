@@ -36,6 +36,7 @@ import type { Skill } from '../types/skill';
 import { LivingBiographyCard } from './biography/LivingBiographyCard';
 import { CareerHomeCard } from './career/CareerHomeCard';
 import type { Character } from './characters/CharacterProfileCard';
+import { BookQueryPanel } from './query/BookQueryPanel';
 
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -426,6 +427,8 @@ export const HomeScreen = () => {
             </button>
           </div>
         </div>
+
+        <BookQueryPanel demoMode={isMock} compact />
 
         {/* ── 2. What Changed Since Last Time ─────────────────────────────── */}
         {userId && <WhatChangedHomeCard userId={userId} />}

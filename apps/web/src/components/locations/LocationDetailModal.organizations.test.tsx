@@ -15,13 +15,6 @@ vi.mock('../memory-explorer/MemoryCard', () => ({ MemoryCardComponent: () => nul
 vi.mock('../memory-explorer/MemoryDetailModal', () => ({ MemoryDetailModal: () => null }));
 vi.mock('../../features/chat/composer/ChatComposer', () => ({ ChatComposer: () => null }));
 vi.mock('../../features/chat/message/ChatMessage', () => ({ ChatMessage: () => null }));
-vi.mock('./LocationTimeline', () => ({
-  LocationTimeline: ({ entries, locationName }: { entries: unknown[]; locationName: string }) => (
-    <div data-testid="location-timeline-render">
-      {locationName}: {entries.length} moments
-    </div>
-  ),
-}));
 
 import { LocationDetailModal } from './LocationDetailModal';
 
@@ -53,7 +46,7 @@ describe('LocationDetailModal — Groups & Organizations', () => {
   it('shows seeded Demo Mode links in the dedicated tab', async () => {
     render(<LocationDetailModal location={location} onClose={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /groups & organizations/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /groups & organizations/i })[0]!);
 
     expect(await screen.findByText('Novara Systems')).toBeInTheDocument();
     expect(screen.getByText(/durable two-way links/i)).toBeInTheDocument();
@@ -63,7 +56,7 @@ describe('LocationDetailModal — Groups & Organizations', () => {
     const user = userEvent.setup();
     render(<LocationDetailModal location={location} onClose={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /groups & organizations/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /groups & organizations/i })[0]!);
     await screen.findByText('Novara Systems');
     fireEvent.click(screen.getByTestId('location-add-organization-toggle'));
 
@@ -83,11 +76,9 @@ describe('LocationDetailModal — Groups & Organizations', () => {
   it('shows a timeline tab backed by this place memories', async () => {
     render(<LocationDetailModal location={location} onClose={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /timeline/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /timeline/i })[0]!);
 
-    expect(await screen.findByTestId('location-timeline-render')).toHaveTextContent(
-      'Novara HQ: 4 moments',
-    );
     expect(screen.getByText(/chronological view of memories and recorded visits/i)).toBeInTheDocument();
+    expect(await screen.findByText(/visits & memories/i)).toBeInTheDocument();
   });
 });

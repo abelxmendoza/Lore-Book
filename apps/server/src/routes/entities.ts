@@ -1,5 +1,11 @@
+import {
+  universalBookQueryRequestSchema,
+  type UniversalBookQueryResponse,
+} from '@lorebook/api-contracts';
 import { Router } from 'express';
 
+import { queryEngine } from '../cognition/query/QueryEngine';
+import type { TraversalResult } from '../cognition/query/QueryTypes';
 import { inferPlaceType } from '../constants/placeTypes';
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
@@ -13,6 +19,11 @@ import {
   listMentionableEntities,
   matchMentionableEntitiesInText,
 } from '../services/entities/entityMentionIndexService';
+import {
+  BOOK_QUERY_REGISTRY,
+  queryBooksForUser,
+} from '../services/query/bookQueryRegistry';
+import { isGraphBookQueryRequest } from '../services/query/bookQueryIntent';
 import { searchEntities } from '../services/search/entitySearchService';
 import type { EntitySearchType } from '../services/search/entitySearchTypes';
 import { supabaseAdmin } from '../services/supabaseClient';
@@ -51,6 +62,69 @@ router.get(
     });
     res.set('Cache-Control', 'private, max-age=15');
     res.json(result);
+  }),
+);
+
+/**
+ * GET /api/entities/query-registry
+ * Canonical capabilities behind every "Ask this Book" surface.
+ */
+router.get('/query-registry', requireAuth, (_req, res) => {
+  res.set('Cache-Control', 'private, max-age=300');
+  res.json({ books: BOOK_QUERY_REGISTRY });
+});
+
+/**
+ * POST /api/entities/query
+ * Grounded query across one or more Books with normalized provenance.
+ */
+router.post(
+  '/query',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const parsed = universalBookQueryRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: 'Invalid book query',
+        details: parsed.error.flatten(),
+      });
+    }
+    let result: UniversalBookQueryResponse;
+    if (isGraphBookQueryRequest(parsed.data.query)) {
+      const execution = await queryEngine.run({
+        userId: req.user!.id,
+        message: parsed.data.query,
+      });
+      const bookResult = execution.results.find((item) => item.source === 'books' && !item.skipped);
+      result = (bookResult?.raw as UniversalBookQueryResponse | undefined)
+        ?? await queryBooksForUser(req.user!.id, parsed.data);
+      const graphResult = execution.results.find((item) => item.source === 'graph' && !item.skipped);
+      const traversal = graphResult?.raw as TraversalResult | undefined;
+      const graphConnections = (traversal?.paths ?? []).map((path) => ({
+        fromId: path.nodes[0]?.id ?? '',
+        toId: path.nodes.at(-1)?.id ?? '',
+        relation: 'graph path',
+        reason: path.edges.map((edge, index) =>
+          `${path.nodes[index]?.name ?? edge.fromId} —[${edge.type}]→ ${path.nodes[index + 1]?.name ?? edge.toId}`)
+          .join(' · '),
+      })).filter((connection) => connection.fromId && connection.toId);
+      const connections = new Map(
+        [...result.connections, ...graphConnections].map((connection) => [
+          `${connection.fromId}:${connection.toId}:${connection.relation}`,
+          connection,
+        ]),
+      );
+      result = {
+        ...result,
+        connections: [...connections.values()],
+        warnings: graphResult?.error
+          ? [...result.warnings, 'Some graph sources were unavailable; only grounded paths from available sources are shown.']
+          : result.warnings,
+      };
+    } else {
+      result = await queryBooksForUser(req.user!.id, parsed.data);
+    }
+    res.json({ success: true, result });
   }),
 );
 

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { MapPin, RefreshCw, ChevronLeft, ChevronRight, SlidersHorizontal, X, BookOpen, Sparkles } from 'lucide-react';
+import { MapPin, RefreshCw, ChevronLeft, ChevronRight, SlidersHorizontal, X, BookOpen } from 'lucide-react';
 import type { LocationQueryResponse, LocationQueryResult } from '../../lib/api-contracts';
 import { classifyLocation, KIND_META, isTopLevelPlace, type LocationKind } from '../../lib/locationTaxonomy';
 import {
@@ -41,6 +41,7 @@ import { LocationMergePanel } from './LocationMergePanel';
 import { OntologyCompliancePanel } from '../ontology/OntologyCompliancePanel';
 import { useLocationsBookData } from '../../store/hooks/useEntityBooks';
 import { locationBookDemoLocations } from '../../mocks/locationBookDemo';
+import { BookQueryPanel } from '../query/BookQueryPanel';
 
 const LOCATION_VIEW_STORAGE_KEY = 'lk_location_view';
 
@@ -554,82 +555,39 @@ export const LocationBook = () => {
         emptyHint="No matching locations"
       />
 
-      <section className="rounded-xl border border-teal-400/20 bg-teal-500/[0.05] p-3 sm:p-4">
-        <div className="flex items-start gap-2.5">
-          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-teal-300" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-white">Ask your Places Book</p>
-            <p className="mt-0.5 text-xs text-white/45">
-              Search visits, mentions, people, organizations, geography, nested places, or records that need cleanup.
-            </p>
-            <form
-              className="mt-3 flex flex-col gap-2 sm:flex-row"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void runBookQuery();
-              }}
-            >
-              <input
-                value={bookQuery}
-                onChange={(event) => setBookQuery(event.target.value)}
-                placeholder='Try “places I visited with Marcus”'
-                className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-teal-400/45"
-              />
-              <Button
-                type="submit"
-                disabled={!bookQuery.trim() || bookQueryLoading}
-                className="bg-teal-500/20 text-teal-100 hover:bg-teal-500/30"
-              >
-                {bookQueryLoading ? 'Checking…' : 'Ask'}
-              </Button>
-            </form>
-            {bookQueryError && <p className="mt-2 text-xs text-red-300">{bookQueryError}</p>}
-            {bookQueryResult && (
-              <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs text-white/65">
-                    <span className="font-semibold text-teal-200">{bookQueryResult.total}</span>{' '}
-                    matching {bookQueryResult.total === 1 ? 'place' : 'places'}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBookQueryResult(null);
-                      setBookQueryError(null);
-                    }}
-                    className="text-[11px] text-white/40 hover:text-white/70"
-                  >
-                    Clear results
-                  </button>
-                </div>
-                {bookQueryResult.results.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {bookQueryResult.results.slice(0, 8).map((result) => (
-                      <button
-                        key={result.locationId}
-                        type="button"
-                        onClick={() => {
-                          const location = locations.find((item) => item.id === result.locationId);
-                          if (location) setSelectedLocation(location);
-                        }}
-                        className="rounded-full border border-teal-400/20 bg-teal-500/10 px-2.5 py-1 text-[11px] text-teal-100 hover:border-teal-300/40"
-                        title={result.matchedReasons.join(' · ')}
-                      >
-                        {result.name}
-                      </button>
-                    ))}
-                    {bookQueryResult.total > 8 && (
-                      <span className="px-1 py-1 text-[11px] text-white/35">
-                        +{bookQueryResult.total - 8} more below
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
+      <BookQueryPanel
+        demoMode={isMockDataEnabled}
+        domains={['location']}
+        title="Ask your Places Book"
+        description="Search visits, mentions, people, organizations, geography, nested places, or records that need cleanup."
+        placeholder='Try “places I visited with Marcus”'
+        resultNoun="place"
+        compact
+        controller={{
+          query: bookQuery,
+          onQueryChange: setBookQuery,
+          onSubmit: runBookQuery,
+          onClear: () => {
+            setBookQuery('');
+            setBookQueryResult(null);
+            setBookQueryError(null);
+          },
+          loading: bookQueryLoading,
+          error: bookQueryError,
+          total: bookQueryResult?.total,
+          results: bookQueryResult?.results.map((result) => ({
+            id: result.locationId,
+            title: result.name,
+            status: result.visitState,
+            reason: result.matchedReasons[0],
+          })),
+          warnings: bookQueryResult?.warnings,
+        }}
+        onSelectResult={(result) => {
+          const location = locations.find((item) => item.id === result.id);
+          if (location) setSelectedLocation(location);
+        }}
+      />
 
       {/* Lifestyle filters — horizontal scroll on mobile */}
       <div className="-mx-1 px-1 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

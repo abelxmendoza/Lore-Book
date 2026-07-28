@@ -47,6 +47,7 @@ import { EventDetailModal } from './EventDetailModal';
 import { EventProfileCard, type Event } from './EventProfileCard';
 import { PostEventComposer } from './PostEventComposer';
 import { listDemoUserPostedEvents } from '../../mocks/userPostedEventsDemo';
+import { BookQueryPanel } from '../query/BookQueryPanel';
 
 const ITEMS_PER_PAGE = 18;
 const EVENTS_CARD_VIEW_STORAGE_KEY = 'lorebook.eventsBook.cardViewMode';
@@ -771,6 +772,20 @@ export const EventsBook: React.FC = () => {
         </CardContent>
       </Card>
 
+      <BookQueryPanel
+        demoMode={isMockDataEnabled}
+        domains={['event']}
+        title="Ask the Life Log"
+        description="Search moments by people, places, activities, participation, chronology, or evidence."
+        placeholder='Try “What happened with Marcus at the workshop?”'
+        compact
+        onSelectResult={(result) => {
+          const match = events.find((event) => event.id === result.id);
+          if (match) setSelectedEvent(match);
+          else setSearchTerm(result.title);
+        }}
+      />
+
       {error && (
         <Card className="border-amber-500/50 bg-amber-500/10">
           <CardContent className="py-3 px-4 flex flex-wrap items-center justify-between gap-2">
@@ -870,7 +885,7 @@ export const EventsBook: React.FC = () => {
           <div
             className="flex flex-wrap justify-center sm:justify-start gap-1.5"
             role="tablist"
-            aria-label="Life Log event categories"
+            aria-label="Moment categories"
           >
             {CATEGORY_CHIPS.map(({ value, label, icon: Icon, shortLabel }) => (
               <button

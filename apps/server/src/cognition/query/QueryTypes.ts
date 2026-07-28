@@ -85,6 +85,7 @@ export type StageCondition = 'always' | 'if_low_confidence' | 'if_no_records';
 /** Executor kinds the planner can schedule. */
 export type ExecutorKind =
   | 'structured'
+  | 'books'
   | 'thread'
   | 'semantic'
   | 'working_memory'
@@ -214,20 +215,42 @@ export type QueryContext = {
   resolvedEntities?: ResolvedQueryEntity[];
 };
 
-// ─── Graph interfaces (no graph database yet — traversal plugs in here) ──────
+// ─── Canonical cross-Book graph interfaces ───────────────────────────────────
 
 export type GraphNode = {
   id: string;
-  type: 'character' | 'organization' | 'location' | 'event' | 'skill' | 'entity';
+  type:
+    | 'character'
+    | 'organization'
+    | 'family'
+    | 'location'
+    | 'romance'
+    | 'project'
+    | 'skill'
+    | 'quest'
+    | 'event'
+    | 'document'
+    | 'narrative'
+    | 'entity';
   name: string;
+  aliases?: string[];
+  status?: string | null;
 };
 
 export type GraphEdge = {
+  id?: string;
   fromId: string;
   toId: string;
   type: string;
   category?: string;
   confidence?: number;
+  direction?: 'directed' | 'undirected';
+  evidence?: Array<{
+    sourceTable: string;
+    sourceId: string;
+    label: string;
+    observedAt?: string | null;
+  }>;
 };
 
 export type TraversalPlan = {
@@ -242,6 +265,7 @@ export type TraversalPlan = {
 export type TraversalResult = {
   paths: Array<{ nodes: GraphNode[]; edges: GraphEdge[] }>;
   visited: number;
+  degradedSources?: string[];
 };
 
 /** Analytics interfaces (no statistics yet — aggregation plugs in here). */

@@ -1,4 +1,4 @@
-import { ChevronDown, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import type { DismissSuggestionReason } from '../../api/suggestionDismiss';
@@ -18,6 +18,7 @@ type Props = {
   align?: 'left' | 'right';
 };
 
+/** Single dismiss control — one X that opens reason options (plus plain dismiss). */
 export function SuggestionDismissButton({
   disabled,
   onDismiss,
@@ -44,34 +45,43 @@ export function SuggestionDismissButton({
       <button
         type="button"
         disabled={disabled}
-        onClick={() => void onDismiss()}
+        onClick={() => setOpen((value) => !value)}
         className="p-1 rounded text-white/30 hover:text-white/70 hover:bg-white/10 disabled:opacity-50"
         aria-label={buttonLabel}
         title={buttonLabel}
+        aria-expanded={open}
+        aria-haspopup="menu"
       >
         <X className="h-3.5 w-3.5" />
       </button>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((value) => !value)}
-        className="p-1 rounded text-white/30 hover:text-white/70 hover:bg-white/10 disabled:opacity-50"
-        aria-label="Dismiss with reason"
-        title="Dismiss with reason"
-      >
-        <ChevronDown className="h-3 w-3" />
-      </button>
       {open && (
         <div
+          role="menu"
           className={`absolute top-full z-20 mt-1 w-52 rounded-md border border-white/15 bg-zinc-900/95 p-1 shadow-xl ${
             align === 'left' ? 'left-0' : 'right-0'
           }`}
         >
-          <p className="px-2 py-1 text-[9px] text-white/45">Teach LoreBook why this is wrong</p>
+          <p className="px-2 py-1 text-[9px] text-white/45">Dismiss this suggestion</p>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={disabled}
+            onClick={() => {
+              setOpen(false);
+              void onDismiss();
+            }}
+            className="w-full rounded px-2 py-1.5 text-left hover:bg-white/[0.08] disabled:opacity-50"
+          >
+            <span className="block text-xs text-white/85">{buttonLabel}</span>
+            <span className="block text-[10px] text-white/40">Hide without teaching a reason</span>
+          </button>
+          <div className="my-1 border-t border-white/10" />
+          <p className="px-2 py-1 text-[9px] text-white/45">Or teach LoreBook why</p>
           {REASONS.map((reason) => (
             <button
               key={reason.value}
               type="button"
+              role="menuitem"
               disabled={disabled}
               onClick={() => {
                 setOpen(false);

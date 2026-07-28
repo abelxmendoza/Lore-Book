@@ -1,4 +1,4 @@
-import { Shield, Sparkles } from 'lucide-react';
+import { MessageSquare, Shield, Sparkles } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import type { Skill, SkillMetadata, SkillProgress } from '../../types/skill';
 import { skillCategoryTheme } from '../../lib/skillCategoryTheme';
@@ -18,7 +18,7 @@ import {
   statusLabel,
   usageCountLabel,
 } from '../../lib/skillStory';
-import { SkillOverviewExtras, type SkillEntityNavigation } from './SkillDetailTabPanels';
+import { SkillOverviewExtras, SkillOverviewDepth, type SkillEntityNavigation } from './SkillDetailTabPanels';
 
 type Props = {
   skill: Skill;
@@ -30,6 +30,8 @@ type Props = {
   loadingProgress: boolean;
   profile: ReturnType<typeof import('../../lib/skillProfile').readSkillProfile>;
   nav?: SkillEntityNavigation;
+  /** Stay in the modal — switches to the Chat tab (does not open main chat). */
+  onOpenChatTab?: () => void;
 };
 
 export function SkillDetailModalOverview({
@@ -40,6 +42,7 @@ export function SkillDetailModalOverview({
   xpNeededForLevel,
   profile,
   nav,
+  onOpenChatTab,
 }: Props) {
   const theme = skillCategoryTheme(skill.skill_category);
   const storySummary = buildStorySummary(skill, profile, skillDetails);
@@ -52,7 +55,18 @@ export function SkillDetailModalOverview({
   );
 
   return (
-    <div className="space-y-3 sm:space-y-4">
+    <div className="space-y-3 sm:space-y-4 min-w-0">
+      {onOpenChatTab && (
+        <button
+          type="button"
+          onClick={onOpenChatTab}
+          className="w-full flex items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 px-3 py-2 text-xs text-primary touch-manipulation transition-colors min-h-[40px]"
+        >
+          <MessageSquare className="h-3.5 w-3.5" />
+          Chat about {skill.skill_name}
+        </button>
+      )}
+
       <SkillOverviewExtras skill={skill} profile={profile} theme={theme} nav={nav} />
 
       <div className="grid grid-cols-2 gap-2 text-[11px]">
@@ -131,6 +145,8 @@ export function SkillDetailModalOverview({
           {formatSkillCertaintyDetail(skill.confidence_score)}
         </Badge>
       </div>
+
+      <SkillOverviewDepth skill={skill} profile={profile} theme={theme} />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import {
   Activity,
   BookOpen,
   Brain,
+  Clock,
   FileText,
   GitBranch,
   Lightbulb,
@@ -17,7 +18,9 @@ import {
 import { format, parseISO } from 'date-fns';
 import { Badge } from '../ui/badge';
 import { Card, CardContent } from '../ui/card';
-import type { Skill, SkillMetadata, SkillProgress } from '../../types/skill';
+import { EntityTimelinePanel } from '../common/EntityTimelinePanel';
+import type { SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
+import type { Skill, SkillMetadata } from '../../types/skill';
 import type { SkillProfile } from '../../lib/skillProfile';
 import { skillCategoryTheme } from '../../lib/skillCategoryTheme';
 import { cn } from '../../lib/cn';
@@ -37,7 +40,6 @@ import {
   usageFrequencyLabel,
 } from '../../lib/skillStory';
 import {
-  getSkillActivityBuckets,
   getSkillAiInsights,
   getSkillEvidenceItems,
   getSkillGrowthTimeline,
@@ -112,13 +114,16 @@ export function SkillStoryTab({ skill, details, theme, nav }: BaseProps) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-w-0">
       <Card className={cn('border', theme.levelPanel)}>
         <CardContent className="p-4">
           <p className="text-[10px] uppercase tracking-wider text-white/45 mb-2 flex items-center gap-1">
             <ScrollText className={cn('h-3 w-3', theme.icon)} /> Your story
           </p>
           <p className="text-sm text-white/90 leading-relaxed">{narrative}</p>
+          <p className="text-[11px] text-white/40 mt-3 leading-relaxed">
+            Story is the narrative — how this skill fits your life. For when things happened, use Timeline.
+          </p>
         </CardContent>
       </Card>
 
@@ -126,32 +131,108 @@ export function SkillStoryTab({ skill, details, theme, nav }: BaseProps) {
         {beats.map((beat, i) => {
           const clickable = nav && beat.kind === 'project';
           return (
-          <div key={beat.id} className="relative">
-            <span className={cn('absolute -left-[1.125rem] top-1 h-2 w-2 rounded-full ring-2 ring-black', theme.statBg)} />
-            <p className="text-[10px] text-white/40 uppercase tracking-wide">
-              {format(parseISO(beat.date), 'MMM yyyy')}
-            </p>
-            {clickable ? (
-              <button
-                type="button"
-                onClick={() => openBeat(beat)}
-                className={cn('text-sm font-semibold text-left hover:underline', theme.accentText)}
-              >
-                {beat.title}
-              </button>
-            ) : (
-              <p className={cn('text-sm font-semibold', theme.accentText)}>{beat.title}</p>
-            )}
-            {beat.description && (
-              <p className="text-xs text-white/60 mt-0.5 leading-relaxed">{beat.description}</p>
-            )}
-            {i < beats.length - 1 && (
-              <span className="block text-white/20 text-lg leading-none my-1" aria-hidden>↓</span>
-            )}
-          </div>
+            <div key={beat.id} className="relative">
+              <span className={cn('absolute -left-[1.125rem] top-1 h-2 w-2 rounded-full ring-2 ring-black', theme.statBg)} />
+              <p className="text-[10px] text-white/40 uppercase tracking-wide">
+                {format(parseISO(beat.date), 'MMM yyyy')}
+              </p>
+              {clickable ? (
+                <button
+                  type="button"
+                  onClick={() => openBeat(beat)}
+                  className={cn('text-sm font-semibold text-left hover:underline', theme.accentText)}
+                >
+                  {beat.title}
+                </button>
+              ) : (
+                <p className={cn('text-sm font-semibold', theme.accentText)}>{beat.title}</p>
+              )}
+              {beat.description && (
+                <p className="text-xs text-white/60 mt-0.5 leading-relaxed">{beat.description}</p>
+              )}
+              {i < beats.length - 1 && (
+                <span className="block text-white/20 text-lg leading-none my-1" aria-hidden>
+                  ↓
+                </span>
+              )}
+            </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Same EntityTimelinePanel / swimlanes chrome as Groups & Places —
+ * chronological *when*, not narrative *story*.
+ */
+export function SkillTimelineTab({
+  skill,
+  theme,
+  loading,
+  practiceEvents = [],
+  onEventSelect,
+}: BaseProps & {
+  loading?: boolean;
+  practiceEvents?: Array<{
+    id: string;
+    title: string;
+    date: string;
+    description?: string;
+    type?: string;
+  }>;
+  onEventSelect?: (event: SwimlaneEvent) => void;
+}) {
+  const growth = getSkillGrowthTimeline(skill);
+  const memories = getSkillMemories(skill);
+
+  const events: SwimlaneEvent[] = [
+    ...growth.map((point, idx) => ({
+      id: `growth-${point.date}`,
+      title: point.label,
+      date: point.date,
+      laneKey: 'growth',
+      type: 'level',
+      meta: idx === growth.length - 1 ? 'Current level band' : undefined,
+    })),
+    ...practiceEvents.map((ev) => ({
+      id: ev.id,
+      title: ev.title,
+      date: ev.date,
+      laneKey: 'practice',
+      type: ev.type,
+      summary: ev.description,
+    })),
+    // Demo fallback moments when no journal/achievement events loaded yet
+    ...(practiceEvents.length === 0
+      ? memories.map((mem) => ({
+          id: mem.id,
+          title: mem.summary,
+          date: mem.date,
+          laneKey: 'practice',
+          type: 'moment',
+        }))
+      : []),
+  ];
+
+  return (
+    <div className="min-w-0 w-full max-w-full overflow-x-hidden isolate">
+      <EntityTimelinePanel<SwimlaneEvent>
+        icon={Clock}
+        title={`${skill.skill_name} across time`}
+        subtitle="When you practiced, leveled up, and logged moments — same lanes chrome as Groups."
+        lanes={[
+          { key: 'growth', label: 'Levels', accent: 'violet' },
+          { key: 'practice', label: 'Practice & moments', accent: 'sky' },
+        ]}
+        events={events}
+        loading={loading}
+        emptyTitle="No timeline yet"
+        emptyHint="Practice sessions, level-ups, and related moments will show up here."
+        defaultView="list"
+        onEventSelect={onEventSelect}
+      />
     </div>
   );
 }
@@ -196,7 +277,7 @@ export function SkillEvidenceTab({ skill, profile, theme, nav }: BaseProps) {
         <Shield className={cn('h-8 w-8 opacity-40', theme.icon)} />
       </div>
       <p className="text-xs text-white/50">
-        LoreBook tracks skills it can back up. Each source below helped verify this one.
+        Proof that LoreBook can stand behind this skill — chats, projects, notes, and journals that mention or demonstrate it. Not a diary (that’s Timeline) and not a narrative (that’s Story).
       </p>
       <div className="space-y-2">
         {items.map((item) => {
@@ -238,32 +319,88 @@ export function SkillEvidenceTab({ skill, profile, theme, nav }: BaseProps) {
           );
         })}
       </div>
+
+      {(() => {
+        const portfolio = getSkillPortfolioItems(skill);
+        if (portfolio.length === 0) return null;
+        return (
+          <section className="pt-1">
+            <p className="text-[10px] uppercase tracking-wider text-white/45 mb-2">Work artifacts</p>
+            <div className="space-y-2">
+              {portfolio.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    if (item.kind === 'project') {
+                      nav?.onOpenProject({ id: slugId(item.title, 'project'), name: item.title });
+                    } else {
+                      nav?.onOpenOrganization({ id: slugId(item.title, 'org'), name: item.title });
+                    }
+                  }}
+                  className="w-full text-left rounded-lg border border-white/10 bg-black/40 p-3 hover:border-white/25 hover:bg-black/55 transition-colors touch-manipulation"
+                >
+                  <p className="text-sm font-semibold text-white">{item.title}</p>
+                  <p className="text-[10px] text-white/45 uppercase tracking-wide mt-0.5">{item.subtitle}</p>
+                </button>
+              ))}
+            </div>
+          </section>
+        );
+      })()}
     </div>
   );
 }
 
-export function SkillGrowthTimelineTab({ skill, theme }: BaseProps) {
-  const points = getSkillGrowthTimeline(skill);
+export function SkillChatTab({
+  skill,
+  onOpenMainChat,
+}: {
+  skill: Skill;
+  /** Explicit user action — never call from tab navigation. */
+  onOpenMainChat: (prompt?: string) => void;
+}) {
+  const prompts = [
+    `Tell me about my ${skill.skill_name} skill — where I'm at and what to focus on next.`,
+    `How have I grown in ${skill.skill_name}?`,
+    `Who taught me ${skill.skill_name}, and where have I practiced?`,
+    `What should I practice next for ${skill.skill_name}?`,
+  ];
 
   return (
-    <div className="space-y-3">
-      <p className="text-xs text-white/50">Chronological growth — level milestones over time.</p>
-      <div className="space-y-0">
-        {points.map((point, i) => (
-          <div key={point.date} className="flex gap-3">
-            <div className="flex flex-col items-center">
-              <span className={cn('h-3 w-3 rounded-full border-2', theme.border, theme.statBg)} />
-              {i < points.length - 1 && <span className="w-px flex-1 bg-white/10 min-h-[2rem]" />}
-            </div>
-            <div className="pb-4 min-w-0">
-              <p className="text-[10px] text-white/40 uppercase">{point.date}</p>
-              <p className={cn('text-sm font-semibold', theme.accentText)}>{point.label}</p>
-              {i === points.length - 1 && (
-                <Badge className={cn('mt-1 text-[10px] border', theme.badge)}>Current</Badge>
-              )}
-            </div>
-          </div>
-        ))}
+    <div className="space-y-4 min-w-0">
+      <div className="rounded-xl border border-primary/25 bg-gradient-to-br from-primary/10 to-black/50 p-4 sm:p-5 text-center space-y-3">
+        <MessageSquare className="h-8 w-8 text-primary mx-auto opacity-80" />
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-white">Chat about {skill.skill_name}</h3>
+          <p className="text-xs sm:text-sm text-white/65 max-w-md mx-auto leading-relaxed">
+            Stay here to pick a prompt. Main chat opens only when you tap a prompt or the button below — not when you open this tab.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onOpenMainChat()}
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary/25 border border-primary/40 px-4 py-2.5 text-sm font-medium text-primary hover:bg-primary/35 touch-manipulation min-h-[44px]"
+        >
+          <MessageSquare className="h-4 w-4" />
+          Open chat about this skill
+        </button>
+      </div>
+
+      <div>
+        <p className="text-[11px] uppercase tracking-wider text-white/40 mb-2">Suggested prompts</p>
+        <div className="flex flex-col gap-2">
+          {prompts.map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              onClick={() => onOpenMainChat(prompt)}
+              className="w-full text-left text-xs rounded-xl border border-white/10 bg-white/[0.04] hover:border-primary/40 hover:bg-primary/10 text-white/70 hover:text-white px-3 py-2.5 transition-colors touch-manipulation min-h-[44px]"
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -293,9 +430,63 @@ export function SkillConnectionsTab({
       name: loc.location_name,
     })),
   ].filter((loc, i, arr) => arr.findIndex((x) => x.id === loc.id) === i);
+  const learned = details?.learned_from ?? [];
+  const practiced = details?.practiced_with ?? [];
+
+  const empty =
+    relatedSkills.length === 0 &&
+    projects.length === 0 &&
+    !(profile?.related_jobs && profile.related_jobs.length > 0) &&
+    relatedCharacters.length === 0 &&
+    places.length === 0 &&
+    relatedOrganizations.length === 0 &&
+    learned.length === 0 &&
+    practiced.length === 0;
+
+  if (empty) {
+    return (
+      <p className="text-sm text-white/50 py-8 text-center">
+        Links to people, places, projects, and related skills will appear here as LoreBook learns them.
+      </p>
+    );
+  }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 min-w-0">
+      {learned.length > 0 && (
+        <section>
+          <p className="text-[10px] uppercase tracking-wider text-blue-300/80 mb-2">Learned from</p>
+          {learned.map((t) => (
+            <button
+              key={t.character_id}
+              type="button"
+              onClick={() => nav?.onOpenCharacter({ id: t.character_id, name: t.character_name })}
+              className="block w-full text-left rounded-lg border border-blue-500/25 bg-blue-500/10 px-3 py-2 mb-1.5 touch-manipulation"
+            >
+              <p className="text-sm text-blue-100">{t.character_name}</p>
+              <p className="text-[10px] text-blue-200/60 capitalize">{t.relationship_type}</p>
+            </button>
+          ))}
+        </section>
+      )}
+
+      {practiced.length > 0 && (
+        <section>
+          <p className="text-[10px] uppercase tracking-wider text-white/45 mb-2">Worked with</p>
+          {practiced.map((p) => (
+            <button
+              key={p.character_id}
+              type="button"
+              onClick={() => nav?.onOpenCharacter({ id: p.character_id, name: p.character_name })}
+              className="block w-full text-left rounded-lg border border-white/10 bg-black/30 px-3 py-2 mb-1.5 touch-manipulation"
+            >
+              <p className="text-sm text-white">{p.character_name}</p>
+              <p className="text-[10px] text-white/45">{p.practice_count} sessions</p>
+            </button>
+          ))}
+        </section>
+      )}
+
       {relatedSkills.length > 0 && (
         <section>
           <p className="text-[10px] uppercase tracking-wider text-white/45 mb-2">Related skills</p>
@@ -407,220 +598,93 @@ export function SkillConnectionsTab({
   );
 }
 
-export function SkillActivityTab({ skill, theme }: BaseProps) {
-  const buckets = getSkillActivityBuckets(skill);
-
-  return (
-    <div className="space-y-3">
-      {buckets.map((bucket) => (
-        <Card key={bucket.label} className={cn('border', theme.statBorder, 'bg-black/30')}>
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-white/70">{bucket.label}</p>
-              <p className={cn('text-lg font-bold tabular-nums', theme.statValue)}>{bucket.count}</p>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {bucket.categories.map((cat) => (
-                <span key={cat.label} className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-white/55 border border-white/10">
-                  {cat.label}: {cat.count}
-                </span>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-export function SkillProficiencyTab({ skill, profile, theme }: BaseProps) {
-  const breakdown = profile?.proficiency_breakdown ?? {
-    knowledge: profile?.proficiency ?? 50,
-    experience: 50,
-    recency: 50,
-    confidence: Math.round(skill.confidence_score * 100),
-  };
-
-  const rows = [
-    { label: 'Knowledge', sub: 'How much they know', value: breakdown.knowledge, icon: Brain },
-    { label: 'Experience', sub: 'How much they\'ve done', value: breakdown.experience, icon: Activity },
-    { label: 'Recency', sub: 'How recently used', value: breakdown.recency, icon: TrendingUp },
-    {
-      label: skillCertaintyFieldLabel(),
-      sub: 'How well LoreBook can back this up',
-      value: breakdown.confidence,
-      icon: Shield,
-      isCertainty: true,
-    },
-  ];
-
-  return (
-    <div className="space-y-3">
-      <p className="text-xs text-white/50">Four dimensions — not a single arbitrary score.</p>
-      {rows.map(({ label, sub, value, icon: Icon, isCertainty }) => (
-        <div key={label} className={cn('rounded-lg border p-3', theme.statBg, theme.statBorder)}>
-          <div className="flex items-center gap-2 mb-2">
-            <Icon className={cn('h-4 w-4', theme.icon)} />
-            <div>
-              <p className="text-sm font-semibold text-white">{label}</p>
-              <p className="text-[10px] text-white/45">{sub}</p>
-            </div>
-            <p
-              className={cn('ml-auto text-sm font-bold text-right leading-tight', theme.statValue)}
-              title={isCertainty ? formatSkillCertaintyTitle(value / 100) : undefined}
-            >
-              {isCertainty ? formatSkillCertainty(value / 100) : `${value}%`}
-            </p>
-          </div>
-          <div className={cn('h-2 rounded-full overflow-hidden', theme.progressTrack)}>
-            <div className={cn('h-full bg-gradient-to-r rounded-full', theme.progress)} style={{ width: `${value}%` }} />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-export function SkillPortfolioTab({ skill, theme, nav }: BaseProps) {
-  const items = getSkillPortfolioItems(skill);
-
-  if (items.length === 0) {
-    return <p className="text-sm text-white/50 py-8 text-center">No portfolio items linked yet.</p>;
-  }
-
-  return (
-    <div className="space-y-2">
-      {items.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          onClick={() => {
-            if (item.kind === 'project') {
-              nav?.onOpenProject({ id: slugId(item.title, 'project'), name: item.title });
-            } else {
-              nav?.onOpenOrganization({ id: slugId(item.title, 'org'), name: item.title });
-            }
-          }}
-          className="w-full text-left rounded-lg border border-white/10 bg-black/40 p-3 hover:border-white/25 hover:bg-black/55 transition-colors touch-manipulation"
-        >
-          <p className="text-sm font-semibold text-white">{item.title}</p>
-          <p className="text-[10px] text-white/45 uppercase tracking-wide mt-0.5">{item.subtitle}</p>
-          <div className="flex flex-wrap gap-1 mt-2">
-            {item.skills.map((s) => (
-              <Badge
-                key={s}
-                variant="outline"
-                className={cn('text-[10px] border', theme.chip)}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  nav?.onOpenRelatedSkill(s);
-                }}
-              >
-                {s}
-              </Badge>
-            ))}
-          </div>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-export function SkillRelationshipsTab({ details, theme, nav }: BaseProps) {
-  const learned = details?.learned_from ?? [];
-  const practiced = details?.practiced_with ?? [];
-
-  if (learned.length === 0 && practiced.length === 0) {
-    return <p className="text-sm text-white/50 py-8 text-center">Relationships appear as people show up in your story.</p>;
-  }
-
-  return (
-    <div className="space-y-4">
-      {learned.length > 0 && (
-        <section>
-          <p className="text-[10px] uppercase tracking-wider text-blue-300/80 mb-2">Learned from</p>
-          {learned.map((t) => (
-            <button
-              key={t.character_id}
-              type="button"
-              onClick={() => nav?.onOpenCharacter({ id: t.character_id, name: t.character_name })}
-              className="block w-full text-left rounded-lg border border-blue-500/25 bg-blue-500/10 px-3 py-2 mb-1.5"
-            >
-              <p className="text-sm text-blue-100">{t.character_name}</p>
-              <p className="text-[10px] text-blue-200/60 capitalize">{t.relationship_type}</p>
-            </button>
-          ))}
-        </section>
-      )}
-      {practiced.length > 0 && (
-        <section>
-          <p className="text-[10px] uppercase tracking-wider text-white/45 mb-2">Worked with</p>
-          {practiced.map((p) => (
-            <button
-              key={p.character_id}
-              type="button"
-              onClick={() => nav?.onOpenCharacter({ id: p.character_id, name: p.character_name })}
-              className="block w-full text-left rounded-lg border border-white/10 bg-black/30 px-3 py-2 mb-1.5"
-            >
-              <p className="text-sm text-white">{p.character_name}</p>
-              <p className="text-[10px] text-white/45">{p.practice_count} sessions</p>
-            </button>
-          ))}
-        </section>
-      )}
-    </div>
-  );
-}
-
-export function SkillInsightsTab({ skill, profile, theme }: BaseProps) {
-  const insights = getSkillAiInsights(skill, profile);
-
-  return (
-    <div className="space-y-2">
-      {insights.map((text, i) => (
-        <Card key={i} className={cn('border', theme.levelPanel)}>
-          <CardContent className="p-3 flex gap-2">
-            <Lightbulb className={cn('h-4 w-4 shrink-0 mt-0.5', theme.icon)} />
-            <p className="text-sm text-white/85 leading-relaxed">{text}</p>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-export function SkillMemoriesTab({ skill, theme, nav }: BaseProps) {
-  const memories = getSkillMemories(skill);
-
-  return (
-    <div className="space-y-0 divide-y divide-white/5 border border-white/10 rounded-lg overflow-hidden">
-      {memories.map((mem) => (
-        <button
-          key={mem.id}
-          type="button"
-          onClick={() => nav?.onOpenMemory?.({ id: mem.id, summary: mem.summary, date: mem.date })}
-          className="w-full text-left px-3 py-2.5 bg-black/25 hover:bg-black/40 transition-colors touch-manipulation"
-        >
-          <p className="text-[10px] text-white/40">{format(parseISO(mem.date), 'MMM d yyyy')}</p>
-          <p className="text-sm text-white/80">{mem.summary}</p>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 export function SkillMetaTab({ skill }: { skill: Skill }) {
   const meta = getSkillMetaDump(skill);
 
   return (
     <div className="space-y-3 font-mono text-[11px]">
-      <p className="text-white/45 text-xs font-sans">Power-user provenance — lexical intelligence & entity links.</p>
+      <p className="text-white/45 text-xs font-sans">
+        Debug / raw metadata — not a product surface. Hidden unless you unlock it from the desktop tab strip.
+      </p>
       <pre className="rounded-lg border border-white/10 bg-black/50 p-3 text-white/70 overflow-x-auto">
         {JSON.stringify(meta, null, 2)}
       </pre>
       <pre className="rounded-lg border border-purple-500/20 bg-purple-950/20 p-3 text-purple-200/70 overflow-x-auto max-h-48">
         {JSON.stringify(skill.metadata, null, 2)}
       </pre>
+    </div>
+  );
+}
+
+/** Compact proficiency bars + AI notes for Overview (not worth their own nav tabs). */
+export function SkillOverviewDepth({
+  skill,
+  profile,
+  theme,
+}: {
+  skill: Skill;
+  profile?: SkillProfile;
+  theme: Theme;
+}) {
+  const breakdown = profile?.proficiency_breakdown ?? {
+    knowledge: profile?.proficiency ?? 50,
+    experience: 50,
+    recency: 50,
+    confidence: Math.round(skill.confidence_score * 100),
+  };
+  const insights = getSkillAiInsights(skill, profile).slice(0, 2);
+
+  const rows = [
+    { label: 'Knowledge', value: breakdown.knowledge, icon: Brain },
+    { label: 'Experience', value: breakdown.experience, icon: Activity },
+    { label: 'Recency', value: breakdown.recency, icon: TrendingUp },
+    {
+      label: skillCertaintyFieldLabel(),
+      value: breakdown.confidence,
+      icon: Shield,
+      isCertainty: true as const,
+    },
+  ];
+
+  return (
+    <div className="space-y-3 min-w-0">
+      <div>
+        <p className="text-[10px] uppercase tracking-wider text-white/45 mb-2">Proficiency</p>
+        <div className="space-y-2">
+          {rows.map(({ label, value, icon: Icon, isCertainty }) => (
+            <div key={label} className={cn('rounded-lg border px-2.5 py-2', theme.statBg, theme.statBorder)}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <Icon className={cn('h-3.5 w-3.5', theme.icon)} />
+                <p className="text-xs font-medium text-white/80">{label}</p>
+                <p
+                  className={cn('ml-auto text-xs font-bold', theme.statValue)}
+                  title={isCertainty ? formatSkillCertaintyTitle(value / 100) : undefined}
+                >
+                  {isCertainty ? formatSkillCertainty(value / 100) : `${value}%`}
+                </p>
+              </div>
+              <div className={cn('h-1.5 rounded-full overflow-hidden', theme.progressTrack)}>
+                <div className={cn('h-full bg-gradient-to-r rounded-full', theme.progress)} style={{ width: `${value}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {insights.length > 0 && (
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-white/45 mb-2 flex items-center gap-1">
+            <Lightbulb className={cn('h-3 w-3', theme.icon)} /> Notes
+          </p>
+          <div className="space-y-2">
+            {insights.map((text) => (
+              <div key={text} className={cn('rounded-lg border p-2.5', theme.levelPanel)}>
+                <p className="text-xs text-white/80 leading-relaxed">{text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -716,16 +780,11 @@ export function skillDetailTabMeta() {
 
 export type SkillDetailTabKey =
   | 'overview'
+  | 'chat'
   | 'story'
-  | 'evidence'
   | 'timeline'
+  | 'evidence'
   | 'connections'
-  | 'activity'
-  | 'proficiency'
-  | 'portfolio'
-  | 'relationships'
-  | 'insights'
-  | 'memories'
   | 'meta';
 
 export const SKILL_DETAIL_TABS: Array<{
@@ -736,15 +795,10 @@ export const SKILL_DETAIL_TABS: Array<{
   hidden?: boolean;
 }> = [
   { key: 'overview', label: 'Overview', shortLabel: 'Overview', icon: Sparkles },
+  { key: 'chat', label: 'Chat', shortLabel: 'Chat', icon: MessageSquare },
   { key: 'story', label: 'Story', shortLabel: 'Story', icon: ScrollText },
+  { key: 'timeline', label: 'Timeline', shortLabel: 'Time', icon: Clock },
   { key: 'evidence', label: 'Evidence', shortLabel: 'Proof', icon: Shield },
-  { key: 'timeline', label: 'Timeline', shortLabel: 'Time', icon: TrendingUp },
   { key: 'connections', label: 'Connections', shortLabel: 'Links', icon: Link2 },
-  { key: 'activity', label: 'Activity', shortLabel: 'Activity', icon: Activity },
-  { key: 'proficiency', label: 'Proficiency', shortLabel: 'Prof.', icon: Brain },
-  { key: 'portfolio', label: 'Portfolio', shortLabel: 'Work', icon: BookOpen },
-  { key: 'relationships', label: 'Relationships', shortLabel: 'People', icon: Users },
-  { key: 'insights', label: 'AI Insights', shortLabel: 'AI', icon: Lightbulb },
-  { key: 'memories', label: 'Memories', shortLabel: 'Mem', icon: MessageSquare },
-  { key: 'meta', label: 'Meta', shortLabel: 'Meta', icon: FileText, hidden: true },
+  { key: 'meta', label: 'Debug', shortLabel: 'Debug', icon: FileText, hidden: true },
 ];

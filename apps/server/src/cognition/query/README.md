@@ -14,7 +14,7 @@ Execution Plan
         ↓
 ┌────────────┬────────────┬────────────┬────────────┬──────────────┬─────────────┐
 │ Structured │ Thread     │ Semantic   │ Working    │ Crystallized │ Graph /     │
-│ (router)   │ (convo)    │ (journal)  │ Memory     │ (claims)     │ Timeline /  │
+│ + Books    │ (convo)    │ (journal)  │ Memory     │ (claims)     │ Timeline /  │
 │            │            │            │            │              │ Analytics*  │
 └────────────┴────────────┴────────────┴────────────┴──────────────┴─────────────┘
         ↓
@@ -24,8 +24,8 @@ Provenance + Confidence   (every answer knows where it came from)
         ↓
 LLM Response
 ```
-\* placeholders — planned in every relevant QueryPlan so the plan shape is
-stable when the real executors land.
+\* Graph traversal is live. Timeline and Analytics remain planned placeholders
+so their plan shape stays stable until their executors land.
 
 ## Files
 
@@ -35,6 +35,7 @@ stable when the real executors land.
 | `IntentClassifier.ts` | Wraps `recallIntentPatterns` regexes; emits `QueryClassification` (intent, confidence, matched entities/dates/locations). Regexes are private here. |
 | `QueryPlanner.ts` | `QueryType → PlannedExecutor[]` mapping + filters. Pure, no I/O. |
 | `QueryExecutor.ts` | Executor interface + implementations. Executors **orchestrate** existing services (recall router, thread recall, memoryRecallEngine, workingMemoryAssembler, omega claims) — they never own SQL or duplicate caching. |
+| `services/query/bookQueryRegistry.ts` | Normalizes the entity Books behind one user-scoped registry and provides evidence-bearing cross-book results. The adaptive `books` executor uses it only when earlier structured evidence is insufficient. |
 | `ResultMerger.ts` | The single merge point: dedupe by record identity, rank by source-weighted confidence, aggregate provenance and citations. |
 | `QueryEngine.ts` | Orchestration: classify → plan → execute (parallel, per-executor error isolation) → merge. Also `executeKind()` for the legacy flow. |
 
@@ -79,13 +80,12 @@ generic over executor kinds.
 
 ## How graph reasoning plugs in
 
-`GraphExecutor` ships as interfaces (`GraphNode`, `GraphEdge`, `TraversalPlan`,
-`TraversalResult`) with an empty `traverse()`. The real implementation walks
-`character_relationships` (+ omega entity edges) breadth-first — the same
-family-edge connectivity rules the family tree uses — and answers queries like
-“who introduced me to X” as paths (`Abel → Tony → Renna`) returned as records
-with per-edge provenance. RELATIONSHIP and GRAPH plans already schedule it, so
-enabling it is purely an executor change.
+`GraphExecutor` walks the canonical Book graph breadth-first. Nodes come from
+People, Groups, Places, Projects, Skills, Quests, and Life Log events; edges
+come from canonical relationship, membership, place, project, skill, and event
+links. Every returned path carries its supporting row IDs. Traversal is bounded
+to four hops, user-scoped at every source query, and degrades per source rather
+than inventing a path when an optional table is unavailable.
 
 ## How analytics plugs in
 

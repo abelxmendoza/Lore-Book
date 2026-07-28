@@ -50,6 +50,7 @@ import {
   useLinkRomanticRelationshipToCharacterMutation,
   useRescanRomanticRelationshipsMutation,
 } from '../../store/api/entitiesApi';
+import { BookQueryPanel } from '../query/BookQueryPanel';
 
 export type RomanticRelationship = {
   id: string;
@@ -747,86 +748,36 @@ export const LoveAndRelationshipsView = () => {
         onContinue={openRomanticInterestChat}
       />
 
-      <section className="rounded-xl border border-pink-400/20 bg-pink-500/[0.05] p-3 sm:p-4">
-        <div className="flex items-start gap-2.5">
-          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-pink-300" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-white">Ask Dating & Romance</p>
-            <p className="mt-0.5 text-xs text-white/45">
-              Query current and past connections, crushes, situationships, history, risk flags,
-              evidence strength, or Character Book linkage.
-            </p>
-            <form
-              className="mt-3 flex flex-col gap-2 sm:flex-row"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void runBookQuery();
-              }}
-            >
-              <Input
-                value={bookQuery}
-                onChange={(event) => setBookQuery(event.target.value)}
-                placeholder='Try “show my past relationships”'
-                className="min-w-0 flex-1 border-white/10 bg-black/30 text-white placeholder:text-white/30 focus:border-pink-400/45"
-              />
-              <Button
-                type="submit"
-                disabled={!bookQuery.trim() || bookQueryLoading}
-                className="bg-pink-500/20 text-pink-100 hover:bg-pink-500/30"
-              >
-                {bookQueryLoading ? 'Checking…' : 'Ask'}
-              </Button>
-            </form>
-            {bookQueryError && <p className="mt-2 text-xs text-red-300">{bookQueryError}</p>}
-            {bookQueryResult && (
-              <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs text-white/65">
-                    <span className="font-semibold text-pink-200">{bookQueryResult.total}</span>{' '}
-                    matching {bookQueryResult.total === 1 ? 'connection' : 'connections'}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBookQueryResult(null);
-                      setBookQueryError(null);
-                    }}
-                    className="text-[11px] text-white/40 hover:text-white/70"
-                  >
-                    Clear results
-                  </button>
-                </div>
-                {bookQueryResult.results.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {bookQueryResult.results.slice(0, 8).map((result) => (
-                      <button
-                        key={result.relationshipId}
-                        type="button"
-                        onClick={() => setSelectedRelationship(result.relationshipId)}
-                        title={result.matchedReasons.join(' · ')}
-                        className="rounded-full border border-pink-400/20 bg-pink-500/10 px-2.5 py-1 text-[11px] text-pink-100 hover:border-pink-300/40"
-                      >
-                        {result.personName}
-                      </button>
-                    ))}
-                    {bookQueryResult.total > 8 && (
-                      <span className="px-1 py-1 text-[11px] text-white/35">
-                        +{bookQueryResult.total - 8} more below
-                      </span>
-                    )}
-                  </div>
-                )}
-                {bookQueryResult.results.some((result) => !result.scoresEvidenceBacked) && (
-                  <p className="mt-2 text-[11px] text-amber-200/70">
-                    Some matches have relationship evidence but not enough evidence for reliable
-                    scoring. LoreBook leaves those scores unranked.
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
+      <BookQueryPanel
+        demoMode={shouldUseMockData}
+        domains={['romance']}
+        title="Ask Dating & Romance"
+        description="Query current and past connections, crushes, situationships, history, risk flags, evidence strength, or Character Book linkage."
+        placeholder='Try “show my past relationships”'
+        resultNoun="connection"
+        compact
+        controller={{
+          query: bookQuery,
+          onQueryChange: setBookQuery,
+          onSubmit: runBookQuery,
+          onClear: () => {
+            setBookQuery('');
+            setBookQueryResult(null);
+            setBookQueryError(null);
+          },
+          loading: bookQueryLoading,
+          error: bookQueryError,
+          total: bookQueryResult?.total,
+          results: bookQueryResult?.results.map((result) => ({
+            id: result.relationshipId,
+            title: result.personName,
+            status: result.status,
+            reason: result.matchedReasons[0],
+          })),
+          warnings: bookQueryResult?.warnings,
+        }}
+        onSelectResult={(result) => setSelectedRelationship(result.id)}
+      />
 
       <RomanticStoryShowcase demoMode={shouldUseMockData} />
 

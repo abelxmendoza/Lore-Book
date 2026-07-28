@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { shortDisplayName } from '../../lib/displayName';
+import { EntityModalBottomNav } from '../common/EntityModalBottomNav';
 import { dedupeRelationshipsByPerson } from '../../lib/dedupeCharacterRelationships';
 import { CharacterPerceptionsTab } from '../perceptions/CharacterPerceptionsTab';
 import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2, RefreshCw, Loader2, ImageIcon, Shield, ChevronDown, MapPin, Plus, BookOpen } from 'lucide-react';
@@ -3150,44 +3151,6 @@ export const CharacterDetailModal = ({
         </div>
 
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-          {/* Mobile: horizontal tab strip — scroll instead of cramming 14 tabs in a grid */}
-          <nav
-            className="md:hidden flex-shrink-0 border-b border-border/60 bg-black/30"
-            aria-label="Character sections"
-          >
-            <div className="flex gap-1 overflow-x-auto overscroll-x-contain px-2 py-1.5 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {tabs.map((tab) => {
-                const Icon = tab.icon;
-                const isActive = activeTab === tab.key;
-                return (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    onClick={() => setActiveTab(tab.key)}
-                    className={`flex flex-shrink-0 flex-col items-center justify-center gap-0.5 rounded-md px-2 py-1.5 min-w-[3.25rem] min-h-[40px] text-[9px] font-medium leading-none transition touch-manipulation ${
-                      isActive
-                        ? 'bg-primary/25 text-primary border border-primary/40'
-                        : 'text-white/50 border border-transparent hover:text-white/80 hover:bg-white/[0.06]'
-                    }`}
-                    aria-current={isActive ? 'page' : undefined}
-                    aria-label={tab.label}
-                    data-testid={
-                      tab.key === 'relationships'
-                        ? 'character-tab-connections'
-                        : tab.key === 'timeline'
-                          ? 'character-tab-story'
-                          : undefined
-                    }
-                  >
-                    <Icon className="h-3.5 w-3.5 flex-shrink-0" />
-                    <span className="max-w-[3.5rem] text-center truncate">{tab.shortLabel}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-          </nav>
-
           <div className="flex-1 overflow-hidden flex flex-col md:flex-row min-h-0">
           {/* Desktop: vertical sidebar */}
           <nav
@@ -4762,6 +4725,28 @@ export const CharacterDetailModal = ({
             )}
           </div>
         </div>
+
+        <EntityModalBottomNav
+          tabs={tabs}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          ariaLabel="Character sections"
+          breakpoint="md"
+          dangerAction={
+            canDeleteCharacter
+              ? {
+                  label: 'Archive',
+                  icon: Trash2,
+                  active: deleteStep !== null,
+                  onClick: () => {
+                    setDeleteStep('warn');
+                    setDeleteConfirmText('');
+                    setDeleteError(null);
+                  },
+                }
+              : undefined
+          }
+        />
         </div>
 
 

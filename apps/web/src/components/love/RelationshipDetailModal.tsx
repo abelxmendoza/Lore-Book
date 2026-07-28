@@ -13,6 +13,7 @@ import {
   getMockDateEvents,
   getMockRelationshipAnalytics
 } from '../../mocks/romanticRelationships';
+import { EntityModalBottomNav } from '../common/EntityModalBottomNav';
 import { ProsConsView } from './ProsConsView';
 import { RelationshipTimeline } from './RelationshipTimeline';
 import { RelationshipAnalytics } from './RelationshipAnalytics';
@@ -430,7 +431,7 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden px-4 sm:px-6 pb-4 sm:pb-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 min-h-0">
           <TabsList
-            className="grid w-full max-w-full h-auto shrink-0 grid-cols-4 md:grid-cols-7 gap-0.5 p-1 bg-black/40 border border-border/50"
+            className="hidden md:grid w-full max-w-full h-auto shrink-0 md:grid-cols-7 gap-0.5 p-1 bg-black/40 border border-border/50"
             aria-label="Relationship sections"
           >
             {RELATIONSHIP_TABS.map(({ value, label, shortLabel, icon: Icon }) => (
@@ -904,6 +905,14 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
           </TabsContent>
           </div>
         </Tabs>
+
+        <EntityModalBottomNav
+          tabs={RELATIONSHIP_TABS.map(({ value, label, shortLabel, icon }) => ({ key: value, label, shortLabel, icon }))}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          ariaLabel="Relationship sections"
+          breakpoint="md"
+        />
         </div>
       </DialogContent>
     </Dialog>

@@ -43,6 +43,8 @@ import { LoreEntityLegend } from '../lore/LoreEntityLegend';
 import { LoreEntityChip } from '../lore/LoreEntityChip';
 import { LorebookContentMeter } from '../lorebook/LorebookContentMeter';
 import { LorebookTierMenu } from '../lorebook/LorebookTierMenu';
+import { EntityTimelinePanel } from '../common/EntityTimelinePanel';
+import type { SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
 import type { LoreEntityKind } from '../../lib/loreEntities';
 
 export const STATUS_CONFIG: Record<
@@ -397,33 +399,44 @@ export function ProjectTimelineTab({
         />
       </div>
 
-      {filtered.length === 0 ? (
-        <p className="text-sm text-white/45">
-          {sorted.length === 0
-            ? 'No milestones yet — talk about this project in chat to grow its timeline.'
-            : 'No milestones match that search.'}
-        </p>
-      ) : (
-        <div className="relative pl-4 border-l-2 border-primary/30 space-y-4">
-          {filtered.map((m) => (
-            <div key={m.id} className="relative pl-4">
-              <span className="absolute -left-[1.35rem] top-1.5 h-2.5 w-2.5 rounded-full bg-primary ring-4 ring-primary/20" />
-              <div className="rounded-xl border border-white/10 bg-black/35 p-3 sm:p-4 hover:border-primary/30 transition-colors">
-                <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <span className="text-[10px] uppercase tracking-wide text-primary/80 font-semibold">
-                    {formatMilestoneKind(m.kind)}
-                  </span>
-                  <span className="text-[11px] text-white/40">{fmtDate(m.date)}</span>
-                </div>
-                <h4 className="text-sm font-semibold text-white">{m.title}</h4>
-                {m.summary && (
-                  <p className="text-xs text-white/55 mt-1 leading-relaxed">{m.summary}</p>
-                )}
+      <EntityTimelinePanel<SwimlaneEvent>
+        icon={GitBranch}
+        title="Milestones"
+        subtitle="Milestones inferred from chat — ★ milestone · ↻ pivot · ⏸ pause · ✦ breakthrough"
+        lanes={[{ key: 'milestones', label: 'Milestones', accent: 'violet' }]}
+        events={filtered.map((m): SwimlaneEvent => ({
+          id: m.id,
+          title: m.title,
+          date: m.date,
+          laneKey: 'milestones',
+          type: formatMilestoneKind(m.kind),
+          summary: m.summary ?? undefined,
+        }))}
+        emptyTitle={sorted.length === 0 ? 'No milestones yet' : 'No milestones match that search'}
+        emptyHint={
+          sorted.length === 0
+            ? 'Talk about this project in chat to grow its timeline.'
+            : 'Try a different search term.'
+        }
+        renderListItem={(m) => (
+          <>
+            <span className="absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full ring-2 ring-black/80 bg-primary" />
+            <div className="w-full rounded-xl border border-white/10 bg-black/35 p-3 sm:p-4 hover:border-primary/30 transition-colors">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <span className="text-[10px] uppercase tracking-wide text-primary/80 font-semibold">
+                  {m.type}
+                </span>
+                <span className="text-[11px] text-white/40">{fmtDate(m.date)}</span>
               </div>
+              <h4 className="text-sm font-semibold text-white">{m.title}</h4>
+              {m.summary && (
+                <p className="text-xs text-white/55 mt-1 leading-relaxed">{m.summary}</p>
+              )}
             </div>
-          ))}
-        </div>
-      )}
+          </>
+        )}
+        footer={null}
+      />
     </div>
   );
 }

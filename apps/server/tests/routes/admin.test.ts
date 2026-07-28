@@ -3,7 +3,13 @@ import request from 'supertest';
 import express from 'express';
 
 const mockUser = { id: 'u1', email: 'a@b.com' };
+const { getRecentTracesForUserMock } = vi.hoisted(() => ({
+  getRecentTracesForUserMock: vi.fn(),
+}));
 
+vi.mock('../../src/cognition/query/QueryInspector', () => ({
+  queryInspector: { getRecentTracesForUser: getRecentTracesForUserMock },
+}));
 vi.mock('../../src/middleware/auth', () => ({
   requireAuth: (req: { user?: unknown }, _res: unknown, next: () => void) => {
     req.user = mockUser;
@@ -48,5 +54,20 @@ describe('Admin API Routes', () => {
   it('GET /metrics returns admin metrics', async () => {
     const res = await request(app).get('/api/admin/metrics').expect(200);
     expect(res.body).toBeDefined();
+  });
+
+  it('GET /query-inspector returns only the authenticated admin trace scope', async () => {
+    getRecentTracesForUserMock.mockReturnValue([
+      { at: '2026-07-28T12:00:00.000Z', userId: mockUser.id, query: 'Show my graph' },
+    ]);
+
+    const res = await request(app).get('/api/admin/query-inspector?limit=10').expect(200);
+
+    expect(getRecentTracesForUserMock).toHaveBeenCalledWith(mockUser.id, 10);
+    expect(res.body).toMatchObject({
+      count: 1,
+      scope: 'authenticated_admin',
+      traces: [{ userId: mockUser.id, query: 'Show my graph' }],
+    });
   });
 });

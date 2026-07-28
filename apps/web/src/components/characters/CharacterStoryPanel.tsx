@@ -10,16 +10,13 @@ import {
   BookOpen,
   CalendarRange,
   Check,
-  Clock,
   Copy,
   ExternalLink,
   Eye,
-  List,
   Loader2,
   RefreshCw,
   Search,
   Sparkles,
-  Waves,
   X,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
@@ -28,7 +25,8 @@ import { Badge } from '../ui/badge';
 import { fetchJson } from '../../lib/api';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { sortTimelineEventsChronologically } from '../../lib/timelineSort';
-import { EventTimelineSwimlanes, type SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
+import type { SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
+import { EntityTimelinePanel } from '../common/EntityTimelinePanel';
 import { EventDetailModal } from '../events/EventDetailModal';
 import type { Event } from '../events/EventProfileCard';
 import { getMockCharacterTimeline } from '../../mocks/characterIntelligence';
@@ -52,13 +50,12 @@ export type CharTimelineEvent = {
 };
 
 export type StoryScope = 'all' | 'events' | 'memories';
-type ViewMode = 'list' | 'swimlanes';
 
 export type RelationshipStage = { stage: string; start_date?: string | null };
 
 type StoryItem =
-  | { kind: 'event'; date: string; event: CharTimelineEvent & { lane: 'with' | 'without' } }
-  | { kind: 'memory'; date: string; memory: MemoryCard; highlight?: string };
+  | { kind: 'event'; id: string; date: string; event: CharTimelineEvent & { lane: 'with' | 'without' } }
+  | { kind: 'memory'; id: string; date: string; memory: MemoryCard; highlight?: string };
 
 interface Props {
   characterId: string;
@@ -134,7 +131,6 @@ export function CharacterStoryPanel({
   const [loaded, setLoaded] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
   const [scope, setScope] = useState<StoryScope>('all');
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [loadingEvent, setLoadingEvent] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -241,7 +237,7 @@ export function CharacterStoryPanel({
     const items: StoryItem[] = [];
     if (scope !== 'memories') {
       for (const event of chronologicalEvents) {
-        items.push({ kind: 'event', date: event.eventDate, event });
+        items.push({ kind: 'event', id: `event-${event.id}`, date: event.eventDate, event });
       }
     }
     if (scope !== 'events') {
@@ -256,7 +252,7 @@ export function CharacterStoryPanel({
         ) {
           highlight = 'Most significant';
         }
-        items.push({ kind: 'memory', date: memory.date, memory, highlight });
+        items.push({ kind: 'memory', id: `memory-${memory.id}`, date: memory.date, memory, highlight });
       }
     }
     return items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -352,77 +348,46 @@ export function CharacterStoryPanel({
   const isBusy = loading || memoriesLoading;
   const hasAny =
     chronologicalEvents.length > 0 || sortedMemories.length > 0 || isBusy;
-  const showSwimlanes = viewMode === 'swimlanes' && scope !== 'memories';
+  const finalEmptyTitle = searchTerm && chronologicalEvents.length > 0 ? 'No matches' : emptyTitle;
+  const finalEmptyHint =
+    searchTerm && chronologicalEvents.length > 0 ? `No events match "${searchTerm}".` : emptyHint;
 
   return (
     <div className="min-w-0 max-w-full space-y-4" data-testid="character-story-panel">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-        <div className="min-w-0">
-          <h3 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
-            <BookOpen className="h-5 w-5 text-primary shrink-0" />
-            {storyTitle}
-          </h3>
-          <p className="text-xs text-white/45 mt-1">{storyDescription}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 shrink-0 self-start">
-          {scope !== 'memories' && (
-            <div className="flex rounded-lg border border-white/10 overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setViewMode('list')}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs transition ${
-                  viewMode === 'list' ? 'bg-white/10 text-white' : 'text-white/45 hover:text-white/70'
-                }`}
-              >
-                <List className="h-3.5 w-3.5" />
-                List
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('swimlanes')}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border-l border-white/10 transition ${
-                  viewMode === 'swimlanes' ? 'bg-white/10 text-white' : 'text-white/45 hover:text-white/70'
-                }`}
-              >
-                <Waves className="h-3.5 w-3.5" />
-                Swimlanes
-              </button>
-            </div>
-          )}
-          {chronologicalEvents.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs"
-              onClick={handleCopyAll}
-              title="Copy timeline events as plain text"
-              aria-label="Copy all timeline events"
-            >
-              {copied ? (
-                <Check className="h-3.5 w-3.5 mr-1.5 text-emerald-400" />
-              ) : (
-                <Copy className="h-3.5 w-3.5 mr-1.5" />
-              )}
-              {copied ? 'Copied' : 'Copy events'}
-            </Button>
-          )}
-          {!mockMode && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs"
-              disabled={rebuilding}
-              onClick={handleRescan}
-            >
-              {rebuilding ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-              )}
-              Rescan
-            </Button>
-          )}
-        </div>
+      <div className="flex flex-wrap items-center gap-2 justify-end">
+        {chronologicalEvents.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs"
+            onClick={handleCopyAll}
+            title="Copy timeline events as plain text"
+            aria-label="Copy all timeline events"
+          >
+            {copied ? (
+              <Check className="h-3.5 w-3.5 mr-1.5 text-emerald-400" />
+            ) : (
+              <Copy className="h-3.5 w-3.5 mr-1.5" />
+            )}
+            {copied ? 'Copied' : 'Copy events'}
+          </Button>
+        )}
+        {!mockMode && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs"
+            disabled={rebuilding}
+            onClick={handleRescan}
+          >
+            {rebuilding ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+            )}
+            Rescan
+          </Button>
+        )}
       </div>
 
       {stageHistory.length > 0 && (
@@ -502,191 +467,167 @@ export function CharacterStoryPanel({
         </div>
       )}
 
-      {showSwimlanes ? (
-        <EventTimelineSwimlanes
-          loading={loading}
-          lanes={[
-            { key: 'with', label: withLabel, accent: 'emerald' },
-            { key: 'without', label: withoutLabel, accent: 'sky' },
-          ]}
-          events={swimEvents}
-          emptyTitle={searchTerm && chronologicalEvents.length > 0 ? 'No matches' : emptyTitle}
-          emptyHint={
-            searchTerm && chronologicalEvents.length > 0
-              ? `No events match "${searchTerm}".`
-              : emptyHint
-          }
-        />
-      ) : isBusy && !loaded && chronologicalEvents.length === 0 && sortedMemories.length === 0 ? (
-        <div className="h-48 flex items-center justify-center text-white/50 text-sm gap-2">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Loading story…
-        </div>
-      ) : filteredItems.length === 0 ? (
-        <div className="h-48 flex flex-col items-center justify-center gap-2 px-6 text-center">
-          {searchTerm ? (
-            <>
-              <Search className="h-6 w-6 text-white/20" />
-              <p className="text-white/50 text-sm">No story items match &quot;{searchTerm}&quot;</p>
-            </>
-          ) : (
-            <>
-              <Clock className="h-8 w-8 text-white/20" />
-              <p className="text-white/60 font-medium">{emptyTitle}</p>
-              <p className="text-white/30 text-sm max-w-sm">{emptyHint}</p>
-            </>
-          )}
-        </div>
-      ) : (
-        <ol className="relative border-l border-white/10 ml-3 space-y-0">
-          {filteredItems.map((item) => {
-            if (item.kind === 'event') {
-              const event = item.event;
-              const isWith = event.lane === 'with';
-              return (
-                <li key={`event-${event.id}`} className="relative pl-6 pb-6 last:pb-0">
-                  <span
-                    className={`absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full ring-2 ring-black/80 ${
-                      isWith ? 'bg-emerald-400' : 'bg-sky-400'
-                    }`}
-                  />
-                  <button
-                    type="button"
-                    data-testid={`character-timeline-event-${event.id}`}
-                    disabled={!event.eventId || loadingEvent}
-                    onClick={() => void openEventDetail(event.eventId)}
-                    className="w-full text-left rounded-lg border border-white/10 bg-black/25 p-3 hover:bg-black/35 transition-colors disabled:cursor-default disabled:hover:bg-black/25"
-                  >
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <time className="text-xs font-mono text-primary/80">{fmtEventDate(event.eventDate)}</time>
-                      <Badge
-                        variant="outline"
-                        className={`text-[10px] ${
-                          isWith
-                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                            : 'bg-sky-500/15 text-sky-300 border-sky-500/30'
-                        }`}
-                      >
-                        {isWith ? withLabel : withoutLabel}
-                      </Badge>
-                      <Badge variant="outline" className="text-[10px] text-white/45">
-                        Event
-                      </Badge>
-                      {event.eventType && (
-                        <Badge variant="outline" className="text-[10px] text-white/50">
-                          {event.eventType}
-                        </Badge>
-                      )}
-                      {event.eventId && (
-                        <span className="text-[10px] text-white/35 ml-auto">Open in Life Log</span>
-                      )}
-                    </div>
-                    <h4 className="text-sm font-semibold text-white">{event.eventTitle}</h4>
-                    {event.eventSummary && (
-                      <p className="text-xs text-white/60 mt-1 leading-relaxed">{event.eventSummary}</p>
-                    )}
-                  </button>
-                </li>
-              );
-            }
-
-            const memory = item.memory;
+      <EntityTimelinePanel<SwimlaneEvent, StoryItem>
+        icon={BookOpen}
+        title={storyTitle}
+        subtitle={storyDescription}
+        lanes={[
+          { key: 'with', label: withLabel, accent: 'emerald' },
+          { key: 'without', label: withoutLabel, accent: 'sky' },
+        ]}
+        events={swimEvents}
+        listItems={filteredItems}
+        loading={isBusy && !loaded && chronologicalEvents.length === 0 && sortedMemories.length === 0}
+        emptyTitle={finalEmptyTitle}
+        emptyHint={finalEmptyHint}
+        renderListItem={(item) => {
+          if (item.kind === 'event') {
+            const event = item.event;
+            const isWith = event.lane === 'with';
             return (
-              <li key={`memory-${memory.id}`} className="relative pl-6 pb-6 last:pb-0">
-                <span className="absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full ring-2 ring-black/80 bg-amber-400" />
+              <>
+                <span
+                  className={`absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full ring-2 ring-black/80 ${
+                    isWith ? 'bg-emerald-400' : 'bg-sky-400'
+                  }`}
+                />
                 <button
                   type="button"
-                  data-testid={`character-story-memory-${memory.id}`}
-                  onClick={() => onSelectMemory?.(memory)}
-                  className={`w-full text-left rounded-lg border p-3 transition-colors ${
-                    item.highlight
-                      ? 'border-primary/30 bg-primary/5 hover:bg-primary/8'
-                      : 'border-white/10 bg-black/25 hover:bg-black/35'
-                  }`}
+                  data-testid={`character-timeline-event-${event.id}`}
+                  disabled={!event.eventId || loadingEvent}
+                  onClick={() => void openEventDetail(event.eventId)}
+                  className="w-full text-left rounded-lg border border-white/10 bg-black/25 p-3 hover:bg-black/35 transition-colors disabled:cursor-default disabled:hover:bg-black/25"
                 >
                   <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <time className="text-xs font-mono text-primary/80">{fmtEventDate(memory.date)}</time>
+                    <time className="text-xs font-mono text-primary/80">{fmtEventDate(event.eventDate)}</time>
                     <Badge
                       variant="outline"
-                      className="text-[10px] bg-amber-500/15 text-amber-200 border-amber-500/30"
+                      className={`text-[10px] ${
+                        isWith
+                          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                          : 'bg-sky-500/15 text-sky-300 border-sky-500/30'
+                      }`}
                     >
-                      Memory
+                      {isWith ? withLabel : withoutLabel}
                     </Badge>
-                    {item.highlight && (
-                      <span className="text-[9px] font-semibold text-primary/70 uppercase tracking-widest">
-                        {item.highlight}
-                      </span>
+                    <Badge variant="outline" className="text-[10px] text-white/45">
+                      Event
+                    </Badge>
+                    {event.eventType && (
+                      <Badge variant="outline" className="text-[10px] text-white/50">
+                        {event.eventType}
+                      </Badge>
                     )}
-                    {memory.mood && (
-                      <span className="text-[10px] text-white/35 ml-auto capitalize">{memory.mood}</span>
+                    {event.eventId && (
+                      <span className="text-[10px] text-white/35 ml-auto">Open in Life Log</span>
                     )}
                   </div>
-                  <h4 className="text-sm font-semibold text-white flex items-center gap-1.5">
-                    <Sparkles className="h-3.5 w-3.5 text-amber-300/70 shrink-0" />
-                    {memory.title}
-                  </h4>
-                  {memory.content && (
-                    <p className="text-xs text-white/60 mt-1 leading-relaxed line-clamp-2">
-                      {memory.content.length > 140
-                        ? `${memory.content.slice(0, 140)}…`
-                        : memory.content}
-                    </p>
+                  <h4 className="text-sm font-semibold text-white">{event.eventTitle}</h4>
+                  {event.eventSummary && (
+                    <p className="text-xs text-white/60 mt-1 leading-relaxed">{event.eventSummary}</p>
                   )}
                 </button>
-              </li>
+              </>
             );
-          })}
-        </ol>
-      )}
+          }
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-white/40 pt-1 border-t border-white/5">
-        <span>
-          <span className="text-emerald-300 font-medium">{sharedExperiences.length}</span>{' '}
-          {isSelfProfile ? 'with others' : 'with you'}
-        </span>
-        <span>
-          <span className="text-sky-300 font-medium">{loreEvents.length}</span>{' '}
-          {isSelfProfile ? 'your story' : 'without you'}
-        </span>
-        <span>
-          <span className="text-amber-300 font-medium">{sortedMemories.length}</span> memories
-        </span>
-        <span className="flex items-center gap-3 ml-auto flex-wrap justify-end">
-          {onOpenPerceptions && (
-            <button
-              type="button"
-              onClick={onOpenPerceptions}
-              className="inline-flex items-center gap-1 text-white/45 hover:text-white/70"
-            >
-              <Eye className="h-3 w-3" />
-              Perceptions
-            </button>
-          )}
-          <Link
-            to={lifeLogHref}
-            data-testid="character-timeline-open-life-log"
-            className="inline-flex items-center gap-1 text-emerald-300/80 hover:text-emerald-200"
-          >
-            <ExternalLink className="h-3 w-3" />
-            Life Log
-          </Link>
-          <Link
-            to={omniHref}
-            data-testid="character-timeline-open-omni"
-            className="inline-flex items-center gap-1 text-sky-300/80 hover:text-sky-200"
-          >
-            <CalendarRange className="h-3 w-3" />
-            Omni Timeline
-          </Link>
-          <EntityLorebookCompileControl
-            subjectLabel={characterName}
-            signals={lorebookSignals}
-            focus={{ characterId, themes: characterName }}
-            autoFetchSignals={false}
-            testId="character-timeline-create-lorebook"
-          />
-        </span>
-      </div>
+          const memory = item.memory;
+          return (
+            <>
+              <span className="absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full ring-2 ring-black/80 bg-amber-400" />
+              <button
+                type="button"
+                data-testid={`character-story-memory-${memory.id}`}
+                onClick={() => onSelectMemory?.(memory)}
+                className={`w-full text-left rounded-lg border p-3 transition-colors ${
+                  item.highlight
+                    ? 'border-primary/30 bg-primary/5 hover:bg-primary/8'
+                    : 'border-white/10 bg-black/25 hover:bg-black/35'
+                }`}
+              >
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <time className="text-xs font-mono text-primary/80">{fmtEventDate(memory.date)}</time>
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] bg-amber-500/15 text-amber-200 border-amber-500/30"
+                  >
+                    Memory
+                  </Badge>
+                  {item.highlight && (
+                    <span className="text-[9px] font-semibold text-primary/70 uppercase tracking-widest">
+                      {item.highlight}
+                    </span>
+                  )}
+                  {memory.mood && (
+                    <span className="text-[10px] text-white/35 ml-auto capitalize">{memory.mood}</span>
+                  )}
+                </div>
+                <h4 className="text-sm font-semibold text-white flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-amber-300/70 shrink-0" />
+                  {memory.title}
+                </h4>
+                {memory.content && (
+                  <p className="text-xs text-white/60 mt-1 leading-relaxed line-clamp-2">
+                    {memory.content.length > 140
+                      ? `${memory.content.slice(0, 140)}…`
+                      : memory.content}
+                  </p>
+                )}
+              </button>
+            </>
+          );
+        }}
+        footer={
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-white/40 pt-1 border-t border-white/5">
+            <span>
+              <span className="text-emerald-300 font-medium">{sharedExperiences.length}</span>{' '}
+              {isSelfProfile ? 'with others' : 'with you'}
+            </span>
+            <span>
+              <span className="text-sky-300 font-medium">{loreEvents.length}</span>{' '}
+              {isSelfProfile ? 'your story' : 'without you'}
+            </span>
+            <span>
+              <span className="text-amber-300 font-medium">{sortedMemories.length}</span> memories
+            </span>
+            <span className="flex items-center gap-3 ml-auto flex-wrap justify-end">
+              {onOpenPerceptions && (
+                <button
+                  type="button"
+                  onClick={onOpenPerceptions}
+                  className="inline-flex items-center gap-1 text-white/45 hover:text-white/70"
+                >
+                  <Eye className="h-3 w-3" />
+                  Perceptions
+                </button>
+              )}
+              <Link
+                to={lifeLogHref}
+                data-testid="character-timeline-open-life-log"
+                className="inline-flex items-center gap-1 text-emerald-300/80 hover:text-emerald-200"
+              >
+                <ExternalLink className="h-3 w-3" />
+                Life Log
+              </Link>
+              <Link
+                to={omniHref}
+                data-testid="character-timeline-open-omni"
+                className="inline-flex items-center gap-1 text-sky-300/80 hover:text-sky-200"
+              >
+                <CalendarRange className="h-3 w-3" />
+                Omni Timeline
+              </Link>
+              <EntityLorebookCompileControl
+                subjectLabel={characterName}
+                signals={lorebookSignals}
+                focus={{ characterId, themes: characterName }}
+                autoFetchSignals={false}
+                testId="character-timeline-create-lorebook"
+              />
+            </span>
+          </div>
+        }
+      />
 
       {selectedEvent && (
         <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />

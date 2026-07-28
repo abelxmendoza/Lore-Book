@@ -7,6 +7,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { config } from '../config';
+import { queryInspector } from '../cognition/query/QueryInspector';
 import {
   getFinanceMetrics,
   getMonthlyFinancials,
@@ -113,6 +114,25 @@ router.get('/metrics', async (req: AuthenticatedRequest, res) => {
     logger.error({ error }, 'Error fetching metrics');
     res.status(500).json({ error: 'Failed to fetch metrics' });
   }
+});
+
+/**
+ * GET /admin/query-inspector
+ * In-memory retrieval traces for the authenticated admin's own queries only.
+ * This intentionally cannot enumerate another user's query text or lore.
+ */
+router.get('/query-inspector', (req: AuthenticatedRequest, res) => {
+  const parsed = z.coerce.number().int().min(1).max(100).safeParse(req.query.limit ?? 20);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid query trace limit' });
+  }
+  const traces = queryInspector.getRecentTracesForUser(req.user!.id, parsed.data);
+  logAdminAction(req.user!.id, 'view_own_query_traces', { count: traces.length });
+  return res.json({
+    traces,
+    count: traces.length,
+    scope: 'authenticated_admin',
+  });
 });
 
 /**

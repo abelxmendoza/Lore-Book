@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { OrganizationTimelinePanel } from './OrganizationTimelinePanel';
 import type { Organization } from './OrganizationProfileCard';
 import type { OrgDerivedEvent } from '../../mocks/organizationTimeline';
@@ -80,6 +80,8 @@ describe('OrganizationTimelinePanel', () => {
       <OrganizationTimelinePanel organization={makeOrg({ user_relationship: 'member' })} events={events} />,
     );
 
+    fireEvent.click(screen.getByRole('button', { name: /swimlanes/i }));
+
     expect(screen.getByTestId('org-timeline-stance')).toHaveAttribute('data-stance', 'mine');
     expect(screen.getByTestId('org-timeline-stance-badge')).toHaveTextContent('Mine');
     expect(screen.getByText(/Groups you belong to/i)).toBeInTheDocument();
@@ -100,6 +102,8 @@ describe('OrganizationTimelinePanel', () => {
         events={events}
       />,
     );
+
+    fireEvent.click(screen.getByRole('button', { name: /swimlanes/i }));
 
     expect(screen.getByTestId('org-timeline-stance')).toHaveAttribute('data-stance', 'their_world');
     expect(screen.getByTestId('org-timeline-stance-badge')).toHaveTextContent('Their world');

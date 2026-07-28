@@ -20,6 +20,7 @@ import { getUserFriendlyMessage } from '../../lib/errorHandler';
 import { evaluateStripeConfig, type StripeConfigStatus } from '../../lib/stripeConfigStatus';
 import { StripeDashboardLinks } from '../../components/admin/StripeDashboardLinks';
 import { ExternalServicesPanel } from '../../components/admin/ExternalServicesPanel';
+import { QueryInspectorPanel } from '../../components/admin/QueryInspectorPanel';
 import ChatDiagnostics from '../../routes/ChatDiagnostics';
 
 type AdminView = AdminSection;
@@ -122,6 +123,7 @@ function getSectionTitle(view: AdminView): string {
     case 'cost': return 'AI Cost';
     case 'chronicle': return 'LoreBook Chronicle';
     case 'chat-diagnostics': return 'System Health';
+    case 'query-inspector': return 'Query Inspector';
     default: return 'Admin Console';
   }
 }
@@ -859,6 +861,10 @@ export const AdminPage = () => {
             {/* ── CHAT DIAGNOSTICS ── */}
             {currentView === 'chat-diagnostics' && (
               <ChatDiagnostics embedded />
+            )}
+
+            {currentView === 'query-inspector' && (
+              <QueryInspectorPanel />
             )}
 
             {/* ── TOOLS ── */}

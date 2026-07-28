@@ -39,6 +39,7 @@ const CAUSAL_RE = /\bwhy (?:did|do|was|am|is|were)\b/i;
 const NARRATIVE_RE = /\b(tell me the story|story of|walk me through|narrate)\b/i;
 const AGGREGATE_RE = /\b(most|least|how many|how often|count of|top \d+)\b/i;
 const GRAPH_RE = /\b(who introduced|how do i know|connected to|in common|know each other|through whom)\b/i;
+const BOOK_DOMAIN_RE = /\b(skills?|projects?|quests?|goals?|documents?|files?|uploads?|narrative anchors?|story arcs?)\b/i;
 
 function extractDates(message: string): string[] {
   const m = message.match(TEMPORAL_RE);
@@ -95,7 +96,7 @@ export function classifyQuery(message: string): QueryClassification {
     intent = LEGACY_TO_QUERY_TYPE[legacyIntent] ?? QueryType.UNKNOWN;
     confidence = 0.9; // deterministic pattern match
     // Refinements that don't change execution, only taxonomy precision.
-    if (legacyIntent === 'entity' && GRAPH_RE.test(message)) intent = QueryType.RELATIONSHIP;
+    if (legacyIntent === 'entity' && GRAPH_RE.test(message)) intent = QueryType.GRAPH;
   } else if (GRAPH_RE.test(message)) {
     intent = QueryType.GRAPH;
     confidence = 0.7;
@@ -111,6 +112,9 @@ export function classifyQuery(message: string): QueryClassification {
   } else if (AGGREGATE_RE.test(message)) {
     intent = QueryType.AGGREGATE;
     confidence = 0.6;
+  } else if (BOOK_DOMAIN_RE.test(message)) {
+    intent = QueryType.ATTRIBUTE;
+    confidence = 0.7;
   } else {
     intent = QueryType.SEMANTIC;
     confidence = 0.4; // fall through to semantic retrieval

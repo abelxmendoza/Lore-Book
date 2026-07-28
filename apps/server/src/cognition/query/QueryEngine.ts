@@ -15,12 +15,11 @@
 import { logger } from '../../logger';
 
 import { entityResolver, type EntityResolver } from './EntityResolver';
-import { classifyQuery } from './IntentClassifier';
-import { planQuery } from './QueryPlanner';
-import { createDefaultExecutorRegistry, type QueryExecutor } from './QueryExecutor';
 import { executionMetrics } from './ExecutionMetrics';
+import { classifyQuery } from './IntentClassifier';
+import { createDefaultExecutorRegistry, type QueryExecutor } from './QueryExecutor';
 import { queryInspector } from './QueryInspector';
-import { mergeResults } from './ResultMerger';
+import { planQuery } from './QueryPlanner';
 import {
   QueryType,
   type ExecutorKind,
@@ -32,6 +31,7 @@ import {
   type QueryResult,
   type ResolvedQueryEntity,
 } from './QueryTypes';
+import { mergeResults } from './ResultMerger';
 
 export type QueryEngineInput = {
   userId: string;
@@ -74,7 +74,7 @@ export class QueryEngine {
   /** Entity-first: resolve mentions to canonical IDs before planning. */
   async resolveEntities(userId: string, message: string): Promise<ResolvedQueryEntity[]> {
     const classification = this.classify(message);
-    return this.resolver.resolve(userId, classification.matchedEntities);
+    return this.resolver.resolveMessage(userId, message, classification.matchedEntities);
   }
 
   plan(input: QueryEngineInput, resolvedEntities?: ResolvedQueryEntity[]): QueryPlan {
@@ -148,9 +148,11 @@ export class QueryEngine {
     // ── Entity-first planning ────────────────────────────────────────────
     const classification = this.classify(input.message);
     let resolvedEntities: ResolvedQueryEntity[] = [];
-    if (classification.matchedEntities.length > 0) {
-      resolvedEntities = await this.resolver.resolve(input.userId, classification.matchedEntities);
-    }
+    resolvedEntities = await this.resolver.resolveMessage(
+      input.userId,
+      input.message,
+      classification.matchedEntities,
+    );
 
     const plan = planQuery(classification, {
       hasConversationHistory: (input.conversationHistory ?? []).length > 0,

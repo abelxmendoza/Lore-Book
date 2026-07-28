@@ -5,11 +5,12 @@
  * Each handler knows exactly what to do for its mode.
  */
 
-import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
-import type { ChatMode } from './modeRouterService';
-import type { StreamingChatResponse } from '../omegaChatService';
 import { JOURNAL_COLS } from '../../db/journalEntryColumns';
+import { logger } from '../../logger';
+import type { StreamingChatResponse } from '../omegaChatService';
+import { supabaseAdmin } from '../supabaseClient';
+
+import type { ChatMode } from './modeRouterService';
 
 export interface ModeHandlerResponse {
   content: string;
@@ -110,6 +111,9 @@ class ModeHandlers {
 
       case 'QUEST_QUERY':
         return await this.handleQuestQuery(userId, message);
+
+      case 'BOOK_QUERY':
+        return await this.handleBookQuery(userId, message);
 
       case 'EXPERIENCE_INGESTION':
         return await this.handleExperienceIngestion(userId, message, options?.messageId, options?.continuityContext);
@@ -578,6 +582,21 @@ class ModeHandlers {
         content: 'Something went wrong querying your Quest Log — want me to try again?',
         response_mode: 'QUEST_QUERY_FAILED',
         confidence: 0.4,
+      };
+    }
+  }
+
+  private async handleBookQuery(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const { answerBookQueryForUser } = await import('../query/bookQueryChatService');
+      return await answerBookQueryForUser(userId, message);
+    } catch (error) {
+      logger.error({ err: error, userId }, 'Failed to handle cross-Book query');
+      return {
+        content: 'Something went wrong querying your Books. No answer was invented.',
+        response_mode: 'BOOK_QUERY_FAILED',
+        confidence: 0.2,
+        metadata: { executor: 'books' },
       };
     }
   }

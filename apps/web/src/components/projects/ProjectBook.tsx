@@ -16,6 +16,7 @@ import { FocusedEntityChatLauncher } from '../chat/FocusedEntityChatLauncher';
 import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
 import { MergeKeepSelectionBar, mergeNoticeWithReview } from '../common/MergeKeepSelectionBar';
 import { BookTrustSummary } from '../trust/BookTrustSummary';
+import { BookQueryPanel } from '../query/BookQueryPanel';
 import { Button } from '../ui/button';
 import {
   GridListViewToolbar,
@@ -568,81 +569,35 @@ export const ProjectBook = () => {
         </div>
       </div>
 
-      <div className="mb-5 sm:mb-6 rounded-2xl border border-primary/25 bg-primary/[0.06] p-3 sm:p-4">
-        <div className="flex items-start justify-between gap-3 mb-2.5">
-          <div>
-            <p className="text-sm font-semibold text-white">Ask Projects</p>
-            <p className="text-xs text-white/45 mt-0.5">
-              Search status, type, tags, dates, importance, and records that need review.
-            </p>
-          </div>
-          {bookQueryResult && (
-            <button
-              type="button"
-              onClick={() => {
-                setBookQuery('');
-                setBookQueryResult(null);
-              }}
-              className="text-xs text-white/45 hover:text-white/75"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <input
-            value={bookQuery}
-            onChange={(event) => setBookQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') void runBookQuery();
-            }}
-            placeholder="Try “show my active software projects”"
-            className="flex-1 min-w-0 rounded-xl border border-white/10 bg-black/35 px-3 py-2.5 text-base sm:text-sm text-white outline-none placeholder:text-white/30 focus:border-primary/50"
-          />
-          <Button
-            type="button"
-            onClick={() => void runBookQuery()}
-            disabled={bookQueryLoading || !bookQuery.trim()}
-            className="min-h-[44px] sm:min-h-0"
-          >
-            {bookQueryLoading ? 'Checking…' : 'Ask'}
-          </Button>
-        </div>
-        {bookQueryError && <p className="mt-2 text-xs text-red-300">{bookQueryError}</p>}
-        {bookQueryResult && (
-          <div className="mt-3 border-t border-white/10 pt-3">
-            <p className="text-xs text-white/60">
-              <span className="font-semibold text-primary">{bookQueryResult.total}</span>{' '}
-              matching {bookQueryResult.total === 1 ? 'project' : 'projects'}
-            </p>
-            {bookQueryResult.results.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {bookQueryResult.results.slice(0, 8).map((result) => (
-                  <button
-                    key={result.projectId}
-                    type="button"
-                    onClick={() => {
-                      const project = projects.find((item) => item.id === result.projectId);
-                      if (project) setActive(project);
-                    }}
-                    className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs text-primary hover:bg-primary/20"
-                  >
-                    {result.name}
-                  </button>
-                ))}
-                {bookQueryResult.total > 8 && (
-                  <span className="px-2 py-1 text-xs text-white/40">
-                    +{bookQueryResult.total - 8} more below
-                  </span>
-                )}
-              </div>
-            )}
-            {bookQueryResult.warnings.map((warning) => (
-              <p key={warning} className="mt-2 text-[11px] text-amber-300/85">{warning}</p>
-            ))}
-          </div>
-        )}
-      </div>
+      <BookQueryPanel
+        demoMode={isMockDataEnabled}
+        domains={['project']}
+        title="Ask Projects"
+        description="Search status, type, tags, dates, importance, and records that need review."
+        placeholder='Try “show my active software projects”'
+        compact
+        className="mb-5 sm:mb-6"
+        controller={{
+          query: bookQuery,
+          onQueryChange: setBookQuery,
+          onSubmit: runBookQuery,
+          onClear: () => { setBookQuery(''); setBookQueryResult(null); },
+          loading: bookQueryLoading,
+          error: bookQueryError,
+          total: bookQueryResult?.total,
+          results: bookQueryResult?.results.map((result) => ({
+            id: result.projectId,
+            title: result.name,
+            status: result.status,
+            reason: result.matchedReasons[0],
+          })),
+          warnings: bookQueryResult?.warnings,
+        }}
+        onSelectResult={(result) => {
+          const project = projects.find((item) => item.id === result.id);
+          if (project) setActive(project);
+        }}
+      />
 
       {/* Status + type filters (derived from your projects) */}
       {(statusOptions.length > 1 || typeOptions.length > 1) && (

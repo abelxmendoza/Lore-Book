@@ -252,14 +252,14 @@ export function OrganizationModalHeader({
         </div>
       </div>
 
-      <div className="mt-1.5 flex items-center gap-1.5">
-        <div className="flex flex-1 min-w-0 items-center gap-1">
+      <div className="mt-2 flex items-center gap-2">
+        <div className="flex flex-1 min-w-0 items-stretch gap-1.5 sm:gap-2">
           <StatPill label="Members" value={String(memberCount)} />
           {organization.usage_count > 0 && (
             <StatPill label="Mentions" value={`${organization.usage_count}`} />
           )}
         </div>
-        <div className="shrink-0 flex items-center gap-1">
+        <div className="shrink-0 flex items-center gap-1.5">
           <EntityLorebookCompileControl
             subjectLabel={organization.name}
             focus={{ organizationId: organization.id, themes: organization.name }}
@@ -270,10 +270,10 @@ export function OrganizationModalHeader({
             type="button"
             onClick={onOpenChat}
             aria-label="Chat about this group"
-            className="inline-flex items-center gap-1 rounded-lg border border-primary/35 bg-primary/20 px-2 py-1 text-[11px] font-semibold text-violet-100 hover:bg-primary/30 touch-manipulation"
+            className="inline-flex items-center gap-1 rounded-lg border border-primary/35 bg-primary/20 px-2.5 py-1.5 text-[11px] font-semibold text-violet-100 hover:bg-primary/30 touch-manipulation"
           >
-            <MessageSquare className="h-3 w-3" />
-            <span className="hidden xs:inline sm:inline">Chat</span>
+            <MessageSquare className="h-3.5 w-3.5" />
+            <span className="sm:inline">Chat</span>
           </button>
         </div>
       </div>
@@ -295,14 +295,16 @@ function StatPill({
   return (
     <div
       className={cn(
-        'flex min-w-0 items-baseline gap-1 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5',
+        'flex min-w-0 flex-1 flex-col gap-0.5 rounded-lg border border-white/12 bg-black/35 px-2.5 py-1.5 sm:px-3 sm:py-2',
         className
       )}
     >
-      <span className="text-[9px] uppercase tracking-wide text-white/35 truncate">{label}</span>
-      <span className="text-xs font-bold tabular-nums text-white leading-none">
+      <span className="text-[10px] sm:text-[11px] font-medium uppercase tracking-wide text-white/55 leading-none">
+        {label}
+      </span>
+      <span className="text-base sm:text-lg font-bold tabular-nums text-white leading-none">
         {value}
-        {suffix && <span className="text-[9px] font-normal text-white/35">{suffix}</span>}
+        {suffix && <span className="ml-0.5 text-[10px] font-normal text-white/45">{suffix}</span>}
       </span>
     </div>
   );

@@ -3099,7 +3099,8 @@ When updating relationship analytics or emotional signals from this thread, weig
         routing.mode === 'ROMANCE_QUERY' ||
         routing.mode === 'PROJECT_QUERY' ||
         routing.mode === 'SKILL_QUERY' ||
-        routing.mode === 'QUEST_QUERY'
+        routing.mode === 'QUEST_QUERY' ||
+        routing.mode === 'BOOK_QUERY'
       ) {
         const { modeHandlers } = await import('./modeRouter/modeHandlers');
         const handled = await modeHandlers.handleMode(routing.mode, userId, message, {
