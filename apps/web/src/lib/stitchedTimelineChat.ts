@@ -164,7 +164,7 @@ export function openStitchedTimelineChat(
     sourceLabel: CHAT_FOCUS_SOURCE_LABELS.timeline,
     knowledgeScope,
     initialPrompt: input.initialPrompt ?? buildStitchedTimelineChatPrompt(input),
-    autoSubmit: input.autoSubmit ?? false,
+    autoSubmit: input.autoSubmit !== false,
     startNewThread: true,
   });
 }

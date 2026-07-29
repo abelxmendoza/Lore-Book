@@ -129,6 +129,8 @@ describe('stitchedTimelineChat', () => {
     expect(event.detail.sourceSurface).toBe('timeline');
     expect(event.detail.entityName).toBe('Agency Years');
     expect(event.detail.knowledgeScope).toMatch(/Building with family/);
+    expect(event.detail.initialPrompt).toMatch(/stitched timeline/);
+    expect(event.detail.autoSubmit).toBe(true);
     expect(event.detail.startNewThread).toBe(true);
   });
 });

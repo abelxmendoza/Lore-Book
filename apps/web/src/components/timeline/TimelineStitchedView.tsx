@@ -148,8 +148,8 @@ export const TimelineStitchedView = ({
   const continueInChat = (prompt?: string) => {
     openStitchedTimelineChat({
       ...chatInput,
-      initialPrompt: prompt,
-      autoSubmit: Boolean(prompt?.trim()),
+      ...(prompt?.trim() ? { initialPrompt: prompt.trim() } : {}),
+      autoSubmit: true,
     });
     onClose?.();
   };
@@ -184,7 +184,7 @@ export const TimelineStitchedView = ({
 
   const lorebookActions = !loading && (
     <div
-      className="inline-flex items-center gap-1.5 min-w-0"
+      className="inline-flex items-center justify-center gap-1.5 min-w-0 w-full"
       data-testid="stitched-timeline-lorebook"
     >
       {onCreateLorebook && loreMeter.tierOffer ? (
@@ -242,7 +242,7 @@ export const TimelineStitchedView = ({
   );
 
   const headerTools = !loading && (
-    <div className="mt-3 w-full max-w-[15.5rem] sm:max-w-[16.5rem]">
+    <div className="mt-3 w-full max-w-[15.5rem] sm:max-w-[16.5rem] sm:mx-auto">
       <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
         <div className="flex flex-col gap-2">
           {lorebookActions}
@@ -263,51 +263,73 @@ export const TimelineStitchedView = ({
       data-testid={embedded ? 'timeline-stitched-embedded-view' : 'timeline-stitched-overlay'}
     >
       {!hideHeader && (
-        <div className={`flex-shrink-0 border-b border-white/10 ${embedded ? 'px-3 py-3 sm:px-6 sm:py-4' : 'px-4 py-4 sm:px-6'}`}>
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              {!embedded && (
-                <div className="flex items-center gap-2 text-primary/80 mb-1">
-                  <Layers className="h-4 w-4" />
-                  <span className="text-[10px] uppercase tracking-widest font-mono">Stitched timeline</span>
-                </div>
-              )}
-              <h2 className={`font-semibold text-white truncate ${embedded ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'}`}>{title}</h2>
-              <p className="text-[11px] sm:text-xs text-white/40 mt-0.5">
-                {loading
-                  ? 'Loading…'
-                  : `${items.length} item${items.length !== 1 ? 's' : ''}${embedded ? '' : ' · moments & events woven together'}`}
-                {data?.has_user_order && !loading && ' · custom order saved'}
-                {!loading && (data?.excluded_count ?? 0) > 0 && (
-                  <span
-                    className="text-white/25"
-                    title="Items from the same period that belong to other stories were left out of this scene"
-                  >
-                    {' '}· {data!.excluded_count} unrelated hidden
-                  </span>
-                )}
-                {!loading && (data?.merge_log?.length ?? 0) > 0 && (
-                  <span
-                    className="text-white/25"
-                    title={data!.merge_log!
-                      .map((m) => `${m.canonical_title} ← ${m.merged_titles.join(' · ')}`)
-                      .join('\n')}
-                  >
-                    {' '}· {data!.merge_log!.length} duplicate{data!.merge_log!.length !== 1 ? 's' : ''} merged
-                  </span>
-                )}
-              </p>
-            </div>
-            {onClose && (
-              <button
-                type="button"
-                onClick={onClose}
-                className="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl border border-white/10 text-white/50 active:bg-white/10"
-                aria-label="Close"
-              >
-                <X className="h-5 w-5" />
-              </button>
+        <div
+          className={`relative flex-shrink-0 border-b border-white/10 ${
+            embedded ? 'px-3 py-3 sm:px-6 sm:py-4' : 'px-4 py-4 sm:px-6 sm:pt-5 sm:pb-4'
+          }`}
+        >
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10 shrink-0 w-10 h-10 flex items-center justify-center rounded-xl border border-white/10 text-white/50 hover:bg-white/10 active:bg-white/10"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          )}
+
+          <div
+            className={[
+              'min-w-0',
+              embedded
+                ? 'pr-12'
+                : 'text-center flex flex-col items-center mx-auto max-w-xl px-10 sm:px-12',
+            ].join(' ')}
+          >
+            {!embedded && (
+              <div className="flex items-center justify-center gap-2 text-primary/80 mb-1">
+                <Layers className="h-4 w-4" />
+                <span className="text-[10px] uppercase tracking-widest font-mono">Stitched timeline</span>
+              </div>
             )}
+            <h2
+              className={`font-semibold text-white ${
+                embedded
+                  ? 'text-base sm:text-lg truncate'
+                  : 'text-lg sm:text-xl text-balance'
+              }`}
+            >
+              {title}
+            </h2>
+            <p
+              className={`text-[11px] sm:text-xs text-white/40 mt-0.5 ${
+                embedded ? '' : 'text-center'
+              }`}
+            >
+              {loading
+                ? 'Loading…'
+                : `${items.length} item${items.length !== 1 ? 's' : ''}${embedded ? '' : ' · moments & events woven together'}`}
+              {data?.has_user_order && !loading && ' · custom order saved'}
+              {!loading && (data?.excluded_count ?? 0) > 0 && (
+                <span
+                  className="text-white/25"
+                  title="Items from the same period that belong to other stories were left out of this scene"
+                >
+                  {' '}· {data!.excluded_count} unrelated hidden
+                </span>
+              )}
+              {!loading && (data?.merge_log?.length ?? 0) > 0 && (
+                <span
+                  className="text-white/25"
+                  title={data!.merge_log!
+                    .map((m) => `${m.canonical_title} ← ${m.merged_titles.join(' · ')}`)
+                    .join('\n')}
+                >
+                  {' '}· {data!.merge_log!.length} duplicate{data!.merge_log!.length !== 1 ? 's' : ''} merged
+                </span>
+              )}
+            </p>
           </div>
 
           {!loading && headerTools}

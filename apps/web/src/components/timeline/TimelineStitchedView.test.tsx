@@ -150,6 +150,7 @@ describe('TimelineStitchedView overlay', () => {
         title: 'Agency Years',
         lifeArcId: 'arc-1',
         scopeType: 'life_arc',
+        autoSubmit: true,
       }),
     );
     expect(onClose).toHaveBeenCalled();

@@ -6,14 +6,10 @@
  * With full customization: tone, depth, audience, version
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Sparkles, BookOpen, Calendar, Tag, Settings, Save, X, Loader2, Info } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-// Using native select for now - can upgrade to proper Select component later
-import { Textarea } from '../ui/textarea';
 import { fetchJson } from '../../lib/api';
 import type { BiographySpec, Domain, BiographyTone, BiographyDepth, BiographyAudience, BiographyForm } from '../../../server/src/services/biographyGeneration/types';
 import {
@@ -23,6 +19,7 @@ import {
   type LorebookForm,
 } from '../../lib/lorebookTiers';
 import { LoreBookGeneratingScreen, ensureMinGeneratingDuration } from './LoreBookGeneratingScreen';
+import './KnowledgeBaseCreator.css';
 
 /** Prefill for launching the creator from another surface (e.g. a timeline arc). */
 export interface LorebookCreatorPrefill {
@@ -110,6 +107,24 @@ export const KnowledgeBaseCreator = ({ onGenerated, onClose, prefill }: Knowledg
   const [saveAsCore, setSaveAsCore] = useState(prefill?.saveAsCore ?? false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!onClose || typeof document === 'undefined') return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !generating) onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose, generating]);
 
   const selectForm = (next: LorebookForm) => {
     setForm(next);
@@ -230,330 +245,332 @@ export const KnowledgeBaseCreator = ({ onGenerated, onClose, prefill }: Knowledg
     }
   };
 
-  return (
+  const modal = (
     <>
       {generating && (
-        <div className="fixed inset-0 z-[60]">
+        <div className="fixed inset-0 z-[120]">
           <LoreBookGeneratingScreen query={lorebookName.trim() || getScopeDescription()} />
         </div>
       )}
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <Card className="bg-black/90 border-border/60 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-        <CardHeader className="border-b border-border/50">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary/20 rounded-lg">
-                <Sparkles className="h-6 w-6 text-primary" />
+      <div
+        className="kb-creator-backdrop"
+        role="presentation"
+        onClick={() => {
+          if (!generating && onClose) onClose();
+        }}
+        data-testid="knowledge-base-creator"
+      >
+        <div
+          className="kb-creator-shell"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="kb-creator-title"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="kb-creator-glow" aria-hidden="true" />
+          <div className="kb-creator-accent" aria-hidden="true" />
+
+          <header className="kb-creator-header">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="kb-creator-mark shrink-0" aria-hidden="true">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="kb-creator-eyebrow">LoreBook compiler</p>
+                  <h2 id="kb-creator-title" className="kb-creator-title">
+                    Create LoreBook
+                  </h2>
+                  <p className="kb-creator-subtitle">
+                    {prefill?.lorebookName
+                      ? `Compile “${prefill.lorebookName.replace(/\s*LoreBook$/i, '')}” from your timeline memories.`
+                      : 'Weave your memories into a named LoreBook.'}
+                  </p>
+                </div>
               </div>
-              <div>
-              <CardTitle className="text-2xl text-white">Create Lorebook</CardTitle>
-              <CardDescription className="text-white/60">
-                Generate a comprehensive lorebook from your memories
-              </CardDescription>
-              </div>
-            </div>
-            {onClose && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onClose}
-                className="text-white/60 hover:text-white"
-              >
-                <X className="h-5 w-5" />
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-
-        <CardContent className="p-6 space-y-6">
-          {error && (
-            <div className="p-3 bg-red-900/30 border border-red-500/50 rounded-lg text-red-200 text-sm">
-              {error}
-            </div>
-          )}
-
-          {/* Form tier */}
-          <div className="space-y-3">
-            <Label className="text-white font-semibold flex items-center gap-2">
-              <BookOpen className="h-4 w-4" />
-              Form
-            </Label>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-              {LOREBOOK_TIER_ORDER.map((tier) => {
-                const def = LOREBOOK_TIERS[tier];
-                const hinted =
-                  !prefill?.unlockedForms ||
-                  prefill.unlockedForms.length === 0 ||
-                  prefill.unlockedForms.includes(tier);
-                return (
-                  <button
-                    key={tier}
-                    type="button"
-                    onClick={() => selectForm(tier)}
-                    data-testid={`lorebook-form-${tier}`}
-                    className={`p-2.5 rounded-lg border transition-all text-left ${
-                      form === tier
-                        ? 'border-amber-400/60 bg-amber-500/15 text-amber-50'
-                        : hinted
-                          ? 'border-border/50 bg-black/40 text-white/70 hover:border-amber-500/40'
-                          : 'border-border/30 bg-black/20 text-white/35 hover:border-white/20'
-                    }`}
-                    title={def.description}
-                  >
-                    <div className="font-medium text-sm mb-0.5">{def.label}</div>
-                    <div className="text-[10px] text-white/45 leading-snug">{def.description}</div>
-                  </button>
-                );
-              })}
-            </div>
-            <p className="text-xs text-white/50 flex items-start gap-2">
-              <Info className="h-3 w-3 mt-0.5 flex-shrink-0" />
-              Smaller forms unlock earlier as you gather memories. Depth still controls prose density.
-            </p>
-          </div>
-
-          {/* Scope Selection */}
-          <div className="space-y-3">
-            <Label className="text-white font-semibold flex items-center gap-2">
-              <BookOpen className="h-4 w-4" />
-              Scope
-            </Label>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {(['full_life', 'domain', 'time_range', 'thematic'] as const).map((s) => (
+              {onClose && (
                 <button
-                  key={s}
-                  onClick={() => setScope(s)}
-                  className={`p-3 rounded-lg border transition-all text-left ${
-                    scope === s
-                      ? 'border-primary bg-primary/20 text-white'
-                      : 'border-border/50 bg-black/40 text-white/70 hover:border-primary/50'
-                  }`}
+                  type="button"
+                  onClick={onClose}
+                  disabled={generating}
+                  className="kb-creator-close"
+                  aria-label="Close"
                 >
-                  <div className="font-medium capitalize mb-1">
-                    {s.replace('_', ' ')}
-                  </div>
-                  <div className="text-xs text-white/50">
-                    {s === 'full_life' && 'Complete story'}
-                    {s === 'domain' && 'By area'}
-                    {s === 'time_range' && 'By period'}
-                    {s === 'thematic' && 'By theme'}
-                  </div>
+                  <X className="h-5 w-5" />
                 </button>
-              ))}
+              )}
             </div>
-            <p className="text-xs text-white/50 flex items-start gap-2">
-              <Info className="h-3 w-3 mt-0.5 flex-shrink-0" />
-              {getScopeDescription()}
-            </p>
-          </div>
+          </header>
 
-          {/* Domain Selection (if scope is domain) */}
-          {scope === 'domain' && (
-            <div className="space-y-3">
-              <Label className="text-white font-semibold">Domain</Label>
-              <select
-                value={domain || ''}
-                onChange={(e) => setDomain(e.target.value as Domain)}
-                className="w-full h-11 rounded-lg border border-border/50 bg-black/60 px-4 text-sm text-white focus:border-primary focus:outline-none"
-              >
-                <option value="">Select a domain</option>
-                {DOMAINS.map((d) => (
-                  <option key={d.value} value={d.value}>
-                    {d.label} - {d.description}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          <div className="kb-creator-body">
+            {error && <div className="kb-creator-error">{error}</div>}
 
-          {/* Time Range (if scope is time_range) */}
-          {scope === 'time_range' && (
-            <div className="space-y-3">
-              <Label className="text-white font-semibold flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
-                Time Range
-              </Label>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-white/70 text-sm mb-1 block">Start Date</Label>
-                  <Input
-                    type="date"
-                    value={timeRangeStart}
-                    onChange={(e) => setTimeRangeStart(e.target.value)}
-                    className="bg-black/60 border-border/50 text-white"
-                  />
-                </div>
-                <div>
-                  <Label className="text-white/70 text-sm mb-1 block">End Date</Label>
-                  <Input
-                    type="date"
-                    value={timeRangeEnd}
-                    onChange={(e) => setTimeRangeEnd(e.target.value)}
-                    className="bg-black/60 border-border/50 text-white"
-                  />
-                </div>
+            <section>
+              <div className="kb-creator-section-label">
+                <BookOpen className="h-4 w-4 text-amber-300" />
+                Form
               </div>
-            </div>
-          )}
-
-          {/* Themes (if scope is thematic) */}
-          {scope === 'thematic' && (
-            <div className="space-y-3">
-              <Label className="text-white font-semibold flex items-center gap-2">
-                <Tag className="h-4 w-4" />
-                Themes
-              </Label>
-              <Textarea
-                value={themes}
-                onChange={(e) => setThemes(e.target.value)}
-                placeholder="Enter themes separated by commas (e.g., growth, transformation, challenges)"
-                className="bg-black/60 border-border/50 text-white min-h-[80px]"
-              />
-              <p className="text-xs text-white/50">
-                Separate multiple themes with commas
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                {LOREBOOK_TIER_ORDER.map((tier) => {
+                  const def = LOREBOOK_TIERS[tier];
+                  const hinted =
+                    !prefill?.unlockedForms ||
+                    prefill.unlockedForms.length === 0 ||
+                    prefill.unlockedForms.includes(tier);
+                  return (
+                    <button
+                      key={tier}
+                      type="button"
+                      onClick={() => selectForm(tier)}
+                      data-testid={`lorebook-form-${tier}`}
+                      className={`kb-creator-chip ${form === tier ? 'is-active' : ''} ${
+                        !hinted ? 'opacity-60' : ''
+                      }`}
+                      title={def.description}
+                    >
+                      <div className="kb-creator-chip-title">{def.label}</div>
+                      <div className="kb-creator-chip-desc">{def.description}</div>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="kb-creator-hint">
+                <Info className="h-3 w-3 mt-0.5 shrink-0" />
+                Smaller forms unlock earlier as you gather memories. Depth still controls prose density.
               </p>
-            </div>
-          )}
+            </section>
 
-          {/* Style Options */}
-          <div className="space-y-4 border-t border-border/50 pt-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Settings className="h-4 w-4 text-white/70" />
-              <Label className="text-white font-semibold">Style Options</Label>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Tone */}
-              <div className="space-y-2">
-                <Label className="text-white/70 text-sm">Tone</Label>
-                <select
-                  value={tone}
-                  onChange={(e) => setTone(e.target.value as BiographyTone)}
-                  className="w-full h-11 rounded-lg border border-border/50 bg-black/60 px-4 text-sm text-white focus:border-primary focus:outline-none"
-                >
-                  {TONES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label} - {t.description}
-                    </option>
-                  ))}
-                </select>
+            <section>
+              <div className="kb-creator-section-label">
+                <BookOpen className="h-4 w-4 text-amber-300" />
+                Scope
               </div>
-
-              {/* Depth — secondary for short forms; still available for polish */}
-              <div className="space-y-2">
-                <Label className="text-white/70 text-sm">
-                  Depth{form === 'vignette' || form === 'chapter' ? ' (optional)' : ''}
-                </Label>
-                <select
-                  value={depth}
-                  onChange={(e) => setDepth(e.target.value as BiographyDepth)}
-                  className="w-full h-11 rounded-lg border border-border/50 bg-black/60 px-4 text-sm text-white focus:border-primary focus:outline-none"
-                >
-                  {DEPTHS.map((d) => (
-                    <option key={d.value} value={d.value}>
-                      {d.label} - {d.description}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Audience */}
-              <div className="space-y-2">
-                <Label className="text-white/70 text-sm">Audience</Label>
-                <select
-                  value={audience}
-                  onChange={(e) => setAudience(e.target.value as BiographyAudience)}
-                  className="w-full h-11 rounded-lg border border-border/50 bg-black/60 px-4 text-sm text-white focus:border-primary focus:outline-none"
-                >
-                  {AUDIENCES.map((a) => (
-                    <option key={a.value} value={a.value}>
-                      {a.label} - {a.description}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Version */}
-            <div className="space-y-2">
-              <Label className="text-white/70 text-sm">Version</Label>
-              <select
-                value={version}
-                onChange={(e) => setVersion(e.target.value as any)}
-                className="w-full h-11 rounded-lg border border-border/50 bg-black/60 px-4 text-sm text-white focus:border-primary focus:outline-none"
-              >
-                {VERSIONS.map((v) => (
-                  <option key={v.value} value={v.value}>
-                    {v.label} - {v.description}
-                  </option>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                {(['full_life', 'domain', 'time_range', 'thematic'] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setScope(s)}
+                    className={`kb-creator-chip ${scope === s ? 'is-active' : ''}`}
+                  >
+                    <div className="kb-creator-chip-title capitalize">
+                      {s.replace('_', ' ')}
+                    </div>
+                    <div className="kb-creator-chip-desc">
+                      {s === 'full_life' && 'Complete story'}
+                      {s === 'domain' && 'By area'}
+                      {s === 'time_range' && 'By period'}
+                      {s === 'thematic' && 'By theme'}
+                    </div>
+                  </button>
                 ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Save as Core Lorebook */}
-          <div className="space-y-3 border-t border-border/50 pt-4">
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="saveAsCore"
-                checked={saveAsCore}
-                onChange={(e) => setSaveAsCore(e.target.checked)}
-                className="w-4 h-4 rounded border-border/50 bg-black/60 text-primary"
-              />
-              <Label htmlFor="saveAsCore" className="text-white font-semibold flex items-center gap-2">
-                <Save className="h-4 w-4" />
-                Save as Core Lorebook (Named & Versioned)
-              </Label>
-            </div>
-            {saveAsCore && (
-              <div className="ml-7">
-                <Input
-                  value={lorebookName}
-                  onChange={(e) => setLorebookName(e.target.value)}
-                  placeholder="Enter a name for this knowledge base (e.g., 'My Fighting Journey')"
-                  className="bg-black/60 border-border/50 text-white"
-                />
-                <p className="text-xs text-white/50 mt-1">
-                  Core Lorebooks are saved with a name and can be regenerated later
-                </p>
               </div>
+              <p className="kb-creator-hint">
+                <Info className="h-3 w-3 mt-0.5 shrink-0" />
+                {getScopeDescription()}
+              </p>
+            </section>
+
+            {scope === 'domain' && (
+              <section>
+                <Label className="kb-creator-section-label">Domain</Label>
+                <select
+                  value={domain || ''}
+                  onChange={(e) => setDomain(e.target.value as Domain)}
+                  className="kb-creator-field"
+                >
+                  <option value="">Select a domain</option>
+                  {DOMAINS.map((d) => (
+                    <option key={d.value} value={d.value}>
+                      {d.label} — {d.description}
+                    </option>
+                  ))}
+                </select>
+              </section>
             )}
+
+            {scope === 'time_range' && (
+              <section>
+                <div className="kb-creator-section-label">
+                  <Calendar className="h-4 w-4 text-amber-300" />
+                  Time range
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-amber-100/65 text-xs mb-1.5 block">Start date</Label>
+                    <input
+                      type="date"
+                      value={timeRangeStart}
+                      onChange={(e) => setTimeRangeStart(e.target.value)}
+                      className="kb-creator-field"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-amber-100/65 text-xs mb-1.5 block">End date</Label>
+                    <input
+                      type="date"
+                      value={timeRangeEnd}
+                      onChange={(e) => setTimeRangeEnd(e.target.value)}
+                      className="kb-creator-field"
+                    />
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {scope === 'thematic' && (
+              <section>
+                <div className="kb-creator-section-label">
+                  <Tag className="h-4 w-4 text-amber-300" />
+                  Themes
+                </div>
+                <textarea
+                  value={themes}
+                  onChange={(e) => setThemes(e.target.value)}
+                  placeholder="Enter themes separated by commas (e.g., growth, transformation, challenges)"
+                  className="kb-creator-field kb-creator-textarea"
+                />
+                <p className="kb-creator-hint">Separate multiple themes with commas</p>
+              </section>
+            )}
+
+            <section className="kb-creator-divider">
+              <div className="kb-creator-section-label">
+                <Settings className="h-4 w-4 text-amber-300" />
+                Style options
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <Label className="text-amber-100/65 text-xs mb-1.5 block">Tone</Label>
+                  <select
+                    value={tone}
+                    onChange={(e) => setTone(e.target.value as BiographyTone)}
+                    className="kb-creator-field"
+                  >
+                    {TONES.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label className="text-amber-100/65 text-xs mb-1.5 block">
+                    Depth{form === 'vignette' || form === 'chapter' ? ' (optional)' : ''}
+                  </Label>
+                  <select
+                    value={depth}
+                    onChange={(e) => setDepth(e.target.value as BiographyDepth)}
+                    className="kb-creator-field"
+                  >
+                    {DEPTHS.map((d) => (
+                      <option key={d.value} value={d.value}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label className="text-amber-100/65 text-xs mb-1.5 block">Audience</Label>
+                  <select
+                    value={audience}
+                    onChange={(e) => setAudience(e.target.value as BiographyAudience)}
+                    className="kb-creator-field"
+                  >
+                    {AUDIENCES.map((a) => (
+                      <option key={a.value} value={a.value}>
+                        {a.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="mt-3">
+                <Label className="text-amber-100/65 text-xs mb-1.5 block">Version</Label>
+                <select
+                  value={version}
+                  onChange={(e) => setVersion(e.target.value as typeof version)}
+                  className="kb-creator-field"
+                >
+                  {VERSIONS.map((v) => (
+                    <option key={v.value} value={v.value}>
+                      {v.label} — {v.description}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </section>
+
+            <section className="kb-creator-divider">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  id="saveAsCore"
+                  checked={saveAsCore}
+                  onChange={(e) => setSaveAsCore(e.target.checked)}
+                  className="h-4 w-4 rounded border-amber-400/40 bg-amber-500/10 text-amber-400 focus:ring-amber-400/40"
+                />
+                <span className="kb-creator-section-label mb-0">
+                  <Save className="h-4 w-4 text-amber-300" />
+                  Save as core LoreBook
+                </span>
+              </label>
+              {saveAsCore && (
+                <div className="mt-3 ml-7">
+                  <input
+                    value={lorebookName}
+                    onChange={(e) => setLorebookName(e.target.value)}
+                    placeholder="Name this LoreBook (e.g. Street Photography)"
+                    className="kb-creator-field"
+                  />
+                  <p className="kb-creator-hint">
+                    Core LoreBooks keep a name and can be regenerated later.
+                  </p>
+                </div>
+              )}
+            </section>
           </div>
 
-          {/* Generate Button */}
-          <div className="flex gap-3 pt-4 border-t border-border/50">
-            <Button
+          <footer className="kb-creator-footer">
+            <button
+              type="button"
               onClick={handleGenerate}
-              disabled={generating || (scope === 'domain' && !domain) || (scope === 'time_range' && (!timeRangeStart || !timeRangeEnd)) || (scope === 'thematic' && !themes.trim())}
-              className="flex-1 bg-primary/20 hover:bg-primary/30 text-primary border-primary/30"
+              disabled={
+                generating ||
+                (scope === 'domain' && !domain) ||
+                (scope === 'time_range' && (!timeRangeStart || !timeRangeEnd)) ||
+                (scope === 'thematic' && !themes.trim())
+              }
+              className="kb-creator-generate"
             >
               {generating ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Generating...
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Generating…
                 </>
               ) : (
                 <>
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Generate Lorebook
+                  <Sparkles className="h-4 w-4" />
+                  Generate LoreBook
                 </>
               )}
-            </Button>
+            </button>
             {onClose && (
-              <Button
-                variant="outline"
+              <button
+                type="button"
                 onClick={onClose}
                 disabled={generating}
-                className="border-border/50 text-white/70 hover:text-white"
+                className="kb-creator-cancel"
               >
                 Cancel
-              </Button>
+              </button>
             )}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+          </footer>
+        </div>
+      </div>
     </>
   );
+
+  if (typeof document === 'undefined') return null;
+  return createPortal(modal, document.body);
 };
