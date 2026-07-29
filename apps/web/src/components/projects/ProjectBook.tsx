@@ -359,14 +359,42 @@ export const ProjectBook = () => {
 
   const patchProject = async (id: string, patch: Partial<ProjectCardData>) => {
     if (isMockDataEnabled) {
-      const updated = { ...patch, updated_at: new Date().toISOString() };
-      setDemoProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...updated } : p)));
-      setActive((prev) => (prev && prev.id === id ? { ...prev, ...updated } : prev));
+      const updated = {
+        ...patch,
+        updated_at: new Date().toISOString(),
+        ...(patch.metadata
+          ? { metadata: { ...(active?.id === id ? active.metadata : {}), ...patch.metadata } }
+          : {}),
+      };
+      setDemoProjects((prev) =>
+        prev.map((p) =>
+          p.id === id
+            ? {
+                ...p,
+                ...updated,
+                metadata: patch.metadata ? { ...(p.metadata ?? {}), ...patch.metadata } : p.metadata,
+              }
+            : p,
+        ),
+      );
+      setActive((prev) =>
+        prev && prev.id === id
+          ? {
+              ...prev,
+              ...updated,
+              metadata: patch.metadata ? { ...(prev.metadata ?? {}), ...patch.metadata } : prev.metadata,
+            }
+          : prev,
+      );
       return;
+    }
+    const body: Record<string, unknown> = { ...patch };
+    if (Array.isArray(patch.metadata?.aliases)) {
+      body.aliases = patch.metadata.aliases;
     }
     const { project } = await fetchJson<{ project: ProjectCardData }>(`/api/projects/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify(patch),
+      body: JSON.stringify(body),
     });
     setActive((prev) => (prev && prev.id === id ? { ...prev, ...project } : prev));
     await load();

@@ -3637,6 +3637,38 @@ router.get(
 );
 
 /**
+ * POST /api/conversation/romantic-relationships/:id/rescore
+ * Recompute affection / fit / health / connection from current evidence and
+ * persist short score reasons for the overview cards.
+ */
+router.post(
+  '/romantic-relationships/:id/rescore',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const id = req.params.id as string;
+
+    const { romanticRelationshipScoring } = await import(
+      '../services/conversationCentered/romanticRelationshipScoring'
+    );
+    const result = await romanticRelationshipScoring.scoreOneForUser(userId, id);
+
+    if (!result.relationship) {
+      return res.status(404).json({
+        success: false,
+        error: 'Relationship not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      scored: result.scored,
+      relationship: result.relationship,
+    });
+  })
+);
+
+/**
  * GET /api/conversation/romantic-relationships/:id/ranking
  * Get ranking information for a relationship
  */
@@ -3692,7 +3724,8 @@ router.post(
 
 /**
  * GET /api/conversation/romantic-relationships/:id/dates
- * Get dates and milestones for a relationship
+ * Dating chronology for a relationship: romantic_dates plus projected
+ * romantic_interactions (and bond start when those are empty).
  */
 router.get(
   '/romantic-relationships/:id/dates',
@@ -3701,20 +3734,61 @@ router.get(
     const userId = req.user!.id;
     const id = req.params.id as string;
 
-    const { data: dates, error } = await supabaseAdmin
-      .from('romantic_dates')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('relationship_id', id)
-      .order('date_time', { ascending: false });
+    const { composeRomanceChronology } = await import(
+      '../services/romance/romanceChronologyService'
+    );
 
-    if (error) {
-      throw error;
-    }
+    const [datesResult, interactionsResult, relationshipResult] = await Promise.all([
+      supabaseAdmin
+        .from('romantic_dates')
+        .select(
+          'id, date_type, date_time, location, description, sentiment, was_positive, source_message_id'
+        )
+        .eq('user_id', userId)
+        .eq('relationship_id', id)
+        .order('date_time', { ascending: false }),
+      supabaseAdmin
+        .from('romantic_interactions')
+        .select(
+          'id, interaction_type, interaction_date, location, description, sentiment, was_positive, source_message_id'
+        )
+        .eq('user_id', userId)
+        .eq('relationship_id', id)
+        .order('interaction_date', { ascending: false }),
+      supabaseAdmin
+        .from('romantic_relationships')
+        .select('id, start_date, person_id, person_type, partner_name, metadata')
+        .eq('user_id', userId)
+        .eq('id', id)
+        .maybeSingle(),
+    ]);
+
+    if (datesResult.error) throw datesResult.error;
+    if (interactionsResult.error) throw interactionsResult.error;
+
+    let personName: string | null =
+      typeof relationshipResult.data?.partner_name === 'string'
+        ? relationshipResult.data.partner_name
+        : null;
+    const meta = (relationshipResult.data?.metadata ?? {}) as Record<string, unknown>;
+    if (!personName && typeof meta.partner_name === 'string') personName = meta.partner_name;
+    if (!personName && typeof meta.person_name === 'string') personName = meta.person_name;
+
+    const dates = composeRomanceChronology(
+      datesResult.data ?? [],
+      interactionsResult.data ?? [],
+      relationshipResult.data
+        ? {
+            id: relationshipResult.data.id,
+            start_date: relationshipResult.data.start_date,
+            person_name: personName,
+          }
+        : null,
+    );
 
     res.json({
       success: true,
-      dates: dates || [],
+      dates,
     });
   })
 );

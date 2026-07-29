@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BookMarked, CalendarDays, MessageSquareText, Search, Sparkles, Users, BookOpen, MapPin, Crown, Compass, Settings, UserCog, HelpCircle, Images, Eye, Hash, Building2, Zap, X, Heart, Target, ExternalLink, Briefcase, TreePine, FileText, Shield, ChevronRight, Anchor } from 'lucide-react';
+import { BookMarked, CalendarDays, MessageSquareText, Search, Sparkles, Users, BookOpen, MapPin, Crown, Compass, Settings, UserCog, HelpCircle, Images, Eye, Hash, Building2, Zap, X, Heart, Target, ExternalLink, Briefcase, TreePine, FileText, Shield, ChevronRight, Anchor, Clock3 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { Logo } from './Logo';
@@ -297,16 +297,35 @@ const SidebarContent = ({
               onMobileDrawerClose?.();
             }}
             aria-label="Open timeline view"
-            aria-current={activeSurface === 'timeline' ? 'page' : undefined}
+            aria-current={activeSurface === 'timeline' && !location.search.includes('view=library') ? 'page' : undefined}
             className={cn(
               "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
-              activeSurface === 'timeline'
+              activeSurface === 'timeline' && !location.search.includes('view=library')
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
             )}
           >
             <CalendarDays className="h-4 w-4 text-primary" aria-hidden="true" />
             <span className="flex-1 text-left">Omni Timeline</span>
+          </button>
+          <button
+            onClick={() => {
+              navigate('/timeline?view=library');
+              onSurfaceChange?.('timeline');
+              onMobileDrawerClose?.();
+            }}
+            aria-label="Open Timelines Library"
+            aria-current={activeSurface === 'timeline' && location.search.includes('view=library') ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border pl-8 pr-3 py-2 text-sm transition",
+              activeSurface === 'timeline' && location.search.includes('view=library')
+                ? 'border-cyan-500/50 bg-cyan-500/10 text-white'
+                : 'border-transparent text-white/60 hover:border-cyan-500/40 hover:bg-cyan-500/10 hover:text-white/85'
+            )}
+            data-testid="sidebar-timelines-library"
+          >
+            <Clock3 className="h-3.5 w-3.5 text-cyan-300" aria-hidden="true" />
+            <span className="flex-1 text-left">Timelines Library</span>
           </button>
           <button
             onClick={() => handleSurfaceChange('saga')}

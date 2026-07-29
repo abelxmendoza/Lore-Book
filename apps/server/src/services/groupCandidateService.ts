@@ -186,10 +186,15 @@ export class GroupCandidateService {
       // this same cluster, don't re-surface or auto-create it.
       if (await this.wasRejected(userId, group.members, group.name)) continue;
 
-      // Skip if group already exists as an organization
+      // Skip if group already exists as an organization — but opportunistically
+      // backfill its group_type from this message when the org's type was
+      // never set/confirmed by the user (see maybeBackfillGroupType).
       if (group.name) {
-        const existing = await this.findMatchingOrganization(userId, group.name, group.members);
-        if (existing) continue;
+        const existingId = await this.findMatchingOrganization(userId, group.name, group.members);
+        if (existingId) {
+          await this.maybeBackfillGroupType(userId, existingId, group);
+          continue;
+        }
       }
 
       if (group.name && group.confidence >= 0.90) {
@@ -452,7 +457,7 @@ export class GroupCandidateService {
     userId: string,
     name: string,
     members: string[]
-  ): Promise<boolean> {
+  ): Promise<string | null> {
     try {
       const { data } = await supabaseAdmin
         .from('organizations')
@@ -461,7 +466,7 @@ export class GroupCandidateService {
         .ilike('name', `%${name}%`)
         .limit(1);
 
-      if (data && data.length > 0) return true;
+      if (data && data.length > 0) return data[0].id as string;
 
       // Also check by member overlap
       const { data: orgs } = await supabaseAdmin
@@ -470,18 +475,61 @@ export class GroupCandidateService {
         .eq('user_id', userId)
         .limit(20);
 
-      if (!orgs || orgs.length === 0) return false;
+      if (!orgs || orgs.length === 0) return null;
 
       for (const org of orgs) {
         const memberRows = await organizationService.getMembers(org.id);
         const orgNames = memberRows.map(m => m.character_name.toLowerCase());
         const overlap = members.filter(m => orgNames.includes(m.toLowerCase()));
-        if (overlap.length >= Math.ceil(members.length * 0.7)) return true;
+        if (overlap.length >= Math.ceil(members.length * 0.7)) return org.id as string;
       }
 
-      return false;
+      return null;
     } catch {
-      return false;
+      return null;
+    }
+  }
+
+  /**
+   * Fill in group_type for an EXISTING organization when this message gives a
+   * confident read and nothing trustworthy is set yet. Never overwrites a
+   * user's manual pick (metadata.group_type_source === 'user_confirmed'), and
+   * never flip-flops an org that was already auto-detected to something real —
+   * only fires while the type is genuinely unset (never detected, or the user
+   * explicitly cleared it via the modal).
+   */
+  private async maybeBackfillGroupType(
+    userId: string,
+    organizationId: string,
+    group: Awaited<ReturnType<typeof groupDetectionService.detectGroupsInMessage>>[number]
+  ): Promise<void> {
+    try {
+      const org = await organizationService.getOrganization(userId, organizationId);
+      if (!org) return;
+
+      const source = (org.metadata as Record<string, unknown> | undefined)?.group_type_source;
+      if (source === 'user_confirmed') return;
+      const isUnset = !source || source === 'user_cleared' || !org.group_type || org.group_type === 'other';
+      if (!isUnset) return;
+
+      const suggested = groupDetectionService.suggestGroupType(
+        group.context ?? group.name ?? '',
+        group.members ?? [],
+        group.name ?? org.name
+      );
+      if (!suggested || suggested === 'other') return;
+
+      await organizationService.updateOrganization(userId, organizationId, {
+        group_type: suggested,
+        metadata: {
+          ...(org.metadata ?? {}),
+          group_type_source: 'auto',
+          group_type_detected_at: new Date().toISOString(),
+        },
+      });
+      logger.debug({ userId, organizationId, groupType: suggested }, 'Auto-detected group type from conversation');
+    } catch (error) {
+      logger.debug({ error, userId, organizationId }, 'Failed to backfill group type from conversation');
     }
   }
 
@@ -554,7 +602,15 @@ export class GroupCandidateService {
       is_public_entity: candidate.is_public_entity,
       description: overrides.description ?? this.buildDescription(candidate),
       status: 'active',
-      metadata: candidate.metadata ?? {},
+      metadata: {
+        ...(candidate.metadata ?? {}),
+        // Explicitly picking a type when accepting the suggestion is a manual
+        // confirmation and locks the field; taking the suggested type as-is
+        // is still just an auto read.
+        ...(groupType && groupType !== 'other'
+          ? { group_type_source: overrides.group_type ? 'user_confirmed' : 'auto' }
+          : {}),
+      },
     });
 
     // Add detected members
@@ -774,7 +830,11 @@ export class GroupCandidateService {
           ? String(group.metadata.hierarchy_hint)
           : `Detected automatically from chat: ${group.context}`,
         status: 'active',
-        metadata: { ...(group.metadata ?? {}), auto_created_from_chat: true },
+        metadata: {
+          ...(group.metadata ?? {}),
+          auto_created_from_chat: true,
+          ...(group.group_type && group.group_type !== 'other' ? { group_type_source: 'auto' } : {}),
+        },
       });
 
       for (const memberName of group.members) {

@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mockFrom = vi.fn();
 const mockAssertKinship = vi.fn();
 const mockCreateOrganization = vi.fn();
+const mockAddMember = vi.fn();
 const mockNameHousehold = vi.fn();
 
 vi.mock('../../src/services/supabaseClient', () => ({
@@ -25,6 +26,7 @@ vi.mock('../../src/services/relationshipFoundationService', () => ({
 vi.mock('../../src/services/organizationService', () => ({
   organizationService: {
     createOrganization: (...args: unknown[]) => mockCreateOrganization(...args),
+    addMember: (...args: unknown[]) => mockAddMember(...args),
   },
 }));
 vi.mock('../../src/services/entities/householdNaming', () => ({
@@ -52,7 +54,6 @@ function wireCharacters(chars: Row[], existingOrgs: Row[] = []) {
   mockFrom.mockImplementation((table: string) => {
     if (table === 'characters') return builder({ data: chars, error: null });
     if (table === 'organizations') return builder({ data: existingOrgs, error: null });
-    if (table === 'character_organizations') return builder({ data: null, error: null });
     return builder({ data: [], error: null });
   });
 }
@@ -62,6 +63,7 @@ describe('familyGraphInferenceService (integration)', () => {
     vi.clearAllMocks();
     mockAssertKinship.mockResolvedValue(true);
     mockCreateOrganization.mockResolvedValue({ id: 'fam-1' });
+    mockAddMember.mockResolvedValue({ id: 'member-x' });
     mockNameHousehold.mockReturnValue('Test Family');
   });
 
@@ -91,6 +93,16 @@ describe('familyGraphInferenceService (integration)', () => {
     // Family group created once, typed 'family'.
     expect(mockCreateOrganization).toHaveBeenCalledTimes(1);
     expect(mockCreateOrganization.mock.calls[0][1]).toMatchObject({ type: 'family' });
+
+    // Members are linked through the real roster service (organization_members),
+    // not the orphaned character_organizations table.
+    const linkedNames = mockAddMember.mock.calls.map((c) => c[2]?.character_name);
+    expect(linkedNames).toEqual(expect.arrayContaining(['Abuela', 'Tío Rafa', 'Tío Ray']));
+    for (const call of mockAddMember.mock.calls) {
+      expect(call[0]).toBe(USER);
+      expect(call[1]).toBe('fam-1');
+      expect(call[2]).toMatchObject({ status: 'active' });
+    }
   });
 
   it('infers kinship from a promoted character name (no inline mention)', async () => {

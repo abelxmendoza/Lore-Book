@@ -29,12 +29,17 @@ import {
 } from '../../mocks/romanticRelationships';
 import { getMockCharacterSuggestionBookNames } from '../../mocks/characterSuggestions';
 import type { CharacterSuggestion } from '../../api/entitySuggestions';
+import { getRomanticDemoProfile } from '../../mocks/romanticDemoProfiles';
+import {
+  getMockRomanticBookCharacterById,
+  mergeRomanticDemoCharacters,
+} from '../../mocks/romanticPeripheralCharacters';
+import { mockDataService } from '../../services/mockDataService';
+import { openCharacterBookModal } from '../../lib/openCharacterBookModal';
 import { RelationshipCard } from './RelationshipCard';
 import { RelationshipDetailModal } from './RelationshipDetailModal';
 import { RankingView } from './RankingView';
 import { DetectedCharacterSuggestions } from '../characters/DetectedCharacterSuggestions';
-import { RomanticLexicalInsights } from './RomanticLexicalInsights';
-import { RomanticStoryShowcase } from './RomanticStoryShowcase';
 import {
   RomanticInterestChatLauncher,
   type RomanticInterestCharacterOption,
@@ -160,6 +165,9 @@ export const LoveAndRelationshipsView = () => {
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRelationship, setSelectedRelationship] = useState<string | null>(null);
+  const [relationshipModalInitialTab, setRelationshipModalInitialTab] = useState<
+    'overview' | 'chat' | 'timeline' | 'pros-cons' | 'analytics' | 'their-connections' | 'life-impact'
+  >('overview');
   const [existingCharacterNames, setExistingCharacterNames] = useState<string[]>([]);
   const [existingCharacters, setExistingCharacters] = useState<RomanticInterestCharacterOption[]>([]);
   const [romanticInterestBusy, setRomanticInterestBusy] = useState(false);
@@ -167,9 +175,9 @@ export const LoveAndRelationshipsView = () => {
   const [rescanning, setRescanning] = useState(false);
   const [rescanNotice, setRescanNotice] = useState<string | null>(null);
   const [rescanError, setRescanError] = useState<string | null>(null);
-  const [rescanSummary, setRescanSummary] = useState<RomanticRescanSummary | null>(null);
   const [highlightedRelationshipId, setHighlightedRelationshipId] = useState<string | null>(null);
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
+  const [characterModalInitialTab, setCharacterModalInitialTab] = useState<'info' | 'timeline'>('info');
   const [linkBusyId, setLinkBusyId] = useState<string | null>(null);
   const [relationshipError, setRelationshipError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<CardViewMode>(() =>
@@ -220,8 +228,70 @@ export const LoveAndRelationshipsView = () => {
   }, [activeFilter, shouldUseMockData]);
 
   useEffect(() => {
+    if (!shouldUseMockData) return;
+    const current = mockDataService.get.characters();
+    const merged = mergeRomanticDemoCharacters(current);
+    if (merged.length !== current.length) {
+      mockDataService.register.characters(merged);
+    }
+  }, [shouldUseMockData]);
+
+  useEffect(() => {
     void loadCharacterNames();
   }, [shouldUseMockData]);
+
+  // Deep-link from Character Story → Dating arc (openDatingRomanceModal).
+  // Keep session keys until resolve succeeds so remounts don't cancel the open.
+  useEffect(() => {
+    if (loading) return;
+    const relationshipId = sessionStorage.getItem('highlightRelationship');
+    const characterId = sessionStorage.getItem('highlightRelationshipCharacterId');
+    if (!relationshipId && !characterId) return;
+
+    let resolvedId = relationshipId;
+    if (!resolvedId && characterId) {
+      const match = relationships.find(
+        (rel) =>
+          rel.character_id === characterId ||
+          (rel.person_type === 'character' && rel.person_id === characterId),
+      );
+      resolvedId = match?.id ?? null;
+    }
+
+    if (!resolvedId) {
+      // Character id present but no match after load — abandon so we don't loop.
+      if (characterId && !relationshipId) {
+        sessionStorage.removeItem('highlightRelationshipCharacterId');
+        sessionStorage.removeItem('relationshipModalTab');
+      }
+      return;
+    }
+
+    const tabRaw = sessionStorage.getItem('relationshipModalTab');
+    const allowedTabs = new Set([
+      'overview',
+      'chat',
+      'timeline',
+      'pros-cons',
+      'analytics',
+      'their-connections',
+      'life-impact',
+    ]);
+    sessionStorage.removeItem('highlightRelationship');
+    sessionStorage.removeItem('highlightRelationshipCharacterId');
+    sessionStorage.removeItem('relationshipModalTab');
+
+    setSelectedCharacter(null);
+    setCharacterModalInitialTab('info');
+    setRelationshipModalInitialTab(
+      tabRaw && allowedTabs.has(tabRaw)
+        ? (tabRaw as typeof relationshipModalInitialTab)
+        : 'overview',
+    );
+    setSelectedRelationship(resolvedId);
+    setHighlightedRelationshipId(resolvedId);
+    scrollToRelationship(resolvedId);
+  }, [loading, relationships, scrollToRelationship]);
 
   const loadCharacterNames = async () => {
     if (shouldUseMockData) {
@@ -257,6 +327,38 @@ export const LoveAndRelationshipsView = () => {
       setExistingCharacters([]);
     }
   };
+
+  const openDatingArcFromCharacter = useCallback((relationshipId: string) => {
+    setSelectedCharacter(null);
+    setCharacterModalInitialTab('info');
+    window.setTimeout(() => {
+      setRelationshipModalInitialTab('timeline');
+      setSelectedRelationship(relationshipId);
+      setHighlightedRelationshipId(relationshipId);
+    }, 0);
+  }, []);
+
+  const openPeripheralCharacter = useCallback((characterId: string) => {
+    if (shouldUseMockData) {
+      const merged = mergeRomanticDemoCharacters(mockDataService.get.characters());
+      if (merged.length !== mockDataService.get.characters().length) {
+        mockDataService.register.characters(merged);
+      }
+      const character =
+        merged.find((c) => c.id === characterId) ??
+        getMockRomanticBookCharacterById(characterId);
+      if (character) {
+        setSelectedRelationship(null);
+        window.setTimeout(() => {
+          setCharacterModalInitialTab('info');
+          setSelectedCharacter(character);
+        }, 0);
+        return;
+      }
+    }
+    setSelectedRelationship(null);
+    openCharacterBookModal({ characterId, tab: 'info' });
+  }, [shouldUseMockData]);
 
   const openRomanticInterestChat = useCallback(
     async ({
@@ -406,12 +508,11 @@ export const LoveAndRelationshipsView = () => {
         success: boolean;
         summary: RomanticRescanSummary;
       };
-      setRescanSummary(result.summary);
       const s = result.summary;
       const total = s.relationshipsUpserted;
       setRescanNotice(
         total > 0
-          ? `Rescanned ${s.romanticEpisodes} romantic moment${s.romanticEpisodes === 1 ? '' : 's'} — ${total} relationship${total === 1 ? '' : 's'} updated from glossary + ontology parsing.`
+          ? `Rescanned ${s.romanticEpisodes} romantic moment${s.romanticEpisodes === 1 ? '' : 's'} — ${total} relationship${total === 1 ? '' : 's'} updated.`
           : s.romanticEpisodes > 0
             ? `Found ${s.romanticEpisodes} romantic episode${s.romanticEpisodes === 1 ? '' : 's'} — relationships are already up to date.`
             : 'Rescan complete — no romantic language detected in your history yet. Mention someone in chat to start tracking.'
@@ -432,9 +533,76 @@ export const LoveAndRelationshipsView = () => {
     setRelationshipError(null);
     try {
       const character = await fetchCharacterById<Character>(characterId);
+      setCharacterModalInitialTab('info');
       setSelectedCharacter(character);
     } catch (error) {
       setRelationshipError(error instanceof Error ? error.message : 'Could not open Character Book card.');
+    }
+  };
+
+  const openCharacterTimeline = async (characterIdFromModal: string | null) => {
+    setRelationshipError(null);
+    const rel = relationships.find((r) => r.id === selectedRelationship);
+    let characterId =
+      characterIdFromModal ??
+      rel?.character_id ??
+      (rel?.person_type === 'character' ? rel.person_id : null) ??
+      null;
+
+    if (!characterId && rel && !shouldUseMockData) {
+      try {
+        const result = await linkRomanticRelationshipToCharacter({
+          id: rel.id,
+          character_name: rel.person_name,
+        }).unwrap();
+        invalidateCache();
+        await loadRelationships();
+        characterId = result.character_id ?? null;
+      } catch (error) {
+        setRelationshipError(
+          error instanceof Error
+            ? error.message
+            : 'Could not link this person to a Character Book card.',
+        );
+        return;
+      }
+    }
+
+    if (!characterId) {
+      setRelationshipError('No Character Book card linked yet for this person.');
+      return;
+    }
+
+    const openStoryModal = (character: Character) => {
+      // Close romance modal first, then mount character modal on Story so
+      // initialTab isn't raced by the previous Dialog unmount.
+      setSelectedRelationship(null);
+      window.setTimeout(() => {
+        setCharacterModalInitialTab('timeline');
+        setSelectedCharacter(character);
+      }, 0);
+    };
+
+    try {
+      if (shouldUseMockData) {
+        openStoryModal({
+          id: characterId,
+          name: rel?.person_name ?? 'Character',
+        } as Character);
+        return;
+      }
+      const character = await fetchCharacterById<Character>(characterId);
+      openStoryModal(character);
+    } catch (error) {
+      try {
+        const { openCharacterBookModal } = await import('../../lib/openCharacterBookModal');
+        openCharacterBookModal({ characterId, tab: 'timeline' });
+        setSelectedRelationship(null);
+      } catch {
+        setRelationshipError(
+          error instanceof Error ? error.message : 'Could not open Character Book timeline.',
+        );
+      }
     }
   };
 
@@ -451,6 +619,7 @@ export const LoveAndRelationshipsView = () => {
       await loadRelationships();
       if (result.character_id) {
         const character = await fetchCharacterById<Character>(result.character_id);
+        setCharacterModalInitialTab('info');
         setSelectedCharacter(character);
       }
     } catch (error) {
@@ -565,14 +734,39 @@ export const LoveAndRelationshipsView = () => {
 
   const renderRelationshipListRow = (rel: RomanticRelationship) => {
     const hasCharacterCard = rel.person_type === 'character' || Boolean(rel.character_id);
-    const signals = rel.metadata?.signals;
+    const demoProfile = getRomanticDemoProfile(rel.id);
     const teaser =
-      rel.user_romantic_filter?.note ??
-      (typeof rel.metadata?.lexical_evidence === 'string'
-        ? rel.metadata.lexical_evidence
-        : null);
-    const score = (value: number | null | undefined) =>
-      value == null ? null : `${Math.round(value * 100)}%`;
+      demoProfile?.headline ??
+      (typeof rel.metadata?.lexical_evidence === 'string' ? rel.metadata.lexical_evidence : null);
+    const badge =
+      demoProfile?.showcaseTag ??
+      [rel.relationship_type.replace(/_/g, ' '), rel.status.replace(/_/g, ' ')]
+        .filter(Boolean)
+        .join(' · ');
+    const metricKeys = (demoProfile?.primaryMetrics ?? (['compatibility', 'health'] as const)).slice(0, 2);
+    const metricLine = metricKeys
+      .map((key) => {
+        const value =
+          key === 'affection'
+            ? rel.affection_score
+            : key === 'compatibility'
+              ? rel.compatibility_score
+              : key === 'health'
+                ? rel.relationship_health
+                : rel.emotional_intensity;
+        if (value == null) return null;
+        const label =
+          key === 'affection'
+            ? 'Affection'
+            : key === 'compatibility'
+              ? 'Fit'
+              : key === 'health'
+                ? 'Health'
+                : 'Connection';
+        return `${label} ${Math.round(value * 100)}%`;
+      })
+      .filter(Boolean)
+      .join(' · ');
 
     return (
       <div
@@ -590,38 +784,17 @@ export const LoveAndRelationshipsView = () => {
           className="flex min-w-0 flex-1 items-start gap-3 px-3 py-2.5 text-left"
         >
           <Heart className="h-4 w-4 text-pink-300/75 mt-0.5 shrink-0" />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-2">
-              <p className="text-sm font-medium text-white truncate">
-                {rel.person_name || rel.relationship_type.replace(/_/g, ' ')}
-              </p>
-              <span className="text-[10px] text-white/45 shrink-0">
-                {rel.status.replace(/_/g, ' ')}
-              </span>
-            </div>
+          <div className="min-w-0 flex-1 space-y-0.5">
+            <p className="text-sm font-medium text-white truncate">
+              {rel.person_name || rel.relationship_type.replace(/_/g, ' ')}
+            </p>
+            <p className="text-[10px] text-white/45 truncate">{badge}</p>
             {teaser && (
-              <p className="text-xs text-white/50 line-clamp-2 mt-0.5">{teaser}</p>
+              <p className="text-xs text-white/50 line-clamp-1">{teaser}</p>
             )}
-            <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[10px] text-white/40">
-              <span>{rel.relationship_type.replace(/_/g, ' ')}</span>
-              {rel.is_situationship && <span>Situationship</span>}
-              {rel.exclusivity_status && <span>{rel.exclusivity_status}</span>}
-              {score(rel.affection_score) && <span>Affection: {score(rel.affection_score)}</span>}
-              {score(rel.compatibility_score) && (
-                <span>Compatibility: {score(rel.compatibility_score)}</span>
-              )}
-              {score(rel.relationship_health) && (
-                <span>Health: {score(rel.relationship_health)}</span>
-              )}
-              {signals?.attachment_intensity != null && (
-                <span>Attachment: {score(signals.attachment_intensity)}</span>
-              )}
-              {(rel.red_flags?.length ?? 0) > 0 && <span>{rel.red_flags.length} red flags</span>}
-              {(rel.green_flags?.length ?? 0) > 0 && <span>{rel.green_flags.length} green flags</span>}
-              {rel.start_date && (
-                <span>Started: {new Date(rel.start_date).toLocaleDateString()}</span>
-              )}
-            </div>
+            {metricLine && (
+              <p className="text-[10px] text-white/40 tabular-nums">{metricLine}</p>
+            )}
           </div>
           <ChevronRight className="h-4 w-4 text-white/25 mt-0.5 shrink-0" />
         </button>
@@ -630,24 +803,24 @@ export const LoveAndRelationshipsView = () => {
             <Button
               type="button"
               size="sm"
-              variant="outline"
+              variant="ghost"
               onClick={() => void openCharacterCard(rel)}
-              className="h-7 border-cyan-500/30 bg-cyan-500/10 px-2 text-[10px] text-cyan-100 hover:bg-cyan-500/20"
+              className="h-7 px-2 text-[10px] text-cyan-200/80 hover:text-cyan-100 hover:bg-cyan-500/10"
+              aria-label="Open Character Book card"
             >
-              <BookOpen className="mr-1 h-3 w-3" />
-              Character card
+              <BookOpen className="h-3.5 w-3.5" />
             </Button>
           ) : (
             <Button
               type="button"
               size="sm"
-              variant="outline"
+              variant="ghost"
               onClick={() => void linkRelationshipToCharacter(rel)}
               disabled={linkBusyId === rel.id}
-              className="h-7 border-pink-500/30 bg-pink-500/10 px-2 text-[10px] text-pink-100 hover:bg-pink-500/20"
+              className="h-7 px-2 text-[10px] text-pink-200/80 hover:text-pink-100 hover:bg-pink-500/10"
+              aria-label={linkBusyId === rel.id ? 'Linking' : 'Link to Character Book'}
             >
-              <Link2 className="mr-1 h-3 w-3" />
-              {linkBusyId === rel.id ? 'Linking...' : 'Link to Character Book'}
+              <Link2 className="h-3.5 w-3.5" />
             </Button>
           )}
         </div>
@@ -777,14 +950,6 @@ export const LoveAndRelationshipsView = () => {
           warnings: bookQueryResult?.warnings,
         }}
         onSelectResult={(result) => setSelectedRelationship(result.id)}
-      />
-
-      <RomanticStoryShowcase demoMode={shouldUseMockData} />
-
-      <RomanticLexicalInsights
-        demoMode={shouldUseMockData}
-        rescanSummary={rescanSummary}
-        relationships={relationships}
       />
 
       <DetectedCharacterSuggestions
@@ -1009,24 +1174,37 @@ export const LoveAndRelationshipsView = () => {
       {/* Relationship Detail Modal */}
       {selectedRelationship && (
         <RelationshipDetailModal
+          key={`${selectedRelationship}-${relationshipModalInitialTab}`}
           relationshipId={selectedRelationship}
-          onClose={() => setSelectedRelationship(null)}
+          initialTab={relationshipModalInitialTab}
+          onClose={() => {
+            setSelectedRelationship(null);
+            setRelationshipModalInitialTab('overview');
+          }}
           onUpdate={() => {
             loadRelationships();
             setSelectedRelationship(null);
+            setRelationshipModalInitialTab('overview');
           }}
+          onOpenCharacterTimeline={openCharacterTimeline}
+          onOpenPeripheralCharacter={openPeripheralCharacter}
         />
       )}
       {selectedCharacter && (
         <CharacterDetailModal
+          key={`${selectedCharacter.id}-${characterModalInitialTab}`}
           character={selectedCharacter}
-          onClose={() => setSelectedCharacter(null)}
+          onClose={() => {
+            setSelectedCharacter(null);
+            setCharacterModalInitialTab('info');
+          }}
           onUpdate={() => {
             void loadRelationships();
             invalidateCache(selectedCharacter.id);
           }}
           relationship={relationships.find((rel) => (rel.character_id ?? rel.person_id) === selectedCharacter.id)}
-          initialTab="info"
+          initialTab={characterModalInitialTab}
+          onOpenDatingArc={openDatingArcFromCharacter}
         />
       )}
     </div>

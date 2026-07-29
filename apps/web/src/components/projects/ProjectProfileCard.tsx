@@ -12,8 +12,29 @@ export type ProjectCardData = {
   ended_at?: string | null;
   importance_score?: number | null;
   updated_at: string;
-  metadata?: { source?: string } | null;
+  metadata?: {
+    source?: string;
+    aliases?: string[];
+    aliases_source?: string;
+    [key: string]: unknown;
+  } | null;
 };
+
+/** Aliases stored on project.metadata.aliases (location/org parity). */
+export function projectAliasesForDisplay(
+  metadata: ProjectCardData['metadata'] | null | undefined,
+): string[] {
+  if (!Array.isArray(metadata?.aliases)) return [];
+  return [
+    ...new Set(
+      metadata.aliases
+        .filter((value): value is string => typeof value === 'string')
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
 
 const STATUS_STYLE: Record<string, string> = {
   active: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',

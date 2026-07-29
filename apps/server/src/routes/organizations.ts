@@ -16,6 +16,7 @@ import { organizationDomainAuditService } from '../services/organizationDomainAu
 import { organizationNormalizationService } from '../services/organizationNormalizationService';
 import { locationMergeService } from '../services/locationMergeService';
 import { queryOrganizationsForUser } from '../services/organizations/organizationQueryService';
+import { supabaseAdmin } from '../services/supabaseClient';
 
 const router = Router();
 
@@ -500,6 +501,75 @@ router.delete('/:id/members/:memberId', requireAuth, async (req: AuthenticatedRe
   } catch (error) {
     logger.error({ error, userId }, 'Failed to remove member');
     res.status(500).json({ success: false, error: 'Failed to remove member' });
+  }
+});
+
+// POST /api/organizations/:id/sync-from-family-tree
+// Family groups only: pulls in whoever the Family Tree already knows belongs
+// to the household (spouse, kids, pets) of this group's current — or, for a
+// still-empty group, title-implied — members, then re-syncs kinship roles
+// and family edges. Idempotent: safe to call repeatedly.
+router.post('/:id/sync-from-family-tree', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const organizationId = String(req.params.id);
+  try {
+    const org = await organizationService.getOrganization(userId, organizationId);
+    if (!org) {
+      res.status(404).json({ success: false, error: 'Group not found' });
+      return;
+    }
+    if (org.group_type !== 'family' && org.type !== 'family') {
+      res.status(400).json({ success: false, error: 'Only family groups can sync from the Family Tree' });
+      return;
+    }
+
+    const { familyGroupSyncService, charactersMentionedInTitle } = await import(
+      '../services/familyGroupSyncService'
+    );
+    const { deriveHouseholdMembers } = await import('../services/kinship/householdFromTreeService');
+
+    // Backfill title-mentioned members first, so a still-empty group (e.g. a
+    // fresh chat-inferred one) has real anchors to derive a household from.
+    await familyGroupSyncService.syncGroup(userId, organizationId);
+
+    let anchorIds = (await organizationService.getMembers(organizationId))
+      .map((m) => m.character_id)
+      .filter((id): id is string => Boolean(id));
+
+    if (anchorIds.length === 0) {
+      const { data: characters } = await supabaseAdmin
+        .from('characters')
+        .select('id, name, alias')
+        .eq('user_id', userId)
+        .limit(1000);
+      anchorIds = charactersMentionedInTitle(org.name ?? '', characters ?? []).map((c) => c.id);
+    }
+
+    const householdMembers = await deriveHouseholdMembers(userId, anchorIds);
+    let added = 0;
+    for (const hm of householdMembers) {
+      await organizationService
+        .addMember(userId, organizationId, {
+          character_id: hm.characterId,
+          character_name: hm.name,
+          role: hm.role,
+          status: 'active',
+          notes: '[inferred from family tree]',
+        })
+        .then(() => {
+          added++;
+        })
+        .catch(() => {});
+    }
+
+    // Re-sync so newly added members also get kinship roles / family edges.
+    await familyGroupSyncService.syncGroup(userId, organizationId);
+
+    const members = await organizationService.getMembers(organizationId);
+    res.json({ success: true, added, members });
+  } catch (error) {
+    logger.error({ error, userId, organizationId }, 'Failed to sync group from family tree');
+    res.status(500).json({ success: false, error: 'Failed to sync from Family Tree' });
   }
 });
 

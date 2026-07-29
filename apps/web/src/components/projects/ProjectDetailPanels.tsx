@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   BookOpen,
+  Briefcase,
   Calendar,
   CalendarClock,
   Check,
@@ -39,13 +40,11 @@ import type { LorebookForm } from '../../lib/lorebookTiers';
 import { copyTextToClipboard } from '../../lib/listClipboard';
 import type { ProjectCardData } from './ProjectProfileCard';
 import type { ProjectDetailProfile, ProjectStatus } from './projectModalTypes';
-import { LoreEntityLegend } from '../lore/LoreEntityLegend';
 import { LoreEntityChip } from '../lore/LoreEntityChip';
 import { LorebookContentMeter } from '../lorebook/LorebookContentMeter';
 import { LorebookTierMenu } from '../lorebook/LorebookTierMenu';
 import { EntityTimelinePanel } from '../common/EntityTimelinePanel';
 import type { SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
-import type { LoreEntityKind } from '../../lib/loreEntities';
 
 export const STATUS_CONFIG: Record<
   ProjectStatus,
@@ -99,6 +98,11 @@ type OverviewProps = {
   readOnly: boolean;
   localDescription: string;
   localSummary: string;
+  nameDraft: string;
+  aliases: string[];
+  onNameChange: (v: string) => void;
+  onNameBlur: () => void;
+  onAliasesChange: (next: string[]) => void;
   onDescriptionChange: (v: string) => void;
   onSummaryChange: (v: string) => void;
   onDescriptionBlur: () => void;
@@ -112,6 +116,11 @@ export function ProjectOverviewTab({
   readOnly,
   localDescription,
   localSummary,
+  nameDraft,
+  aliases,
+  onNameChange,
+  onNameBlur,
+  onAliasesChange,
   onDescriptionChange,
   onSummaryChange,
   onDescriptionBlur,
@@ -122,21 +131,80 @@ export function ProjectOverviewTab({
   const statusCfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.active;
   const StatusIcon = statusCfg.icon;
 
-  const linkedEntityKinds: LoreEntityKind[] = [
-    'project',
-    ...(profile.contributors.length > 0 ? (['person'] as const) : []),
-    ...(profile.locations.length > 0 ? (['place'] as const) : []),
-    ...(profile.skills.length > 0 ? (['skill'] as const) : []),
-    ...(profile.milestones.length > 0 ? (['event', 'memory'] as const) : []),
-  ];
-
   return (
     <div className="space-y-4 sm:space-y-5">
-      <LoreEntityLegend
-        compact
-        title="Lore entities on this project"
-        activeKinds={linkedEntityKinds}
-      />
+      <Card className="border-white/10 bg-black/30">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
+            <Briefcase className="h-4 w-4 text-primary" />
+            Name & aliases
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <label className="text-[11px] uppercase tracking-wider text-white/40 mb-1 block" htmlFor="project-name-input">
+              Project name
+            </label>
+            <input
+              id="project-name-input"
+              type="text"
+              disabled={readOnly}
+              value={nameDraft}
+              onChange={(e) => onNameChange(e.target.value)}
+              onBlur={onNameBlur}
+              data-testid="project-name-input"
+              className="w-full rounded-xl border border-white/15 bg-black/50 px-3 py-2.5 text-sm text-white disabled:opacity-50 focus:outline-none focus:border-primary/40"
+              placeholder="Project name"
+            />
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-white/40 mb-1.5">Also known as</p>
+            <div className="flex flex-wrap items-center gap-1.5" data-testid="project-alias-editor">
+              {aliases.length === 0 && (
+                <span className="text-xs text-white/35">No aliases yet</span>
+              )}
+              {aliases.map((alias) => (
+                <span
+                  key={alias}
+                  className="flex items-center gap-1 text-xs pl-2.5 pr-1 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-200"
+                >
+                  {alias}
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      aria-label={`Remove alias ${alias}`}
+                      className="p-0.5 text-violet-200/40 hover:text-red-300"
+                      onClick={() => onAliasesChange(aliases.filter((a) => a !== alias))}
+                    >
+                      <XCircle className="h-3 w-3" />
+                    </button>
+                  )}
+                </span>
+              ))}
+              {!readOnly && (
+                <input
+                  type="text"
+                  placeholder="Add alias…"
+                  aria-label="Add project alias"
+                  data-testid="project-alias-input"
+                  className="w-28 rounded-full border border-white/15 bg-black/40 px-2.5 py-1 text-xs text-white placeholder:text-white/25 focus:border-violet-400 focus:outline-none"
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
+                    const value = e.currentTarget.value.trim();
+                    if (!value) return;
+                    const next = [...new Set([...aliases, value])];
+                    onAliasesChange(next);
+                    e.currentTarget.value = '';
+                  }}
+                />
+              )}
+            </div>
+            <p className="text-[11px] text-white/35 mt-2">
+              Aliases help LoreBook match chat mentions like nicknames or short names.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Project brief */}
       <Card className="border-white/10 bg-gradient-to-br from-white/[0.06] to-black/40">

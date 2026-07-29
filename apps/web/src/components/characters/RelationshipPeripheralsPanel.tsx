@@ -341,18 +341,7 @@ export function RelationshipPeripheralsPanel({
                     Confirm
                   </Button>
                 )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full sm:w-auto border-white/20 justify-center"
-                  disabled={actionId === p.id || Boolean(p.peripheral_person_id)}
-                  onClick={() => void runAction(p.id, 'promote')}
-                  data-testid={`peripheral-promote-${p.id}`}
-                >
-                  <UserPlus className="w-4 h-4 mr-1 shrink-0" />
-                  <span className="truncate">{p.peripheral_person_id ? 'In Character Book' : 'Add to Character Book'}</span>
-                </Button>
-                {p.peripheral_person_id && onOpenCharacterBook && (
+                {p.peripheral_person_id && onOpenCharacterBook ? (
                   <Button
                     size="sm"
                     variant="outline"
@@ -360,7 +349,19 @@ export function RelationshipPeripheralsPanel({
                     onClick={() => onOpenCharacterBook(p.peripheral_person_id!)}
                     data-testid={`peripheral-open-book-${p.id}`}
                   >
-                    Open profile →
+                    Open Character Book card →
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full sm:w-auto border-white/20 justify-center"
+                    disabled={actionId === p.id}
+                    onClick={() => void runAction(p.id, 'promote')}
+                    data-testid={`peripheral-promote-${p.id}`}
+                  >
+                    <UserPlus className="w-4 h-4 mr-1 shrink-0" />
+                    <span className="truncate">Add to Character Book</span>
                   </Button>
                 )}
                 <Button

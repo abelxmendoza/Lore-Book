@@ -52,4 +52,23 @@ describe('relationshipScoringService', () => {
     expect(s.green_flags.length).toBeGreaterThan(0);
     expect(s.evidence_strength).toBeGreaterThan(0.25);
   });
+
+  it('returns short reasons for each score', () => {
+    const rich = computeSignals({
+      ...base,
+      mentionCount: 20,
+      lastMentionMs: Date.now() - 2 * 24 * 60 * 60 * 1000,
+      interactionSentiments: [0.8, 0.7, 0.6],
+      dateCount: 4,
+      mentionConcentration: 0.8,
+      loveReciprocated: true,
+    });
+    expect(rich.score_reasons.affection.length).toBeGreaterThan(10);
+    expect(rich.score_reasons.compatibility.length).toBeGreaterThan(10);
+    expect(rich.score_reasons.health.length).toBeGreaterThan(10);
+    expect(rich.score_reasons.intensity.length).toBeGreaterThan(10);
+
+    const thin = computeSignals(base);
+    expect(thin.score_reasons.affection).toMatch(/still learning/i);
+  });
 });

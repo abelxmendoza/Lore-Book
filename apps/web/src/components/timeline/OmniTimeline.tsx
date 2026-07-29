@@ -5,7 +5,7 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { LayoutTemplate, BookOpen, Search, Sparkles, Menu, CalendarDays, Calendar, X } from 'lucide-react';
+import { LayoutTemplate, BookOpen, Search, Sparkles, Menu, CalendarDays, Calendar, X, Clock3 } from 'lucide-react';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useLifeArcs, type LifeArc } from '../../hooks/useLifeArcs';
 import { useStitchedTimeline } from '../../hooks/useStitchedTimeline';
@@ -56,6 +56,7 @@ const VIEWS: { id: View; label: string; shortLabel: string; Icon: React.ElementT
   { id: 'events',    label: 'Chronology', shortLabel: 'Chronology', Icon: CalendarDays,  desc: 'Same scenes stitched in time — copyable, with an explicit reorder mode' },
   { id: 'calendar',  label: 'Calendar',  shortLabel: 'Calendar', Icon: Calendar,  desc: 'Named occasions and events by day' },
   { id: 'story',     label: 'Story',     shortLabel: 'Story', Icon: BookOpen,       desc: 'Read life arcs in order' },
+  { id: 'library',   label: 'Library',   shortLabel: 'Library', Icon: Clock3,       desc: 'All generated timeline history you’ve spun up' },
 ];
 
 const BOTTOM_NAV = VIEWS.map(({ id, shortLabel, Icon }) => ({
@@ -80,7 +81,7 @@ type OmniTimelineProps = {
   onOpenAppSidebar?: () => void;
 };
 
-const VALID_VIEWS = new Set<View>(['swimlanes', 'events', 'calendar', 'story']);
+const VALID_VIEWS = new Set<View>(['swimlanes', 'events', 'calendar', 'story', 'library']);
 
 function viewFromSearchParams(params: URLSearchParams): View {
   const raw = params.get('view');
@@ -643,7 +644,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
     if (activeTimelineId === id) closeGeneratedTimeline();
   };
 
-  const libraryPanel = savedTimelines.length > 0 ? (
+  const libraryPanel = (
     <GeneratedTimelineLibraryPanel
       timelines={savedTimelines}
       activeId={activeTimelineId}
@@ -651,10 +652,13 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
       onRemove={handleRemoveSaved}
       onCreateLorebook={handleCreateLorebookFromSaved}
       canCreateLorebook={canCreateLorebookForSaved}
-      className="omni-timeline-library my-2"
-      defaultExpanded={!genQuery && savedTimelines.length <= 3}
+      variant="page"
+      onGenerateNew={() => {
+        setGenSearchOpen(true);
+        setView('swimlanes');
+      }}
     />
-  ) : null;
+  );
 
   const renderContent = () => {
     if (genQuery && genPhase === 'generating') {
@@ -708,6 +712,8 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
     }
 
     switch (view) {
+      case 'library':
+        return libraryPanel;
       case 'swimlanes':
         return (
           <TimelineSwimlanes
@@ -729,7 +735,26 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
           />
         );
       case 'events':
-        return <TimelineStitchedView embedded newestFirst />;
+        return (
+          <TimelineStitchedView
+            embedded
+            newestFirst
+            readiness={readiness}
+            forceLorebookUnlock={isDemoMode}
+            onCreateLorebook={({ form, offer, meter }) => {
+              const canAny = Boolean(meter.tierOffer?.canCreateAny) || isDemoMode;
+              if (!canAny) return;
+              const selected =
+                form ?? meter.tierOffer?.highestUnlocked ?? (isDemoMode ? 'vignette' : undefined);
+              if (!selected) return;
+              setLorebookPrefill({
+                ...offer.prefill,
+                form: selected,
+                unlockedForms: meter.tierOffer?.unlocked,
+              });
+            }}
+          />
+        );
       case 'calendar':
         return (
           <TimelineCalendarView
@@ -754,7 +779,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
 
   return (
     <div
-      className={`omni-timeline-root${view === 'story' ? ' omni-timeline-root--story' : ''}${view === 'calendar' ? ' omni-timeline-root--calendar' : ''}`}
+      className={`omni-timeline-root${view === 'story' ? ' omni-timeline-root--story' : ''}${view === 'calendar' ? ' omni-timeline-root--calendar' : ''}${view === 'library' ? ' omni-timeline-root--library' : ''}`}
       data-testid="omni-timeline"
     >
       {/* ── Mobile header ──────────────────────────────────────────────── */}
@@ -866,7 +891,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
           <OmniTimelineErrorBanner message={dataError} onRetry={handleRetryData} />
         )}
 
-        {!isMobile && view !== 'story' && (
+        {!isMobile && view !== 'story' && view !== 'library' && (
           <UniversalTimelineSearch
             genInput={genInput}
             genQuery={genQuery}
@@ -883,7 +908,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
         )}
 
         {/* Story already lists arcs — hide competing chrome to free reading height */}
-        {view !== 'story' && !loading && !genQuery && activeArcs.length > 0 && (
+        {view !== 'story' && view !== 'library' && !loading && !genQuery && activeArcs.length > 0 && (
           <div className="omni-timeline-active-arcs">
             <p className="omni-timeline-section-label">Active now</p>
             <div className="flex flex-wrap gap-2">
@@ -925,7 +950,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
         )}
 
       {/* ── Life Chapters strip — birth-year-anchored life eras ──────────── */}
-      {view !== 'story' && !loading && !genQuery && lifeEras.length > 0 && (
+      {view !== 'story' && view !== 'library' && !loading && !genQuery && lifeEras.length > 0 && (
         <div className="omni-timeline-life-chapters">
           <div className="flex items-center gap-2">
             <span className="omni-timeline-section-label shrink-0 mb-0">Life Chapters</span>
@@ -965,8 +990,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
         </div>
       )}
 
-      {/* ── Timelines library ─────────────────────────────────────────── */}
-      {view !== 'story' && libraryPanel}
+      {/* Timelines Library is a peer view under Omni Timeline (?view=library). */}
 
       <main className="omni-timeline-main">
         {renderContent()}
@@ -983,6 +1007,21 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
           lifeArcId={stitchedArc.id}
           scopeLabel={stitchedArc.title}
           onClose={() => setStitchedArc(null)}
+          readiness={readiness}
+          forceLorebookUnlock={isDemoMode}
+          onCreateLorebook={({ form, offer, meter }) => {
+            const canAny = Boolean(meter.tierOffer?.canCreateAny) || isDemoMode;
+            if (!canAny) return;
+            const selected =
+              form ?? meter.tierOffer?.highestUnlocked ?? (isDemoMode ? 'vignette' : undefined);
+            if (!selected) return;
+            setLorebookPrefill({
+              ...offer.prefill,
+              form: selected,
+              unlockedForms: meter.tierOffer?.unlocked,
+            });
+            setStitchedArc(null);
+          }}
         />
       )}
 

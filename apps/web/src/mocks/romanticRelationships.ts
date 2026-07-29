@@ -90,7 +90,37 @@ function withDemoSignals(rel: MockRomanticRelationship): MockRomanticRelationshi
     ...rel,
     metadata: {
       ...(rel.metadata ?? {}),
-      signals: { obsession_score, attachment_intensity, evidence_strength, signal_strength },
+      signals: {
+        obsession_score,
+        attachment_intensity,
+        evidence_strength,
+        signal_strength,
+        score_reasons: {
+          affection:
+            signal_strength === 'low'
+              ? 'Still learning — not enough mentions yet'
+              : rel.affection_score >= 0.8
+                ? 'Warm, positive signals in your story'
+                : 'Based on how often and warmly you mention them',
+          compatibility: rel.is_situationship
+            ? 'Undefined setup holds fit below a clear bond'
+            : rel.compatibility_score >= 0.8
+              ? 'Positives outweigh conflict in the record'
+              : 'Blend of positivity, conflict, and longevity',
+          health:
+            ['ended', 'ghosted', 'blocked', 'fading'].includes(status)
+              ? `${status.replace(/_/g, ' ')} status is pressing on health`
+              : rel.relationship_health >= 0.75
+                ? 'Active contact keeps the bond viable'
+                : 'Viability from contact, reciprocity, and conflict',
+          intensity:
+            signal_strength === 'low'
+              ? 'Sparse contact keeps connection intensity low'
+              : rel.emotional_intensity >= 0.75
+                ? 'Lots of recent charged contact'
+                : 'Volume and emotional charge of your contact',
+        },
+      },
       lexical_evidence: lexical?.snippet ?? rel.pros[0] ?? rel.strengths[0],
       glossary_cues,
       ontology_tags: ['CONCEPT/RELATIONSHIP_VERB'],
@@ -263,7 +293,7 @@ export function generateMockRomanticRelationships(): MockRomanticRelationship[] 
     // Ghosted — real endings aren't always clean breakups
     {
       id: 'rel-007',
-      person_id: 'char-005',
+      person_id: 'char-riley',
       person_type: 'character',
       person_name: 'Riley',
       relationship_type: 'hooking_up',
@@ -500,7 +530,7 @@ export function generateMockRomanticRelationships(): MockRomanticRelationship[] 
     // Past + No Contact + High Risk
     {
       id: 'rel-008',
-      person_id: 'char-008',
+      person_id: 'char-007',
       person_type: 'character',
       person_name: 'Nova',
       relationship_type: 'ex_lover',

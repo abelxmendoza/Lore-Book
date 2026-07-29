@@ -13,7 +13,7 @@ const mockFrom = vi.fn();
 const mockAssertKinship = vi.fn();
 const mockCreateOrganization = vi.fn();
 const mockNameHousehold = vi.fn();
-const mockCharOrgUpsert = vi.fn();
+const mockAddMember = vi.fn();
 
 vi.mock('../../src/services/supabaseClient', () => ({
   supabaseAdmin: { from: (...args: unknown[]) => mockFrom(...args) },
@@ -26,6 +26,7 @@ vi.mock('../../src/services/relationshipFoundationService', () => ({
 vi.mock('../../src/services/organizationService', () => ({
   organizationService: {
     createOrganization: (...args: unknown[]) => mockCreateOrganization(...args),
+    addMember: (...args: unknown[]) => mockAddMember(...args),
   },
 }));
 vi.mock('../../src/services/entities/householdNaming', () => ({
@@ -36,15 +37,12 @@ import { familyGraphInferenceService } from '../../src/services/kinship/familyGr
 
 type Row = { id: string; name: string; metadata?: Record<string, unknown> | null };
 
-function builder(table: string, result: { data?: unknown; error?: unknown }) {
+function builder(_table: string, result: { data?: unknown; error?: unknown }) {
   const b: Record<string, unknown> = {};
   for (const m of ['select', 'eq', 'ilike', 'limit', 'order', 'in', 'or', 'neq']) b[m] = vi.fn(() => b);
   b.update = vi.fn(() => b);
   b.maybeSingle = vi.fn(() => Promise.resolve(result));
-  b.upsert =
-    table === 'character_organizations'
-      ? mockCharOrgUpsert
-      : vi.fn(() => Promise.resolve({ error: null }));
+  b.upsert = vi.fn(() => Promise.resolve({ error: null }));
   b.then = (resolve: (v: unknown) => void) => Promise.resolve(result).then(resolve);
   return b;
 }
@@ -55,7 +53,7 @@ describe('kinship graph E2E (text → family graph)', () => {
     mockAssertKinship.mockResolvedValue(true);
     mockCreateOrganization.mockResolvedValue({ id: 'fam-1' });
     mockNameHousehold.mockReturnValue('Reyes Family');
-    mockCharOrgUpsert.mockReturnValue(Promise.resolve({ error: null }));
+    mockAddMember.mockResolvedValue({ id: 'member-x' });
   });
 
   it('compiles a full family graph from one Thanksgiving sentence', async () => {
@@ -100,16 +98,18 @@ describe('kinship graph E2E (text → family graph)', () => {
     );
     expect(result.familyGroupId).toBe('fam-1');
 
-    // 3) Every kin member was linked into the family group.
-    expect(mockCharOrgUpsert).toHaveBeenCalledTimes(5);
-    const linkedIds = mockCharOrgUpsert.mock.calls.map(
-      (c) => (c[0] as { character_id: string; organization_id: string; role: string })
+    // 3) Every kin member was linked into the family group via the real
+    // roster service (organization_members), not the orphaned
+    // character_organizations table.
+    expect(mockAddMember).toHaveBeenCalledTimes(5);
+    const linkedMembers = mockAddMember.mock.calls.map(
+      (c) => c[2] as { character_id: string; role: string; status: string }
     );
-    expect(new Set(linkedIds.map((l) => l.character_id))).toEqual(
+    expect(new Set(linkedMembers.map((l) => l.character_id))).toEqual(
       new Set(['abuela', 'mom', 'dad', 'tia', 'marco'])
     );
-    expect(linkedIds.every((l) => l.organization_id === 'fam-1')).toBe(true);
-    expect(linkedIds.every((l) => l.role === 'member')).toBe(true);
+    expect(mockAddMember.mock.calls.every((c) => c[0] === 'user-1' && c[1] === 'fam-1')).toBe(true);
+    expect(linkedMembers.every((l) => l.role === 'member' && l.status === 'active')).toBe(true);
 
     // 4) The protagonist is never linked to themselves as kin.
     expect([...rolesByCharacter.keys()]).not.toContain('me');

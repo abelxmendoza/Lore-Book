@@ -2,7 +2,7 @@
  * Stitched timeline: moments + events in one chronological stream, user-reorderable.
  */
 
-import { BookOpen, CheckCircle2, Layers, Target, X } from 'lucide-react';
+import { BookMarked, BookOpen, CheckCircle2, Layers, MessageCircle, Target, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -12,7 +12,18 @@ import { useMockData } from '../../contexts/MockDataContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useStitchedTimeline } from '../../hooks/useStitchedTimeline';
 import { isBackendConnectionError } from '../../lib/backendErrorDisplay';
+import type { LorebookContentMeterModel } from '../../lib/lorebookContentMeter';
+import type { LorebookForm } from '../../lib/lorebookTiers';
+import type { LoreReadinessSummary } from '../../lib/loreReadiness';
+import {
+  buildStitchedTimelineFollowUpPrompts,
+  meterFromStitchedTimeline,
+  openStitchedTimelineChat,
+} from '../../lib/stitchedTimelineChat';
+import type { TimelineSubjectLorebookOffer } from '../../lib/timelineSubjectLorebook';
 import { sortStitchedItemsNewestFirst } from '../../lib/unifiedTimeline';
+import { LorebookContentMeter } from '../lorebook/LorebookContentMeter';
+import { LorebookTierMenu } from '../lorebook/LorebookTierMenu';
 import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 
 import { TimelineInlineDate } from './TimelineDateDisplay';
@@ -27,6 +38,16 @@ type TimelineStitchedViewProps = {
   hideHeader?: boolean;
   /** Show recent events first while retaining canonical ordering elsewhere. */
   newestFirst?: boolean;
+  /** Domain readiness for vignette / LoreBook unlock boosts. */
+  readiness?: LoreReadinessSummary | null;
+  /** Demo mode unlocks LoreBook menus even below thresholds. */
+  forceLorebookUnlock?: boolean;
+  /** Open KnowledgeBaseCreator from the chapter’s compiler meter. */
+  onCreateLorebook?: (args: {
+    form?: LorebookForm;
+    offer: TimelineSubjectLorebookOffer;
+    meter: LorebookContentMeterModel;
+  }) => void;
 };
 
 function chapterTimeLabel(chapter: NarrativeChapter): string | null {
@@ -48,6 +69,9 @@ export const TimelineStitchedView = ({
   embedded = false,
   hideHeader = false,
   newestFirst = false,
+  readiness = null,
+  forceLorebookUnlock = false,
+  onCreateLorebook,
 }: TimelineStitchedViewProps) => {
   const isMobile = useIsMobile();
   const { backendUnavailable } = useMockData();
@@ -74,6 +98,40 @@ export const TimelineStitchedView = ({
     [items, newestFirst],
   );
 
+  const title =
+    scopeLabel ??
+    data?.scope_label ??
+    (lifeArcId ? 'Life arc timeline' : 'Your full timeline');
+
+  const chatInput = useMemo(
+    () => ({
+      title,
+      lifeArcId,
+      items,
+      chapter: data?.chapter ?? null,
+      scopeType: (lifeArcId ? 'life_arc' : 'global') as 'life_arc' | 'global',
+    }),
+    [title, lifeArcId, items, data?.chapter],
+  );
+
+  const { offer: loreOffer, meter: loreMeter } = useMemo(
+    () =>
+      meterFromStitchedTimeline({
+        title,
+        items,
+        chapter: data?.chapter ?? null,
+        readiness,
+      }),
+    [title, items, data?.chapter, readiness],
+  );
+
+  const canCreateLorebook =
+    Boolean(loreMeter.tierOffer?.canCreateAny) || forceLorebookUnlock;
+  const followUps = useMemo(
+    () => buildStitchedTimelineFollowUpPrompts(chatInput),
+    [chatInput],
+  );
+
   const handleSelect = (item: StitchedTimelineItem) => {
     setSelected(item);
     if (item.kind === 'moment') {
@@ -87,10 +145,14 @@ export const TimelineStitchedView = ({
     }
   };
 
-  const title =
-    scopeLabel ??
-    data?.scope_label ??
-    (lifeArcId ? 'Life arc timeline' : 'Your full timeline');
+  const continueInChat = (prompt?: string) => {
+    openStitchedTimelineChat({
+      ...chatInput,
+      initialPrompt: prompt,
+      autoSubmit: Boolean(prompt?.trim()),
+    });
+    onClose?.();
+  };
 
   const shell = embedded
     ? 'h-full flex flex-col min-h-0'
@@ -120,6 +182,77 @@ export const TimelineStitchedView = ({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [embedded, onClose]);
 
+  const lorebookActions = !loading && (
+    <div
+      className="inline-flex items-center gap-1.5 min-w-0"
+      data-testid="stitched-timeline-lorebook"
+    >
+      {onCreateLorebook && loreMeter.tierOffer ? (
+        <div className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/25 bg-amber-500/[0.07] pl-2 pr-1.5 py-1">
+          <LorebookTierMenu
+            tierOffer={loreMeter.tierOffer}
+            forceEnable={canCreateLorebook && !loreMeter.tierOffer.canCreateAny}
+            onSelectForm={(form) =>
+              onCreateLorebook({ form, offer: loreOffer, meter: loreMeter })
+            }
+            subjectLabel={title}
+            testId="stitched-timeline-lorebook-tier-menu"
+          />
+          <LorebookContentMeter meter={loreMeter} />
+        </div>
+      ) : (
+        <div
+          className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/20 bg-amber-500/[0.07] px-2 py-1"
+          title={loreOffer.reason}
+        >
+          <BookMarked className="h-3.5 w-3.5 text-amber-300/80" aria-hidden="true" />
+          <span className="text-[11px] text-amber-100/80 font-medium">Compiler</span>
+          <LorebookContentMeter meter={loreMeter} />
+        </div>
+      )}
+    </div>
+  );
+
+  const chatActions = !loading && (
+    <div className="flex flex-col gap-1 min-w-0" data-testid="stitched-timeline-chat">
+      <button
+        type="button"
+        onClick={() => continueInChat()}
+        className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-cyan-400/25 bg-cyan-500/10 px-2.5 py-1.5 text-[11px] font-medium tracking-wide text-cyan-100/90 hover:bg-cyan-500/18 hover:border-cyan-400/40 touch-manipulation transition-colors"
+        data-testid="stitched-timeline-continue-chat"
+        title="Open main chat focused on this chapter"
+      >
+        <MessageCircle className="h-3.5 w-3.5 shrink-0 opacity-90" />
+        Continue in chat
+      </button>
+      <div className="flex flex-col gap-0.5">
+        {followUps.slice(0, 3).map((prompt) => (
+          <button
+            key={prompt}
+            type="button"
+            onClick={() => continueInChat(prompt)}
+            className="w-full rounded-md px-2 py-1 text-left text-[10px] leading-snug text-white/40 hover:bg-white/[0.04] hover:text-cyan-100/80 touch-manipulation transition-colors"
+            data-testid="stitched-timeline-followup"
+          >
+            {prompt}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const headerTools = !loading && (
+    <div className="mt-3 w-full max-w-[15.5rem] sm:max-w-[16.5rem]">
+      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className="flex flex-col gap-2">
+          {lorebookActions}
+          <div className="h-px bg-white/8" aria-hidden="true" />
+          {chatActions}
+        </div>
+      </div>
+    </div>
+  );
+
   const content = (
     <div
       className={shell}
@@ -130,50 +263,54 @@ export const TimelineStitchedView = ({
       data-testid={embedded ? 'timeline-stitched-embedded-view' : 'timeline-stitched-overlay'}
     >
       {!hideHeader && (
-        <div className={`flex-shrink-0 flex items-start justify-between gap-3 border-b border-white/10 ${embedded ? 'px-3 py-3 sm:px-6 sm:py-4' : 'px-4 py-4 sm:px-6'}`}>
-          <div className="min-w-0">
-            {!embedded && (
-              <div className="flex items-center gap-2 text-primary/80 mb-1">
-                <Layers className="h-4 w-4" />
-                <span className="text-[10px] uppercase tracking-widest font-mono">Stitched timeline</span>
-              </div>
+        <div className={`flex-shrink-0 border-b border-white/10 ${embedded ? 'px-3 py-3 sm:px-6 sm:py-4' : 'px-4 py-4 sm:px-6'}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              {!embedded && (
+                <div className="flex items-center gap-2 text-primary/80 mb-1">
+                  <Layers className="h-4 w-4" />
+                  <span className="text-[10px] uppercase tracking-widest font-mono">Stitched timeline</span>
+                </div>
+              )}
+              <h2 className={`font-semibold text-white truncate ${embedded ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'}`}>{title}</h2>
+              <p className="text-[11px] sm:text-xs text-white/40 mt-0.5">
+                {loading
+                  ? 'Loading…'
+                  : `${items.length} item${items.length !== 1 ? 's' : ''}${embedded ? '' : ' · moments & events woven together'}`}
+                {data?.has_user_order && !loading && ' · custom order saved'}
+                {!loading && (data?.excluded_count ?? 0) > 0 && (
+                  <span
+                    className="text-white/25"
+                    title="Items from the same period that belong to other stories were left out of this scene"
+                  >
+                    {' '}· {data!.excluded_count} unrelated hidden
+                  </span>
+                )}
+                {!loading && (data?.merge_log?.length ?? 0) > 0 && (
+                  <span
+                    className="text-white/25"
+                    title={data!.merge_log!
+                      .map((m) => `${m.canonical_title} ← ${m.merged_titles.join(' · ')}`)
+                      .join('\n')}
+                  >
+                    {' '}· {data!.merge_log!.length} duplicate{data!.merge_log!.length !== 1 ? 's' : ''} merged
+                  </span>
+                )}
+              </p>
+            </div>
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl border border-white/10 text-white/50 active:bg-white/10"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
             )}
-            <h2 className={`font-semibold text-white truncate ${embedded ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'}`}>{title}</h2>
-            <p className="text-[11px] sm:text-xs text-white/40 mt-0.5">
-              {loading
-                ? 'Loading…'
-                : `${items.length} item${items.length !== 1 ? 's' : ''}${embedded ? '' : ' · moments & events woven together'}`}
-              {data?.has_user_order && !loading && ' · custom order saved'}
-              {!loading && (data?.excluded_count ?? 0) > 0 && (
-                <span
-                  className="text-white/25"
-                  title="Items from the same period that belong to other stories were left out of this scene"
-                >
-                  {' '}· {data!.excluded_count} unrelated hidden
-                </span>
-              )}
-              {!loading && (data?.merge_log?.length ?? 0) > 0 && (
-                <span
-                  className="text-white/25"
-                  title={data!.merge_log!
-                    .map((m) => `${m.canonical_title} ← ${m.merged_titles.join(' · ')}`)
-                    .join('\n')}
-                >
-                  {' '}· {data!.merge_log!.length} duplicate{data!.merge_log!.length !== 1 ? 's' : ''} merged
-                </span>
-              )}
-            </p>
           </div>
-          {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              className="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl border border-white/10 text-white/50 active:bg-white/10"
-              aria-label="Close"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          )}
+
+          {!loading && headerTools}
         </div>
       )}
 
@@ -185,6 +322,8 @@ export const TimelineStitchedView = ({
           <div className="py-16 text-center text-white/40 text-sm animate-pulse">Stitching timeline…</div>
         ) : (
           <>
+            {hideHeader && <div className="mb-4">{headerTools}</div>}
+
             {data?.chapter && (
               <section className="mb-5 rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/12 via-white/[0.03] to-transparent px-4 py-4 sm:px-5">
                 <div className="flex items-start justify-between gap-3">
@@ -234,8 +373,6 @@ export const TimelineStitchedView = ({
               onSaveOrder={persistOrder}
             />
 
-            {/* Persistent-state facts from the same period — context that
-                shapes the scene without being part of it. */}
             {((data?.background?.length ?? 0) > 0 || (data?.chapter?.backgroundContext.length ?? 0) > 0) && (
               <section className="mt-6 rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-3">
                 <h3 className="text-[11px] uppercase tracking-widest font-mono text-white/35 mb-2">

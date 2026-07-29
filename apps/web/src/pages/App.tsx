@@ -292,7 +292,19 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
     'discovery',
     'quests',
   ]);
+  // App copyright footer only on document-style pages. Books and dense boards
+  // have their own chrome; mounting Footer there floats it mid-viewport.
+  const FOOTER_SURFACES = new Set<SurfaceKey>([
+    'home',
+    'guide',
+    'subscription',
+    'pricing',
+    'security',
+    'privacy-settings',
+    'privacy-policy',
+  ]);
   const isViewportLocked = VIEWPORT_LOCKED_SURFACES.has(activeSurface);
+  const showAppFooter = FOOTER_SURFACES.has(activeSurface);
   const isHome = activeSurface === 'home';
   const isGuide = activeSurface === 'guide';
   /** Book-style pages scroll inside <main> so the demo banner does not clip content. */
@@ -577,7 +589,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
           }}
         />
 
-        {!VIEWPORT_LOCKED_SURFACES.has(activeSurface) && <Footer />}
+        {showAppFooter && <Footer />}
       </main>
       </div>
       <ModeBadge />

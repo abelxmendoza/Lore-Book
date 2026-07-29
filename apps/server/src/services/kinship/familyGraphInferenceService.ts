@@ -17,6 +17,8 @@ import {
 import { applyKinshipSexInference } from './applyKinshipSexInference';
 import { familySurnameSuggestionService } from './familySurnameSuggestionService';
 import { applyKinshipLabelToCharacter, upsertBidirectionalFamilyEdge } from './familyEdgeWriter';
+import { deriveHouseholdMembers } from './householdFromTreeService';
+import { familyGroupSyncService } from '../familyGroupSyncService';
 
 type CharacterRow = { id: string; name: string; metadata?: Record<string, unknown> | null };
 
@@ -270,41 +272,75 @@ export class FamilyGraphInferenceService {
       .ilike('name', proposedName)
       .limit(1);
 
+    let orgId: string | undefined;
     if (existing?.[0]) {
-      const orgId = existing[0].id as string;
-      await this.linkMembersToOrg(userId, orgId, members.map((m) => m.id));
-      return orgId;
+      orgId = existing[0].id as string;
+      await this.linkMembersToOrg(userId, orgId, members);
+    } else {
+      try {
+        const org = await organizationService.createOrganization(userId, {
+          name: proposedName,
+          type: 'family',
+          description: `Inferred from: ${context.slice(0, 200)}`,
+          metadata: {
+            inferred: true,
+            inference_source: 'kinship_graph',
+            source_message_id: messageId,
+            member_character_ids: members.map((m) => m.id),
+            head_of_household: members[0]?.name,
+          },
+        });
+        orgId = org.id;
+        await this.linkMembersToOrg(userId, orgId, members);
+      } catch (err) {
+        logger.warn({ err, userId }, 'Family group auto-create failed');
+        return undefined;
+      }
     }
 
+    await this.expandHouseholdFromTree(userId, orgId, members.map((m) => m.id));
+    return orgId;
+  }
+
+  /**
+   * After the literally-mentioned members are linked, pull in whoever the
+   * Family Tree already knows belongs to the same household (spouse, kids,
+   * pets) so the roster reflects more than just one chat message.
+   */
+  private async expandHouseholdFromTree(
+    userId: string,
+    orgId: string,
+    anchorCharacterIds: string[]
+  ): Promise<void> {
     try {
-      const org = await organizationService.createOrganization(userId, {
-        name: proposedName,
-        type: 'family',
-        description: `Inferred from: ${context.slice(0, 200)}`,
-        metadata: {
-          inferred: true,
-          inference_source: 'kinship_graph',
-          source_message_id: messageId,
-          member_character_ids: members.map((m) => m.id),
-          head_of_household: members[0]?.name,
-        },
-      });
-      await this.linkMembersToOrg(userId, org.id, members.map((m) => m.id));
-      return org.id;
+      const householdMembers = await deriveHouseholdMembers(userId, anchorCharacterIds);
+      for (const hm of householdMembers) {
+        await organizationService
+          .addMember(userId, orgId, {
+            character_id: hm.characterId,
+            character_name: hm.name,
+            role: hm.role,
+            status: 'active',
+            notes: '[inferred from family tree]',
+          })
+          .catch(() => {});
+      }
+      await familyGroupSyncService.syncGroup(userId, orgId);
     } catch (err) {
-      logger.warn({ err, userId }, 'Family group auto-create failed');
-      return undefined;
+      logger.debug({ err, userId, orgId }, 'expandHouseholdFromTree failed (non-fatal)');
     }
   }
 
-  private async linkMembersToOrg(userId: string, orgId: string, characterIds: string[]): Promise<void> {
-    for (const characterId of characterIds) {
-      await supabaseAdmin
-        .from('character_organizations')
-        .upsert(
-          { user_id: userId, character_id: characterId, organization_id: orgId, role: 'member' },
-          { onConflict: 'character_id,organization_id', ignoreDuplicates: true }
-        )
+  private async linkMembersToOrg(userId: string, orgId: string, members: CharacterRow[]): Promise<void> {
+    for (const member of members) {
+      await organizationService
+        .addMember(userId, orgId, {
+          character_id: member.id,
+          character_name: member.name,
+          role: 'member',
+          status: 'active',
+          notes: '[inferred from chat]',
+        })
         .catch(() => {});
     }
   }

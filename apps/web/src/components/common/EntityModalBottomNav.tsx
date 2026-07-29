@@ -35,12 +35,15 @@ type Props<T extends string> = {
 
 /**
  * Mobile-only bottom tab bar shared by every entity detail modal (Character,
- * Organization, Location, Skill, Project). Desktop keeps each modal's own top
- * nav; this is purely the mobile layout.
+ * Organization, Location, Skill, Project, Dating & Romance). Desktop keeps
+ * each modal's own top nav; this is purely the mobile layout.
  *
  * Always a single horizontally scrollable row — multi-row grids underflow
  * into the home indicator / past the modal bottom once tab counts grow.
  * Destructive actions stay on a pinned strip under the row.
+ *
+ * Mount as a full-bleed sibling under the padded scroll body (not inside
+ * horizontal padding) so the bar covers the modal bottom edge-to-edge.
  */
 export function EntityModalBottomNav<T extends string>({
   tabs,
@@ -54,14 +57,33 @@ export function EntityModalBottomNav<T extends string>({
 
   useEffect(() => {
     if (!activeTab || !scrollerRef.current) return;
-    const el = scrollerRef.current.querySelector<HTMLElement>(`[data-tab-key="${CSS.escape(String(activeTab))}"]`);
-    el?.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' });
+    const key = String(activeTab);
+    const escaped =
+      typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(key)
+        : key.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const el = scrollerRef.current.querySelector(`[data-tab-key="${escaped}"]`);
+    // jsdom (and some embeds) expose Element without scrollIntoView — optional
+    // chaining only guards a null node, not a missing method.
+    if (el && typeof (el as HTMLElement).scrollIntoView === 'function') {
+      (el as HTMLElement).scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' });
+      return;
+    }
+    if (el instanceof HTMLElement) {
+      const scroller = scrollerRef.current;
+      const left = el.offsetLeft - scroller.clientWidth / 2 + el.clientWidth / 2;
+      if (typeof scroller.scrollTo === 'function') {
+        scroller.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
+      } else {
+        scroller.scrollLeft = Math.max(0, left);
+      }
+    }
   }, [activeTab]);
 
   return (
     <nav
       className={cn(
-        'flex-shrink-0 border-t border-white/10 bg-black/95 backdrop-blur-md z-20',
+        'w-full flex-shrink-0 border-t border-white/10 bg-black/95 backdrop-blur-md z-20',
         breakpoint === 'md' ? 'md:hidden' : 'sm:hidden'
       )}
       style={{ paddingBottom: 'max(1.25rem, calc(env(safe-area-inset-bottom, 0px) + 0.75rem))' }}
@@ -69,7 +91,7 @@ export function EntityModalBottomNav<T extends string>({
     >
       <div
         ref={scrollerRef}
-        className="flex items-stretch gap-0.5 overflow-x-auto overscroll-x-contain scrollbar-none px-1.5 pt-1 pb-0.5 [-webkit-overflow-scrolling:touch]"
+        className="flex w-full items-stretch gap-0.5 overflow-x-auto overscroll-x-contain scrollbar-none px-1.5 pt-1 pb-0.5 [-webkit-overflow-scrolling:touch]"
         role="tablist"
       >
         {tabs.map((tab) => {

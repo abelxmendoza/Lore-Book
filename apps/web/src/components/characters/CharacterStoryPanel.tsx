@@ -13,6 +13,8 @@ import {
   Copy,
   ExternalLink,
   Eye,
+  Heart,
+  Link2,
   Loader2,
   RefreshCw,
   Search,
@@ -22,6 +24,7 @@ import {
 import { format, parseISO } from 'date-fns';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { Card, CardContent } from '../ui/card';
 import { fetchJson } from '../../lib/api';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { sortTimelineEventsChronologically } from '../../lib/timelineSort';
@@ -70,6 +73,8 @@ interface Props {
   stageHistory?: RelationshipStage[];
   onSelectMemory?: (memory: MemoryCard) => void;
   onOpenPerceptions?: () => void;
+  /** Open Dating & Romance intimacy arc for this person (when a romantic relationship exists). */
+  onOpenDatingArc?: () => void;
 }
 
 function fmtEventDate(iso: string): string {
@@ -112,6 +117,7 @@ export function CharacterStoryPanel({
   stageHistory = [],
   onSelectMemory,
   onOpenPerceptions,
+  onOpenDatingArc,
 }: Props) {
   const firstName = shortDisplayName(characterName);
   const withLabel = isSelfProfile ? 'With others' : 'With you';
@@ -354,6 +360,33 @@ export function CharacterStoryPanel({
 
   return (
     <div className="min-w-0 max-w-full space-y-4" data-testid="character-story-panel">
+      {!isSelfProfile && onOpenDatingArc && (
+        <Card className="border-pink-500/25 bg-gradient-to-r from-pink-950/30 via-purple-950/20 to-black/40">
+          <CardContent className="p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex items-start gap-2.5 min-w-0 flex-1">
+              <Heart className="w-4 h-4 sm:w-5 sm:h-5 text-pink-400 shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <h3 className="text-sm sm:text-base font-semibold text-white">Life chronology</h3>
+                <p className="text-xs sm:text-sm text-white/55 mt-0.5 leading-relaxed">
+                  Events and memories about {firstName} — separate from your dating intimacy arc with them.
+                </p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onOpenDatingArc}
+              data-testid="open-dating-romance-timeline"
+              className="w-full sm:w-auto shrink-0 border-pink-500/30 text-pink-200 hover:bg-pink-500/10 hover:text-pink-100"
+            >
+              <Link2 className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+              Dating arc with you
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="flex flex-wrap items-center gap-2 justify-end">
         {chronologicalEvents.length > 0 && (
           <Button

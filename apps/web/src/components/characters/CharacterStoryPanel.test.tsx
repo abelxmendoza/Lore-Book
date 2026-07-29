@@ -162,4 +162,22 @@ describe('CharacterStoryPanel', () => {
     expect(screen.getByText('acquaintance')).toBeInTheDocument();
     expect(screen.getByText('close')).toBeInTheDocument();
   });
+
+  it('offers Dating arc CTA when onOpenDatingArc is provided', async () => {
+    const onOpenDatingArc = vi.fn();
+    render(
+      <MemoryRouter>
+        <CharacterStoryPanel
+          characterId="c1"
+          characterName="Alex"
+          active
+          onOpenDatingArc={onOpenDatingArc}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('open-dating-romance-timeline')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('open-dating-romance-timeline'));
+    expect(onOpenDatingArc).toHaveBeenCalledTimes(1);
+  });
 });

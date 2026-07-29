@@ -798,8 +798,12 @@ class OmegaChatService {
       chatFocus.sourceSurface === 'events' || chatFocus.entityType === 'event'
         ? ' The user already saved this Life Log event. Do not create a duplicate. Read any attached flyer/photos, extract people/places/groups/what happened from evidence only, and enrich timelines plus related knowledge bases for this existing event.'
         : '';
+    const timelineNote =
+      chatFocus.sourceSurface === 'timeline'
+        ? ' The user opened chat from a stitched Omni Timeline chapter. Treat the focus name and knowledge scope as the chapter’s working knowledge base: help them explore scenes, ask clarifying questions, and connect people/places/projects/skills that belong to this arc. Prefer evidence from their memories over invention. Call out gaps that would unlock a vignette or LoreBook compile, and propose durable connections when the user affirms them (Living Memory review before canon for high-risk claims).'
+        : '';
     return `\n\n**USER NAVIGATION FOCUS**
-The user opened chat from **${chatFocus.sourceLabel}** (${chatFocus.sourceSurface}), actively focusing on **${chatFocus.entityName}**.${relationshipLine}${scopeLine}${deepening}${loveNote}${organizationNote}${eventNote}
+The user opened chat from **${chatFocus.sourceLabel}** (${chatFocus.sourceSurface}), actively focusing on **${chatFocus.entityName}**.${relationshipLine}${scopeLine}${deepening}${loveNote}${organizationNote}${eventNote}${timelineNote}
 When updating relationship analytics or emotional signals from this thread, weight this focus context heavily.`;
   }
 

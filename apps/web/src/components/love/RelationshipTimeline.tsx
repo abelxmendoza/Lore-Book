@@ -1,13 +1,24 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
+import { useMemo, useState } from 'react';
 import { Calendar, Heart, MapPin, TrendingUp, TrendingDown, Link2, Sparkles, Flame } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { TimelineInlineDate } from '../timeline/TimelineDateDisplay';
 import { openCharacterBookModal } from '../../lib/openCharacterBookModal';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 import { EntityTimelinePanel } from '../common/EntityTimelinePanel';
 import type { SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
+import { RomanceTimelineMomentPanel } from './RomanceTimelineMomentPanel';
+import {
+  buildRomanceTimelineMoment,
+  buildRomanceTimelineMomentChatPrompt,
+  intimacyImpactLabel,
+  type RomanceTimelineMoment,
+  type RomanceTimelineRelatedLink,
+} from '../../mocks/romanceTimelineMoment';
 
 type DateEvent = {
   id: string;
@@ -31,15 +42,26 @@ type RelationshipScores = {
   healthScore: number;
   intensityScore: number;
   compatibilityScore?: number;
+  reasons?: {
+    affection?: string;
+    compatibility?: string;
+    health?: string;
+    intensity?: string;
+  };
 };
 
 type RelationshipData = {
   id: string;
   person_id?: string;
+  character_id?: string | null;
+  person_type?: 'character' | 'omega_entity';
   person_name?: string;
   start_date?: string;
   end_date?: string;
   status: string;
+  affection_score?: number;
+  relationship_health?: number;
+  emotional_intensity?: number;
 };
 
 interface RelationshipTimelineProps {
@@ -47,7 +69,12 @@ interface RelationshipTimelineProps {
   dates: DateEvent[];
   relationship: RelationshipData;
   scores?: RelationshipScores;
+  /** When provided, the Character Book CTA is always shown (parent may resolve/link the card). */
   onOpenCharacterTimeline?: () => void;
+  /** Open a related Character Book card (Love surface usually swaps modals in-place). */
+  onOpenPeripheralCharacter?: (characterId: string) => void;
+  /** Close the parent relationship modal before chat handoff. */
+  onCloseParentModal?: () => void;
 }
 
 const formatDateType = (type: string) =>
@@ -64,16 +91,6 @@ const INTIMACY_TYPES = new Set([
   'anniversary',
   'reconciliation',
 ]);
-
-function intimacyImpactLabel(type: string, sentiment?: number, wasPositive?: boolean): string {
-  if (type.includes('breakup') || type.includes('fight') || type.includes('distance')) return 'Strain';
-  if (type.includes('breakup')) return 'Rupture';
-  if (INTIMACY_TYPES.has(type)) return 'Deepening';
-  if (sentiment != null && sentiment >= 0.85) return 'Peak intimacy';
-  if (sentiment != null && sentiment >= 0.6) return 'Connection growth';
-  if (wasPositive === false || (sentiment != null && sentiment < 0.4)) return 'Tension';
-  return 'Connection moment';
-}
 
 function intimacyImpactClass(label: string): string {
   if (label === 'Peak intimacy' || label === 'Deepening' || label === 'Connection growth') {
@@ -100,31 +117,116 @@ function scorePct(value: number): number {
 }
 
 export const RelationshipTimeline = ({
+  relationshipId,
   dates,
   relationship,
   scores,
   onOpenCharacterTimeline,
+  onOpenPeripheralCharacter,
+  onCloseParentModal,
 }: RelationshipTimelineProps) => {
-  const sortedDates = [...dates].sort(
-    (a, b) => new Date(a.date_time).getTime() - new Date(b.date_time).getTime()
+  const [selectedMoment, setSelectedMoment] = useState<RomanceTimelineMoment | null>(null);
+  const personName = relationship.person_name ?? 'this person';
+  const characterBookId =
+    relationship.character_id ??
+    (relationship.person_type === 'character' ? relationship.person_id : null);
+
+  const sortedDates = useMemo(
+    () => [...dates].sort((a, b) => new Date(a.date_time).getTime() - new Date(b.date_time).getTime()),
+    [dates],
   );
 
-  const personName = relationship.person_name ?? 'them';
-  const personId = relationship.person_id;
+  const openMoment = (event: DateEvent) => {
+    setSelectedMoment(
+      buildRomanceTimelineMoment({
+        event,
+        personName,
+        relationshipId,
+        characterId: characterBookId,
+        allEvents: sortedDates,
+      }),
+    );
+  };
+
+  const openMomentById = (momentId: string) => {
+    const event = sortedDates.find((d) => d.id === momentId);
+    if (event) openMoment(event);
+  };
 
   const handleOpenCharacterTimeline = () => {
     if (onOpenCharacterTimeline) {
       onOpenCharacterTimeline();
       return;
     }
-    if (personId) {
-      openCharacterBookModal({ characterId: personId, tab: 'timeline' });
+    if (characterBookId) {
+      openCharacterBookModal({ characterId: characterBookId, tab: 'timeline' });
+    }
+  };
+
+  const canOpenCharacterTimeline = Boolean(characterBookId || onOpenCharacterTimeline);
+
+  const continueInChat = (prompt?: string) => {
+    if (!selectedMoment) return;
+    const moment = selectedMoment;
+    setSelectedMoment(null);
+    onCloseParentModal?.();
+    openChatWithFocus({
+      entityId: relationship.person_id ?? relationshipId,
+      entityName: personName,
+      entityType: 'relationship',
+      relationshipId,
+      relationshipName: personName,
+      sourceSurface: 'love',
+      sourceLabel: CHAT_FOCUS_SOURCE_LABELS.love,
+      knowledgeScope: `intimacy milestone — ${moment.title} with ${personName}`,
+      initialPrompt: prompt?.trim() || buildRomanceTimelineMomentChatPrompt(moment, personName),
+      autoSubmit: true,
+      baseline: {
+        affectionScore: scores ? scorePct(scores.affectionScore) : undefined,
+        healthScore: scores ? scorePct(scores.healthScore) : undefined,
+        connectionScore: scores ? scorePct(scores.intensityScore) : undefined,
+      },
+    });
+  };
+
+  const handleRelated = (link: RomanceTimelineRelatedLink) => {
+    if (link.kind === 'person' && link.characterId) {
+      setSelectedMoment(null);
+      if (onOpenPeripheralCharacter) {
+        onOpenPeripheralCharacter(link.characterId);
+        return;
+      }
+      onCloseParentModal?.();
+      openCharacterBookModal({ characterId: link.characterId, tab: 'info' });
+      return;
+    }
+    if (link.kind === 'bond') {
+      setSelectedMoment(null);
+      return;
     }
   };
 
   const arcPoints = sortedDates.map((d, i) => {
     const sentiment = d.sentiment ?? (d.was_positive ? 0.65 : 0.35);
     return { id: d.id, pct: Math.round(sentiment * 100), index: i };
+  });
+
+  const swimEvents: LoveSwimEvent[] = sortedDates.map((date) => {
+    const isPositive = date.was_positive ?? (date.sentiment != null ? date.sentiment > 0 : true);
+    const impact = intimacyImpactLabel(date.date_type, date.sentiment, isPositive);
+    const laneKey = impact === 'Strain' || impact === 'Tension' || impact === 'Rupture' ? 'strain' : 'growth';
+    return {
+      id: date.id,
+      title: formatDateType(date.date_type),
+      date: date.date_time,
+      laneKey,
+      type: impact,
+      summary: date.description,
+      dateType: date.date_type,
+      location: date.location,
+      sentiment: date.sentiment,
+      isPositive,
+    };
   });
 
   return (
@@ -137,11 +239,11 @@ export const RelationshipTimeline = ({
             <div className="min-w-0">
               <h3 className="text-sm sm:text-base font-semibold text-white">Intimacy & connection arc</h3>
               <p className="text-xs sm:text-sm text-white/55 mt-0.5 leading-relaxed">
-                Milestones here track romantic closeness, vulnerability, and bond shifts with {personName} — not their full life story.
+                Tap a milestone for a summary, connected lore, and a path into main chat to ask more.
               </p>
             </div>
           </div>
-          {personId && (
+          {canOpenCharacterTimeline && (
             <Button
               type="button"
               variant="outline"
@@ -151,7 +253,7 @@ export const RelationshipTimeline = ({
               className="w-full sm:w-auto shrink-0 border-pink-500/30 text-pink-200 hover:bg-pink-500/10 hover:text-pink-100"
             >
               <Link2 className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-              Full timeline in Character Book
+              Full Story timeline
             </Button>
           )}
         </CardContent>
@@ -159,21 +261,27 @@ export const RelationshipTimeline = ({
 
       {/* Current connection scores */}
       {scores && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-3">
           {[
-            { label: 'Affection', value: scores.affectionScore, color: 'text-pink-300' },
-            { label: 'Connection', value: scores.intensityScore, color: 'text-rose-300' },
-            { label: 'Health', value: scores.healthScore, color: 'text-emerald-300' },
+            { label: 'Affection', value: scores.affectionScore, color: 'text-pink-300', reason: scores.reasons?.affection },
+            { label: 'Connection', value: scores.intensityScore, color: 'text-rose-300', reason: scores.reasons?.intensity },
+            { label: 'Health', value: scores.healthScore, color: 'text-emerald-300', reason: scores.reasons?.health },
             ...(scores.compatibilityScore != null
-              ? [{ label: 'Fit', value: scores.compatibilityScore, color: 'text-violet-300' }]
+              ? [{ label: 'Fit', value: scores.compatibilityScore, color: 'text-violet-300', reason: scores.reasons?.compatibility }]
               : []),
           ].map((s) => (
             <div
               key={s.label}
-              className="rounded-lg border border-pink-500/15 bg-black/40 px-2.5 py-2 sm:p-3 text-center"
+              className="rounded-md border border-pink-500/15 bg-black/40 px-2 py-1.5 sm:p-3 text-center min-w-0"
+              title={s.reason}
             >
-              <p className="text-[10px] sm:text-xs text-white/45 uppercase tracking-wide">{s.label}</p>
-              <p className={`text-lg sm:text-xl font-bold tabular-nums ${s.color}`}>{scorePct(s.value)}%</p>
+              <p className="text-[9px] sm:text-xs text-white/45 uppercase tracking-wide leading-none">{s.label}</p>
+              <p className={`text-sm sm:text-xl font-bold tabular-nums leading-tight mt-0.5 ${s.color}`}>{scorePct(s.value)}%</p>
+              {s.reason && (
+                <p className="mt-0.5 text-[9px] sm:text-[11px] leading-snug text-white/40 line-clamp-2 text-left sm:text-center">
+                  {s.reason}
+                </p>
+              )}
             </div>
           ))}
         </div>
@@ -214,13 +322,21 @@ export const RelationshipTimeline = ({
           <p className="text-[10px] sm:text-xs uppercase tracking-wider text-white/40 mb-2">Connection intensity over time</p>
           <div className="flex items-end gap-1 h-12 sm:h-14">
             {arcPoints.map((pt) => (
-              <div key={pt.id} className="flex-1 flex flex-col items-center gap-1 min-w-0">
+              <button
+                key={pt.id}
+                type="button"
+                className="flex-1 flex flex-col items-center gap-1 min-w-0 group"
+                onClick={() => {
+                  const event = sortedDates.find((d) => d.id === pt.id);
+                  if (event) openMoment(event);
+                }}
+                title="Open milestone"
+              >
                 <div
-                  className="w-full max-w-[2rem] mx-auto rounded-t bg-gradient-to-t from-pink-600/80 to-rose-400/90 transition-all"
+                  className="w-full max-w-[2rem] mx-auto rounded-t bg-gradient-to-t from-pink-600/80 to-rose-400/90 transition-all group-hover:from-pink-500 group-hover:to-rose-300"
                   style={{ height: `${Math.max(12, pt.pct)}%` }}
-                  title={`${pt.pct}% warmth`}
                 />
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -230,27 +346,16 @@ export const RelationshipTimeline = ({
       <EntityTimelinePanel<LoveSwimEvent>
         icon={Heart}
         title="Intimacy milestones"
+        subtitle="Tap any moment for summary, connections, and chat"
         lanes={[
           { key: 'growth', label: 'Growth & closeness', accent: 'rose' },
           { key: 'strain', label: 'Strain & tension', accent: 'slate' },
         ]}
-        events={sortedDates.map((date): LoveSwimEvent => {
-          const isPositive = date.was_positive ?? (date.sentiment != null ? date.sentiment > 0 : true);
-          const impact = intimacyImpactLabel(date.date_type, date.sentiment, isPositive);
-          const laneKey = impact === 'Strain' || impact === 'Tension' || impact === 'Rupture' ? 'strain' : 'growth';
-          return {
-            id: date.id,
-            title: formatDateType(date.date_type),
-            date: date.date_time,
-            laneKey,
-            type: impact,
-            summary: date.description,
-            dateType: date.date_type,
-            location: date.location,
-            sentiment: date.sentiment,
-            isPositive,
-          };
-        })}
+        events={swimEvents}
+        onEventSelect={(event) => {
+          const full = sortedDates.find((d) => d.id === event.id);
+          if (full) openMoment(full);
+        }}
         emptyTitle="No intimacy milestones yet"
         emptyHint="First dates, deepening moments, and bond shifts appear here as you talk about this relationship in chat."
         renderListItem={(event) => (
@@ -260,50 +365,74 @@ export const RelationshipTimeline = ({
                 event.laneKey === 'strain' ? 'bg-red-400' : 'bg-pink-400'
               }`}
             />
-            <Card className={`w-full min-w-0 border ${getDateColor(event.dateType, event.isPositive)}`}>
-              <CardContent className="p-3 sm:p-4">
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-2">
-                  <div className="flex flex-wrap items-center gap-2 min-w-0">
-                    <TimelineInlineDate iso={event.date} size="sm" showTime={false} />
-                    <Badge
-                      variant="outline"
-                      className={`text-[10px] shrink-0 ${intimacyImpactClass(event.type ?? '')}`}
-                    >
-                      {event.type}
-                    </Badge>
+            <button
+              type="button"
+              onClick={() => {
+                const full = sortedDates.find((d) => d.id === event.id);
+                if (full) openMoment(full);
+              }}
+              data-testid={`romance-timeline-moment-${event.id}`}
+              className="w-full text-left rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400/40"
+            >
+              <Card className={`w-full min-w-0 border transition-colors hover:border-pink-400/40 ${getDateColor(event.dateType, event.isPositive)}`}>
+                <CardContent className="p-3 sm:p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-2">
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
+                      <TimelineInlineDate iso={event.date} size="sm" showTime={false} />
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] shrink-0 ${intimacyImpactClass(event.type ?? '')}`}
+                      >
+                        {event.type}
+                      </Badge>
+                    </div>
+                    {event.sentiment !== undefined && (
+                      <div className="flex items-center gap-1 shrink-0 text-xs text-white/50">
+                        {event.sentiment > 0 ? (
+                          <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                        ) : event.sentiment < 0 ? (
+                          <TrendingDown className="w-3.5 h-3.5 text-red-400" />
+                        ) : null}
+                        <span>Warmth {Math.round(Math.abs(event.sentiment) * 100)}%</span>
+                      </div>
+                    )}
                   </div>
-                  {event.sentiment !== undefined && (
-                    <div className="flex items-center gap-1 shrink-0 text-xs text-white/50">
-                      {event.sentiment > 0 ? (
-                        <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-                      ) : event.sentiment < 0 ? (
-                        <TrendingDown className="w-3.5 h-3.5 text-red-400" />
-                      ) : null}
-                      <span>Warmth {Math.round(Math.abs(event.sentiment) * 100)}%</span>
+
+                  <h4 className="font-semibold text-white text-sm sm:text-base mb-1 break-words">
+                    {event.title}
+                  </h4>
+
+                  {event.location && (
+                    <div className="flex items-center gap-1.5 text-xs text-white/55 mb-1.5">
+                      <MapPin className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{event.location}</span>
                     </div>
                   )}
-                </div>
 
-                <h4 className="font-semibold text-white text-sm sm:text-base mb-1 break-words">
-                  {event.title}
-                </h4>
-
-                {event.location && (
-                  <div className="flex items-center gap-1.5 text-xs text-white/55 mb-1.5">
-                    <MapPin className="w-3 h-3 shrink-0" />
-                    <span className="truncate">{event.location}</span>
-                  </div>
-                )}
-
-                {event.summary && (
-                  <p className="text-xs sm:text-sm text-white/75 leading-relaxed break-words">{event.summary}</p>
-                )}
-              </CardContent>
-            </Card>
+                  {event.summary && (
+                    <p className="text-xs sm:text-sm text-white/75 leading-relaxed break-words line-clamp-3">
+                      {event.summary}
+                    </p>
+                  )}
+                  <p className="text-[10px] text-pink-200/70 mt-2">Open summary →</p>
+                </CardContent>
+              </Card>
+            </button>
           </>
         )}
         footer={null}
       />
+
+      {selectedMoment && (
+        <RomanceTimelineMomentPanel
+          moment={selectedMoment}
+          personName={personName}
+          onClose={() => setSelectedMoment(null)}
+          onContinueInChat={continueInChat}
+          onOpenRelated={handleRelated}
+          onSelectRelatedMoment={openMomentById}
+        />
+      )}
     </div>
   );
 };

@@ -41,6 +41,13 @@ export interface RelationshipEvidence {
   mentionConcentration: number;   // 0..1, this person's mentions vs the user's most-mentioned partner
 }
 
+export type ScoreReasons = {
+  affection: string;
+  compatibility: string;
+  health: string;
+  intensity: string;
+};
+
 export interface RelationshipSignals {
   affection_score: number;
   emotional_intensity: number;
@@ -55,6 +62,8 @@ export interface RelationshipSignals {
   weaknesses: string[];
   evidence_strength: number;        // 0..1 — drives the "Still Learning" UI state
   signal_strength: 'low' | 'moderate' | 'high';
+  /** Short UI blurbs explaining why each percentage landed where it did. */
+  score_reasons: ScoreReasons;
 }
 
 const NO_CONTACT = new Set(['ghosted', 'blocked']);
@@ -186,12 +195,122 @@ export function computeSignals(ev: RelationshipEvidence): RelationshipSignals {
   const signal_strength: RelationshipSignals['signal_strength'] =
     evidence_strength >= 0.6 ? 'high' : evidence_strength >= 0.25 ? 'moderate' : 'low';
 
+  const score_reasons = buildScoreReasons({
+    evidence_strength,
+    positiveRatio,
+    conflictRatio,
+    frequencyScore,
+    recencyScore,
+    durationScore,
+    reciprocation,
+    status,
+    isSituationship: ev.isSituationship,
+    mentionCount: ev.mentionCount,
+    dateCount: ev.dateCount,
+    interactionCount: n,
+    loveReciprocated: ev.loveReciprocated,
+  });
+
   return {
     affection_score, emotional_intensity, compatibility_score, relationship_health, ambiguity_level,
     obsession_score, attachment_intensity,
     green_flags, red_flags, strengths, weaknesses,
     evidence_strength, signal_strength,
+    score_reasons,
   };
+}
+
+/** One short sentence per metric — kept under ~70 chars for mobile cards. */
+function buildScoreReasons(input: {
+  evidence_strength: number;
+  positiveRatio: number;
+  conflictRatio: number;
+  frequencyScore: number;
+  recencyScore: number;
+  durationScore: number;
+  reciprocation: number;
+  status: string;
+  isSituationship: boolean;
+  mentionCount: number;
+  dateCount: number;
+  interactionCount: number;
+  loveReciprocated?: boolean | null;
+}): ScoreReasons {
+  const {
+    evidence_strength,
+    positiveRatio,
+    conflictRatio,
+    frequencyScore,
+    recencyScore,
+    durationScore,
+    reciprocation,
+    status,
+    isSituationship,
+    mentionCount,
+    dateCount,
+    interactionCount,
+    loveReciprocated,
+  } = input;
+
+  let affection: string;
+  if (evidence_strength < 0.25) {
+    affection = 'Still learning — not enough mentions yet';
+  } else if (loveReciprocated === true) {
+    affection = 'Mutual warmth shows up in your story';
+  } else if (positiveRatio >= 0.7 && interactionCount >= 3) {
+    affection = 'Most shared moments read warm and positive';
+  } else if (recencyScore < 0.35) {
+    affection = 'Quiet lately — affection cooling with silence';
+  } else if (frequencyScore >= 0.5) {
+    affection = 'Frequent contact keeps affection elevated';
+  } else {
+    affection = 'Based on how often and warmly you mention them';
+  }
+
+  let compatibility: string;
+  if (isSituationship) {
+    compatibility = 'Undefined setup holds fit below a clear bond';
+  } else if (conflictRatio > 0.4) {
+    compatibility = 'Friction keeps dragging fit downward';
+  } else if (positiveRatio >= 0.7 && conflictRatio < 0.25) {
+    compatibility = 'Positives outweigh conflict in the record';
+  } else if (durationScore >= 0.5) {
+    compatibility = 'Time together supports a steadier fit';
+  } else if (evidence_strength < 0.25) {
+    compatibility = 'Early — fit needs more shared history';
+  } else {
+    compatibility = 'Blend of positivity, conflict, and longevity';
+  }
+
+  let health: string;
+  if (ENDED.has(status) || NO_CONTACT.has(status)) {
+    health = `Status (${status.replace(/_/g, ' ')}) weighs health down`;
+  } else if (status === 'unrequited' || status === 'fading' || status === 'complicated') {
+    health = `${status.replace(/_/g, ' ')} status is pressing on health`;
+  } else if (conflictRatio > 0.4) {
+    health = 'Conflict is pulling relationship health down';
+  } else if (recencyScore > 0.6 && status === 'active') {
+    health = 'Active, recent contact keeps the bond viable';
+  } else if (evidence_strength < 0.25) {
+    health = 'Thin evidence — health stays near neutral';
+  } else {
+    health = 'Viability from contact, reciprocity, and conflict';
+  }
+
+  let intensity: string;
+  if (evidence_strength < 0.25 && mentionCount + dateCount < 3) {
+    intensity = 'Sparse contact keeps connection intensity low';
+  } else if (frequencyScore >= 0.55 && recencyScore >= 0.5) {
+    intensity = 'Lots of recent charged contact';
+  } else if (interactionCount >= 3 && (positiveRatio > 0.7 || conflictRatio > 0.35)) {
+    intensity = 'Emotional swings keep the connection charged';
+  } else if (recencyScore < 0.3) {
+    intensity = 'Connection softens when mentions go quiet';
+  } else {
+    intensity = 'Volume and emotional charge of your contact';
+  }
+
+  return { affection, compatibility, health, intensity };
 }
 
 class RomanticRelationshipScoringService {
@@ -290,6 +409,7 @@ class RomanticRelationshipScoringService {
                 attachment_intensity: s.attachment_intensity,
                 evidence_strength: s.evidence_strength,
                 signal_strength: s.signal_strength,
+                score_reasons: s.score_reasons,
                 scored_at: new Date().toISOString(),
               },
             },
@@ -308,6 +428,169 @@ class RomanticRelationshipScoringService {
       logger.error({ error, userId }, 'Failed to score romantic relationships');
       return { scored: 0 };
     }
+  }
+
+  /**
+   * Score + persist a single relationship from current evidence, then re-rank.
+   * Used when opening a relationship modal so percentages refresh with new
+   * dates / interactions / mentions without waiting for a full user rescan.
+   */
+  async scoreOneForUser(
+    userId: string,
+    relationshipId: string,
+  ): Promise<{ scored: boolean; relationship: Record<string, unknown> | null }> {
+    try {
+      const { data: rel, error } = await supabaseAdmin
+        .from('romantic_relationships')
+        .select('*')
+        .eq('id', relationshipId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (error) {
+        if ((error as { code?: string }).code === 'PGRST205') {
+          return { scored: false, relationship: null };
+        }
+        throw error;
+      }
+      if (!rel) return { scored: false, relationship: null };
+
+      let personName: string | null =
+        (rel.metadata?.partner_name as string | undefined) ?? null;
+      if (rel.person_type === 'character') {
+        const { data: character } = await supabaseAdmin
+          .from('characters')
+          .select('name')
+          .eq('id', rel.person_id)
+          .maybeSingle();
+        personName = character?.name ?? personName;
+      } else {
+        const { data: entity } = await supabaseAdmin
+          .from('omega_entities')
+          .select('name, primary_name')
+          .eq('id', rel.person_id)
+          .maybeSingle();
+        personName = entity?.primary_name ?? entity?.name ?? personName;
+      }
+
+      const [{ data: interactions }, { data: dates }, ms, peerMentions] = await Promise.all([
+        supabaseAdmin
+          .from('romantic_interactions')
+          .select('sentiment, interaction_type')
+          .eq('relationship_id', relationshipId),
+        supabaseAdmin
+          .from('romantic_dates')
+          .select('id')
+          .eq('relationship_id', relationshipId),
+        this.mentionStatsFor(userId, personName),
+        this.maxPeerMentionCount(userId, relationshipId),
+      ]);
+
+      const inter = interactions ?? [];
+      const conflictCount = inter.filter(
+        (i) =>
+          (i.interaction_type ?? '').includes('conflict') ||
+          (i.interaction_type ?? '').includes('argument'),
+      ).length;
+      const maxMentions = Math.max(1, peerMentions, ms.count);
+      const ev: RelationshipEvidence = {
+        status: rel.status ?? 'active',
+        relationshipType: rel.relationship_type ?? 'dating',
+        isCurrent: rel.is_current ?? true,
+        isSituationship: rel.is_situationship ?? false,
+        exclusivityStatus: rel.exclusivity_status,
+        startMs: rel.start_date
+          ? new Date(rel.start_date).getTime()
+          : rel.created_at
+            ? new Date(rel.created_at).getTime()
+            : null,
+        loveReciprocated: rel.love_reciprocated,
+        loveDeclared: Boolean(rel.love_declared_at),
+        mentionCount: ms.count,
+        lastMentionMs: ms.lastMs,
+        interactionSentiments: inter.map((i) => Number(i.sentiment ?? 0)),
+        conflictCount,
+        dateCount: dates?.length ?? 0,
+        mentionConcentration: clamp01(ms.count / maxMentions),
+      };
+      const s = computeSignals(ev);
+
+      const updatePayload = {
+        affection_score: s.affection_score,
+        emotional_intensity: s.emotional_intensity,
+        compatibility_score: s.compatibility_score,
+        relationship_health: s.relationship_health,
+        ambiguity_level: s.ambiguity_level,
+        green_flags: s.green_flags,
+        red_flags: s.red_flags,
+        strengths: s.strengths,
+        weaknesses: s.weaknesses,
+        updated_at: new Date().toISOString(),
+        metadata: {
+          ...(rel.metadata ?? {}),
+          signals: {
+            obsession_score: s.obsession_score,
+            attachment_intensity: s.attachment_intensity,
+            evidence_strength: s.evidence_strength,
+            signal_strength: s.signal_strength,
+            score_reasons: s.score_reasons,
+            scored_at: new Date().toISOString(),
+          },
+        },
+      };
+
+      const { data: updated, error: upErr } = await supabaseAdmin
+        .from('romantic_relationships')
+        .update(updatePayload)
+        .eq('id', relationshipId)
+        .eq('user_id', userId)
+        .select('*')
+        .maybeSingle();
+
+      if (upErr) {
+        logger.warn({ upErr, relationshipId }, 'Failed to persist single relationship score');
+        return { scored: false, relationship: { ...rel, ...updatePayload } };
+      }
+
+      await romanticRelationshipRanking.calculateRankings(userId).catch(() => {});
+      return { scored: true, relationship: updated ?? { ...rel, ...updatePayload } };
+    } catch (error) {
+      logger.error({ error, userId, relationshipId }, 'Failed to score one romantic relationship');
+      return { scored: false, relationship: null };
+    }
+  }
+
+  /** Highest mention count among other romantic partners (for concentration). */
+  private async maxPeerMentionCount(userId: string, excludeRelationshipId: string): Promise<number> {
+    const { data: peers } = await supabaseAdmin
+      .from('romantic_relationships')
+      .select('id, person_id, person_type, metadata')
+      .eq('user_id', userId)
+      .neq('id', excludeRelationshipId)
+      .limit(12);
+    if (!peers?.length) return 0;
+
+    let max = 0;
+    for (const peer of peers) {
+      let name: string | null = (peer.metadata?.partner_name as string | undefined) ?? null;
+      if (peer.person_type === 'character') {
+        const { data: character } = await supabaseAdmin
+          .from('characters')
+          .select('name')
+          .eq('id', peer.person_id)
+          .maybeSingle();
+        name = character?.name ?? name;
+      } else {
+        const { data: entity } = await supabaseAdmin
+          .from('omega_entities')
+          .select('name, primary_name')
+          .eq('id', peer.person_id)
+          .maybeSingle();
+        name = entity?.primary_name ?? entity?.name ?? name;
+      }
+      const stats = await this.mentionStatsFor(userId, name);
+      if (stats.count > max) max = stats.count;
+    }
+    return max;
   }
 
   /** All-time mention count + most-recent mention for a person across journal/chat. */

@@ -190,6 +190,18 @@ const GROUP_TYPE_OPTIONS: Array<{ value: Organization['group_type']; label: stri
   { value: 'event_group', label: 'Event group' },
   { value: 'other', label: 'Other' },
 ];
+const GROUP_TYPE_LABEL_BY_VALUE: Partial<Record<string, string>> = Object.fromEntries(
+  GROUP_TYPE_OPTIONS.map(option => [option.value as string, option.label]),
+);
+/**
+ * No DB column tracks "unset" — group_type defaults to 'other'. We
+ * distinguish "never detected/never set" from a genuine 'other' pick via
+ * metadata.group_type_source: absent or 'user_cleared' means unset.
+ */
+const isGroupTypeUnset = (org: Pick<Organization, 'metadata'>): boolean => {
+  const source = org.metadata?.group_type_source;
+  return !source || source === 'user_cleared';
+};
 const MEMBERSHIP_MODEL_OPTIONS: Array<{ value: Organization['membership_model']; label: string }> = [
   { value: 'strict', label: 'Defined roster' },
   { value: 'fuzzy', label: 'Loose or scene-based' },
@@ -303,6 +315,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const [memberAddError, setMemberAddError] = useState<string | null>(null);
   const [memberAddSuccess, setMemberAddSuccess] = useState<string | null>(null);
   const [memberSaving, setMemberSaving] = useState(false);
+  const [syncingFamilyTree, setSyncingFamilyTree] = useState(false);
   const [showNameOnlyAdd, setShowNameOnlyAdd] = useState(false);
 
   const notifyMembershipChanged = useCallback(
@@ -1425,6 +1438,37 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     }
   };
 
+  /** Pull in spouse/kids/pets the Family Tree already knows about this group's members. */
+  const handleSyncFromFamilyTree = async () => {
+    if (syncingFamilyTree) return;
+    setSyncingFamilyTree(true);
+    setMemberAddError(null);
+    try {
+      if (isMockDataEnabled) {
+        setMemberAddSuccess('Demo mode has no Family Tree to sync from — this works once connected to your real data.');
+        return;
+      }
+      const result = await fetchJson<{ success: boolean; added: number; members: OrganizationMember[] }>(
+        `/api/organizations/${organization.id}/sync-from-family-tree`,
+        { method: 'POST', body: JSON.stringify({}) },
+      );
+      if (result.success) {
+        setMembers(result.members || []);
+        setMemberAddSuccess(
+          result.added > 0
+            ? `Added ${result.added} ${result.added === 1 ? 'person' : 'people'} from the Family Tree.`
+            : "Everyone the Family Tree knows about is already on this group's roster.",
+        );
+        notifyMembershipChanged((result.members || []).map((m) => m.character_id).filter((id): id is string => Boolean(id)));
+      }
+    } catch (error) {
+      console.error('Failed to sync from Family Tree:', error);
+      setMemberAddError(mutationErrorMessage(error) || 'Could not sync from the Family Tree.');
+    } finally {
+      setSyncingFamilyTree(false);
+    }
+  };
+
   /** Open a roster person's Character modal (Key people + People tab). */
   const openMemberCharacter = useCallback(
     async (member: OrganizationMember) => {
@@ -2170,18 +2214,35 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                       <label className="space-y-1.5">
                         <span className={FIELD_LABEL}>Group type</span>
                         <select
-                          value={editedOrg.group_type ?? 'other'}
+                          value={isGroupTypeUnset(editedOrg) ? '' : (editedOrg.group_type ?? 'other')}
                           onChange={e => {
-                            const groupType = e.target.value as Organization['group_type'];
+                            const rawValue = e.target.value;
+                            if (rawValue === '') {
+                              // Explicit clear: reset to the DB default but flag it as
+                              // unset so the UI shows "Not set" and auto-detection is
+                              // free to fill it back in from the next conversation.
+                              setEditedOrg(prev => ({
+                                ...prev,
+                                group_type: 'other' as Organization['group_type'],
+                                type: 'other' as Organization['type'],
+                                metadata: { ...(prev.metadata ?? {}), group_type_source: 'user_cleared' },
+                              }));
+                              return;
+                            }
+                            const groupType = rawValue as Organization['group_type'];
                             const legacyTypes = new Set(['friend_group', 'company', 'sports_team', 'club', 'nonprofit', 'family', 'martial_arts', 'other']);
                             setEditedOrg(prev => ({
                               ...prev,
                               group_type: groupType,
                               type: (legacyTypes.has(groupType) ? groupType : 'other') as Organization['type'],
+                              // A manual pick locks the field: auto-detection from chat
+                              // will never silently overwrite it again.
+                              metadata: { ...(prev.metadata ?? {}), group_type_source: 'user_confirmed' },
                             }));
                           }}
                           className={FIELD_SELECT}
                         >
+                          <option value="">— Not set —</option>
                           {GROUP_TYPE_OPTIONS.map(option => (
                             <option key={option.value} value={option.value}>{option.label}</option>
                           ))}
@@ -2272,9 +2333,22 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                         </p>
                       )}
                       <div className="flex flex-wrap gap-1.5">
-                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/70 capitalize">
-                          {String(editedOrg.group_type ?? editedOrg.type).replace(/_/g, ' ')}
-                        </span>
+                        {isGroupTypeUnset(editedOrg) ? (
+                          <span
+                            className="rounded-full border border-dashed border-white/15 bg-white/[0.02] px-2.5 py-1 text-[11px] text-white/40"
+                            title="LoreBook hasn't detected a group type yet — it'll fill this in as you talk about this group, or you can set it yourself."
+                          >
+                            Type not set
+                          </span>
+                        ) : (
+                          <span
+                            className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/70 capitalize"
+                            title={editedOrg.metadata?.group_type_source === 'user_confirmed' ? 'You set this' : 'Detected from conversation'}
+                          >
+                            {GROUP_TYPE_LABEL_BY_VALUE[String(editedOrg.group_type ?? editedOrg.type)]
+                              ?? String(editedOrg.group_type ?? editedOrg.type).replace(/_/g, ' ')}
+                          </span>
+                        )}
                         <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/70 capitalize">
                           {String(editedOrg.user_relationship ?? 'referenced').replace(/_/g, ' ')}
                         </span>
@@ -2351,15 +2425,35 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                       Roster for {editedOrg.name}
                     </p>
                   </div>
-                  <Button
-                    size="sm"
-                    className="shrink-0 h-9 px-3 text-xs bg-violet-500/20 border border-violet-400/30 text-violet-100 hover:bg-violet-500/30"
-                    onClick={() => void openAddMemberPanel()}
-                    data-testid="org-add-member-toggle"
-                  >
-                    <Plus className="h-3.5 w-3.5 mr-1.5" />
-                    {showAddMember ? 'Close' : 'Add person'}
-                  </Button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {(editedOrg.group_type === 'family' || editedOrg.type === 'family') && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-9 px-3 text-xs border-violet-400/30 text-violet-100 hover:bg-violet-500/15"
+                        onClick={() => void handleSyncFromFamilyTree()}
+                        disabled={syncingFamilyTree}
+                        data-testid="org-sync-family-tree"
+                        title="Pull in spouse, kids, and pets the Family Tree already knows about this group's members"
+                      >
+                        {syncingFamilyTree ? (
+                          <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                        ) : (
+                          <TreePine className="h-3.5 w-3.5 mr-1.5" />
+                        )}
+                        Sync from Family Tree
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      className="h-9 px-3 text-xs bg-violet-500/20 border border-violet-400/30 text-violet-100 hover:bg-violet-500/30"
+                      onClick={() => void openAddMemberPanel()}
+                      data-testid="org-add-member-toggle"
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1.5" />
+                      {showAddMember ? 'Close' : 'Add person'}
+                    </Button>
+                  </div>
                 </div>
 
               {showAddMember && (

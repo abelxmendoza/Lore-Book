@@ -554,16 +554,69 @@
   background: rgba(239, 68, 68, 0.2);
 }
 
-/* ─── Library panel (used via className on component) ─────────────────────── */
+/* ─── Library panel (peer view inside omni-timeline-main) ────────────────── */
 
 .omni-timeline-library {
-  margin: 0.65rem 0.75rem 0;
+  margin: 0;
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+/* Page library must escape the default 560px main-child clamp or cards clip / spill */
+.omni-timeline-main > .omni-timeline-library {
+  height: auto;
+  min-height: min(360px, calc(100dvh - var(--omni-timeline-chrome) - 3.5rem));
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.omni-timeline-root--library {
+  --omni-timeline-chrome: 9.5rem;
+}
+
+.omni-timeline-root--library .omni-timeline-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.omni-timeline-root--library .omni-timeline-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin-bottom: 0.75rem;
+}
+
+.omni-timeline-root--library .omni-timeline-main > .omni-timeline-library {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+}
+
+@media (max-width: 640px) {
+  .omni-timeline-root--library {
+    --omni-timeline-chrome: 12.5rem;
+  }
+
+  .omni-timeline-root--library .omni-timeline-main {
+    margin-left: 0.5rem;
+    margin-right: 0.5rem;
+    margin-bottom: 0.5rem;
+    border-radius: 1rem;
+  }
+
+  .omni-timeline-main > .omni-timeline-library {
+    min-height: 240px;
+  }
 }
 
 @media (min-width: 641px) {
-  .omni-timeline-library {
-    margin-left: 1.5rem;
-    margin-right: 1.5rem;
+  .omni-timeline-root--library {
+    --omni-timeline-chrome: 11rem;
   }
 }
 

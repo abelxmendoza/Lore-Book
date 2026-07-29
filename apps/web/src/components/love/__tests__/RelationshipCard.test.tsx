@@ -29,41 +29,44 @@ describe('RelationshipCard', () => {
     end_date: undefined,
     created_at: '2024-01-01T00:00:00Z',
     rank_among_all: 1,
-    rank_among_active: 1
+    rank_among_active: 1,
   };
 
-  it('renders relationship card', () => {
+  it('renders a clean card with name and demo showcase tag', () => {
     const onClick = vi.fn();
     render(<RelationshipCard relationship={mockRelationship} onClick={onClick} />);
-    
+
     expect(screen.getByText('Alex')).toBeInTheDocument();
-    expect(screen.getByText(/girlfriend/i)).toBeInTheDocument();
+    expect(screen.getByText(/exclusive · active partner/i)).toBeInTheDocument();
+    expect(screen.getByText(/steadiest anchor/i)).toBeInTheDocument();
   });
 
-  it('displays relationship scores', () => {
+  it('shows only the first two demo primary metrics', () => {
     const onClick = vi.fn();
     render(<RelationshipCard relationship={mockRelationship} onClick={onClick} />);
-    // Card shows Compatibility and Health only (not affection)
-    expect(screen.getByText('95%')).toBeInTheDocument(); // compatibility_score
-    expect(screen.getByText('90%')).toBeInTheDocument(); // relationship_health
+    // rel-001 primaryMetrics start with affection + compatibility
+    expect(screen.getByText('92%')).toBeInTheDocument();
+    expect(screen.getByText('95%')).toBeInTheDocument();
+    expect(screen.queryByText('90%')).not.toBeInTheDocument();
   });
 
-  it('displays status badge', () => {
+  it('displays status tone via showcase badge', () => {
     const onClick = vi.fn();
     render(<RelationshipCard relationship={mockRelationship} onClick={onClick} />);
-    
-    expect(screen.getByText(/active/i)).toBeInTheDocument();
+    expect(screen.getByText(/active partner/i)).toBeInTheDocument();
   });
 
   it('displays red flags when present', () => {
     const relationshipWithRedFlags = {
       ...mockRelationship,
+      id: 'rel-unknown',
       red_flags: ['Avoids commitment'],
-      green_flags: [] as string[]
+      green_flags: [] as string[],
     };
     const onClick = vi.fn();
-    const { container } = render(<RelationshipCard relationship={relationshipWithRedFlags} onClick={onClick} />);
-    // Card shows red-flags count, not the full text
+    const { container } = render(
+      <RelationshipCard relationship={relationshipWithRedFlags} onClick={onClick} />,
+    );
     const redBlock = container.querySelector('[class*="text-red-300"]');
     expect(redBlock).toBeInTheDocument();
     expect(redBlock).toHaveTextContent('1');
@@ -72,8 +75,6 @@ describe('RelationshipCard', () => {
   it('displays green flags when present', () => {
     const onClick = vi.fn();
     const { container } = render(<RelationshipCard relationship={mockRelationship} onClick={onClick} />);
-    // Card shows green-flags count; [class*="text-green-300"] also matches the status Badge ("active"),
-    // so find the Flags Summary block whose text is "1" (the count)
     const greenBlocks = container.querySelectorAll('[class*="text-green-300"]');
     const greenFlagsBlock = [...greenBlocks].find((el) => el.textContent?.trim() === '1');
     expect(greenFlagsBlock).toBeDefined();
@@ -82,29 +83,44 @@ describe('RelationshipCard', () => {
   it('calls onClick when clicked', () => {
     const onClick = vi.fn();
     render(<RelationshipCard relationship={mockRelationship} onClick={onClick} />);
-    
-    const card = screen.getByText('Alex').closest('div[class*="cursor-pointer"]');
-    if (card) {
-      card.click();
-      expect(onClick).toHaveBeenCalledTimes(1);
-    }
+
+    const card = screen.getByTestId('relationship-card-rel-001');
+    card.click();
+    expect(onClick).toHaveBeenCalledTimes(1);
   });
 
-  it('displays duration when start_date is provided', () => {
+  it('displays compact duration when start_date is provided', () => {
     const onClick = vi.fn();
     render(<RelationshipCard relationship={mockRelationship} onClick={onClick} />);
-    // Card shows duration value (e.g. "1 years") and start date, not a "duration" label
-    expect(screen.getByText(/\d+ (days|months|years)/)).toBeInTheDocument();
+    expect(screen.getByText(/\d+(d|mo|y)/)).toBeInTheDocument();
   });
 
   it('handles missing person name gracefully', () => {
     const relationshipWithoutName = {
       ...mockRelationship,
-      person_name: undefined
+      id: 'rel-unknown',
+      person_name: undefined,
     };
     const onClick = vi.fn();
     render(<RelationshipCard relationship={relationshipWithoutName} onClick={onClick} />);
-    // Fallback to relationship type; "Boyfriend" appears in h3 and in type line
     expect(screen.getAllByText(/girlfriend/i).length).toBeGreaterThan(0);
+  });
+
+  it('does not dump filter notes or pros/cons counts on the card', () => {
+    const onClick = vi.fn();
+    render(
+      <RelationshipCard
+        relationship={{
+          ...mockRelationship,
+          user_romantic_filter: { note: 'Set your confirmed sex and orientation to filter Dating & Romance.' },
+          pros: ['a', 'b', 'c'],
+          cons: ['x'],
+        }}
+        onClick={onClick}
+      />,
+    );
+    expect(screen.queryByText(/confirmed sex/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Pros:/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Cons:/i)).not.toBeInTheDocument();
   });
 });

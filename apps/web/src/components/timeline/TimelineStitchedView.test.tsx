@@ -14,6 +14,15 @@ vi.mock('../../contexts/EntityModalContext', () => ({
   useEntityModal: () => ({ openMemory: vi.fn() }),
 }));
 
+const openStitchedTimelineChat = vi.fn();
+vi.mock('../../lib/stitchedTimelineChat', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/stitchedTimelineChat')>();
+  return {
+    ...actual,
+    openStitchedTimelineChat: (...args: unknown[]) => openStitchedTimelineChat(...args),
+  };
+});
+
 vi.mock('../../hooks/useStitchedTimeline', () => ({
   useStitchedTimeline: () => ({
     data: {
@@ -39,7 +48,32 @@ vi.mock('../../hooks/useStitchedTimeline', () => ({
         confidence: 0.91,
       },
     },
-    items: [],
+    items: [
+      {
+        id: 'i1',
+        kind: 'event',
+        sourceId: 'build-event',
+        sortTime: '2026-06-03T12:00:00Z',
+        userSortIndex: null,
+        title: 'Building OrbitPad',
+        body: 'Spent the afternoon building OrbitPad with Grandma Nell at her kitchen table.',
+        sourceKind: 'resolved_event',
+        sourceIds: ['build-event'],
+        sourceType: 'event',
+      },
+      {
+        id: 'i2',
+        kind: 'moment',
+        sourceId: 'm1',
+        sortTime: '2026-06-03T18:00:00Z',
+        userSortIndex: null,
+        title: 'Evening walk',
+        body: 'We walked around the block and talked about shipping.',
+        sourceKind: 'journal_entry',
+        sourceIds: ['m1'],
+        sourceType: 'journal',
+      },
+    ],
     loading: false,
     saving: false,
     error: null,
@@ -48,11 +82,16 @@ vi.mock('../../hooks/useStitchedTimeline', () => ({
   }),
 }));
 
+vi.mock('./TimelineReorderableList', () => ({
+  TimelineReorderableList: () => <div data-testid="timeline-reorderable-list" />,
+}));
+
 import { TimelineStitchedView } from './TimelineStitchedView';
 
 afterEach(() => {
   cleanup();
   document.body.style.overflow = '';
+  openStitchedTimelineChat.mockReset();
 });
 
 describe('TimelineStitchedView overlay', () => {
@@ -87,5 +126,32 @@ describe('TimelineStitchedView overlay', () => {
     expect(screen.getByText('What changed')).toBeVisible();
     expect(screen.getByText('OrbitPad development progressed.')).toBeVisible();
     expect(screen.getByText('91')).toBeVisible();
+  });
+
+  it('shows compiler meter and hands off to main chat with chapter context', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(
+      <TimelineStitchedView
+        lifeArcId="arc-1"
+        scopeLabel="Agency Years"
+        onClose={onClose}
+        forceLorebookUnlock
+      />,
+    );
+
+    expect(screen.getByTestId('stitched-timeline-lorebook')).toBeInTheDocument();
+    expect(screen.getByTestId('lorebook-content-meter')).toBeInTheDocument();
+    expect(screen.getByTestId('stitched-timeline-continue-chat')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('stitched-timeline-continue-chat'));
+    expect(openStitchedTimelineChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Agency Years',
+        lifeArcId: 'arc-1',
+        scopeType: 'life_arc',
+      }),
+    );
+    expect(onClose).toHaveBeenCalled();
   });
 });

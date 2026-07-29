@@ -94,12 +94,15 @@ router.post('/query', requireAuth, asyncHandler(async (req: AuthenticatedRequest
 router.patch('/:id', requireAuth, asyncHandler(async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
   const schema = z.object({
+    name: z.string().trim().min(1).max(200).optional(),
     status: z.string().nullable().optional(),
     type: z.string().nullable().optional(),
     description: z.string().nullable().optional(),
     summary: z.string().nullable().optional(),
     tags: z.array(z.string()).optional(),
     importance_score: z.number().optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+    aliases: z.array(z.string().trim().min(1).max(120)).max(20).optional(),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
@@ -107,7 +110,24 @@ router.patch('/:id', requireAuth, asyncHandler(async (req: AuthenticatedRequest,
     return;
   }
   const canonicalId = (await projectMergeService.resolveCanonicalProjectId(userId, String(req.params.id))) ?? String(req.params.id);
-  const project = await projectService.updateProject(userId, canonicalId, parsed.data);
+  const { aliases, metadata, ...rest } = parsed.data;
+  const patch = {
+    ...rest,
+    ...(aliases !== undefined || metadata !== undefined
+      ? {
+          metadata: {
+            ...(metadata ?? {}),
+            ...(aliases !== undefined
+              ? {
+                  aliases: [...new Set(aliases.map((a) => a.trim()).filter(Boolean))],
+                  aliases_source: 'user_confirmed',
+                }
+              : {}),
+          },
+        }
+      : {}),
+  };
+  const project = await projectService.updateProject(userId, canonicalId, patch);
   if (!project) {
     res.status(404).json({ success: false, error: 'Project not found' });
     return;

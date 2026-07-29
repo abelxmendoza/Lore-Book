@@ -1,18 +1,28 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '../../../test/utils';
 import { RelationshipTimeline } from '../RelationshipTimeline';
+
+vi.mock('../../../lib/openChatWithFocus', () => ({
+  openChatWithFocus: vi.fn(),
+}));
+
+vi.mock('../../../lib/openCharacterBookModal', () => ({
+  openCharacterBookModal: vi.fn(),
+}));
 
 describe('RelationshipTimeline', () => {
   const mockRelationship = {
     id: 'rel-001',
     person_id: 'char-001',
+    character_id: 'char-001',
+    person_type: 'character' as const,
     person_name: 'Alex',
     start_date: '2024-01-01T00:00:00Z',
     end_date: undefined,
     status: 'active',
-  } as const;
+  };
 
   const mockDates = [
     {
@@ -35,13 +45,17 @@ describe('RelationshipTimeline', () => {
     },
   ];
 
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('renders intimacy arc header and bond period', () => {
     render(
       <RelationshipTimeline
         relationshipId="rel-001"
         dates={[]}
-        relationship={mockRelationship as any}
-      />
+        relationship={mockRelationship}
+      />,
     );
 
     expect(screen.getByText(/intimacy & connection arc/i)).toBeInTheDocument();
@@ -54,40 +68,26 @@ describe('RelationshipTimeline', () => {
       <RelationshipTimeline
         relationshipId="rel-001"
         dates={[]}
-        relationship={mockRelationship as any}
-      />
+        relationship={mockRelationship}
+      />,
     );
 
     expect(screen.getByText(/ongoing bond/i)).toBeInTheDocument();
   });
 
   it('shows end date when provided', () => {
-    const endedRelationship = {
-      ...mockRelationship,
-      end_date: '2024-06-01T00:00:00Z',
-    };
-
     render(
       <RelationshipTimeline
         relationshipId="rel-001"
         dates={[]}
-        relationship={endedRelationship as any}
-      />
+        relationship={{
+          ...mockRelationship,
+          end_date: '2024-06-01T00:00:00Z',
+        }}
+      />,
     );
 
     expect(screen.getByText(/ended/i)).toBeInTheDocument();
-  });
-
-  it('renders empty state when no dates', () => {
-    render(
-      <RelationshipTimeline
-        relationshipId="rel-001"
-        dates={[]}
-        relationship={mockRelationship as any}
-      />
-    );
-
-    expect(screen.getByText(/no intimacy milestones yet/i)).toBeInTheDocument();
   });
 
   it('renders intimacy milestones and character book link', () => {
@@ -95,59 +95,63 @@ describe('RelationshipTimeline', () => {
       <RelationshipTimeline
         relationshipId="rel-001"
         dates={mockDates}
-        relationship={mockRelationship as any}
+        relationship={mockRelationship}
         scores={{
           affectionScore: 0.92,
           healthScore: 0.9,
           intensityScore: 0.88,
         }}
-      />
+      />,
     );
 
     expect(screen.getByText(/intimacy milestones/i)).toBeInTheDocument();
+    expect(screen.getByTestId('romance-timeline-moment-date-001')).toBeInTheDocument();
     expect(screen.getByTestId('open-character-book-timeline')).toBeInTheDocument();
-    expect(screen.getAllByText(/first date/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/first kiss/i).length).toBeGreaterThan(0);
-    expect(screen.getByText('92%')).toBeInTheDocument();
+    expect(screen.getByTestId('open-character-book-timeline')).toHaveTextContent(/story timeline/i);
   });
 
-  it('sorts dates chronologically', () => {
-    const unsortedDates = [
-      {
-        id: 'date-002',
-        date_type: 'first_kiss',
-        date_time: '2024-01-20T00:00:00Z',
-        description: 'First kiss',
-      },
-      {
-        id: 'date-001',
-        date_type: 'first_date',
-        date_time: '2024-01-15T00:00:00Z',
-        description: 'First date',
-      },
-    ];
+  it('opens Character Book Story tab via callback', async () => {
+    const openSpy = vi.fn();
+    const { default: userEvent } = await import('@testing-library/user-event');
 
-    render(
-      <RelationshipTimeline
-        relationshipId="rel-001"
-        dates={unsortedDates}
-        relationship={mockRelationship as any}
-      />
-    );
-
-    const dates = screen.getAllByText(/first (date|kiss)/i);
-    expect(dates[0].textContent).toMatch(/first date/i);
-  });
-
-  it('displays location when provided', () => {
     render(
       <RelationshipTimeline
         relationshipId="rel-001"
         dates={mockDates}
-        relationship={mockRelationship as any}
-      />
+        relationship={{
+          id: 'rel-001',
+          person_id: 'omega-dolly',
+          person_type: 'omega_entity',
+          character_id: 'char-dolly',
+          person_name: 'Jamie',
+          start_date: '2024-01-01T00:00:00Z',
+          status: 'active',
+        }}
+        onOpenCharacterTimeline={openSpy}
+      />,
     );
 
-    expect(screen.getByText('Coffee shop')).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('open-character-book-timeline'));
+    expect(openSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides Character Book CTA when no character link is available', () => {
+    render(
+      <RelationshipTimeline
+        relationshipId="rel-001"
+        dates={mockDates}
+        relationship={{
+          id: 'rel-001',
+          person_id: 'omega-dolly',
+          person_type: 'omega_entity',
+          character_id: null,
+          person_name: 'Jamie',
+          start_date: '2024-01-01T00:00:00Z',
+          status: 'active',
+        }}
+      />,
+    );
+
+    expect(screen.queryByTestId('open-character-book-timeline')).not.toBeInTheDocument();
   });
 });

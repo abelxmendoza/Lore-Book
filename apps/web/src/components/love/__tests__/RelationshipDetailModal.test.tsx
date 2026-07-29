@@ -146,6 +146,15 @@ describe('RelationshipDetailModal', () => {
     });
   });
 
+  it('shows short reasons under overview score percentages', async () => {
+    const onClose = vi.fn();
+    render(<RelationshipDetailModal relationshipId="rel-001" onClose={onClose} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/warm, positive signals|mutual warmth|based on how often/i)).toBeInTheDocument();
+    });
+  });
+
   it('switches between tabs', async () => {
     const onClose = vi.fn();
     render(<RelationshipDetailModal relationshipId="rel-001" onClose={onClose} />);

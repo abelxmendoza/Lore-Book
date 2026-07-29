@@ -34,7 +34,9 @@ import {
   KnowledgeBaseCreator,
   type LorebookCreatorPrefill,
 } from '../lorebook/KnowledgeBaseCreator';
+import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 import type { ProjectCardData } from './ProjectProfileCard';
+import { projectAliasesForDisplay } from './ProjectProfileCard';
 import {
   ProjectOverviewTab,
   ProjectTimelineTab,
@@ -80,13 +82,21 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
     () => (demo ? enrichProjectForDemo(project) : project),
     [project, demo]
   );
-  const profile = useMemo(
-    () => getProjectDetailProfile(enriched, demo),
-    [enriched, demo]
-  );
 
   const [local, setLocal] = useState(enriched);
+  const [nameDraft, setNameDraft] = useState(enriched.name);
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
+  const profile = useMemo(
+    () => getProjectDetailProfile(local, demo),
+    [local, demo]
+  );
+  const aliases = useMemo(() => projectAliasesForDisplay(local.metadata), [local.metadata]);
+  const projectTierOffer = useMemo(
+    () => evaluateProjectTierOffer(profile, local.name),
+    [profile, local.name],
+  );
+  const canMakeLorebook =
+    projectTierOffer.canCreateAny || projectHasEnoughTimelineForLorebook(profile);
 
   const openInOmniTimeline = (query: string) => {
     onClose();
@@ -100,7 +110,7 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
     const times = profile.milestones
       .map((m) => new Date(m.date).getTime())
       .filter((t) => Number.isFinite(t));
-    const themes = [local.name, local.type, ...(local.tags ?? [])]
+    const themes = [local.name, local.type, ...(local.tags ?? []), ...aliases]
       .filter(Boolean)
       .join(', ');
     const base = {
@@ -127,7 +137,9 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
   };
 
   useEffect(() => {
-    setLocal(demo ? enrichProjectForDemo(project) : project);
+    const next = demo ? enrichProjectForDemo(project) : project;
+    setLocal(next);
+    setNameDraft(next.name);
     setActiveTab('overview');
     setDeleteStep(null);
     setDeleteConfirmText('');
@@ -140,7 +152,10 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
     (async () => {
       try {
         const full = await fetchProjectById(project.id);
-        if (!cancelled) setLocal(full);
+        if (!cancelled) {
+          setLocal(full);
+          setNameDraft(full.name);
+        }
       } catch {
         // Keep seed project from the Book on transient errors.
       }
@@ -157,6 +172,7 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
   const statusCfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.active;
   const typeKey = (local.type ?? 'default').toLowerCase();
   const gradient = TYPE_GRADIENT[typeKey] ?? TYPE_GRADIENT.default;
+  const effectiveDeleteStep = activeTab === 'danger' ? deleteStep ?? 'warn' : deleteStep;
 
   const navTabs = useMemo(() => {
     const list: Array<{ key: TabKey; label: string; short: string; icon: typeof FileText }> = [
@@ -168,9 +184,46 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
     return list;
   }, [canDelete]);
 
-  const save = async (patch: Partial<ProjectCardData>) => {
+  const save = async (patch: Partial<ProjectCardData> & { aliases?: string[] }) => {
     if (readOnly) return;
-    await onPatch(local.id, patch);
+    const { aliases: nextAliases, ...rest } = patch;
+    if (nextAliases) {
+      await onPatch(local.id, {
+        ...rest,
+        metadata: {
+          ...(local.metadata ?? {}),
+          aliases: nextAliases,
+          aliases_source: 'user_confirmed',
+        },
+      });
+      setLocal((prev) => ({
+        ...prev,
+        ...rest,
+        metadata: {
+          ...(prev.metadata ?? {}),
+          aliases: nextAliases,
+          aliases_source: 'user_confirmed',
+        },
+      }));
+      return;
+    }
+    await onPatch(local.id, rest);
+    setLocal((prev) => ({ ...prev, ...rest }));
+  };
+
+  const saveName = async () => {
+    const next = nameDraft.trim();
+    if (!next || next === local.name || readOnly) {
+      setNameDraft(local.name);
+      return;
+    }
+    setLocal((prev) => ({ ...prev, name: next }));
+    await save({ name: next });
+  };
+
+  const saveAliases = async (next: string[]) => {
+    const cleaned = [...new Set(next.map((a) => a.trim()).filter(Boolean))];
+    await save({ aliases: cleaned });
   };
 
   const handleAsk = (prompt: string) => {
@@ -187,7 +240,9 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
   const setTab = (tab: TabKey) => {
     setActiveTab(tab);
     if (tab === 'danger') {
-      setDeleteStep((prev) => prev ?? 'warn');
+      setDeleteStep('warn');
+      setDeleteConfirmText('');
+      setDeleteError(null);
     } else {
       resetDeleteFlow();
     }
@@ -195,6 +250,10 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
 
   const handleDelete = async () => {
     if (deleting || readOnly || !onDelete) return;
+    if (effectiveDeleteStep !== 'type') {
+      setDeleteStep('type');
+      return;
+    }
     if (deleteConfirmText.trim() !== local.name) return;
     setDeleting(true);
     setDeleteError(null);
@@ -216,14 +275,24 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
       >
         {/* Hero — compact on mobile */}
         <div className={`relative shrink-0 border-b border-white/10 bg-gradient-to-br ${gradient}`}>
-          <button
-            type="button"
-            onClick={onClose}
-            className="absolute top-2 right-2 sm:top-3 sm:right-3 text-white/45 hover:text-white p-1.5 rounded-lg hover:bg-white/10 z-10 touch-manipulation"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 flex items-center gap-1.5">
+            <EntityLorebookCompileControl
+              subjectLabel={local.name}
+              tierOffer={projectTierOffer}
+              forceEnable={canMakeLorebook && !projectTierOffer.canCreateAny}
+              autoFetchSignals={false}
+              testId="project-modal-lorebook-compile"
+              className="hidden sm:inline-flex"
+            />
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-white/45 hover:text-white p-1.5 rounded-lg hover:bg-white/10 touch-manipulation"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
 
           {/* Mobile */}
           <div
@@ -245,6 +314,21 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
                   {local.type?.replace(/_/g, ' ') ?? 'Project'}
                   {profile.currentPhase ? ` · ${profile.currentPhase}` : ''}
                 </p>
+                {aliases.length > 0 && (
+                  <p className="text-[10px] text-white/35 truncate mt-0.5">
+                    Also {aliases.slice(0, 2).join(' · ')}
+                    {aliases.length > 2 ? ` +${aliases.length - 2}` : ''}
+                  </p>
+                )}
+                <div className="mt-1.5 sm:hidden">
+                  <EntityLorebookCompileControl
+                    subjectLabel={local.name}
+                    tierOffer={projectTierOffer}
+                    forceEnable={canMakeLorebook && !projectTierOffer.canCreateAny}
+                    autoFetchSignals={false}
+                    testId="project-modal-lorebook-compile-mobile"
+                  />
+                </div>
               </div>
             </div>
             <div className="mt-2">
@@ -272,6 +356,11 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
                     : ''}
                   {profile.currentPhase ? ` · ${profile.currentPhase}` : ''}
                 </p>
+                {aliases.length > 0 && (
+                  <p className="text-xs text-white/40 mt-1 truncate">
+                    Also known as {aliases.join(' · ')}
+                  </p>
+                )}
               </div>
             </div>
             <div className="mt-3">
@@ -318,6 +407,11 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
                 readOnly={readOnly}
                 localDescription={local.description ?? ''}
                 localSummary={(local as { summary?: string }).summary ?? profile.purpose}
+                nameDraft={nameDraft}
+                aliases={aliases}
+                onNameChange={setNameDraft}
+                onNameBlur={() => void saveName()}
+                onAliasesChange={(next) => void saveAliases(next)}
                 onDescriptionChange={(v) => setLocal((p) => ({ ...p, description: v }))}
                 onSummaryChange={(v) => setLocal((p) => ({ ...p, summary: v }))}
                 onDescriptionBlur={() => void save({ description: local.description ?? '' })}
@@ -366,7 +460,7 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
                         <AlertTriangle className="h-5 w-5 text-red-400" />
                       </span>
                       <div className="min-w-0">
-                        {deleteStep === 'warn' && (
+                        {effectiveDeleteStep === 'warn' && (
                           <>
                             <h3 className="text-lg font-semibold text-white">Delete {local.name}?</h3>
                             <p className="text-sm text-white/60 mt-1">
@@ -377,12 +471,13 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
                             </p>
                           </>
                         )}
-                        {deleteStep === 'type' && (
+                        {effectiveDeleteStep === 'type' && (
                           <>
                             <h3 className="text-lg font-semibold text-white">Type the name to confirm</h3>
                             <p className="text-sm text-white/60 mt-1">
                               Enter <span className="font-mono text-red-200">{local.name}</span> to delete this project.
                             </p>
+                            <p className="text-xs text-white/45 mt-2">Step 2 of 2 — name must match exactly.</p>
                             <Input
                               className="mt-3 bg-black/40 border-red-500/20"
                               value={deleteConfirmText}
@@ -406,7 +501,7 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
                       <Button variant="ghost" onClick={() => setTab('overview')} disabled={deleting}>
                         Cancel
                       </Button>
-                      {deleteStep === 'warn' && (
+                      {effectiveDeleteStep === 'warn' && (
                         <Button
                           onClick={() => setDeleteStep('type')}
                           className="bg-red-500/15 hover:bg-red-500/25 text-red-100 border border-red-500/30"
@@ -415,7 +510,7 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
                           Continue
                         </Button>
                       )}
-                      {deleteStep === 'type' && (
+                      {effectiveDeleteStep === 'type' && (
                         <Button
                           onClick={() => void handleDelete()}
                           disabled={deleting || deleteConfirmText.trim() !== local.name}

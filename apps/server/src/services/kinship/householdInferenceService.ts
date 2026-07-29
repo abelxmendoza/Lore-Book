@@ -113,17 +113,13 @@ export class HouseholdInferenceService {
 
       for (const c of chars ?? []) {
         const role = this.classifyHouseholdRole(c.name as string, c.id as string, selfId, headName);
-        await supabaseAdmin
-          .from('character_organizations')
-          .upsert(
-            {
-              user_id: userId,
-              character_id: c.id,
-              organization_id: householdId,
-              role,
-            },
-            { onConflict: 'character_id,organization_id' }
-          )
+        await organizationService
+          .addMember(userId, householdId, {
+            character_id: c.id as string,
+            character_name: c.name as string,
+            role,
+            status: 'active',
+          })
           .catch(() => {});
       }
     }

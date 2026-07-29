@@ -58,6 +58,15 @@ export function normalizeFamilyEdgeType(type: string): string {
     godmother: 'godparent_of',
     godfather: 'godparent_of',
     godparent: 'godparent_of',
+    pet: 'pet_of',
+    dog: 'pet_of',
+    cat: 'pet_of',
+    bird: 'pet_of',
+    fish: 'pet_of',
+    rabbit: 'pet_of',
+    hamster: 'pet_of',
+    reptile: 'pet_of',
+    owner: 'owner_of',
   };
   return aliases[t] ?? t;
 }
@@ -87,6 +96,8 @@ export function inverseFamilyEdgeType(type: string): string | null {
     in_law_of: 'in_law_of',
     godparent_of: 'godchild_of',
     godchild_of: 'godparent_of',
+    pet_of: 'owner_of',
+    owner_of: 'pet_of',
   };
   return map[t] ?? null;
 }

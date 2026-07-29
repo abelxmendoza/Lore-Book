@@ -11,6 +11,8 @@ type TheirConnectionsPanelProps = {
   anchorCharacterId?: string;
   onUpdate?: () => void;
   onCloseModal?: () => void;
+  /** Prefer in-place Character modal (Love surface) over navigating to Character Book. */
+  onOpenPeripheralCharacter?: (characterId: string) => void;
 };
 
 /** Dating & Romance — romantic periphery tab (wraps shared panel). */
@@ -20,14 +22,23 @@ export function TheirConnectionsPanel({
   anchorCharacterId,
   onUpdate,
   onCloseModal,
+  onOpenPeripheralCharacter,
 }: TheirConnectionsPanelProps) {
   const openAnchorNetwork = () => {
     if (!anchorCharacterId) return;
+    if (onOpenPeripheralCharacter) {
+      onOpenPeripheralCharacter(anchorCharacterId);
+      return;
+    }
     onCloseModal?.();
     openCharacterBookModal({ characterId: anchorCharacterId, tab: 'relationships' });
   };
 
   const openPeripheralInBook = (characterId: string) => {
+    if (onOpenPeripheralCharacter) {
+      onOpenPeripheralCharacter(characterId);
+      return;
+    }
     onCloseModal?.();
     openCharacterBookModal({ characterId, tab: 'info' });
   };

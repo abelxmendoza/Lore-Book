@@ -65,14 +65,14 @@ export async function enrichRomanticRelationshipsForUser(
     ),
   ];
 
-  const [charactersResult, entitiesResult] = await Promise.all([
+  const [charactersResult, entitiesResult, linkedByOmegaResult] = await Promise.all([
     characterIds.length > 0
       ? supabaseAdmin
           .from('characters')
           .select('id, name, metadata')
           .eq('user_id', userId)
           .in('id', characterIds)
-      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+      : Promise.resolve({ data: [] as CharacterIdentityRow[] }),
     entityIds.length > 0
       ? supabaseAdmin
           .from('omega_entities')
@@ -80,13 +80,30 @@ export async function enrichRomanticRelationshipsForUser(
           .eq('user_id', userId)
           .in('id', entityIds)
       : Promise.resolve({ data: [] as { id: string; primary_name: string }[] }),
+    // Omega-backed partners often already have a Characters Book card linked via metadata.
+    entityIds.length > 0
+      ? supabaseAdmin
+          .from('characters')
+          .select('id, name, metadata')
+          .eq('user_id', userId)
+          .in('metadata->>omega_entity_id', entityIds)
+      : Promise.resolve({ data: [] as CharacterIdentityRow[] }),
   ]);
 
   const nameByPersonId = new Map<string, string>();
   const characterById = new Map<string, CharacterIdentityRow>();
+  const characterIdByOmegaId = new Map<string, string>();
   for (const row of (charactersResult.data ?? []) as CharacterIdentityRow[]) {
     if (row.name?.trim()) nameByPersonId.set(row.id, row.name.trim());
     characterById.set(row.id, row);
+  }
+  for (const row of (linkedByOmegaResult.data ?? []) as CharacterIdentityRow[]) {
+    const omegaId = (row.metadata as Record<string, unknown> | null | undefined)?.omega_entity_id;
+    if (typeof omegaId === 'string' && omegaId) {
+      characterIdByOmegaId.set(omegaId, row.id);
+      characterById.set(row.id, row);
+      if (row.name?.trim()) nameByPersonId.set(omegaId, row.name.trim());
+    }
   }
   for (const row of entitiesResult.data ?? []) {
     if (row.primary_name?.trim()) nameByPersonId.set(row.id, row.primary_name.trim());
@@ -112,7 +129,11 @@ export async function enrichRomanticRelationshipsForUser(
         nameByPersonId.get(rel.person_id) ??
         (typeof rel.partner_name === 'string' ? rel.partner_name : null) ??
         metadataPartnerName(rel.metadata as Record<string, unknown> | null);
-      const character = rel.person_type === 'character' ? characterById.get(rel.person_id) : undefined;
+      const linkedCharacterId =
+        rel.person_type === 'character'
+          ? rel.person_id
+          : characterIdByOmegaId.get(rel.person_id) ?? null;
+      const character = linkedCharacterId ? characterById.get(linkedCharacterId) : undefined;
       const partnerSex = explicitMetaString(character?.metadata, 'sex') as SexValue | null;
       const orientationReviewed = eligibleSexes != null && partnerSex != null;
       const orientationEligible =
@@ -121,7 +142,7 @@ export async function enrichRomanticRelationshipsForUser(
       return {
         ...rel,
         person_name: fromPerson,
-        character_id: rel.person_type === 'character' ? rel.person_id : null,
+        character_id: linkedCharacterId,
         character_sex: partnerSex,
         user_romantic_filter: {
           user_sex: userSex,

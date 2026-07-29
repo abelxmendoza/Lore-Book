@@ -122,4 +122,16 @@ describe('Sidebar', () => {
     await user.click(chatButtons[0]);
     expect(mockNavigate).toHaveBeenCalledWith('/chat');
   });
+
+  it('nests Timelines Library under Omni Timeline and deep-links to the library view', async () => {
+    const user = userEvent.setup();
+    render(<Sidebar {...defaultProps} />);
+
+    expect(screen.getAllByRole('button', { name: /Open timeline view/i }).length).toBeGreaterThanOrEqual(1);
+    const libraryButtons = screen.getAllByTestId('sidebar-timelines-library');
+    expect(libraryButtons.length).toBeGreaterThanOrEqual(1);
+
+    await user.click(libraryButtons[0]);
+    expect(mockNavigate).toHaveBeenCalledWith('/timeline?view=library');
+  });
 });

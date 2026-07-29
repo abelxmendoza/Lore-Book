@@ -184,8 +184,18 @@ export async function extractAndLogInteraction(
 
     const now = new Date().toISOString();
 
+    // romantic_dates.person_id is NOT NULL — resolve from the relationship row.
+    const { data: relationship } = await supabaseAdmin
+      .from('romantic_relationships')
+      .select('person_id')
+      .eq('id', relationshipId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    const personId =
+      typeof relationship?.person_id === 'string' ? relationship.person_id : null;
+
     // Write to romantic_interactions
-    await supabaseAdmin.from('romantic_interactions').insert({
+    const { error: interactionError } = await supabaseAdmin.from('romantic_interactions').insert({
       user_id:           userId,
       relationship_id:   relationshipId,
       interaction_type:  detected.interactionType,
@@ -195,6 +205,13 @@ export async function extractAndLogInteraction(
       description:       detected.description,
       source_message_id: messageId,
     });
+    if (interactionError) {
+      logger.warn(
+        { err: interactionError, userId, relationshipId },
+        'romanticInteractionExtractor: interaction insert failed'
+      );
+      return;
+    }
 
     logger.debug(
       { userId, relationshipId, type: detected.interactionType, sentiment: detected.sentiment },
@@ -202,12 +219,13 @@ export async function extractAndLogInteraction(
     );
 
     // Write milestone to romantic_dates if applicable and not yet recorded
-    if (detected.milestoneType) {
+    if (detected.milestoneType && personId) {
       const firstTime = await shouldWriteMilestone(userId, relationshipId, detected.milestoneType);
       if (firstTime) {
-        await supabaseAdmin.from('romantic_dates').insert({
+        const { error: dateError } = await supabaseAdmin.from('romantic_dates').insert({
           user_id:           userId,
           relationship_id:   relationshipId,
+          person_id:         personId,
           date_type:         detected.milestoneType,
           date_time:         now,
           description:       detected.description,
@@ -215,12 +233,23 @@ export async function extractAndLogInteraction(
           was_positive:      detected.wasPositive,
           source_message_id: messageId,
         });
-
-        logger.debug(
-          { userId, relationshipId, milestoneType: detected.milestoneType },
-          'romanticInteractionExtractor: logged first-time milestone'
-        );
+        if (dateError) {
+          logger.warn(
+            { err: dateError, userId, relationshipId, milestoneType: detected.milestoneType },
+            'romanticInteractionExtractor: milestone insert failed'
+          );
+        } else {
+          logger.debug(
+            { userId, relationshipId, milestoneType: detected.milestoneType },
+            'romanticInteractionExtractor: logged first-time milestone'
+          );
+        }
       }
+    } else if (detected.milestoneType && !personId) {
+      logger.debug(
+        { userId, relationshipId, milestoneType: detected.milestoneType },
+        'romanticInteractionExtractor: skipped milestone — relationship person_id missing'
+      );
     }
 
     // Auto-analytics: recalculate relationship health after every 3rd interaction.

@@ -24,6 +24,13 @@ type Props = {
   canCreateLorebook?: (timeline: SavedGeneratedTimeline) => LorebookAvailability;
   className?: string;
   defaultExpanded?: boolean;
+  /**
+   * `page` — full Omni Timeline Library view (always visible, empty state).
+   * `strip` — legacy collapsible chrome (unused once Library is a peer view).
+   */
+  variant?: 'page' | 'strip';
+  /** CTA when the library is empty (usually opens Universal Timeline Search). */
+  onGenerateNew?: () => void;
 };
 
 /** Timeline-unique palette (cyan/sky) — distinct from LoreBooks’ violet shelf. */
@@ -82,23 +89,34 @@ export function GeneratedTimelineLibraryPanel({
   canCreateLorebook,
   className = '',
   defaultExpanded = false,
+  variant = 'strip',
+  onGenerateNew,
 }: Props) {
-  const [expanded, setExpanded] = useState(defaultExpanded || timelines.length > 0);
+  const isPage = variant === 'page';
+  const [expanded, setExpanded] = useState(
+    isPage || defaultExpanded || timelines.length > 0,
+  );
 
-  if (timelines.length === 0) return null;
+  if (!isPage && timelines.length === 0) return null;
+
+  const showBody = isPage || expanded;
 
   return (
     <section
       className={[
-        'omni-timeline-library relative overflow-hidden rounded-2xl',
+        'omni-timeline-library relative',
         'border border-cyan-500/20',
         'bg-gradient-to-br from-[#061018] via-black/80 to-[#0a0614]',
         'shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]',
+        isPage
+          ? 'flex flex-col min-h-0 h-full overflow-hidden rounded-[inherit]'
+          : 'overflow-hidden rounded-2xl',
         className,
       ]
         .filter(Boolean)
         .join(' ')}
       data-testid="generated-timeline-library"
+      data-variant={variant}
     >
       <div
         className="pointer-events-none absolute inset-0 opacity-70"
@@ -109,182 +127,260 @@ export function GeneratedTimelineLibraryPanel({
         }}
       />
 
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="relative z-[1] w-full flex items-center justify-between gap-2 px-3.5 py-3 sm:px-4 sm:py-3.5 text-left touch-manipulation hover:bg-white/[0.03] transition-colors"
-        aria-expanded={expanded}
-        data-testid="generated-timeline-library-toggle"
-      >
-        <div className="flex items-center gap-2.5 min-w-0">
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-400/25 bg-cyan-500/10 shrink-0">
-            <Clock3 className="h-4 w-4 text-cyan-300" />
-          </span>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h3
-                className="text-sm sm:text-base font-semibold text-white truncate"
-                style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
-              >
-                Timelines Library
-              </h3>
-              <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full font-mono uppercase tracking-wider text-cyan-200/90 bg-cyan-500/15 border border-cyan-400/30">
-                {timelines.length}
-              </span>
-            </div>
-            <p className="text-[11px] text-white/40 mt-0.5 truncate">
-              Generated timelines you’ve already spun up
-            </p>
-          </div>
-        </div>
-        {expanded ? (
-          <ChevronUp className="h-4 w-4 text-white/40 shrink-0" />
-        ) : (
-          <ChevronDown className="h-4 w-4 text-white/40 shrink-0" />
-        )}
-      </button>
-
-      {expanded && (
-        <div className="relative z-[1] border-t border-white/8 px-3 pb-3.5 pt-3 sm:px-4 sm:pb-4">
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <p className="text-[10px] sm:text-[11px] font-mono uppercase tracking-[0.2em] text-white/35 flex items-center gap-1.5">
-              <Sparkles className="h-3 w-3 text-cyan-400/50" />
-              Your generated timelines
-            </p>
-            <span className="text-[10px] font-mono text-white/25">
-              {timelines.length} saved
+      {isPage ? (
+        <div className="relative z-[1] shrink-0 w-full flex flex-col gap-2.5 px-3 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3 sm:px-5 sm:py-4">
+          <div className="flex items-start gap-2.5 min-w-0">
+            <span className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-cyan-400/25 bg-cyan-500/10 shrink-0 mt-0.5">
+              <Clock3 className="h-4 w-4 text-cyan-300" />
             </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[min(420px,52vh)] overflow-y-auto overscroll-contain pr-0.5">
-            {timelines.map((timeline, index) => {
-              const style = TIMELINE_CARD_STYLES[index % TIMELINE_CARD_STYLES.length]!;
-              const active = timeline.id === activeId;
-              const span = spanLabel(timeline.events);
-              const lore =
-                canCreateLorebook?.(timeline) ??
-                ({
-                  canCreate: false,
-                  reason: 'Open this timeline to check LoreBook readiness.',
-                } satisfies LorebookAvailability);
-
-              return (
-                <article
-                  key={timeline.id}
-                  className={[
-                    'group relative flex items-stretch gap-0 rounded-2xl border overflow-hidden text-left transition-all',
-                    'hover:-translate-y-0.5 hover:shadow-xl',
-                    style.border,
-                    style.glow,
-                    active
-                      ? 'ring-1 ring-cyan-400/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]'
-                      : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ')}
-                  data-testid={`generated-timeline-card-${timeline.id}`}
-                  data-active={active ? 'true' : 'false'}
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3
+                  className="text-base sm:text-lg font-semibold text-white"
+                  style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
                 >
-                  <div
-                    className={`w-12 sm:w-14 shrink-0 bg-gradient-to-b ${style.gradient} flex flex-col items-center justify-center gap-1.5`}
-                  >
-                    <Clock3 className="h-5 w-5 text-white/70" />
-                    {active && (
-                      <span className="h-1.5 w-1.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
-                    )}
-                  </div>
-
-                  <div className="flex-1 min-w-0 bg-white/[0.03] group-hover:bg-white/[0.055] transition-colors px-3.5 py-3.5 sm:px-4">
-                    <div className="min-w-0">
-                      <p
-                        className={`text-[10px] font-mono uppercase tracking-wider mb-1 ${style.accent}`}
-                      >
-                        {timeline.isMock
-                          ? 'Simulated preview'
-                          : active
-                            ? 'Open now'
-                            : 'Generated timeline'}
-                      </p>
-                      <h4
-                        className="text-white font-semibold text-sm sm:text-[15px] leading-snug mb-1 line-clamp-2"
-                        style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
-                      >
-                        {timeline.query}
-                      </h4>
-                      <p className="text-[11px] text-white/40">
-                        {span ?? formatWhen(timeline.updatedAt)}
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2.5 pt-2.5 border-t border-white/8 text-[11px] text-white/35">
-                      <span>
-                        {timeline.events.length} moment
-                        {timeline.events.length !== 1 ? 's' : ''}
-                      </span>
-                      {timeline.arcTitles.length > 0 && (
-                        <>
-                          <span className="text-white/15">·</span>
-                          <span>
-                            {timeline.arcTitles.length} arc
-                            {timeline.arcTitles.length !== 1 ? 's' : ''}
-                          </span>
-                        </>
-                      )}
-                      <span className="text-white/15">·</span>
-                      <span>{formatWhen(timeline.updatedAt)}</span>
-                    </div>
-
-                    {timeline.arcTitles.length > 0 && (
-                      <p className="mt-1.5 text-[10px] text-white/30 line-clamp-1">
-                        {timeline.arcTitles.slice(0, 3).join(' · ')}
-                        {timeline.arcTitles.length > 3
-                          ? ` +${timeline.arcTitles.length - 3}`
-                          : ''}
-                      </p>
-                    )}
-
-                    <div className="flex gap-1.5 mt-3">
-                      <button
-                        type="button"
-                        onClick={() => onOpen(timeline)}
-                        className="flex-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/30 text-cyan-100 text-xs font-medium py-2 transition-colors touch-manipulation"
-                        data-testid={`generated-timeline-open-${timeline.id}`}
-                      >
-                        Open
-                      </button>
-                      {onCreateLorebook && (
-                        <button
-                          type="button"
-                          onClick={() => onCreateLorebook(timeline)}
-                          disabled={!lore.canCreate}
-                          title={lore.reason}
-                          className="flex-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/30 text-amber-100 text-xs font-medium py-2 transition-colors inline-flex items-center justify-center gap-1 touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-amber-500/15"
-                          data-testid={`generated-timeline-lorebook-${timeline.id}`}
-                          aria-label={
-                            lore.canCreate
-                              ? `Make LoreBook from ${timeline.query}`
-                              : `LoreBook not ready: ${lore.reason}`
-                          }
-                        >
-                          <BookMarked className="h-3 w-3" />
-                          LoreBook
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => onRemove(timeline.id)}
-                        className="shrink-0 w-9 rounded-lg bg-white/5 hover:bg-red-500/15 border border-white/10 hover:border-red-400/30 text-white/40 hover:text-red-300 transition-colors inline-flex items-center justify-center touch-manipulation"
-                        aria-label={`Remove ${timeline.query} from library`}
-                        data-testid={`generated-timeline-remove-${timeline.id}`}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
+                  Timelines Library
+                </h3>
+                <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full font-mono uppercase tracking-wider text-cyan-200/90 bg-cyan-500/15 border border-cyan-400/30">
+                  {timelines.length}
+                </span>
+              </div>
+              <p className="text-[11px] sm:text-sm text-white/45 mt-1 leading-relaxed max-w-prose">
+                Generated timeline history — reopen any search you’ve spun up.
+              </p>
+            </div>
           </div>
+          {onGenerateNew && (
+            <button
+              type="button"
+              onClick={onGenerateNew}
+              className="shrink-0 self-stretch sm:self-auto rounded-xl border border-cyan-400/30 bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-100 text-xs font-medium px-3 py-2 transition-colors touch-manipulation"
+              data-testid="generated-timeline-library-new"
+            >
+              Generate new
+            </button>
+          )}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="relative z-[1] w-full flex items-center justify-between gap-2 px-3.5 py-3 sm:px-4 sm:py-3.5 text-left touch-manipulation hover:bg-white/[0.03] transition-colors"
+          aria-expanded={expanded}
+          data-testid="generated-timeline-library-toggle"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-400/25 bg-cyan-500/10 shrink-0">
+              <Clock3 className="h-4 w-4 text-cyan-300" />
+            </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h3
+                  className="text-sm sm:text-base font-semibold text-white truncate"
+                  style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+                >
+                  Timelines Library
+                </h3>
+                <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full font-mono uppercase tracking-wider text-cyan-200/90 bg-cyan-500/15 border border-cyan-400/30">
+                  {timelines.length}
+                </span>
+              </div>
+              <p className="text-[11px] text-white/40 mt-0.5 truncate">
+                Generated timelines you’ve already spun up
+              </p>
+            </div>
+          </div>
+          {expanded ? (
+            <ChevronUp className="h-4 w-4 text-white/40 shrink-0" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-white/40 shrink-0" />
+          )}
+        </button>
+      )}
+
+      {showBody && (
+        <div
+          className={[
+            'relative z-[1] border-t border-white/8 px-3 pb-3 pt-3 sm:px-4 sm:pb-4',
+            isPage
+              ? 'flex-1 min-h-0 overflow-y-auto overscroll-contain'
+              : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
+          {timelines.length === 0 ? (
+            <div
+              className="flex flex-col items-center justify-center text-center gap-3 py-10 sm:py-16 px-3"
+              data-testid="generated-timeline-library-empty"
+            >
+              <Clock3 className="h-9 w-9 sm:h-10 sm:w-10 text-cyan-400/35" />
+              <div className="max-w-sm space-y-1.5">
+                <p className="text-sm font-medium text-white/80">No generated timelines yet</p>
+                <p className="text-xs text-white/45 leading-relaxed">
+                  Search from Omni Timeline (nightlife, a person, a year) and every result is saved here as history you can reopen.
+                </p>
+              </div>
+              {onGenerateNew && (
+                <button
+                  type="button"
+                  onClick={onGenerateNew}
+                  className="mt-1 rounded-xl border border-cyan-400/30 bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-100 text-xs font-medium px-4 py-2.5 transition-colors touch-manipulation"
+                >
+                  Generate your first timeline
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <p className="text-[10px] sm:text-[11px] font-mono uppercase tracking-[0.2em] text-white/35 flex items-center gap-1.5 min-w-0">
+                  <Sparkles className="h-3 w-3 text-cyan-400/50 shrink-0" />
+                  <span className="truncate">Your generated timeline history</span>
+                </p>
+                <span className="text-[10px] font-mono text-white/25 shrink-0">
+                  {timelines.length} saved
+                </span>
+              </div>
+
+              <div
+                className={[
+                  'grid grid-cols-1 md:grid-cols-2 gap-2.5 sm:gap-3',
+                  isPage
+                    ? ''
+                    : 'max-h-[min(420px,52vh)] overflow-y-auto overscroll-contain pr-0.5',
+                ].join(' ')}
+              >
+                {timelines.map((timeline, index) => {
+                  const style = TIMELINE_CARD_STYLES[index % TIMELINE_CARD_STYLES.length]!;
+                  const active = timeline.id === activeId;
+                  const span = spanLabel(timeline.events);
+                  const lore =
+                    canCreateLorebook?.(timeline) ??
+                    ({
+                      canCreate: false,
+                      reason: 'Open this timeline to check LoreBook readiness.',
+                    } satisfies LorebookAvailability);
+
+                  return (
+                    <article
+                      key={timeline.id}
+                      className={[
+                        'group relative flex items-stretch gap-0 rounded-xl sm:rounded-2xl border overflow-hidden text-left transition-all max-w-full',
+                        'hover:-translate-y-0.5 hover:shadow-xl',
+                        style.border,
+                        style.glow,
+                        active
+                          ? 'ring-1 ring-cyan-400/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]'
+                          : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                      data-testid={`generated-timeline-card-${timeline.id}`}
+                      data-active={active ? 'true' : 'false'}
+                    >
+                      <div
+                        className={`w-10 sm:w-14 shrink-0 bg-gradient-to-b ${style.gradient} flex flex-col items-center justify-center gap-1.5`}
+                      >
+                        <Clock3 className="h-4 w-4 sm:h-5 sm:w-5 text-white/70" />
+                        {active && (
+                          <span className="h-1.5 w-1.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0 bg-white/[0.03] group-hover:bg-white/[0.055] transition-colors px-3 py-3 sm:px-4 sm:py-3.5">
+                        <div className="min-w-0">
+                          <p
+                            className={`text-[10px] font-mono uppercase tracking-wider mb-1 ${style.accent}`}
+                          >
+                            {timeline.isMock
+                              ? 'Simulated preview'
+                              : active
+                                ? 'Open now'
+                                : 'Generated timeline'}
+                          </p>
+                          <h4
+                            className="text-white font-semibold text-sm sm:text-[15px] leading-snug mb-1 line-clamp-2 break-words"
+                            style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+                          >
+                            {timeline.query}
+                          </h4>
+                          <p className="text-[11px] text-white/40">
+                            {span ?? formatWhen(timeline.updatedAt)}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2.5 pt-2.5 border-t border-white/8 text-[11px] text-white/35">
+                          <span>
+                            {timeline.events.length} moment
+                            {timeline.events.length !== 1 ? 's' : ''}
+                          </span>
+                          {timeline.arcTitles.length > 0 && (
+                            <>
+                              <span className="text-white/15">·</span>
+                              <span>
+                                {timeline.arcTitles.length} arc
+                                {timeline.arcTitles.length !== 1 ? 's' : ''}
+                              </span>
+                            </>
+                          )}
+                          <span className="text-white/15">·</span>
+                          <span>{formatWhen(timeline.updatedAt)}</span>
+                        </div>
+
+                        {timeline.arcTitles.length > 0 && (
+                          <p className="mt-1.5 text-[10px] text-white/30 line-clamp-1">
+                            {timeline.arcTitles.slice(0, 3).join(' · ')}
+                            {timeline.arcTitles.length > 3
+                              ? ` +${timeline.arcTitles.length - 3}`
+                              : ''}
+                          </p>
+                        )}
+
+                        <div className="flex gap-1.5 mt-3">
+                          <button
+                            type="button"
+                            onClick={() => onOpen(timeline)}
+                            className="flex-1 min-w-0 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/30 text-cyan-100 text-xs font-medium py-2 transition-colors touch-manipulation"
+                            data-testid={`generated-timeline-open-${timeline.id}`}
+                          >
+                            Open
+                          </button>
+                          {onCreateLorebook && (
+                            <button
+                              type="button"
+                              onClick={() => onCreateLorebook(timeline)}
+                              disabled={!lore.canCreate}
+                              title={lore.reason}
+                              className="flex-1 min-w-0 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/30 text-amber-100 text-xs font-medium py-2 transition-colors inline-flex items-center justify-center gap-1 touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-amber-500/15"
+                              data-testid={`generated-timeline-lorebook-${timeline.id}`}
+                              aria-label={
+                                lore.canCreate
+                                  ? `Make LoreBook from ${timeline.query}`
+                                  : `LoreBook not ready: ${lore.reason}`
+                              }
+                            >
+                              <BookMarked className="h-3 w-3 shrink-0" />
+                              <span className="truncate">LoreBook</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => onRemove(timeline.id)}
+                            className="shrink-0 w-9 rounded-lg bg-white/5 hover:bg-red-500/15 border border-white/10 hover:border-red-400/30 text-white/40 hover:text-red-300 transition-colors inline-flex items-center justify-center touch-manipulation"
+                            aria-label={`Remove ${timeline.query} from library`}
+                            data-testid={`generated-timeline-remove-${timeline.id}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
       )}
     </section>

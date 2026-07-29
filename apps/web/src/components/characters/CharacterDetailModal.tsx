@@ -54,6 +54,7 @@ import {
 } from '../../mocks/characterIntelligence';
 import { getMockRomanticRelationshipForCharacter } from '../../mocks/romanticLifeImpact';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import { openDatingRomanceModal } from '../../lib/openDatingRomanceModal';
 import { openChatThreadAtMessage } from '../../lib/chatThreadJump';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
@@ -190,6 +191,8 @@ type CharacterDetailModalProps = {
   /** Deep-link into a specific Info-tab field (e.g. Role from an Unknown chip). */
   initialFocusField?: 'role' | null;
   onInitialFocusFieldHandled?: () => void;
+  /** Open Dating & Romance arc for this character (Love surface usually swaps modals in-place). */
+  onOpenDatingArc?: (relationshipId: string) => void;
 };
 
 type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'timeline' | 'chat' | 'insights' | 'metadata' | 'knowledge' | 'evidence' | 'photos' | 'messages';
@@ -338,6 +341,7 @@ export const CharacterDetailModal = ({
   initialTab,
   initialFocusField = null,
   onInitialFocusFieldHandled,
+  onOpenDatingArc,
 }: CharacterDetailModalProps) => {
   const navigate = useNavigate();
   const { useMockData: isMockDataEnabled } = useMockData();
@@ -1271,7 +1275,7 @@ export const CharacterDetailModal = ({
       setActiveTabState('info');
       return;
     }
-    if (initialTab) setActiveTabState(resolveInitialTab(initialTab));
+    setActiveTabState(resolveInitialTab(initialTab));
   }, [initialTab, initialFocusField, character.id]);
   const askInChat = (prompt: string) => {
     // Never re-inject the retired Maya/correction boilerplate. Empty prompt =
@@ -2745,6 +2749,25 @@ export const CharacterDetailModal = ({
     return getMockRomanticRelationshipForCharacter(editedCharacter.id, editedCharacter.name);
   }, [relationship, isMockDataEnabled, editedCharacter.id, editedCharacter.name]);
 
+  const handleOpenDatingArc = () => {
+    const relationshipId = resolvedRomanticRelationship?.id;
+    if (!relationshipId) {
+      openDatingRomanceModal({ characterId: character.id, tab: 'timeline' });
+      onClose();
+      return;
+    }
+    if (onOpenDatingArc) {
+      onOpenDatingArc(relationshipId);
+      return;
+    }
+    openDatingRomanceModal({
+      relationshipId,
+      characterId: character.id,
+      tab: 'timeline',
+    });
+    onClose();
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-sm overscroll-none"
@@ -3954,6 +3977,11 @@ export const CharacterDetailModal = ({
                 stageHistory={dynamics?.lifecycle?.stage_history ?? []}
                 onSelectMemory={(memory) => setSelectedMemory(memory)}
                 onOpenPerceptions={() => setActiveTab('perceptions')}
+                onOpenDatingArc={
+                  !isMainCharacter && resolvedRomanticRelationship
+                    ? handleOpenDatingArc
+                    : undefined
+                }
               />
             )}
 

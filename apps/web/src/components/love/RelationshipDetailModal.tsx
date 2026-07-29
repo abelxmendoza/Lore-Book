@@ -14,6 +14,7 @@ import {
   getMockRelationshipAnalytics
 } from '../../mocks/romanticRelationships';
 import { EntityModalBottomNav } from '../common/EntityModalBottomNav';
+import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 import { ProsConsView } from './ProsConsView';
 import { RelationshipTimeline } from './RelationshipTimeline';
 import { RelationshipAnalytics } from './RelationshipAnalytics';
@@ -29,24 +30,21 @@ import {
   getRomanticDemoPatterns,
   metricLabel,
   pickMetricValue,
+  type DemoMetricKey,
 } from '../../mocks/romanticDemoProfiles';
+import { pickMetricReason } from '../../lib/relationshipScoreReasons';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 import {
   useDeleteRomanticRelationshipMutation,
   useUpdateRomanticRelationshipMutation,
 } from '../../store/api/entitiesApi';
 
-interface RelationshipDetailModalProps {
-  relationshipId: string;
-  onClose: () => void;
-  onUpdate?: () => void;
-}
-
 type RelationshipData = {
   id: string;
   person_id: string;
   person_type: 'character' | 'omega_entity';
   person_name?: string;
+  character_id?: string | null;
   relationship_type: string;
   status: string;
   is_current: boolean;
@@ -71,6 +69,13 @@ type RelationshipData = {
       attachment_intensity?: number;
       evidence_strength?: number;
       signal_strength?: 'low' | 'moderate' | 'high';
+      score_reasons?: {
+        affection?: string;
+        compatibility?: string;
+        health?: string;
+        intensity?: string;
+      };
+      scored_at?: string;
     };
   } & Record<string, unknown>;
 };
@@ -116,7 +121,28 @@ const RELATIONSHIP_TABS = [
   { value: 'life-impact', label: 'Life Impact', shortLabel: 'Impact', icon: Sparkles },
 ] as const;
 
-export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: RelationshipDetailModalProps) => {
+type RelationshipModalTab = (typeof RELATIONSHIP_TABS)[number]['value'];
+
+interface RelationshipDetailModalProps {
+  relationshipId: string;
+  onClose: () => void;
+  onUpdate?: () => void;
+  /** Open this partner's Character Book Story tab (parent usually opens CharacterDetailModal in-place). */
+  onOpenCharacterTimeline?: (characterId: string | null) => void | Promise<void>;
+  /** Open a Character Book card in-place (Their connections → periphery people). */
+  onOpenPeripheralCharacter?: (characterId: string) => void;
+  /** Open directly on a tab (e.g. from Character Story → Dating arc). */
+  initialTab?: RelationshipModalTab;
+}
+
+export const RelationshipDetailModal = ({
+  relationshipId,
+  onClose,
+  onUpdate,
+  onOpenCharacterTimeline,
+  onOpenPeripheralCharacter,
+  initialTab = 'overview',
+}: RelationshipDetailModalProps) => {
   const { useMockData: shouldUseMockData } = useMockData();
   const [updateRomanticRelationship] = useUpdateRomanticRelationshipMutation();
   const [deleteRomanticRelationship] = useDeleteRomanticRelationshipMutation();
@@ -124,7 +150,7 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
   const [analytics, setAnalytics] = useState<RelationshipAnalyticsData | null>(null);
   const [dates, setDates] = useState<DateEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState<RelationshipModalTab>(initialTab);
   const [drift, setDrift] = useState<any | null>(null);
   const [cycles, setCycles] = useState<any[]>([]);
   const [patternsLoading, setPatternsLoading] = useState(false);
@@ -136,12 +162,16 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
   const [crudError, setCrudError] = useState<string | null>(null);
   const [deleteReason, setDeleteReason] = useState('wrong_person_or_not_real');
   const [deleteReasonNote, setDeleteReasonNote] = useState('');
-
+  const [scoresRefreshing, setScoresRefreshing] = useState(false);
   useEffect(() => {
     loadData();
     setInfluence(null);
     setInfluenceLoaded(false);
   }, [relationshipId, shouldUseMockData]);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [relationshipId, initialTab]);
 
   // Load drift and cycles on-demand when Analytics tab is opened
   const loadPatterns = useCallback(async () => {
@@ -235,7 +265,7 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
       ).catch(() => ({ success: false, relationships: [] }));
 
       const rel = relData.relationships?.find(r => r.id === relationshipId);
-      if (rel && rel.person_name) {
+      if (rel) {
         setRelationship(rel);
       }
 
@@ -255,6 +285,45 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
       if (datesData.success) {
         setDates(datesData.dates || []);
       }
+
+      // Refresh scores from latest dates / interactions / mentions so the
+      // overview percentages stay live (non-blocking after first paint).
+      setScoresRefreshing(true);
+      void fetchJson<{ success: boolean; relationship?: RelationshipData }>(
+        `/api/conversation/romantic-relationships/${relationshipId}/rescore`,
+        { method: 'POST' },
+      )
+        .then((rescored) => {
+          if (!rescored?.success || !rescored.relationship) return;
+          const next = rescored.relationship;
+          setRelationship((prev) => ({
+            ...(prev ?? next),
+            ...next,
+            // Enrichment-only fields — not returned by rescore/DB row.
+            person_name: prev?.person_name ?? next.person_name,
+            character_id: prev?.character_id ?? next.character_id ?? null,
+          }));
+          setAnalytics((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  affectionScore: next.affection_score,
+                  compatibilityScore: next.compatibility_score,
+                  healthScore: next.relationship_health,
+                  intensityScore: next.emotional_intensity,
+                  strengths: next.strengths?.length ? next.strengths : prev.strengths,
+                  weaknesses: next.weaknesses?.length ? next.weaknesses : prev.weaknesses,
+                  redFlags: next.red_flags?.length ? next.red_flags : prev.redFlags,
+                  greenFlags: next.green_flags?.length ? next.green_flags : prev.greenFlags,
+                  calculatedAt: new Date().toISOString(),
+                }
+              : prev,
+          );
+        })
+        .catch(() => {
+          // Non-fatal — keep the last known scores.
+        })
+        .finally(() => setScoresRefreshing(false));
     } catch (error) {
       console.error('Failed to load relationship data:', error);
     } finally {
@@ -362,6 +431,14 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
   }
 
   const displayName = relationship.person_name || formatRelationshipType(relationship.relationship_type);
+  const linkedFromMeta =
+    typeof relationship.metadata?.linked_character_id === 'string'
+      ? relationship.metadata.linked_character_id
+      : null;
+  const timelineCharacterId =
+    relationship.character_id ??
+    linkedFromMeta ??
+    (relationship.person_type === 'character' ? relationship.person_id : null);
   const demoProfile = shouldUseMockData ? getRomanticDemoProfile(relationshipId) : undefined;
   const primaryMetrics = demoProfile?.primaryMetrics ?? (['affection', 'compatibility', 'health', 'intensity'] as const);
   const flagsFirst = demoProfile?.overviewEmphasis === 'flags';
@@ -423,13 +500,38 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
               </Badge>
             </DialogTitle>
           </div>
-          <Button variant="ghost" onClick={onClose} className="p-2 h-9 w-9 sm:h-11 sm:w-11 shrink-0" aria-label="Close">
-            <X className="h-5 w-5" />
-          </Button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <EntityLorebookCompileControl
+              subjectLabel={displayName}
+              focus={
+                timelineCharacterId
+                  ? { characterId: timelineCharacterId, themes: displayName }
+                  : { themes: displayName }
+              }
+              testId="romance-modal-lorebook-compile"
+              className="hidden sm:inline-flex py-0.5 pl-1.5 pr-1.5"
+            />
+            <Button variant="ghost" onClick={onClose} className="p-2 h-9 w-9 sm:h-11 sm:w-11 shrink-0" aria-label="Close">
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
         </DialogHeader>
 
+        <div className="sm:hidden px-4 pt-2">
+          <EntityLorebookCompileControl
+            subjectLabel={displayName}
+            focus={
+              timelineCharacterId
+                ? { characterId: timelineCharacterId, themes: displayName }
+                : { themes: displayName }
+            }
+            testId="romance-modal-lorebook-compile-mobile"
+            className="py-0.5 pl-1.5 pr-1.5"
+          />
+        </div>
+
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden px-4 sm:px-6 pb-4 sm:pb-6">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 min-h-0">
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as RelationshipModalTab)} className="flex flex-col flex-1 min-h-0">
           <TabsList
             className="hidden md:grid w-full max-w-full h-auto shrink-0 md:grid-cols-7 gap-0.5 p-1 bg-black/40 border border-border/50"
             aria-label="Relationship sections"
@@ -473,24 +575,48 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
               />
             )}
 
-            {/* Primary scores — varies per demo persona (not always four boxes) */}
-            <div
-              className={`grid gap-3 sm:gap-4 ${
-                primaryMetrics.length <= 2
-                  ? 'grid-cols-2'
-                  : primaryMetrics.length === 3
-                    ? 'grid-cols-3'
-                    : 'grid-cols-2 md:grid-cols-4'
-              }`}
-            >
-              {primaryMetrics.map((key) => (
-                <div key={key} className="p-3 sm:p-4 rounded-lg border border-pink-500/20 bg-pink-950/10">
-                  <p className="text-[10px] sm:text-xs text-white/50 mb-1">{metricLabel(key)}</p>
-                  <p className={`text-xl sm:text-2xl font-bold ${getScoreColor(pickMetricValue(key, currentAnalytics))}`}>
-                    {Math.round(pickMetricValue(key, currentAnalytics) * 100)}%
-                  </p>
-                </div>
-              ))}
+            {/* Primary scores — compact on mobile; each % carries a short why */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2 px-0.5">
+                <p className="text-[10px] uppercase tracking-wide text-white/40">Bond read</p>
+                {scoresRefreshing && (
+                  <span className="inline-flex items-center gap-1 text-[10px] text-pink-300/70">
+                    <RefreshCw className="h-2.5 w-2.5 animate-spin" />
+                    Updating
+                  </span>
+                )}
+              </div>
+              <div
+                className={`grid gap-1.5 sm:gap-3 ${
+                  primaryMetrics.length <= 2
+                    ? 'grid-cols-2'
+                    : primaryMetrics.length === 3
+                      ? 'grid-cols-3'
+                      : 'grid-cols-2 md:grid-cols-4'
+                }`}
+              >
+                {primaryMetrics.map((key: DemoMetricKey) => {
+                  const value = pickMetricValue(key, currentAnalytics);
+                  const reason = pickMetricReason(key, relationship, currentAnalytics, dates.length);
+                  return (
+                    <div
+                      key={key}
+                      className="rounded-md border border-pink-500/20 bg-pink-950/10 px-2 py-1.5 sm:p-3 min-w-0"
+                      title={reason}
+                    >
+                      <p className="text-[9px] sm:text-xs text-white/50 leading-none mb-0.5 sm:mb-1">
+                        {metricLabel(key)}
+                      </p>
+                      <p className={`text-sm sm:text-2xl font-bold tabular-nums leading-tight ${getScoreColor(value)}`}>
+                        {Math.round(value * 100)}%
+                      </p>
+                      <p className="mt-0.5 sm:mt-1 text-[9px] sm:text-[11px] leading-snug text-white/40 line-clamp-2">
+                        {reason}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Attachment & Dynamics — hidden for thin early-stage demos */}
@@ -502,90 +628,95 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
               const lvl = (v: number) => (v >= 0.66 ? 'High' : v >= 0.4 ? 'Moderate' : 'Low');
               const stillLearning = sig.signal_strength === 'low';
               return (
-                <div className="p-4 rounded-lg border border-border/60 bg-black/40 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-white">Attachment & Dynamics</p>
+                <div className="p-2.5 sm:p-4 rounded-lg border border-border/60 bg-black/40 space-y-2 sm:space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs sm:text-sm font-semibold text-white">Attachment & Dynamics</p>
                     {stillLearning && (
-                      <span className="text-[11px] px-2 py-0.5 rounded-full border border-white/15 bg-white/[0.04] text-white/55">
+                      <span className="text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-0.5 rounded-full border border-white/15 bg-white/[0.04] text-white/55">
                         Still learning
                       </span>
                     )}
                   </div>
                   {/* Attachment intensity bar */}
                   <div>
-                    <div className="flex justify-between text-xs mb-1">
+                    <div className="flex justify-between text-[10px] sm:text-xs mb-1">
                       <span className="text-white/50">Attachment intensity</span>
                       <span className="text-pink-300 font-medium">{lvl(attachment)}</span>
                     </div>
-                    <div className="h-2 bg-white/8 rounded-full overflow-hidden">
+                    <div className="h-1.5 sm:h-2 bg-white/8 rounded-full overflow-hidden">
                       <div className="h-full bg-gradient-to-r from-pink-500 to-rose-400 rounded-full" style={{ width: `${Math.round(attachment * 100)}%` }} />
                     </div>
                   </div>
                   {/* Fixation / obsession signal */}
                   <div>
-                    <div className="flex justify-between text-xs mb-1">
+                    <div className="flex justify-between text-[10px] sm:text-xs mb-1">
                       <span className="text-white/50">Fixation signal</span>
                       <span className={obsession >= 0.6 ? 'text-orange-300 font-medium' : 'text-white/60'}>{lvl(obsession)}</span>
                     </div>
-                    <div className="h-2 bg-white/8 rounded-full overflow-hidden">
+                    <div className="h-1.5 sm:h-2 bg-white/8 rounded-full overflow-hidden">
                       <div className={`h-full rounded-full ${obsession >= 0.6 ? 'bg-orange-500/70' : 'bg-white/25'}`} style={{ width: `${Math.round(obsession * 100)}%` }} />
                     </div>
                     {obsession >= 0.6 && (
-                      <p className="text-[11px] text-orange-300/70 mt-1">Strong fixation — intensity persists more than the connection returns.</p>
+                      <p className="text-[10px] sm:text-[11px] text-orange-300/70 mt-1">Strong fixation — intensity persists more than the connection returns.</p>
                     )}
                   </div>
-                  <p className="text-[10px] text-white/30">A relationship dynamic inferred from your conversations — not a label.</p>
+                  <p className="text-[9px] sm:text-[10px] text-white/30">A relationship dynamic inferred from your conversations — not a label.</p>
                 </div>
               );
             })()}
 
             {/* Status and Dates */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-4 rounded-lg border border-border/60 bg-black/40">
-                <h3 className="text-sm font-semibold text-white mb-3">Status</h3>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-white/70 text-sm">Status:</span>
-                    <Badge variant="outline" className="bg-green-500/20 text-green-300 border-green-500/30">
+            <div className="grid grid-cols-2 gap-1.5 sm:gap-4">
+              <div className="p-2 sm:p-4 rounded-lg border border-border/60 bg-black/40 min-w-0">
+                <h3 className="text-[10px] sm:text-sm font-semibold text-white mb-1.5 sm:mb-3">Status</h3>
+                <div className="space-y-1 sm:space-y-2">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-white/55 text-[10px] sm:text-sm shrink-0">Status</span>
+                    <Badge variant="outline" className="text-[9px] sm:text-xs px-1.5 py-0 bg-green-500/20 text-green-300 border-green-500/30 truncate max-w-[60%]">
                       {relationship.status}
                     </Badge>
                   </div>
                   {relationship.is_situationship && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-white/70 text-sm">Type:</span>
-                      <Badge variant="outline" className="bg-purple-500/20 text-purple-300 border-purple-500/30">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-white/55 text-[10px] sm:text-sm shrink-0">Type</span>
+                      <Badge variant="outline" className="text-[9px] sm:text-xs px-1.5 py-0 bg-purple-500/20 text-purple-300 border-purple-500/30">
                         Situationship
                       </Badge>
                     </div>
                   )}
                   {relationship.exclusivity_status && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-white/70 text-sm">Exclusivity:</span>
-                      <Badge variant="outline">{relationship.exclusivity_status}</Badge>
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-white/55 text-[10px] sm:text-sm shrink-0">Exclusivity</span>
+                      <Badge variant="outline" className="text-[9px] sm:text-xs px-1.5 py-0 truncate max-w-[55%]">
+                        {relationship.exclusivity_status}
+                      </Badge>
                     </div>
                   )}
                 </div>
               </div>
-              <div className="p-4 rounded-lg border border-border/60 bg-black/40">
-                <h3 className="text-sm font-semibold text-white mb-3">Timeline</h3>
-                <div className="space-y-2 text-sm">
+              <div className="p-2 sm:p-4 rounded-lg border border-border/60 bg-black/40 min-w-0">
+                <h3 className="text-[10px] sm:text-sm font-semibold text-white mb-1.5 sm:mb-3">Timeline</h3>
+                <div className="space-y-1 sm:space-y-2 text-[10px] sm:text-sm">
                   {relationship.start_date && (
-                    <div className="flex items-center gap-2 text-white/70">
-                      <Calendar className="w-4 h-4" />
-                      <span>Started: {new Date(relationship.start_date).toLocaleDateString()}</span>
+                    <div className="flex items-center gap-1 sm:gap-2 text-white/70 min-w-0">
+                      <Calendar className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" />
+                      <span className="truncate">Started {new Date(relationship.start_date).toLocaleDateString()}</span>
                     </div>
                   )}
                   {relationship.end_date && (
-                    <div className="flex items-center gap-2 text-white/70">
-                      <Calendar className="w-4 h-4" />
-                      <span>Ended: {new Date(relationship.end_date).toLocaleDateString()}</span>
+                    <div className="flex items-center gap-1 sm:gap-2 text-white/70 min-w-0">
+                      <Calendar className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" />
+                      <span className="truncate">Ended {new Date(relationship.end_date).toLocaleDateString()}</span>
                     </div>
                   )}
                   {!relationship.end_date && relationship.start_date && (
-                    <div className="flex items-center gap-2 text-green-300">
-                      <TrendingUp className="w-4 h-4" />
+                    <div className="flex items-center gap-1 sm:gap-2 text-green-300">
+                      <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" />
                       <span>Ongoing</span>
                     </div>
+                  )}
+                  {!relationship.start_date && !relationship.end_date && (
+                    <p className="text-white/40">No dates yet</p>
                   )}
                 </div>
               </div>
@@ -711,6 +842,8 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
               relationship={{
                 ...relationship,
                 person_id: relationship.person_id,
+                character_id: timelineCharacterId,
+                person_type: relationship.person_type,
                 person_name: displayName,
               }}
               scores={{
@@ -718,12 +851,24 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
                 healthScore: currentAnalytics.healthScore,
                 intensityScore: currentAnalytics.intensityScore,
                 compatibilityScore: currentAnalytics.compatibilityScore,
+                reasons: {
+                  affection: pickMetricReason('affection', relationship, currentAnalytics, dates.length),
+                  compatibility: pickMetricReason('compatibility', relationship, currentAnalytics, dates.length),
+                  health: pickMetricReason('health', relationship, currentAnalytics, dates.length),
+                  intensity: pickMetricReason('intensity', relationship, currentAnalytics, dates.length),
+                },
               }}
-              onOpenCharacterTimeline={() => {
-                if (!relationship.person_id) return;
+              onOpenCharacterTimeline={async () => {
+                if (onOpenCharacterTimeline) {
+                  await onOpenCharacterTimeline(timelineCharacterId);
+                  return;
+                }
+                if (!timelineCharacterId) return;
+                openCharacterBookModal({ characterId: timelineCharacterId, tab: 'timeline' });
                 onClose();
-                openCharacterBookModal({ characterId: relationship.person_id, tab: 'timeline' });
               }}
+              onOpenPeripheralCharacter={onOpenPeripheralCharacter}
+              onCloseParentModal={onClose}
             />
           </TabsContent>
 
@@ -878,9 +1023,13 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
             <TheirConnectionsPanel
               relationshipId={relationshipId}
               anchorName={displayName}
-              anchorCharacterId={relationship.person_id}
+              anchorCharacterId={
+                relationship.character_id ??
+                (relationship.person_type === 'character' ? relationship.person_id : undefined)
+              }
               onCloseModal={onClose}
               onUpdate={onUpdate}
+              onOpenPeripheralCharacter={onOpenPeripheralCharacter}
             />
           </TabsContent>
 

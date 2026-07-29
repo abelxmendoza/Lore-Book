@@ -30,7 +30,7 @@ const timelines: SavedGeneratedTimeline[] = [
 ];
 
 describe('GeneratedTimelineLibraryPanel', () => {
-  it('returns null when library is empty', () => {
+  it('returns null when strip library is empty', () => {
     const { container } = render(
       <GeneratedTimelineLibraryPanel
         timelines={[]}
@@ -39,6 +39,20 @@ describe('GeneratedTimelineLibraryPanel', () => {
       />,
     );
     expect(container.firstChild).toBeNull();
+  });
+
+  it('shows empty state on the Library page variant', () => {
+    render(
+      <GeneratedTimelineLibraryPanel
+        timelines={[]}
+        onOpen={vi.fn()}
+        onRemove={vi.fn()}
+        variant="page"
+        onGenerateNew={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('generated-timeline-library-empty')).toBeInTheDocument();
+    expect(screen.getByText(/No generated timelines yet/i)).toBeInTheDocument();
   });
 
   it('opens a saved timeline from the card action', async () => {
@@ -50,7 +64,7 @@ describe('GeneratedTimelineLibraryPanel', () => {
         timelines={timelines}
         onOpen={onOpen}
         onRemove={vi.fn()}
-        defaultExpanded
+        variant="page"
       />,
     );
 
@@ -68,7 +82,7 @@ describe('GeneratedTimelineLibraryPanel', () => {
         timelines={timelines}
         onOpen={vi.fn()}
         onRemove={onRemove}
-        defaultExpanded
+        variant="page"
       />,
     );
 
@@ -90,7 +104,7 @@ describe('GeneratedTimelineLibraryPanel', () => {
           canCreate: true,
           reason: 'Enough moments to compile a LoreBook.',
         })}
-        defaultExpanded
+        variant="page"
       />,
     );
 
@@ -111,7 +125,7 @@ describe('GeneratedTimelineLibraryPanel', () => {
           canCreate: false,
           reason: 'Need more moments about this subject.',
         })}
-        defaultExpanded
+        variant="page"
       />,
     );
 

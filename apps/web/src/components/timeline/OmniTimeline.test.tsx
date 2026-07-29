@@ -209,6 +209,21 @@ describe('OmniTimeline layout and navigation', () => {
     expect(screen.getByTestId('timeline-calendar-view')).toBeInTheDocument();
   });
 
+  it('opens Timelines Library from ?view=library deep link', () => {
+    renderOmniTimeline('/timeline?view=library');
+    expect(screen.getByTestId('generated-timeline-library')).toBeInTheDocument();
+    expect(screen.getByTestId('generated-timeline-library-empty')).toBeInTheDocument();
+    expect(screen.queryByTestId('universal-timeline-search-desktop')).not.toBeInTheDocument();
+  });
+
+  it('switches to Library from desktop tabs', async () => {
+    const user = userEvent.setup();
+    renderOmniTimeline();
+
+    await user.click(screen.getByRole('tab', { name: /library/i }));
+    expect(screen.getByTestId('generated-timeline-library')).toBeInTheDocument();
+  });
+
   it('opens universal search from ?view=search without treating search as a view tab', () => {
     renderOmniTimeline('/timeline?view=search');
     expect(screen.getByTestId('timeline-swimlanes-view')).toBeInTheDocument();
