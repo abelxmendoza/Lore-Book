@@ -1,10 +1,44 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+
+const fromMock = vi.fn();
+
+vi.mock('../../src/services/supabaseClient', () => ({
+  supabaseAdmin: { from: (...args: unknown[]) => fromMock(...args) },
+}));
+vi.mock('../../src/logger', () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
 import {
   computeImportance,
   computeImportanceScore,
   scoreToLevel,
+  isImportancePinned,
+  persistCharacterImportance,
   type ImportanceInputs,
 } from '../../src/services/characters/characterImportanceService';
+
+type Row = Record<string, unknown>;
+
+function selectChain(data: Row | null) {
+  const builder = {
+    select: () => builder,
+    eq: () => builder,
+    single: () => Promise.resolve({ data, error: null }),
+  };
+  return builder;
+}
+
+function updateChain(onUpdate: (payload: Record<string, unknown>) => void) {
+  const builder = {
+    update: (payload: Record<string, unknown>) => {
+      onUpdate(payload);
+      return builder;
+    },
+    eq: () => builder,
+  };
+  return builder;
+}
 
 describe('characterImportanceService', () => {
   const base: ImportanceInputs = {
@@ -73,5 +107,61 @@ describe('characterImportanceService', () => {
   it('is deterministic', () => {
     const inputs = { ...base, mentionCount: 5, distinctMemories: 2, isFamily: true };
     expect(computeImportance(inputs)).toEqual(computeImportance(inputs));
+  });
+});
+
+describe('isImportancePinned', () => {
+  it('is true only when metadata.importance_level_source is user_confirmed', () => {
+    expect(isImportancePinned({ importance_level_source: 'user_confirmed' })).toBe(true);
+    expect(isImportancePinned({ importance_level_source: 'auto' })).toBe(false);
+    expect(isImportancePinned({})).toBe(false);
+    expect(isImportancePinned(null)).toBe(false);
+    expect(isImportancePinned(undefined)).toBe(false);
+  });
+});
+
+describe('persistCharacterImportance — manual pin', () => {
+  beforeEach(() => {
+    fromMock.mockReset();
+  });
+
+  const result = { importanceScore: 42, importanceLevel: 'supporting' as const, inputs: {} as ImportanceInputs };
+
+  it('never writes over a character the user has pinned', async () => {
+    let updateCalled = false;
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'characters') {
+        return {
+          ...selectChain({ metadata: { importance_level_source: 'user_confirmed' } }),
+          ...updateChain(() => {
+            updateCalled = true;
+          }),
+        };
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    await persistCharacterImportance('user-1', 'char-1', result);
+    expect(updateCalled).toBe(false);
+  });
+
+  it('writes normally when the character is not pinned', async () => {
+    let updatePayload: Record<string, unknown> | null = null;
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'characters') {
+        return {
+          ...selectChain({ metadata: {} }),
+          ...updateChain((payload) => {
+            updatePayload = payload;
+          }),
+        };
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    await persistCharacterImportance('user-1', 'char-1', result);
+    expect(updatePayload).not.toBeNull();
+    expect((updatePayload as unknown as { importance_level: string }).importance_level).toBe('supporting');
+    expect((updatePayload as unknown as { importance_score: number }).importance_score).toBe(42);
   });
 });

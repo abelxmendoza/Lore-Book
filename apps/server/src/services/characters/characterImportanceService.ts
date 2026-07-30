@@ -196,6 +196,11 @@ export async function calculateCharacterImportance(
   return computeImportance(inputs);
 }
 
+/** True once the user has manually set a character's importance — auto-scoring must never overwrite it. */
+export function isImportancePinned(metadata: Record<string, unknown> | null | undefined): boolean {
+  return (metadata ?? {})['importance_level_source'] === 'user_confirmed';
+}
+
 export async function persistCharacterImportance(
   userId: string,
   characterId: string,
@@ -209,6 +214,11 @@ export async function persistCharacterImportance(
     .single();
 
   const metadata = (existing?.metadata ?? {}) as Record<string, unknown>;
+
+  // The user manually set this character's level — never let auto-scoring
+  // silently overwrite it. Only the PATCH route (which clears the pin
+  // itself before re-scoring) is allowed to change a pinned level.
+  if (isImportancePinned(metadata)) return;
 
   const dbLevel =
     result.importanceLevel === 'legendary' && !result.inputs.isSelf

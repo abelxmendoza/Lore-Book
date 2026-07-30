@@ -191,6 +191,13 @@ class CharacterRestoreService {
       return null;
     }
 
+    // 'supporting' above is just a seed — the canonical scorer supersedes it promptly.
+    import('./characters/characterImportanceService').then(({ scoreAndPersistCharacter }) =>
+      scoreAndPersistCharacter(userId, characterId)
+    ).catch((err) => {
+      logger.debug({ err, characterId }, 'Failed to score importance after character restore');
+    });
+
     await characterAuthorityService.registerCharacterAuthority(userId, characterId, cleanName, []);
     identityNames.add(normalizeNameKey(cleanName));
     return characterId;

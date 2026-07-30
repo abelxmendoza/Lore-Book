@@ -5,6 +5,7 @@ import { requireAuth } from '../../src/middleware/auth';
 import { charactersRouter } from '../../src/routes/characters';
 import { peoplePlacesService } from '../../src/services/peoplePlacesService';
 import { supabaseAdmin } from '../../src/services/supabaseClient';
+import { scoreAndPersistCharacter } from '../../src/services/characters/characterImportanceService';
 
 vi.mock('../../src/services/peoplePlacesService', () => ({
   peoplePlacesService: {
@@ -22,11 +23,13 @@ vi.mock('../../src/services/characterAuthorityService', () => ({
   },
 }));
 
-vi.mock('../../src/services/characterImportanceService', () => ({
-  characterImportanceService: {
-    calculateImportance: vi.fn().mockResolvedValue({ importanceLevel: 'minor', importanceScore: 0.3 }),
-    updateCharacterImportance: vi.fn().mockResolvedValue(undefined),
-  },
+vi.mock('../../src/services/characters/characterImportanceService', () => ({
+  scoreAndPersistCharacter: vi.fn().mockResolvedValue({
+    importanceScore: 30,
+    importanceLevel: 'minor',
+    inputs: {},
+  }),
+  isImportancePinned: vi.fn().mockReturnValue(false),
 }));
 
 vi.mock('../../src/services/characterIdentityIndexService', () => ({
@@ -325,6 +328,82 @@ describe('Characters API Routes', () => {
 
       const alias = (getUpdatePayload()?.alias as string[]) ?? [];
       expect(alias).toEqual(['Uncle Ralph']);
+    });
+  });
+
+  describe('PATCH /api/characters/:id — importance pin', () => {
+    function mockImportancePatch(existingRow: Record<string, unknown>) {
+      const mockFrom = vi.mocked(supabaseAdmin.from);
+      let updatePayload: Record<string, unknown> | undefined;
+
+      mockFrom.mockImplementation((table: string) => {
+        const chain: Record<string, unknown> = {};
+        chain.select = vi.fn().mockReturnValue(chain);
+        chain.eq = vi.fn().mockReturnValue(chain);
+        chain.ilike = vi.fn().mockReturnValue(chain);
+        chain.in = vi.fn().mockReturnValue(chain);
+        chain.contains = vi.fn().mockReturnValue(chain);
+        chain.or = vi.fn().mockReturnValue(chain);
+        chain.order = vi.fn().mockReturnValue(chain);
+        chain.limit = vi.fn().mockReturnValue(chain);
+        chain.maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+        chain.single = vi.fn().mockResolvedValue({ data: existingRow, error: null });
+        chain.update = vi.fn().mockImplementation((payload: Record<string, unknown>) => {
+          if (table === 'characters') updatePayload = payload;
+          return {
+            ...chain,
+            eq: vi.fn().mockReturnValue({
+              ...chain,
+              eq: vi.fn().mockReturnValue({
+                ...chain,
+                select: vi.fn().mockReturnValue({
+                  single: vi.fn().mockResolvedValue({ data: { ...existingRow, ...payload }, error: null }),
+                }),
+                then: (resolve: (v: { error: null }) => unknown) => Promise.resolve(resolve({ error: null })),
+              }),
+            }),
+          };
+        });
+        return chain as never;
+      });
+
+      return () => updatePayload;
+    }
+
+    it('setting a level pins it via metadata.importance_level_source', async () => {
+      const existingRow = { id: 'char-1', name: 'Jordan', alias: [], status: 'active', metadata: {} };
+      const getUpdatePayload = mockImportancePatch(existingRow);
+
+      await request(app)
+        .patch('/api/characters/char-1')
+        .send({ importanceLevel: 'major' })
+        .expect(200);
+
+      const payload = getUpdatePayload();
+      expect(payload?.importance_level).toBe('major');
+      expect((payload?.metadata as Record<string, unknown>)?.importance_level_source).toBe('user_confirmed');
+    });
+
+    it('clearing the level (null) removes the pin and re-triggers scoring', async () => {
+      const existingRow = {
+        id: 'char-1',
+        name: 'Jordan',
+        alias: [],
+        status: 'active',
+        metadata: { importance_level_source: 'user_confirmed' },
+      };
+      const getUpdatePayload = mockImportancePatch(existingRow);
+      vi.mocked(scoreAndPersistCharacter).mockClear();
+
+      await request(app)
+        .patch('/api/characters/char-1')
+        .send({ importanceLevel: null })
+        .expect(200);
+
+      const payload = getUpdatePayload();
+      expect(payload?.importance_level).toBeUndefined();
+      expect((payload?.metadata as Record<string, unknown>)?.importance_level_source).toBeUndefined();
+      expect(scoreAndPersistCharacter).toHaveBeenCalledWith('user-123', 'char-1');
     });
   });
 });

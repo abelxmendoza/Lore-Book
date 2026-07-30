@@ -509,8 +509,9 @@ class EntityFactsService {
         : 'close';
       update.proximity_level = 'direct';
       update.has_met = true;
-      update.importance_level = estranged ? 'supporting' : 'major';
-      update.importance_score = estranged ? 45 : 65;
+      // Importance is left to the canonical scorer (see below) — it already
+      // applies a family floor, so this just needs to re-run with the fresh
+      // archetype/relationship_depth this write is about to set.
     } else {
       // A confirmed relationship fact means this is more than a passing mention
       update.relationship_depth = character.relationship_depth === 'mentioned_only'
@@ -523,6 +524,13 @@ class EntityFactsService {
       .update(update)
       .eq('id', characterId)
       .eq('user_id', userId);
+
+    if (isFamily) {
+      const { scoreAndPersistCharacter } = await import('./characters/characterImportanceService');
+      scoreAndPersistCharacter(userId, characterId).catch(err => {
+        logger.debug({ err, characterId }, 'Failed to rescore importance after family fact confirmed');
+      });
+    }
 
     // Romantic people also belong in the Dating & Romance view, which
     // reads romantic_relationships keyed by character id.

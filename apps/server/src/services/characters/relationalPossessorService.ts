@@ -72,6 +72,13 @@ async function createPossessorCharacter(
     return null;
   }
 
+  // 'minor' above is just a seed — the canonical scorer supersedes it promptly.
+  import('./characterImportanceService').then(({ scoreAndPersistCharacter }) =>
+    scoreAndPersistCharacter(userId, characterId)
+  ).catch((err) => {
+    logger.debug({ err, characterId }, 'Failed to score importance for relational possessor');
+  });
+
   await characterAuthorityService.registerCharacterAuthority(userId, characterId, cleanName, []);
   logger.info(
     { characterId, cleanName, placeholderCharacterId, relation },

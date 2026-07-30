@@ -4,7 +4,7 @@ import { shortDisplayName } from '../../lib/displayName';
 import { EntityModalBottomNav } from '../common/EntityModalBottomNav';
 import { dedupeRelationshipsByPerson } from '../../lib/dedupeCharacterRelationships';
 import { CharacterPerceptionsTab } from '../perceptions/CharacterPerceptionsTab';
-import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2, RefreshCw, Loader2, ImageIcon, Shield, ChevronDown, MapPin, Plus, BookOpen } from 'lucide-react';
+import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2, RefreshCw, Loader2, ImageIcon, Shield, ChevronDown, MapPin, Plus, BookOpen, Pin } from 'lucide-react';
 import { XProvenanceBadge } from '../integrations/XProvenanceBadge';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -346,6 +346,8 @@ export const CharacterDetailModal = ({
   const navigate = useNavigate();
   const { useMockData: isMockDataEnabled } = useMockData();
   const [updateCharacter] = useUpdateCharacterMutation();
+  const [editingImportance, setEditingImportance] = useState(false);
+  const [importanceSaving, setImportanceSaving] = useState(false);
   const isMainCharacter = isMainCharacterProp ?? isSelfCharacter(character);
   const characterQueryEnabled =
     !isMockDataEnabled &&
@@ -532,6 +534,49 @@ export const CharacterDetailModal = ({
       // Roll back optimistic rename and surface the error inline (EditableEntityName).
       setEditedCharacter((prev) => ({ ...prev, name: editedCharacter.name }));
       throw err instanceof Error ? err : new Error('Failed to rename character');
+    }
+  };
+
+  /** Set (or clear, via null) a manual importance pin. Null re-triggers the canonical scorer server-side. */
+  const handleSetImportance = async (level: Character['importance_level']) => {
+    setEditingImportance(false);
+    setImportanceSaving(true);
+    const previous = editedCharacter.importance_level;
+    const previousMeta = editedCharacter.metadata;
+    setEditedCharacter((prev) => {
+      const nextMeta = { ...(prev.metadata ?? {}) };
+      if (level) {
+        nextMeta.importance_level_source = 'user_confirmed';
+      } else {
+        delete nextMeta.importance_level_source;
+      }
+      return {
+        ...prev,
+        importance_level: level ?? prev.importance_level,
+        metadata: nextMeta,
+      };
+    });
+    if (isMockDataEnabled) {
+      mockDataService.mutate.characters.upsert({
+        ...(editedCharacter as Character),
+        importance_level: level ?? editedCharacter.importance_level,
+      });
+      onUpdate();
+      setImportanceSaving(false);
+      return;
+    }
+    try {
+      await updateCharacter({
+        id: character.id,
+        values: { importanceLevel: level },
+      }).unwrap();
+      invalidateCache(character.id);
+      onUpdate();
+    } catch (err) {
+      console.error('Failed to set importance:', err);
+      setEditedCharacter((prev) => ({ ...prev, importance_level: previous, metadata: previousMeta }));
+    } finally {
+      setImportanceSaving(false);
     }
   };
 
@@ -3022,17 +3067,62 @@ export const CharacterDetailModal = ({
                     testId="character-modal-lorebook-compile"
                     className="py-0.5 pl-1.5 pr-1.5"
                   />
-                  {editedCharacter.importance_level && (
-                    <Tooltip content={getImportanceTooltip(editedCharacter.importance_level, editedCharacter.importance_score, editedCharacter.analytics?.character_influence_on_user)}>
+                  {editingImportance ? (
+                    <select
+                      autoFocus
+                      value={editedCharacter.importance_level ?? ''}
+                      disabled={importanceSaving}
+                      onChange={(e) => void handleSetImportance((e.target.value || null) as Character['importance_level'])}
+                      onBlur={() => setEditingImportance(false)}
+                      aria-label="Importance level"
+                      data-testid="character-importance-select"
+                      className="rounded border border-white/15 bg-black/70 px-1.5 py-0 text-[9px] text-white focus:border-primary/60 focus:outline-none"
+                    >
+                      <option value="">— Auto —</option>
+                      <option value="protagonist">Protagonist</option>
+                      <option value="major">Major</option>
+                      <option value="supporting">Supporting</option>
+                      <option value="minor">Minor</option>
+                      <option value="background">Background</option>
+                    </select>
+                  ) : editedCharacter.importance_level ? (
+                    <Tooltip
+                      content={`${getImportanceTooltip(editedCharacter.importance_level, editedCharacter.importance_score, editedCharacter.analytics?.character_influence_on_user)}${
+                        !isMainCharacter
+                          ? editedCharacter.metadata?.importance_level_source === 'user_confirmed'
+                            ? ' You set this — click to change.'
+                            : ' Auto-detected — click to set manually.'
+                          : ''
+                      }`}
+                    >
                       <Badge
                         variant="outline"
-                        className={`${getImportanceColor(editedCharacter.importance_level)} text-[9px] px-1.5 py-0 flex items-center gap-0.5 cursor-help`}
+                        role={isMainCharacter ? undefined : 'button'}
+                        tabIndex={isMainCharacter ? undefined : 0}
+                        onClick={isMainCharacter ? undefined : () => setEditingImportance(true)}
+                        onKeyDown={
+                          isMainCharacter
+                            ? undefined
+                            : (e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  setEditingImportance(true);
+                                }
+                              }
+                        }
+                        data-testid="character-importance-badge"
+                        className={`${getImportanceColor(editedCharacter.importance_level)} text-[9px] px-1.5 py-0 flex items-center gap-0.5 ${
+                          isMainCharacter ? 'cursor-help' : 'cursor-pointer hover:brightness-125'
+                        }`}
                       >
                         {getImportanceIcon(editedCharacter.importance_level)}
                         {getImportanceLabel(editedCharacter.importance_level)}
+                        {editedCharacter.metadata?.importance_level_source === 'user_confirmed' && !isMainCharacter && (
+                          <Pin className="h-2 w-2 ml-0.5" />
+                        )}
                       </Badge>
                     </Tooltip>
-                  )}
+                  ) : null}
                   {editedCharacter.role && (
                     <Tooltip content={getRoleTooltip(editedCharacter.role)}>
                       <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-[9px] px-1.5 py-0 cursor-help max-w-[10rem] truncate">

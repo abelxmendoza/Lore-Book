@@ -660,14 +660,10 @@ Only include mappings with confidence > 0.6. If no nicknames detected, return {"
       }
 
       // Calculate importance asynchronously
-      const { characterImportanceService } = await import('./characterImportanceService');
-      characterImportanceService.calculateImportance(userId, newCharacter.id, {})
-        .then(importance => {
-          return characterImportanceService.updateCharacterImportance(userId, newCharacter.id, importance);
-        })
-        .catch(err => {
-          logger.debug({ err, characterId: newCharacter.id }, 'Failed to calculate initial importance');
-        });
+      const { scoreAndPersistCharacter } = await import('./characters/characterImportanceService');
+      scoreAndPersistCharacter(userId, newCharacter.id).catch(err => {
+        logger.debug({ err, characterId: newCharacter.id }, 'Failed to calculate initial importance');
+      });
 
       const { scheduleEnsureRelationalPossessor } = await import('./characters/relationalPossessorService');
       scheduleEnsureRelationalPossessor(userId, decision.cleanName, newCharacter.id);

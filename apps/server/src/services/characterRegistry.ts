@@ -749,6 +749,12 @@ class CharacterRegistry {
         avatar_url: avatarUrl,
         metadata: { generated_by: 'user_clarification', generated_at: now, mention_count: 1 },
       });
+      // 'minor' above is just a seed — the canonical scorer supersedes it promptly.
+      import('./characters/characterImportanceService').then(({ scoreAndPersistCharacter }) =>
+        scoreAndPersistCharacter(userId, createdCharacterId!)
+      ).catch((err) => {
+        logger.debug({ err, characterId: createdCharacterId }, 'Failed to score importance after clarification create');
+      });
       void identityLedgerService.recordMutation({
         userId,
         entityId: createdCharacterId,

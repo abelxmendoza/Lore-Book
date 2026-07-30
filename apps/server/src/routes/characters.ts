@@ -141,7 +141,9 @@ const updateCharacterSchema = z.object({
       phone: z.string().optional()
     })
     .optional(),
-  metadata: z.record(z.string(), z.unknown()).optional()
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  /** Manual pin. A level sets metadata.importance_level_source='user_confirmed'; null clears the pin and re-scores. */
+  importanceLevel: z.enum(['protagonist', 'major', 'supporting', 'minor', 'background']).nullable().optional(),
 });
 
 const resolveEntityQuestionSchema = z.object({
@@ -809,14 +811,10 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     }
 
     // Calculate importance asynchronously
-    const { characterImportanceService } = await import('../services/characterImportanceService');
-    characterImportanceService.calculateImportance(userId, createResult.character.id, {})
-      .then(importance => {
-        return characterImportanceService.updateCharacterImportance(userId, createResult.character.id, importance);
-      })
-      .catch(err => {
-        logger.debug({ err, characterId: createResult.character.id }, 'Failed to calculate initial importance');
-      });
+    const { scoreAndPersistCharacter } = await import('../services/characters/characterImportanceService');
+    scoreAndPersistCharacter(userId, createResult.character.id).catch(err => {
+      logger.debug({ err, characterId: createResult.character.id }, 'Failed to calculate initial importance');
+    });
 
     // New card arrived with a last name already set — check for a possible-family match.
     if (createResult.character.last_name) {
@@ -1682,6 +1680,16 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       if (key in metadataPatch && metadataPatch[key] === null) delete updatedMetadata[key];
     }
 
+    // Importance pin: a level pins it (auto-scoring will never overwrite it —
+    // see persistCharacterImportance); null clears the pin so it re-scores below.
+    if (updateData.importanceLevel !== undefined) {
+      if (updateData.importanceLevel === null) {
+        delete updatedMetadata.importance_level_source;
+      } else {
+        updatedMetadata.importance_level_source = 'user_confirmed';
+      }
+    }
+
     // Apply standing override to social_standing in the same write so the UI
     // (and any concurrent recompute) sees the pin immediately — not only after
     // the async full-user recompute finishes.
@@ -1827,6 +1835,7 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     if (updateData.summary !== undefined) payload.summary = updateData.summary;
     if (updateData.tags !== undefined) payload.tags = updateData.tags;
     if (updateData.isNickname !== undefined) payload.is_nickname = updateData.isNickname;
+    if (updateData.importanceLevel) payload.importance_level = updateData.importanceLevel;
     payload.metadata = updatedMetadata;
 
     const { data: updated, error } = await supabaseAdmin
@@ -1868,16 +1877,19 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       });
     }
 
-    // Recalculate importance if role, archetype, or other significant fields changed
-    if (updateData.role !== undefined || updateData.archetype !== undefined || updateData.name !== undefined) {
-      const { characterImportanceService } = await import('../services/characterImportanceService');
-      characterImportanceService.calculateImportance(userId, updated.id, {})
-        .then(importance => {
-          return characterImportanceService.updateCharacterImportance(userId, updated.id, importance);
-        })
-        .catch(err => {
-          logger.debug({ err, characterId: updated.id }, 'Failed to recalculate importance after update');
-        });
+    // Recalculate importance if role, archetype, or other significant fields changed,
+    // or the user just cleared their pin (a no-op otherwise if still pinned — see
+    // the isImportancePinned guard in persistCharacterImportance).
+    if (
+      updateData.role !== undefined ||
+      updateData.archetype !== undefined ||
+      updateData.name !== undefined ||
+      updateData.importanceLevel === null
+    ) {
+      const { scoreAndPersistCharacter } = await import('../services/characters/characterImportanceService');
+      scoreAndPersistCharacter(userId, updated.id).catch(err => {
+        logger.debug({ err, characterId: updated.id }, 'Failed to recalculate importance after update');
+      });
     }
 
     // A new/changed last name might match another family-role character's —

@@ -1136,36 +1136,26 @@ Only extract clear relationships. Include temporal context when available.`
     omegaEntityId: string,
     mentionCount: number
   ): Promise<void> {
-    const mentionBasedLevel = mentionCount >= 6 ? 'major' : mentionCount >= 3 ? 'supporting' : 'minor';
     const { data: rows } = await supabaseAdmin
       .from('characters')
-      .select('id, importance_level, metadata')
+      .select('id, metadata')
       .eq('user_id', userId)
       .eq('metadata->>omega_entity_id', omegaEntityId)
       .limit(1);
-    const character = rows?.[0] as { id: string; importance_level: string | null; metadata: Record<string, unknown> | null } | undefined;
+    const character = rows?.[0] as { id: string; metadata: Record<string, unknown> | null } | undefined;
     if (!character) return;
 
-    // Only auto-raise, never lower — and never touch protagonist (manual)
-    const rank: Record<string, number> = { background: 0, minor: 1, supporting: 2, major: 3, protagonist: 4 };
-    const categories = Array.isArray(character.metadata?.relationship_categories)
-      ? character.metadata.relationship_categories as string[]
-      : [];
-    const categoryBasedLevel = categories.some(category => ['family', 'romantic', 'mentor'].includes(String(category).toLowerCase()))
-      ? 'supporting'
-      : mentionBasedLevel;
-    const importanceLevel = rank[categoryBasedLevel] > rank[mentionBasedLevel] ? categoryBasedLevel : mentionBasedLevel;
-    const current = rank[character.importance_level ?? 'minor'] ?? 1;
-    const proposed = rank[importanceLevel];
+    // Just record the fresh mention count — the canonical scorer (already
+    // wired into chat ingestion) reads it back from here on its own cadence.
+    // This used to also set importance_level directly with its own
+    // "auto-raise, never lower" heuristic, which is exactly the kind of
+    // second opinion that made levels feel inconsistent; running the full
+    // scorer on every single mention here would also make this hot path
+    // needlessly expensive.
     const metadata = { ...(character.metadata ?? {}), mention_count: mentionCount };
-
     await supabaseAdmin
       .from('characters')
-      .update(
-        proposed > current
-          ? { importance_level: importanceLevel, metadata, updated_at: new Date().toISOString() }
-          : { metadata, updated_at: new Date().toISOString() }
-      )
+      .update({ metadata, updated_at: new Date().toISOString() })
       .eq('id', character.id)
       .eq('user_id', userId);
   }

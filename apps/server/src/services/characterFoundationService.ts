@@ -747,6 +747,14 @@ class CharacterFoundationService {
       return null;
     }
 
+    // The level above is just a cheap seed so the card isn't blank — the
+    // canonical scorer supersedes it promptly with the real formula.
+    import('./characters/characterImportanceService').then(({ scoreAndPersistCharacter }) =>
+      scoreAndPersistCharacter(userId, characterId)
+    ).catch(err => {
+      logger.debug({ err, characterId }, 'Failed to score importance after character promotion');
+    });
+
     await characterAuthorityService.registerCharacterAuthority(userId, characterId, cleanedName, aliases);
     await characterAuthorityService.linkSourceRecord(
       userId,

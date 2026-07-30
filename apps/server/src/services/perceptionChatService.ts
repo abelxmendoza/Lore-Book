@@ -176,6 +176,12 @@ IMPORTANT:
             // Add to local list so subsequent iterations in this batch can match against it
             existingCharacters.push({ id: created.id, name: created.name, alias: [] });
             logger.info({ userId, characterId: created.id, name: created.name }, 'Created character from perception chat');
+            // 'minor'/0 above is just a seed — the canonical scorer supersedes it promptly.
+            import('./characters/characterImportanceService').then(({ scoreAndPersistCharacter }) =>
+              scoreAndPersistCharacter(userId, created.id)
+            ).catch((err) => {
+              logger.debug({ err, characterId: created.id }, 'Failed to score importance from perception chat');
+            });
           } else {
             logger.warn({ error, character: newChar }, 'Failed to create character from perception chat');
           }
