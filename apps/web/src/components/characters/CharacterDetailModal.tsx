@@ -2836,6 +2836,7 @@ export const CharacterDetailModal = ({
             onClick={onClose}
             className="absolute top-2 right-2 sm:top-4 sm:right-4 z-10 flex-shrink-0 hover:bg-white/10 h-9 w-9 sm:h-10 sm:w-10 p-0 touch-manipulation"
             aria-label="Close"
+            data-testid="modal-close-button"
           >
             <X className="h-4 w-4 sm:h-5 sm:w-5" />
           </Button>

@@ -5,15 +5,30 @@ import { render } from '../../test/utils';
 import { CharacterBook } from './CharacterBook';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 
-const { mockFetchJson, impactDemoMode, impactDemoCharacters, mockGetWithFallbackCharacters } = vi.hoisted(() => ({
+const { mockFetchJson, impactDemoMode, impactDemoCharacters, mockGetWithFallbackCharacters, mockUseGetCharactersBookQuery } = vi.hoisted(() => ({
   mockFetchJson: vi.fn().mockResolvedValue({}),
   impactDemoMode: { current: false },
   impactDemoCharacters: { current: [] as unknown[] },
   mockGetWithFallbackCharacters: vi.fn(),
+  mockUseGetCharactersBookQuery: vi.fn(() => ({
+    data: undefined,
+    isLoading: false,
+    isFetching: false,
+    refetch: vi.fn(),
+  })),
 }));
 
 vi.mock('../../hooks/useLoreKeeper', () => ({
   useLoreKeeper: vi.fn()
+}));
+
+// CharacterBook sources its roster from this RTK Query hook (via
+// useCharactersBookData), not from useLoreKeeper() — mock it directly rather
+// than relying on the real Redux store's network layer, which isn't wired to
+// any mock server for this endpoint in tests.
+vi.mock('../../store/api/entitiesApi', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../store/api/entitiesApi')>()),
+  useGetCharactersBookQuery: (...args: unknown[]) => mockUseGetCharactersBookQuery(...args),
 }));
 
 vi.mock('../../services/mockDataService', () => ({
@@ -119,6 +134,12 @@ describe('CharacterBook', () => {
   beforeEach(() => {
     impactDemoMode.current = false;
     impactDemoCharacters.current = [];
+    mockUseGetCharactersBookQuery.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isFetching: false,
+      refetch: vi.fn(),
+    });
     mockGetWithFallbackCharacters.mockImplementation((realData?: unknown[] | null, useMock?: boolean) => ({
       data: useMock ? impactDemoCharacters.current : (realData ?? []),
       metadata: { isMock: !!useMock, source: useMock ? 'mock' : 'real' },
@@ -185,28 +206,28 @@ describe('CharacterBook', () => {
       }
     ];
 
-    mockUseLoreKeeper.mockReturnValue({
-      characters: mockCharacters,
-      entries: [],
-      chapters: [],
-      timeline: { chapters: [], unassigned: [] },
-      loading: false,
-      error: null,
-      loadCharacters: vi.fn(),
-      refreshEntries: vi.fn(),
-      refreshTimeline: vi.fn(),
-      refreshChapters: vi.fn()
-    } as any);
+    // CharacterBook sources its list from useCharactersBookData() (an RTK
+    // Query hook), not from useLoreKeeper() — that hook only supplies
+    // entries/chapters here now.
+    mockUseGetCharactersBookQuery.mockReturnValue({
+      data: { characters: mockCharacters, duplicate_groups: [], counts: {} },
+      isLoading: false,
+      isFetching: false,
+      refetch: vi.fn(),
+    });
 
     render(<CharacterBook />);
     
     // Component should render - check for Character Book header or character name
     // The component may use internal state management, so we check for any rendering
     await waitFor(() => {
-      const characterBookHeader = screen.queryByText(/Character Book/i);
-      const characterName = screen.queryByText('Test Character');
+      // queryByText (not queryAllByText) throws on multiple matches — the
+      // regex also matches unrelated descriptive copy elsewhere on the page
+      // ("...someone already in Character Book...") in addition to the h2.
+      const characterBookHeader = screen.queryAllByText(/Character Book/i);
+      const characterName = screen.queryAllByText('Test Character');
       // At minimum, the component should render
-      expect(characterBookHeader || characterName).toBeTruthy();
+      expect(characterBookHeader.length > 0 || characterName.length > 0).toBe(true);
     }, { timeout: 3000 });
   });
 

@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+vi.mock('react-router-dom', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-router-dom')>()),
+  useNavigate: () => vi.fn(),
+}));
+
 vi.mock('../../features/chat/composer/ChatComposer', () => ({
   ChatComposer: () => <div data-testid="chat-composer">Chat Composer</div>,
 }));
@@ -127,10 +132,15 @@ describe('CharacterDetailModal roster ↔ Groups two-way sync', () => {
         />,
       );
 
-      expect(await screen.findByTestId('character-groups-section')).toBeInTheDocument();
-      expect(await screen.findByText('Amazon')).toBeInTheDocument();
+      // Re-query live each poll (not a captured element reference) — the modal
+      // fires a second, intentionally-failing legacy-detail fetch alongside the
+      // by-character org fetch, which can trigger a re-render that replaces this
+      // section's DOM node after an earlier reference was captured but before
+      // it was asserted on.
       await waitFor(() => {
-        expect(screen.getByTestId('character-groups-section')).toHaveTextContent('1 total');
+        const section = screen.getByTestId('character-groups-section');
+        expect(section).toHaveTextContent('1 total');
+        expect(section).toHaveTextContent('Amazon');
       });
 
       unmount();

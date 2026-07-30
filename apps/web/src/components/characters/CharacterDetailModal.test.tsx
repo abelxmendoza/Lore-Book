@@ -206,7 +206,9 @@ describe('CharacterDetailModal', () => {
       />
     );
 
-    const closeButton = screen.getByRole('button', { name: /close/i });
+    // Not getByRole(name: /close/i) — CharacterInfoPanel's "Close" standing-tier
+    // override button (CharacterInfoPanel.tsx:906) collides with this same accessible name.
+    const closeButton = screen.getByTestId('modal-close-button');
     await user.click(closeButton);
 
     expect(mockOnClose).toHaveBeenCalled();
