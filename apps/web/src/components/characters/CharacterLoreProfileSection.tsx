@@ -19,6 +19,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { UnknownField } from '../ui/UnknownField';
 import { fetchJson } from '../../lib/api';
+import { fetchCharacterList } from '../../api/characterList';
 import {
   unlinkCharacterLoreItem,
   restoreCharacterLoreItem,
@@ -398,8 +399,8 @@ export function CharacterLoreProfileSection({
     setCharactersLoading(true);
     setEditorError(null);
     try {
-      const response = await fetchJson<{ characters: Character[] }>('/api/characters');
-      setCharacterOptions((response.characters ?? []).filter((item) => item.status !== 'archived'));
+      const list = await fetchCharacterList<Character>();
+      setCharacterOptions(list.filter((item) => item.status !== 'archived'));
     } catch (error) {
       console.error('Failed to load character suggestions:', error);
       setEditorError('Could not load character suggestions.');

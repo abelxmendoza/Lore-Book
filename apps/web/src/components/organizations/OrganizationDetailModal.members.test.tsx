@@ -104,6 +104,13 @@ vi.mock('../../lib/hydrateBookEntity', async () => {
   };
 });
 
+vi.mock('../../api/characterList', () => ({
+  fetchCharacterList: vi.fn(async () => [
+    { id: 'char-mina', name: 'Mina' },
+    { id: 'char-owen', name: 'Owen' },
+  ]),
+}));
+
 vi.mock('../../lib/api', () => ({
   fetchJson: (...args: unknown[]) => mockFetchJson(...args),
 }));

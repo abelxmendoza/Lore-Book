@@ -29,6 +29,7 @@ import { invalidateCache } from '../../lib/requestCache';
 import { invalidateOrganizationMembershipCaches } from '../../lib/invalidateOrganizationMembershipCaches';
 import { OrganizationMemberRoleSelect } from '../ui/OrganizationMemberRoleSelect';
 import { CreateGroupFromCharacterPanel } from './CreateGroupFromCharacterPanel';
+import { fetchCharacterList } from '../../api/characterList';
 import { fetchCharacterLoreProfile, type CharacterLoreProfile } from '../../api/characterLoreProfile';
 import { formatEpistemicPercent } from '../../lib/epistemicLabels';
 import { onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
@@ -2353,8 +2354,8 @@ export const CharacterDetailModal = ({
     if (next && connectionOptions.length === 0 && !connectionOptionsLoading) {
       setConnectionOptionsLoading(true);
       try {
-        const res = await fetchJson<{ characters: Character[] }>('/api/characters');
-        setConnectionOptions((res.characters ?? []).filter((c) => c.status !== 'archived'));
+        const list = await fetchCharacterList<Character>();
+        setConnectionOptions(list.filter((c) => c.status !== 'archived'));
       } catch {
         setConnectionError('Could not load your Character Book.');
       } finally {

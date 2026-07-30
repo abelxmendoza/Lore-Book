@@ -4,6 +4,7 @@ import { Button } from '../ui/button';
 import { FamilyTreeView } from '../family/FamilyTreeView';
 import { FamilyTreeCopyAllButton } from './FamilyTreeCopyAllButton';
 import { fetchJson } from '../../lib/api';
+import { fetchCharacterList } from '../../api/characterList';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { invalidateOrganizationMembershipCaches } from '../../lib/invalidateOrganizationMembershipCaches';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
@@ -139,8 +140,8 @@ export const FamilyTreePanel = ({
     setCharactersLoading(true);
     setAddError(null);
     try {
-      const response = await fetchJson<{ characters: Character[] }>('/api/characters');
-      setCharacterOptions((response.characters ?? []).filter((item) => item.status !== 'archived'));
+      const list = await fetchCharacterList<Character>();
+      setCharacterOptions(list.filter((item) => item.status !== 'archived'));
     } catch (error) {
       console.error('Failed to load characters for family tree:', error);
       setAddError('Could not load character cards.');
