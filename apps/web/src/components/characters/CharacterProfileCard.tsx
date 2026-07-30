@@ -10,6 +10,7 @@ import { fetchJson } from '../../lib/api';
 import { canCallAuthenticatedApi } from '../../lib/runtimeIdentity';
 import { getCharacterWittyTagline } from '../../lib/characterDisplay';
 import { getCharacterDisplayTitle, getCharacterSubtitle } from '../../lib/characterDisplayTitle';
+import { getUniqueDisplayTags } from '../../lib/characterCardSignals';
 import {
   CONNECTION_STAGE_LABELS,
   getPublicFigureConnection,
@@ -288,7 +289,20 @@ export const CharacterProfileCard = ({
   const hasMet = character.has_met ?? null;
   const proximity = character.proximity_level ?? null;
   const relationshipDepth = character.relationship_depth ?? null;
-  
+
+  // Tags frequently restate the role/archetype/status already shown elsewhere
+  // on the card (e.g. a "romantic" tag next to a "Romantic" archetype badge) —
+  // filter those out so each signal only shows once.
+  const displayTags = getUniqueDisplayTags(character.tags, [
+    primaryRole,
+    primaryArchetype ? archetypeDisplayLabel(primaryArchetype) : '',
+    kinshipLabel,
+    getImportanceLabel(character.importance_level),
+    hasMet === false ? 'Unmet' : '',
+    proximity === 'third_party' ? 'Third Party' : '',
+    relationshipDepth === 'mentioned_only' ? 'Mentioned Only' : '',
+  ]);
+
   const displayName = getCharacterDisplayTitle(character);
   const contextSubtitle = getCharacterSubtitle(character);
 
@@ -341,6 +355,7 @@ export const CharacterProfileCard = ({
   };
 
   const phase = getRelationshipPhase();
+  const trend = character.analytics?.trend;
 
   const impactOnUser = impactOnUserWithPublicFigureCap(character);
   const impactOverride = typeof character.metadata?.impact_override === 'number'
@@ -435,8 +450,6 @@ export const CharacterProfileCard = ({
               extras.push('High impact');
             if (proximity && proximity !== 'direct') extras.push(getProximityLabel(proximity));
             if (character.status && character.status !== 'active') extras.push(character.status);
-            if (character.analytics?.trend === 'deepening') extras.push('Deepening');
-            if (character.analytics?.trend === 'weakening') extras.push('Weakening');
 
             return (
               <div className="absolute top-1 right-1 z-10 flex flex-col gap-0.5 items-end">
@@ -632,10 +645,16 @@ export const CharacterProfileCard = ({
               <span>{character.pronouns}</span>
             </div>
           )}
-          {character.role && (
-            <div className="flex items-center gap-0.5 sm:gap-1">
-              <Tag className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
-              <span className="truncate max-w-[60px] sm:max-w-[80px]">{character.role}</span>
+          {trend === 'deepening' && (
+            <div className="flex items-center gap-0.5 sm:gap-1 text-emerald-400/70" title="Relationship trend: deepening">
+              <TrendingUp className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
+              <span className="hidden sm:inline">Deepening</span>
+            </div>
+          )}
+          {trend === 'weakening' && (
+            <div className="flex items-center gap-0.5 sm:gap-1 text-red-400/70" title="Relationship trend: weakening">
+              <TrendingDown className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
+              <span className="hidden sm:inline">Weakening</span>
             </div>
           )}
           {hasMet === false && (
@@ -664,9 +683,9 @@ export const CharacterProfileCard = ({
           )}
         </div>
 
-        {character.tags && character.tags.length > 0 && (
+        {displayTags.length > 0 && (
           <div className="flex flex-wrap gap-0.5 sm:gap-1 pt-1 sm:pt-1.5 border-t border-border/30">
-            {character.tags.slice(0, 3).map((tag) => (
+            {displayTags.slice(0, 3).map((tag) => (
               <Badge
                 key={tag}
                 variant="outline"
@@ -676,9 +695,9 @@ export const CharacterProfileCard = ({
                 {tag}
               </Badge>
             ))}
-            {character.tags.length > 3 && (
-              <Badge variant="outline" className="px-1 sm:px-1.5 py-0 text-[8px] sm:text-[9px] text-white/40 border-border/30" title={`${character.tags.length - 3} more tags`}>
-                +{character.tags.length - 3}
+            {displayTags.length > 3 && (
+              <Badge variant="outline" className="px-1 sm:px-1.5 py-0 text-[8px] sm:text-[9px] text-white/40 border-border/30" title={`${displayTags.length - 3} more tags`}>
+                +{displayTags.length - 3}
               </Badge>
             )}
           </div>

@@ -258,4 +258,74 @@ describe('CharacterProfileCard', () => {
     render(<CharacterProfileCard character={{ ...baseCharacter, role: 'dj, promoter, bartender' }} />);
     expect(screen.getByText('dj +2')).toBeInTheDocument();
   });
+
+  it('does not render the role a second time in the metadata row', () => {
+    render(<CharacterProfileCard character={baseCharacter} />);
+    expect(screen.getAllByText('Friend')).toHaveLength(1);
+  });
+
+  it('filters out tags that restate the archetype/role already shown, keeping novel tags', () => {
+    render(
+      <CharacterProfileCard
+        character={{
+          ...baseCharacter,
+          archetype: 'romantic',
+          role: 'Girlfriend',
+          tags: ['romantic', 'girlfriend', 'creative'],
+        }}
+      />
+    );
+    expect(screen.getByText('creative')).toBeInTheDocument();
+    expect(screen.queryByText('girlfriend')).not.toBeInTheDocument();
+    expect(screen.queryByText('romantic')).not.toBeInTheDocument();
+  });
+
+  const trendAnalytics = {
+    closeness_score: 50,
+    relationship_depth: 50,
+    interaction_frequency: 30,
+    recency_score: 50,
+    character_influence_on_user: 50,
+    user_influence_over_character: 40,
+    importance_score: 30,
+    priority_score: 50,
+    relevance_score: 50,
+    value_score: 50,
+    sentiment_score: 50,
+    trust_score: 50,
+    support_score: 50,
+    conflict_score: 20,
+    engagement_score: 50,
+    activity_level: 30,
+    shared_experiences: 5,
+    relationship_duration_days: 100,
+  };
+
+  it('shows a visible "Deepening" indicator when analytics.trend is deepening', () => {
+    render(
+      <CharacterProfileCard
+        character={{ ...baseCharacter, analytics: { ...trendAnalytics, trend: 'deepening' } }}
+      />
+    );
+    expect(screen.getByText('Deepening')).toBeInTheDocument();
+  });
+
+  it('shows a visible "Weakening" indicator when analytics.trend is weakening', () => {
+    render(
+      <CharacterProfileCard
+        character={{ ...baseCharacter, analytics: { ...trendAnalytics, trend: 'weakening' } }}
+      />
+    );
+    expect(screen.getByText('Weakening')).toBeInTheDocument();
+  });
+
+  it('does not show a trend indicator when analytics.trend is stable', () => {
+    render(
+      <CharacterProfileCard
+        character={{ ...baseCharacter, analytics: { ...trendAnalytics, trend: 'stable' } }}
+      />
+    );
+    expect(screen.queryByText('Deepening')).not.toBeInTheDocument();
+    expect(screen.queryByText('Weakening')).not.toBeInTheDocument();
+  });
 });
