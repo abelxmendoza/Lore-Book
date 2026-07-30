@@ -27,6 +27,7 @@ export type ApiRateTier =
   | 'write_burst'
   | 'ai'
   | 'compute'
+  | 'book_query'
   | 'auth_sensitive'
   | 'webhook'
   | 'guest'
@@ -50,6 +51,8 @@ const TIER_LIMITS: Record<ApiRateTier, { max: number; windowMs: number }> = {
   // Real chat completions only (not composer preview). ~1 msg / 5s average.
   ai: { max: 180, windowMs: FIFTEEN_MIN },
   compute: { max: 50, windowMs: FIFTEEN_MIN },
+  // Grounded book compilers (load-then-slice) — tighter than generic writes.
+  book_query: { max: 120, windowMs: FIFTEEN_MIN },
   auth_sensitive: { max: 20, windowMs: FIFTEEN_MIN },
   webhook: { max: 120, windowMs: FIFTEEN_MIN },
   guest: { max: 40, windowMs: FIFTEEN_MIN },
@@ -104,6 +107,10 @@ const AI_PATH =
 
 const COMPUTE_PATH =
   /\/api\/.*(rescan|rebuild|backfill|recompute|batch|sync-all|train\/|infer|lexical-rescan|classify-backfill|graph-recovery|run-now)/i;
+
+/** Grounded Ask / book compilers — expensive load-then-slice paths. */
+const BOOK_QUERY_PATH =
+  /\/api\/(entities\/query|locations\/query|organizations\/query|projects\/query|skills\/query|quests\/query|family\/query|romantic-relationships\/query)\/?$/i;
 
 const AUTH_SENSITIVE_PATH =
   /\/api\/(subscription\/create|account\/delete|user\/(signup|register|reset-password|change-password))/i;
@@ -186,6 +193,12 @@ function resolveTierRules(req: Request): TierRule[] {
   }
   if (COMPUTE_PATH.test(path)) {
     rules.push({ tier: 'compute', ...TIER_LIMITS.compute });
+  }
+
+  // Book query POSTs: dedicated budget, do not also drain write_burst.
+  if (method === 'POST' && BOOK_QUERY_PATH.test(path)) {
+    rules.push({ tier: 'book_query', ...TIER_LIMITS.book_query });
+    return rules;
   }
 
   const isRead = method === 'GET' || method === 'HEAD';

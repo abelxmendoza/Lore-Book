@@ -44,4 +44,32 @@ describe('BookQueryPanel', () => {
     await waitFor(() => expect(onResponse).toHaveBeenCalled());
     expect(screen.getByText('No grounded records matched this query.')).toBeInTheDocument();
   });
+
+  it('lets users copy grounded results as plain text', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(
+      <MemoryRouter>
+        <BookQueryPanel demoMode compact />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Ask LoreBook' }), {
+      target: { value: 'MemoVault skills and quests' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ask' }));
+
+    expect(await screen.findByTestId('book-query-results')).toBeInTheDocument();
+    const resultsText = screen.getByTestId('book-query-results-text') as HTMLTextAreaElement;
+    expect(resultsText.value).toMatch(/TypeScript|MemoVault/i);
+    fireEvent.click(screen.getByTestId('book-query-copy-results'));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    expect(writeText.mock.calls[0][0]).toMatch(/TypeScript|MemoVault/i);
+    expect(await screen.findByText('Copied')).toBeInTheDocument();
+  });
 });

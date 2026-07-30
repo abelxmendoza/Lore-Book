@@ -11,6 +11,7 @@ import {
   type DatingEligibilityResult,
 } from "../conversationCentered/datingEligibilityService";
 import { enrichRomanticRelationshipsForUser } from "../conversationCentered/romanticRelationshipEnrichment";
+import { BOOK_QUERY_SOURCE_ROW_CAP } from "../query/bookQuerySourceCaps";
 import { supabaseAdmin } from "../supabaseClient";
 
 export type RomanceQuerySource = {
@@ -700,7 +701,8 @@ export async function queryRomanceForUser(
     .from("romantic_relationships")
     .select("*")
     .eq("user_id", userId)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(BOOK_QUERY_SOURCE_ROW_CAP);
   if (error) {
     if ((error as { code?: string }).code === "PGRST205") {
       return compileRomanceQuery([], request);

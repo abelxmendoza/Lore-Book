@@ -26,6 +26,10 @@ import {
 import { ragPacketCacheService } from './ragPacketCacheService';
 import { supabaseAdmin } from './supabaseClient';
 import { JOURNAL_COLS } from '../db/journalEntryColumns';
+import {
+  BOOK_QUERY_LOCATION_PROFILE_CAP,
+  BOOK_QUERY_SOURCE_ROW_CAP,
+} from './query/bookQuerySourceCaps';
 
 const toTagCounts = (counts: Map<string, number>) =>
   Array.from(counts.entries())
@@ -200,7 +204,8 @@ class LocationService {
       .from('locations')
       .select('*')
       .eq('user_id', userId)
-      .order('updated_at', { ascending: false });
+      .order('updated_at', { ascending: false })
+      .limit(BOOK_QUERY_SOURCE_ROW_CAP);
 
     if (error) {
       if (this.isMissingSchema(error)) return [];
@@ -215,7 +220,8 @@ class LocationService {
     const { data, error } = await supabaseAdmin
       .from('characters')
       .select('id, name, alias, metadata')
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .limit(BOOK_QUERY_SOURCE_ROW_CAP);
 
     if (error) {
       logger.error({ error }, 'Failed to load characters for location links');
@@ -229,7 +235,8 @@ class LocationService {
     const { data, error } = await supabaseAdmin
       .from('location_character_links')
       .select('location_id, character_id, relationship_type, evidence_count')
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .limit(BOOK_QUERY_SOURCE_ROW_CAP * 2);
 
     if (error) {
       if (this.isMissingSchema(error)) return [];
@@ -329,7 +336,11 @@ class LocationService {
   async listLocations(userId: string): Promise<LocationProfile[]> {
     const [entries, entities, chapters, canonicalLocations, characters, locationCharacterLinks] = await Promise.all([
       this.fetchEntries(userId),
-      supabaseAdmin.from('people_places').select('*').eq('user_id', userId),
+      supabaseAdmin
+        .from('people_places')
+        .select('*')
+        .eq('user_id', userId)
+        .limit(BOOK_QUERY_SOURCE_ROW_CAP * 2),
       chapterService.listChapters(userId),
       this.fetchCanonicalLocations(userId),
       this.fetchCharacters(userId),
@@ -391,8 +402,17 @@ class LocationService {
     // "First Street Pool & Billiards" after a merge left the entity row behind.
     this.foldShadowPlaceCards(accumulator);
 
+    // Cap expensive per-location materialisation (presence / tag analysis).
+    const toMaterialize = Array.from(accumulator.values())
+      .sort((a, b) => {
+        const aRegistry = a.sources.has('registry') ? 1 : 0;
+        const bRegistry = b.sources.has('registry') ? 1 : 0;
+        return bRegistry - aRegistry || b.entryIds.size - a.entryIds.size || a.name.localeCompare(b.name);
+      })
+      .slice(0, BOOK_QUERY_LOCATION_PROFILE_CAP);
+
     const locations: LocationProfile[] = await Promise.all(
-      Array.from(accumulator.values()).map(async (location) => {
+      toMaterialize.map(async (location) => {
         const relatedEntries = Array.from(location.entryIds)
           .map((id) => entryMap.get(id))
           .filter((entry): entry is MemoryEntry => Boolean(entry));

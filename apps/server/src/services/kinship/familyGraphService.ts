@@ -295,6 +295,11 @@ export class FamilyGraphService {
 
   async getAnalytics(userId: string): Promise<RelationshipAnalytic[]> {
     const graph = await this.getGraph(userId);
+    return this.analyticsFromGraph(graph);
+  }
+
+  /** Derive analytics from an already-loaded graph (avoids a second getGraph). */
+  analyticsFromGraph(graph: FamilyGraph): RelationshipAnalytic[] {
     const selfId = graph.selfId;
 
     const analytics: RelationshipAnalytic[] = [];
@@ -335,7 +340,7 @@ export class FamilyGraphService {
 
   async getStoryContext(userId: string): Promise<FamilyStoryContext> {
     const graph = await this.getGraph(userId);
-    const analytics = await this.getAnalytics(userId);
+    const analytics = this.analyticsFromGraph(graph);
 
     const { data: orgs } = await supabaseAdmin
       .from('organizations')

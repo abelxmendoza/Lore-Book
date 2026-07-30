@@ -9,10 +9,28 @@ export type SkillIndexEntry = {
   parent_skill_ids?: string[];
 };
 
+const SKILL_INDEX_TTL_MS = 60_000;
+const SKILL_INDEX_CACHE_MAX_ENTRIES = 500;
+
 /** In-memory index of confirmed skills — keyed by normalized name for chat/pipeline lookups. */
 class SkillIndexService {
   private cache = new Map<string, { at: number; entries: Map<string, SkillIndexEntry> }>();
-  private readonly ttlMs = 60_000;
+  private readonly ttlMs = SKILL_INDEX_TTL_MS;
+
+  private setCache(userId: string, entries: Map<string, SkillIndexEntry>): void {
+    this.cache.set(userId, { at: Date.now(), entries });
+    if (this.cache.size <= SKILL_INDEX_CACHE_MAX_ENTRIES) return;
+
+    const now = Date.now();
+    for (const [key, entry] of this.cache) {
+      if (now - entry.at > this.ttlMs) this.cache.delete(key);
+    }
+    while (this.cache.size > SKILL_INDEX_CACHE_MAX_ENTRIES) {
+      const oldest = this.cache.keys().next().value;
+      if (oldest === undefined) break;
+      this.cache.delete(oldest);
+    }
+  }
 
   async getIndex(userId: string): Promise<Map<string, SkillIndexEntry>> {
     const cached = this.cache.get(userId);
@@ -35,7 +53,7 @@ class SkillIndexService {
       entries.set(key, entry);
       entries.set(normalizeSkillKey(s.skill_name), entry);
     }
-    this.cache.set(userId, { at: Date.now(), entries });
+    this.setCache(userId, entries);
     return entries;
   }
 

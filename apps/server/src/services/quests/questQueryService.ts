@@ -7,6 +7,7 @@ import type {
 
 import type { Quest } from "./types";
 import { questStorage } from "./questStorage";
+import { BOOK_QUERY_SOURCE_ROW_CAP } from "../query/bookQuerySourceCaps";
 
 const STOP_WORDS = new Set([
   "a", "all", "and", "are", "by", "find", "for", "how", "in", "is", "list",
@@ -187,5 +188,5 @@ export async function queryQuestsForUser(
   userId: string,
   request: QuestQueryRequest,
 ): Promise<QuestQueryResponse> {
-  return compileQuestQuery(await questStorage.getQuests(userId, {}), request);
+  return compileQuestQuery(await questStorage.getQuests(userId, { limit: BOOK_QUERY_SOURCE_ROW_CAP }), request);
 }

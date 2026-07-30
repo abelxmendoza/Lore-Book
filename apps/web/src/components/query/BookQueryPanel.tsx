@@ -1,4 +1,4 @@
-import { BookOpen, ChevronRight, Search, Sparkles, X } from 'lucide-react';
+import { BookOpen, Check, ChevronRight, Copy, Search, Sparkles, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -9,6 +9,7 @@ import type {
   UniversalBookQueryResult,
 } from '../../lib/api-contracts';
 import { cn } from '../../lib/cn';
+import { copyTextToClipboard } from '../../lib/listClipboard';
 import { compileDemoUniversalBookQuery } from '../../lib/universalBookQueryDemo';
 
 const DOMAIN_LABELS: Record<BookQueryDomain, string> = {
@@ -40,6 +41,47 @@ const DOMAIN_ROUTES: Record<BookQueryDomain, string> = {
 };
 
 const ALL_DOMAINS = Object.keys(DOMAIN_LABELS) as BookQueryDomain[];
+
+function formatBookQueryClipboard(
+  response: UniversalBookQueryResponse,
+  title: string,
+): string {
+  const lines: string[] = [
+    title,
+    `Query: ${response.query}`,
+    `${response.total} result${response.total === 1 ? '' : 's'}`,
+    '',
+  ];
+
+  if (response.connections.length > 0) {
+    lines.push('Grounded connections');
+    for (const connection of response.connections) {
+      lines.push(`- ${connection.reason}`);
+    }
+    lines.push('');
+  }
+
+  for (const result of response.results) {
+    const status = result.status ? ` · ${result.status.replaceAll('_', ' ')}` : '';
+    lines.push(`${result.title}`);
+    lines.push(`  ${DOMAIN_LABELS[result.domain]}${status}`);
+    for (const reason of result.matchedReasons.slice(0, 3)) {
+      lines.push(`  ${reason}`);
+    }
+    if (result.evidence?.[0]?.label) {
+      lines.push(`  Evidence: ${result.evidence[0].label}`);
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n').trim();
+}
+
+function selectionHasText(): boolean {
+  if (typeof window === 'undefined') return false;
+  const text = window.getSelection()?.toString().trim();
+  return Boolean(text);
+}
 
 type Props = {
   demoMode?: boolean;
@@ -94,6 +136,7 @@ export function BookQueryPanel({
   const [response, setResponse] = useState<UniversalBookQueryResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const availableDomains = domains?.length ? domains : ALL_DOMAINS;
   const controlledResponse: UniversalBookQueryResponse | null = (() => {
     if (!controller || controller.total === undefined) return null;
@@ -173,10 +216,17 @@ export function BookQueryPanel({
     onResponse?.(null);
   };
 
-  const selectResult = (result: UniversalBookQueryResult) => {
-    if (onSelectResult) {
-      onSelectResult(result);
-    }
+  const resultsClipboardText = useMemo(
+    () => (visibleResponse ? formatBookQueryClipboard(visibleResponse, title) : ''),
+    [visibleResponse, title],
+  );
+
+  const copyResults = async () => {
+    if (!resultsClipboardText) return;
+    const ok = await copyTextToClipboard(resultsClipboardText);
+    if (!ok) return;
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
   };
 
   const toggleDomain = (domain: BookQueryDomain) => {
@@ -274,9 +324,14 @@ export function BookQueryPanel({
       {activeError && <p className="mt-2 text-xs text-red-300" role="alert">{activeError}</p>}
 
       {visibleResponse && (
-        <div className="mt-3 space-y-3 border-t border-white/10 pt-3" aria-live="polite">
+        <div
+          className="mt-3 space-y-3 border-t border-white/10 pt-3"
+          aria-live="polite"
+          data-testid="book-query-results"
+          style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+        >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-white/55">
+            <p className="text-xs text-white/55" style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
               {resultNoun ? (
                 `${visibleResponse.total} matching ${resultNoun}${visibleResponse.total === 1 ? '' : 's'}`
               ) : (
@@ -287,15 +342,68 @@ export function BookQueryPanel({
                 </>
               )}
             </p>
-            {visibleResponse.connections.length > 0 && (
-              <span className="rounded-full border border-violet-400/20 bg-violet-500/10 px-2 py-0.5 text-[10px] text-violet-200">
-                {visibleResponse.connections.length} connection{visibleResponse.connections.length === 1 ? '' : 's'}
-              </span>
-            )}
+            <div className="flex items-center gap-1.5">
+              {visibleResponse.connections.length > 0 && (
+                <span className="rounded-full border border-violet-400/20 bg-violet-500/10 px-2 py-0.5 text-[10px] text-violet-200">
+                  {visibleResponse.connections.length} connection{visibleResponse.connections.length === 1 ? '' : 's'}
+                </span>
+              )}
+              {visibleResponse.results.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void copyResults()}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/35 bg-cyan-500/15 px-2.5 py-1.5 text-[11px] font-medium text-cyan-100 hover:bg-cyan-500/25 touch-manipulation"
+                  title="Copy all query results as plain text"
+                  aria-label="Copy all query results"
+                  data-testid="book-query-copy-results"
+                >
+                  {copied ? <Check className="h-3.5 w-3.5 text-emerald-300" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copied ? 'Copied' : 'Copy results'}
+                </button>
+              )}
+            </div>
           </div>
 
+          {visibleResponse.results.length > 0 && (
+            <div className="rounded-xl border border-cyan-400/20 bg-black/40 p-2.5 sm:p-3">
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-200/55">
+                  Results text — highlight to copy
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const area = document.querySelector(
+                      'textarea[data-testid="book-query-results-text"]',
+                    ) as HTMLTextAreaElement | null;
+                    area?.focus();
+                    area?.select();
+                  }}
+                  className="text-[10px] text-cyan-200/70 hover:text-cyan-100"
+                  data-testid="book-query-select-all"
+                >
+                  Select all
+                </button>
+              </div>
+              <textarea
+                readOnly
+                value={resultsClipboardText}
+                rows={Math.min(14, Math.max(4, resultsClipboardText.split('\n').length + 1))}
+                data-testid="book-query-results-text"
+                aria-label="Query results as plain text"
+                onFocus={(event) => event.currentTarget.select()}
+                className="w-full resize-y rounded-lg border border-white/10 bg-black/50 px-3 py-2.5 text-[12px] leading-relaxed text-white/85 outline-none focus:border-cyan-400/40 cursor-text"
+                style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+              />
+            </div>
+          )}
+
           {visibleResponse.warnings.map((warning) => (
-            <p key={warning} className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-2.5 py-2 text-[11px] text-amber-100/75">
+            <p
+              key={warning}
+              className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-2.5 py-2 text-[11px] text-amber-100/75"
+              style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+            >
               {warning}
             </p>
           ))}
@@ -309,6 +417,7 @@ export function BookQueryPanel({
                 <p
                   key={`${connection.fromId}:${connection.toId}:${connection.relation}:${index}`}
                   className="text-[11px] leading-relaxed text-white/55"
+                  style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
                 >
                   {connection.reason}
                 </p>
@@ -316,44 +425,71 @@ export function BookQueryPanel({
             </div>
           )}
 
-          <div className={cn('grid gap-2', compact ? 'sm:grid-cols-2' : 'sm:grid-cols-2 lg:grid-cols-3')}>
+          <div className={cn('grid gap-2', 'grid-cols-1', !compact && 'lg:grid-cols-2')}>
             {visibleResponse.results.slice(0, compact ? 8 : 18).map((result) => {
-              const content = (
-                <>
-                <BookOpen className="h-4 w-4 shrink-0 text-cyan-300/60" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-xs font-medium text-white/85">{result.title}</span>
-                  <span className="mt-0.5 block truncate text-[10px] text-white/40">
+              const detail = (
+                <div
+                  className="min-w-0 flex-1"
+                  style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+                >
+                  <p className="text-xs font-medium text-white/85 break-words">{result.title}</p>
+                  <p className="mt-0.5 text-[10px] text-white/40 break-words">
                     {DOMAIN_LABELS[result.domain]}
                     {result.status ? ` · ${result.status.replaceAll('_', ' ')}` : ''}
-                  </span>
-                  {result.matchedReasons[0] && (
-                    <span className="mt-0.5 block truncate text-[10px] text-cyan-100/45">
-                      {result.matchedReasons[0]}
-                    </span>
-                  )}
-                </span>
-                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/20 group-hover:text-cyan-300/70" />
-                </>
+                  </p>
+                  {result.matchedReasons.map((reason) => (
+                    <p
+                      key={reason}
+                      className="mt-0.5 text-[10px] text-cyan-100/45 break-words whitespace-pre-wrap"
+                    >
+                      {reason}
+                    </p>
+                  ))}
+                </div>
               );
-              const className = 'group flex min-w-0 items-center gap-2.5 rounded-xl border border-white/[0.08] bg-black/25 px-3 py-2.5 text-left hover:border-cyan-400/25 hover:bg-cyan-500/[0.04]';
-              return onSelectResult ? (
-                <button
+
+              if (onSelectResult) {
+                return (
+                  <div
+                    key={`${result.domain}:${result.id}`}
+                    className="flex min-w-0 items-start gap-2.5 rounded-xl border border-white/[0.08] bg-black/25 px-3 py-2.5 text-left hover:border-cyan-400/25 hover:bg-cyan-500/[0.04]"
+                    data-testid={`book-query-result-${result.id}`}
+                    style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+                  >
+                    <BookOpen className="h-4 w-4 shrink-0 text-cyan-300/60 mt-0.5" aria-hidden />
+                    {detail}
+                    <button
+                      type="button"
+                      onClick={() => onSelectResult(result)}
+                      className="shrink-0 mt-0.5 inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] text-white/50 hover:border-cyan-400/30 hover:text-cyan-100 touch-manipulation"
+                      aria-label={`Open ${result.title}`}
+                    >
+                      Open
+                      <ChevronRight className="h-3 w-3" />
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <div
                   key={`${result.domain}:${result.id}`}
-                  type="button"
-                  onClick={() => selectResult(result)}
-                  className={className}
+                  className="flex min-w-0 items-start gap-2.5 rounded-xl border border-white/[0.08] bg-black/25 px-3 py-2.5 text-left"
+                  style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
                 >
-                  {content}
-                </button>
-              ) : (
-                <Link
-                  key={`${result.domain}:${result.id}`}
-                  to={`${DOMAIN_ROUTES[result.domain]}?q=${encodeURIComponent(result.title)}`}
-                  className={className}
-                >
-                  {content}
-                </Link>
+                  <BookOpen className="h-4 w-4 shrink-0 text-cyan-300/60 mt-0.5" aria-hidden />
+                  {detail}
+                  <Link
+                    to={`${DOMAIN_ROUTES[result.domain]}?q=${encodeURIComponent(result.title)}`}
+                    className="shrink-0 mt-0.5 inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] text-white/50 hover:border-cyan-400/30 hover:text-cyan-100"
+                    onClick={(event) => {
+                      if (selectionHasText()) event.preventDefault();
+                    }}
+                  >
+                    Open
+                    <ChevronRight className="h-3 w-3" />
+                  </Link>
+                </div>
               );
             })}
           </div>

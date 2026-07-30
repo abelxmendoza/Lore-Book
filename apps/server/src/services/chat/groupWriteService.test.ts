@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { GROUP_WRITE_MEMBER_NAME_CAP } from '../query/bookQuerySourceCaps';
 import {
   extractListedMemberNames,
   inferGroupNameFromContext,
@@ -14,6 +15,12 @@ describe('groupWriteService helpers', () => {
         'So far we have NeonPulse, VelvetFox, LumaJade, Star Bats, and Neon Pixie',
       ),
     ).toEqual(['NeonPulse', 'VelvetFox', 'LumaJade', 'Star Bats', 'Neon Pixie']);
+  });
+
+  it(`caps roster extraction at ${GROUP_WRITE_MEMBER_NAME_CAP} names`, () => {
+    const names = Array.from({ length: GROUP_WRITE_MEMBER_NAME_CAP + 10 }, (_, i) => `Person${i}`);
+    const extracted = extractListedMemberNames(`Members are ${names.join(', ')}`);
+    expect(extracted).toHaveLength(GROUP_WRITE_MEMBER_NAME_CAP);
   });
 
   it('does not turn Groups and Organizations Book UI language into members', () => {

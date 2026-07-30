@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { BOOK_QUERY_SOURCE_ROW_CAP } from '../query/bookQuerySourceCaps';
 import { skillDetailsExtractionService, type SkillMetadata } from './skillDetailsExtractionService';
 import {
   buildSkillInsertPayload,
@@ -162,7 +163,7 @@ class SkillService {
   /**
    * Get all skills for a user
    */
-  async getSkills(userId: string, filters?: { active_only?: boolean; category?: SkillCategory }): Promise<Skill[]> {
+  async getSkills(userId: string, filters?: { active_only?: boolean; category?: SkillCategory; limit?: number }): Promise<Skill[]> {
     try {
       const schema = await getSkillsDbSchema();
       let query = supabaseAdmin
@@ -177,6 +178,9 @@ class SkillService {
       } else {
         query = query.order('updated_at', { ascending: false });
       }
+
+      const rowCap = filters?.limit && filters.limit > 0 ? filters.limit : BOOK_QUERY_SOURCE_ROW_CAP;
+      query = query.limit(rowCap);
 
       const { data, error } = await query;
 

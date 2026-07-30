@@ -28,6 +28,7 @@ import { querySkillsForUser } from '../skills/skillQueryService';
 import { supabaseAdmin } from '../supabaseClient';
 
 import { detectBookQueryDomains } from './bookQueryIntent';
+import { BOOK_QUERY_DOMAIN_CONCURRENCY } from './bookQuerySourceCaps';
 
 export type BookQueryRegistryEntry = {
   domain: BookQueryDomain;
@@ -437,14 +438,19 @@ export async function queryBooksForUser(
 ): Promise<UniversalBookQueryResponse> {
   const startedAt = Date.now();
   const domains = selectBookQueryDomains(request);
-  const settled = await Promise.all(domains.map(async (domain) => {
-    try {
-      return { domain, results: await DOMAIN_QUERIES[domain](userId, request) };
-    } catch (error) {
-      logger.warn({ error, domain, userId }, 'book query domain degraded');
-      return { domain, results: [] as UniversalBookQueryResult[], error: true };
-    }
-  }));
+  const settled: Array<{ domain: BookQueryDomain; results: UniversalBookQueryResult[]; error?: boolean }> = [];
+  for (let i = 0; i < domains.length; i += BOOK_QUERY_DOMAIN_CONCURRENCY) {
+    const chunk = domains.slice(i, i + BOOK_QUERY_DOMAIN_CONCURRENCY);
+    const chunkSettled = await Promise.all(chunk.map(async (domain) => {
+      try {
+        return { domain, results: await DOMAIN_QUERIES[domain](userId, request) };
+      } catch (error) {
+        logger.warn({ error, domain, userId }, 'book query domain degraded');
+        return { domain, results: [] as UniversalBookQueryResult[], error: true };
+      }
+    }));
+    settled.push(...chunkSettled);
+  }
   const degradedDomains = settled.filter((item) => item.error).map((item) => item.domain);
   const allResults = settled.flatMap((item) => item.results)
     .sort((left, right) => right.score - left.score || (right.updatedAt ?? '').localeCompare(left.updatedAt ?? ''));

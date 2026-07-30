@@ -15,6 +15,7 @@ import {
   isAppSurfacePersonName,
   isCollectivePersonName,
 } from '../../utils/personNameValidation';
+import { GROUP_WRITE_MEMBER_NAME_CAP } from '../query/bookQuerySourceCaps';
 
 export type GroupWriteMemberOutcome = {
   name: string;
@@ -105,6 +106,7 @@ export function extractListedMemberNames(message: string): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const part of parts) {
+    if (out.length >= GROUP_WRITE_MEMBER_NAME_CAP) break;
     if (part.length < 2) continue;
     if (/^(also|too|etc|now|well|so|far|we|have|the|a|an|group|crew)$/i.test(part)) continue;
     if (!/[A-Za-z]/.test(part)) continue;

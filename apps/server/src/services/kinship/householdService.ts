@@ -44,14 +44,20 @@ export class HouseholdService {
       .eq('user_id', userId)
       .eq('type', 'family');
 
+    const householdOrgs = (orgs ?? []).filter((org) =>
+      isHouseholdOrg(org.name as string, (org.metadata ?? {}) as Record<string, unknown>),
+    );
+    if (householdOrgs.length === 0) return [];
+
+    const membersByOrg = await organizationService.getMembersForOrganizations(
+      householdOrgs.map((org) => org.id as string),
+    );
+
     const households: HouseholdDTO[] = [];
 
-    for (const org of orgs ?? []) {
+    for (const org of householdOrgs) {
       const meta = (org.metadata ?? {}) as Record<string, unknown>;
-      if (!isHouseholdOrg(org.name as string, meta)) continue;
-
-      const members = await organizationService.getMembers(org.id as string);
-      const selfId = await this.findSelfId(userId);
+      const members = membersByOrg.get(org.id as string) ?? [];
 
       const headName = (meta.head_of_household as string | undefined)?.trim();
       let headCharacterId: string | undefined;
@@ -116,20 +122,6 @@ export class HouseholdService {
     }
 
     return households.sort((a, b) => b.confidence - a.confidence || a.name.localeCompare(b.name));
-  }
-
-  private async findSelfId(userId: string): Promise<string | null> {
-    const { data } = await supabaseAdmin
-      .from('characters')
-      .select('id, metadata, importance_level')
-      .eq('user_id', userId)
-      .limit(50);
-    const self = (data ?? []).find(
-      (c) =>
-        (c.metadata as Record<string, unknown>)?.is_self === true ||
-        c.importance_level === 'protagonist'
-    );
-    return (self?.id as string) ?? null;
   }
 }
 

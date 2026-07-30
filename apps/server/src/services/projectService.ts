@@ -4,6 +4,7 @@
  */
 import { logger } from '../logger';
 import { normalizeNameKey, namesOverlapByContainment } from '../utils/nameNormalization';
+import { BOOK_QUERY_SOURCE_ROW_CAP } from './query/bookQuerySourceCaps';
 import { supabaseAdmin } from './supabaseClient';
 
 export interface ProjectRow {
@@ -44,7 +45,8 @@ class ProjectService {
       .from('projects')
       .select(COLUMNS)
       .eq('user_id', userId)
-      .order('updated_at', { ascending: false });
+      .order('updated_at', { ascending: false })
+      .limit(BOOK_QUERY_SOURCE_ROW_CAP);
     if (error) {
       logger.warn({ error, userId }, 'listProjects failed — trying organizations fallback');
       return this.listProjectsFromOrganizations(userId);

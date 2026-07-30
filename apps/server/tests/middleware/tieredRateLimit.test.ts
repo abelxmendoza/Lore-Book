@@ -151,6 +151,28 @@ describe('tieredRateLimit', () => {
     );
     expect(rules.map((r) => r.tier)).toContain('compute');
   });
+
+  it('rates book query POSTs on a dedicated book_query tier', () => {
+    const rules = resolveApiRateTierRulesForTests(
+      mockReq('/api/entities/query', 'POST', 'user-1') as Request,
+    );
+    expect(rules.some((r) => r.tier === 'book_query')).toBe(true);
+    expect(rules.some((r) => r.tier === 'write_burst')).toBe(false);
+    expect(rules.find((r) => r.tier === 'book_query')?.max).toBe(120);
+
+    for (const path of [
+      '/api/locations/query',
+      '/api/organizations/query',
+      '/api/projects/query',
+      '/api/skills/query',
+      '/api/quests/query',
+      '/api/family/query',
+      '/api/romantic-relationships/query',
+    ]) {
+      const pathRules = resolveApiRateTierRulesForTests(mockReq(path, 'POST', 'user-1') as Request);
+      expect(pathRules.some((r) => r.tier === 'book_query')).toBe(true);
+    }
+  });
 });
 
 describe('rateLimitCore', () => {

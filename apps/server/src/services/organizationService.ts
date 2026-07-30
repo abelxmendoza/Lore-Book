@@ -20,6 +20,7 @@ import {
 } from '../utils/nameNormalization';
 
 import { groupAnalyticsService, type GroupAnalytics } from './groupAnalyticsService';
+import { BOOK_QUERY_SOURCE_ROW_CAP } from './query/bookQuerySourceCaps';
 import { supabaseAdmin } from './supabaseClient';
 
 // ── Canonical group type enum ─────────────────────────────────────────
@@ -60,10 +61,27 @@ export type MembershipModel = 'strict' | 'fuzzy' | 'none';
 // collapses that storm to one DB read per window; the service's own mutations
 // bust the user's entry so reads stay fresh immediately after a write.
 const ORG_LIST_TTL_MS = 30_000;
+/** Bound process-lifetime cache growth across many tenants. */
+const ORG_LIST_CACHE_MAX_ENTRIES = 500;
 type OrgListCacheEntry = { at: number; data: unknown[] };
 const orgListCache = new Map<string, OrgListCacheEntry>();
 /** Collapse concurrent cache misses for the same user into one DB fan-out. */
 const orgListInflight = new Map<string, Promise<Organization[]>>();
+
+function setOrgListCache(userId: string, data: unknown[]): void {
+  orgListCache.set(userId, { at: Date.now(), data });
+  if (orgListCache.size <= ORG_LIST_CACHE_MAX_ENTRIES) return;
+
+  const now = Date.now();
+  for (const [key, entry] of orgListCache) {
+    if (now - entry.at > ORG_LIST_TTL_MS) orgListCache.delete(key);
+  }
+  while (orgListCache.size > ORG_LIST_CACHE_MAX_ENTRIES) {
+    const oldest = orgListCache.keys().next().value;
+    if (oldest === undefined) break;
+    orgListCache.delete(oldest);
+  }
+}
 
 // ── User relationship to this group ──────────────────────────────────
 export type UserRelationship =
@@ -500,13 +518,14 @@ export class OrganizationService {
         .from('organizations')
         .select(ORG_COLS)
         .eq('user_id', userId)
-        .order('updated_at', { ascending: false });
+        .order('updated_at', { ascending: false })
+        .limit(BOOK_QUERY_SOURCE_ROW_CAP);
 
       if (error) throw error;
 
       const organizationRows = ((orgs || []) as unknown) as Organization[];
       if (organizationRows.length === 0) {
-        orgListCache.set(userId, { at: Date.now(), data: [] });
+        setOrgListCache(userId, []);
         return [];
       }
 
@@ -573,7 +592,7 @@ export class OrganizationService {
         };
       });
 
-      orgListCache.set(userId, { at: Date.now(), data: result });
+      setOrgListCache(userId, result);
       return result;
     } catch (error) {
       logger.error({ error, userId }, 'Failed to list organizations');
@@ -872,6 +891,30 @@ export class OrganizationService {
     } catch (error) {
       logger.error({ error, organizationId }, 'Failed to get members');
       return [];
+    }
+  }
+
+  /** Batch member load for household / multi-org reads (avoids N+1). */
+  async getMembersForOrganizations(organizationIds: string[]): Promise<Map<string, OrganizationMember[]>> {
+    const grouped = new Map<string, OrganizationMember[]>();
+    if (organizationIds.length === 0) return grouped;
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('organization_members')
+        .select(ORG_MEMBER_COLS)
+        .in('organization_id', organizationIds)
+        .order('joined_date', { ascending: true })
+        .limit(BOOK_QUERY_SOURCE_ROW_CAP * 2);
+      if (error) throw error;
+      for (const row of (data || []) as OrganizationMember[]) {
+        const list = grouped.get(row.organization_id) ?? [];
+        list.push(row);
+        grouped.set(row.organization_id, list);
+      }
+      return grouped;
+    } catch (error) {
+      logger.error({ error, organizationCount: organizationIds.length }, 'Failed to batch-load organization members');
+      return grouped;
     }
   }
 

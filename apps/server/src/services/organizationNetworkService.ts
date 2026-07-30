@@ -11,6 +11,7 @@ import {
   type OrganizationRelationship,
   type OrgRelationshipType,
 } from './organizationService';
+import { clampOrgNetworkDepth } from './query/bookQuerySourceCaps';
 import { supabaseAdmin } from './supabaseClient';
 
 export type OrgNetworkEdge = {
@@ -55,6 +56,7 @@ export class OrganizationNetworkService {
     maxDepth = 4
   ): Promise<OrgNetwork> {
     try {
+      const depth = clampOrgNetworkDepth(maxDepth, 4);
       const orgs = await organizationService.listOrganizations(userId);
       if (orgs.length === 0) {
         return { rootOrg: null, nodes: [], edges: [], orgCount: 0, edgeCount: 0 };
@@ -114,7 +116,7 @@ export class OrganizationNetworkService {
 
       let visibleIds: Set<string>;
       if (rootOrgId && nodeById.has(rootOrgId)) {
-        visibleIds = this.collectWithinDepth(rootOrgId, edges, maxDepth);
+        visibleIds = this.collectWithinDepth(rootOrgId, edges, depth);
       } else {
         visibleIds = new Set(allNodes.map(n => n.id));
       }

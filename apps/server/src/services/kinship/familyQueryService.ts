@@ -245,10 +245,10 @@ export function compileFamilyQuery(
 }
 
 export async function queryFamilyForUser(userId: string, request: FamilyQueryRequest): Promise<FamilyQueryResponse> {
-  const [graph, households, analytics] = await Promise.all([
+  const [graph, households] = await Promise.all([
     familyGraphService.getGraph(userId),
     householdService.listHouseholds(userId),
-    familyGraphService.getAnalytics(userId),
   ]);
+  const analytics = familyGraphService.analyticsFromGraph(graph);
   return compileFamilyQuery(graph, households, analytics, request);
 }
