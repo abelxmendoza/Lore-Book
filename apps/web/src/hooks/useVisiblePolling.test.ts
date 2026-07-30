@@ -29,6 +29,17 @@ describe('useVisiblePolling', () => {
     expect(cb).toHaveBeenCalledTimes(4);
   });
 
+  it('fires the immediate call even when the tab is already hidden at mount', () => {
+    // Regression: a component whose first load depends on this hook must not
+    // get stuck forever just because document.visibilityState hasn't caught
+    // up to "visible" yet at the exact moment it mounts — recovery would
+    // otherwise depend on a hidden→visible transition that may never occur.
+    setVisibility('hidden');
+    const cb = vi.fn();
+    renderHook(() => useVisiblePolling(cb, 1000));
+    expect(cb).toHaveBeenCalledTimes(1);
+  });
+
   it('does not fire immediately when immediate=false', () => {
     const cb = vi.fn();
     renderHook(() => useVisiblePolling(cb, 1000, { immediate: false }));

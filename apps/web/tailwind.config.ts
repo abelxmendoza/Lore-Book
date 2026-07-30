@@ -22,7 +22,7 @@ export default {
           blue: '#4DE2FF',
           aqua: '#5CFFD0'
         },
-        cyan: '#17d4ff',
+        'brand-cyan': '#17d4ff',
         accent: '#0f172a',
         border: '#1f0a2e'
       },

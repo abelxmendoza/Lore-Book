@@ -10,7 +10,7 @@ export const TimelineIdentityPulse = () => {
   return (
     <Card className="border border-primary/30 bg-black/30">
       <CardHeader>
-        <CardTitle className="text-sm text-cyan">Identity Pulse</CardTitle>
+        <CardTitle className="text-sm text-brand-cyan">Identity Pulse</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
         <div className="text-lg font-semibold text-primary">{pulse.persona}</div>

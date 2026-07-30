@@ -8,7 +8,7 @@ export const MotifBars = ({ motifs }: { motifs: { name: string; energy: number }
         </div>
         <div className="h-2 w-full rounded-full bg-white/10">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-primary to-cyan"
+            className="h-full rounded-full bg-gradient-to-r from-primary to-brand-cyan"
             style={{ width: `${motif.energy}%` }}
           />
         </div>

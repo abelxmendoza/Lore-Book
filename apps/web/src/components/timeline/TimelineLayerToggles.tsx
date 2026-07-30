@@ -14,7 +14,7 @@ export const TimelineLayerToggles = ({
         key={layer}
         size="sm"
         variant={layers[layer] ? 'default' : 'outline'}
-        className="border-cyan/40 bg-opacity-70 text-xs uppercase"
+        className="border-brand-cyan/40 bg-opacity-70 text-xs uppercase"
         onClick={() => onToggle(layer)}
       >
         {layer}

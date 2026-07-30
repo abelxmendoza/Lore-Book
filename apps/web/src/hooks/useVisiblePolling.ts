@@ -42,7 +42,12 @@ export function useVisiblePolling(
       savedCallback.current();
     };
 
-    if (immediate) tick();
+    // The initial call always fires, even if the tab isn't in the browser-
+    // verified "visible" state yet (a real, observed case right after mount) —
+    // otherwise a component's first load is silently skipped forever, since
+    // recovery depends on a later hidden→visible transition that may never
+    // happen. Only the recurring interval below should skip while backgrounded.
+    if (immediate) savedCallback.current();
     const id = window.setInterval(tick, intervalMs);
 
     const onVisibility = () => {

@@ -17,7 +17,7 @@ export const MemoryFabricPanel = () => {
 
   if (loading) {
     return (
-      <Card className="neon-surface border border-cyan/30">
+      <Card className="neon-surface border border-brand-cyan/30">
         <CardHeader>
           <CardTitle className="font-techno text-lg">Memory Fabric</CardTitle>
         </CardHeader>
@@ -30,7 +30,7 @@ export const MemoryFabricPanel = () => {
 
   if (error) {
     return (
-      <Card className="neon-surface border border-cyan/30">
+      <Card className="neon-surface border border-brand-cyan/30">
         <CardHeader>
           <CardTitle className="font-techno text-lg">Memory Fabric</CardTitle>
         </CardHeader>
@@ -45,7 +45,7 @@ export const MemoryFabricPanel = () => {
   }
 
   return (
-    <Card className="neon-surface border border-cyan/30">
+    <Card className="neon-surface border border-brand-cyan/30">
       <CardHeader className="flex items-center justify-between">
         <CardTitle className="font-techno text-lg">Memory Fabric</CardTitle>
         <FabricFilterBar filters={filters} onChange={setFilters} />
