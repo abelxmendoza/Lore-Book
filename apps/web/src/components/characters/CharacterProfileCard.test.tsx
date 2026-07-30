@@ -319,6 +319,15 @@ describe('CharacterProfileCard', () => {
     expect(screen.getByText('Weakening')).toBeInTheDocument();
   });
 
+  it('renders the relationship phase badge (e.g. "Active") only once, not duplicated at the bottom', () => {
+    render(
+      <CharacterProfileCard
+        character={{ ...baseCharacter, analytics: { ...trendAnalytics, trend: 'stable' } }}
+      />
+    );
+    expect(screen.getAllByText('Active')).toHaveLength(1);
+  });
+
   it('does not show a trend indicator when analytics.trend is stable', () => {
     render(
       <CharacterProfileCard

@@ -856,7 +856,7 @@ export const CharacterProfileCard = ({
           </div>
         )}
 
-        {(character.memory_count !== undefined || character.relationship_count !== undefined || phase) && (
+        {(character.memory_count !== undefined || character.relationship_count !== undefined) && (
           <div className="flex items-center justify-between pt-1.5 border-t border-border/30 text-[10px]">
             <div className="flex items-center gap-1.5 flex-wrap">
               {character.memory_count !== undefined && (
@@ -878,16 +878,6 @@ export const CharacterProfileCard = ({
                 </div>
               )}
             </div>
-            {phase && (
-              <Badge
-                variant="outline"
-                className={`${phaseConfig[phase].classes} ${phaseConfig[phase].glow ?? ''} text-[10px] px-1.5 py-0.5 flex items-center gap-1 flex-shrink-0`}
-                title={`Relationship phase: ${phaseConfig[phase].label}`}
-              >
-                {phaseConfig[phase].icon}
-                <span className="hidden sm:inline">{phaseConfig[phase].label}</span>
-              </Badge>
-            )}
           </div>
         )}
       </CardContent>
