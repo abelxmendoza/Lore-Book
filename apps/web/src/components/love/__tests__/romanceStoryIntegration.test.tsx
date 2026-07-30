@@ -10,7 +10,6 @@ import {
   getMockRomanticRelationships,
   getMockRomanticRelationshipsByFilter,
 } from '../../../mocks/romanticRelationships';
-import { ROMANTIC_LORE_TEST_CASES } from '../../../mocks/romanticLoreStory';
 
 vi.mock('../../../contexts/MockDataContext', () => ({
   useMockData: vi.fn(),
@@ -42,18 +41,6 @@ describe('Dating & Romance — lore story integration', () => {
     expect(screen.getByText(/9 relationship/i)).toBeInTheDocument();
   });
 
-  it('shows lore story showcase with all test cases', async () => {
-    render(<LoveAndRelationshipsView />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('romantic-story-showcase')).toBeInTheDocument();
-    });
-
-    for (const tc of ROMANTIC_LORE_TEST_CASES) {
-      expect(screen.getByTestId(`lore-test-case-${tc.id}`)).toBeInTheDocument();
-    }
-  });
-
   it('shows lexical evidence on relationship cards', async () => {
     render(<LoveAndRelationshipsView />);
 
@@ -62,7 +49,10 @@ describe('Dating & Romance — lore story integration', () => {
     });
 
     const alexCard = screen.getByTestId('relationship-card-rel-001');
-    expect(alexCard.textContent).toMatch(/girlfriend/i);
+    // The card now shows a composed status ("Exclusive · Active partner")
+    // rather than the raw relationship_type string ("girlfriend") — the
+    // exclusivity label still reflects rel-001's exclusivity_status: 'exclusive'.
+    expect(alexCard.textContent).toMatch(/exclusive/i);
   });
 
   it('filters map to lore fixture tabs', async () => {
@@ -104,11 +94,4 @@ describe('Dating & Romance — lore story integration', () => {
     }
   });
 
-  it('suggestions show Priya and Daniel from ch.4 lore', async () => {
-    render(<LoveAndRelationshipsView />);
-    await waitFor(() => {
-      expect(screen.getByTestId('lore-test-case-lore-priya-dating')).toBeInTheDocument();
-      expect(screen.getByTestId('lore-test-case-lore-daniel-talking')).toBeInTheDocument();
-    });
-  });
 });

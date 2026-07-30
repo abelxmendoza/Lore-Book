@@ -128,9 +128,12 @@ describe('RelationshipDetailModal', () => {
     const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent ?? '');
     expect(tabs[0]).toMatch(/overview/i);
     expect(tabs[1]).toMatch(/chat/i);
-    expect(screen.getByRole('tab', { name: /timeline/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /pros & cons/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /analytics/i })).toBeInTheDocument();
+    // getAllByRole, not getByRole — the desktop TabsList and the mobile
+    // EntityModalBottomNav (both real, both visible in jsdom with no CSS
+    // media queries applied) render every tab twice with the same name.
+    expect(screen.getAllByRole('tab', { name: /timeline/i })[0]).toBeInTheDocument();
+    expect(screen.getAllByRole('tab', { name: /pros & cons/i })[0]).toBeInTheDocument();
+    expect(screen.getAllByRole('tab', { name: /analytics/i })[0]).toBeInTheDocument();
   });
 
   it('displays relationship scores in overview', async () => {
@@ -164,7 +167,7 @@ describe('RelationshipDetailModal', () => {
     });
     
     const user = userEvent.setup();
-    const timelineTab = screen.getByRole('tab', { name: /timeline/i });
+    const timelineTab = screen.getAllByRole('tab', { name: /timeline/i })[0];
     await user.click(timelineTab);
 
     await waitFor(() => {
@@ -181,7 +184,7 @@ describe('RelationshipDetailModal', () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole('tab', { name: /chat/i }));
+    await user.click(screen.getAllByRole('tab', { name: /chat/i })[0]);
 
     expect(screen.getByTestId('relationship-chat-panel')).toBeInTheDocument();
     expect(screen.queryByPlaceholderText(/message about this relationship/i)).not.toBeInTheDocument();
@@ -210,7 +213,7 @@ describe('RelationshipDetailModal', () => {
     });
     
     const user = userEvent.setup();
-    const timelineTab = screen.getByRole('tab', { name: /timeline/i });
+    const timelineTab = screen.getAllByRole('tab', { name: /timeline/i })[0];
     await user.click(timelineTab);
 
     await waitFor(() => {
@@ -246,7 +249,7 @@ describe('RelationshipDetailModal', () => {
     });
     
     const user = userEvent.setup();
-    const analyticsTab = screen.getByRole('tab', { name: /analytics/i });
+    const analyticsTab = screen.getAllByRole('tab', { name: /analytics/i })[0];
     await user.click(analyticsTab);
 
     await waitFor(() => {
@@ -267,7 +270,7 @@ describe('RelationshipDetailModal', () => {
     });
     
     const user = userEvent.setup();
-    const prosConsTab = screen.getByRole('tab', { name: /pros & cons/i });
+    const prosConsTab = screen.getAllByRole('tab', { name: /pros & cons/i })[0];
     await user.click(prosConsTab);
 
     await waitFor(() => {

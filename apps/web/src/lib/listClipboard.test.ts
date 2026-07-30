@@ -548,7 +548,7 @@ describe('buildCharacterConsolidateClipboardText', () => {
     expect(text).toContain('Consolidate Characters — Duplicate Groups (1 item)');
     expect(text).toContain('1. Alex Rivera');
     expect(text).toContain('Match type: exact');
-    expect(text).toContain('Confidence: 95%');
+    expect(text).toContain('Identity likelihood: 95%');
     expect(text).toContain('Cards: Alex Rivera, Alex Rivera');
     expect(text).toContain('Aliases: Alex, A. Rivera');
     expect(text).toContain('Recommendation: merge');

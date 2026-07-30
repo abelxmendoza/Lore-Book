@@ -37,9 +37,15 @@ vi.mock('../../features/chat/hooks/useChat', () => ({
     streamingMessageId: null,
     sources: [],
     sendMessage: vi.fn(),
+    retryCloudSync: vi.fn(),
+    retryAssistantResponse: vi.fn(),
+    copyOriginalMessage: vi.fn(),
+    dismissDeliveryNotice: vi.fn(),
+    retryingKeys: {},
     clearConversation: vi.fn(),
     messageRefs: { current: {} },
     registerMessageRef: vi.fn(),
+    GroupToastContainer: () => null,
   }))
 }));
 

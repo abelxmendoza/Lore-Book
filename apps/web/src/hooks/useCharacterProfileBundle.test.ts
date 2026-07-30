@@ -18,15 +18,21 @@ function fireStory(detail: StoryDataUpdatedDetail) {
 describe('useCharacterProfileBundle', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // useCharacterProfileBundle is now a thin adapter over useCharacterQuery,
+    // which calls cachedFetchJson('/api/characters/:id/query?...') and expects
+    // a { success, query: { sections: {...} } } shape — not the old
+    // { success, bundle } shape from the retired direct profile-bundle fetch.
     cachedFetchJson.mockResolvedValue({
       success: true,
-      bundle: {
+      query: {
         characterId: 'char-1',
-        detail: { id: 'char-1', name: 'Mina' },
-        knowledgeBase: {},
-        loreProfile: {},
-        chatMentions: [],
         generatedAt: new Date().toISOString(),
+        sections: {
+          identity: { id: 'char-1', name: 'Mina' },
+          knowledge: {},
+          lore: {},
+          chatMentions: [],
+        },
       },
     });
   });
@@ -46,13 +52,15 @@ describe('useCharacterProfileBundle', () => {
             () =>
               resolve({
                 success: true,
-                bundle: {
+                query: {
                   characterId: 'char-1',
-                  detail: { id: 'char-1', name: 'Mina Updated' },
-                  knowledgeBase: {},
-                  loreProfile: {},
-                  chatMentions: [],
                   generatedAt: new Date().toISOString(),
+                  sections: {
+                    identity: { id: 'char-1', name: 'Mina Updated' },
+                    knowledge: {},
+                    lore: {},
+                    chatMentions: [],
+                  },
                 },
               }),
             30,
