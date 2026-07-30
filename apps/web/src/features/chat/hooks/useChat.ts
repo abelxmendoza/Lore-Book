@@ -85,6 +85,15 @@ export type ChatSendOptions = {
 };
 
 // Guest sessions have no auth token — treat auth failures like an unavailable backend.
+// Uniqueness (not unpredictability) is all this ID needs — a monotonic
+// counter avoids Math.random() (flagged as insecure randomness) without
+// requiring crypto in the rare environment where it's unavailable.
+let fallbackSendIdCounter = 0;
+function nextFallbackSendId(): string {
+  fallbackSendIdCounter += 1;
+  return fallbackSendIdCounter.toString(36);
+}
+
 function isGuestStreamBlocked(error: string): boolean {
   const lower = error.toLowerCase();
   return (
@@ -411,7 +420,7 @@ export const useChat = () => {
         ? recovered.id
         : typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
-          : `send-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+          : `send-${Date.now()}-${nextFallbackSendId()}`);
 
     if (retryInFlightRef.current.has(clientIdempotencyKey)) return;
     retryInFlightRef.current.add(clientIdempotencyKey);

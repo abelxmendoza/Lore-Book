@@ -80,10 +80,12 @@ function asPosts(response: XResponse): XPost[] {
 function normalizeText(post: XPost): string {
   const raw = post.note_tweet?.text ?? post.full_text ?? post.text ?? '';
   // Collapse whitespace without \s+ quantifier on untrusted input (CodeQL js/polynomial-redos).
+  // Bounded to X's own longest post length + margin (CodeQL js/loop-bound-injection).
+  const bounded = raw.length > 25000 ? raw.slice(0, 25000) : raw;
   let out = '';
   let prevSpace = false;
-  for (let i = 0; i < raw.length; i++) {
-    const ch = raw[i]!;
+  for (let i = 0; i < bounded.length; i++) {
+    const ch = bounded[i]!;
     const isSpace = ch === ' ' || ch === '\n' || ch === '\r' || ch === '\t';
     if (isSpace) {
       if (!prevSpace) out += ' ';

@@ -169,18 +169,22 @@ function extractSummary(text: string): string | undefined {
   return block?.replace(/\s+/g, ' ').trim().slice(0, 500) || undefined;
 }
 
-function extractLanguages(text: string): string[] {
+export function extractLanguages(text: string): string[] {
   const line = text.split('\n').find((l) => /^Languages?\s*[:\u2014-]/i.test(l.trim()));
   if (!line) return [];
   const after = line.split(/[:\u2014-]/).slice(1).join(':');
   return after
     .split(/[,|\u00b7;]/)
     // Linear paren strip — no regex on untrusted fragments (CodeQL js/polynomial-redos).
+    // Bounded to a small cap first (CodeQL js/loop-bound-injection) — a real
+    // language name is never anywhere close to this long, and anything
+    // longer is discarded by the length filter below regardless.
     .map((s) => {
+      const bounded = s.length > 200 ? s.slice(0, 200) : s;
       let out = '';
       let depth = 0;
-      for (let i = 0; i < s.length; i++) {
-        const ch = s[i]!;
+      for (let i = 0; i < bounded.length; i++) {
+        const ch = bounded[i]!;
         if (ch === '(') {
           depth++;
           continue;

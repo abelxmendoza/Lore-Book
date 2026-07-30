@@ -50,12 +50,20 @@ if (looksLikeProduction(db) || /cshtthzpgkmrbcsfghyq/i.test(db) || /lorebookai/i
 }
 
 const expectedRef = env.STAGING_SUPABASE_PROJECT_REF || 'madyqnyvlexmpphejqmh';
-if (!db.includes(expectedRef) && !db.includes('pooler.supabase.com')) {
-  // pooler host may not include project ref in hostname the same way; require ref in user or query
-  if (!db.includes(expectedRef)) {
-    console.error('NO-GO: STAGING_DATABASE_URL does not contain expected staging project ref');
-    process.exit(2);
-  }
+// Host-anchored check (not a substring scan — 'pooler.supabase.com' can
+// otherwise appear anywhere in a crafted URL, e.g. as a query param, without
+// the connection actually going to Supabase's pooler).
+let dbHost = '';
+try {
+  dbHost = new URL(db).hostname.toLowerCase();
+} catch {
+  console.error('NO-GO: STAGING_DATABASE_URL is not a valid connection URL');
+  process.exit(2);
+}
+const isPoolerHost = dbHost === 'pooler.supabase.com' || dbHost.endsWith('.pooler.supabase.com');
+if (!db.includes(expectedRef) && !isPoolerHost) {
+  console.error('NO-GO: STAGING_DATABASE_URL does not contain expected staging project ref');
+  process.exit(2);
 }
 
 function psql(args, opts = {}) {
