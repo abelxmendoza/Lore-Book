@@ -20,7 +20,7 @@ const { fromMock, tableData, selectCalls } = vi.hoisted(() => {
   const fromMock = vi.fn((table: string) => {
     const result = { data: tableData[table] ?? [], error: null };
     const q: Record<string, unknown> = {};
-    for (const m of ['eq', 'in', 'order', 'single', 'update', 'insert', 'delete']) {
+    for (const m of ['eq', 'in', 'order', 'limit', 'single', 'update', 'insert', 'delete']) {
       q[m] = vi.fn(() => q);
     }
     q.select = vi.fn((cols: string) => {
