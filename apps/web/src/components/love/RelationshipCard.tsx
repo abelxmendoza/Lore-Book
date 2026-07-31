@@ -12,6 +12,7 @@ import {
   metricLabel,
   type DemoMetricKey,
 } from '../../mocks/romanticDemoProfiles';
+import { getRelationshipStatusClasses } from './relationshipStatusColors';
 
 type RomanticRelationship = {
   id: string;
@@ -73,26 +74,6 @@ function formatRelationshipType(type: string) {
 
 function formatStatus(status: string) {
   return status.replace(/_/g, ' ');
-}
-
-function getStatusTone(status: string) {
-  switch (status) {
-    case 'active':
-    case 'rekindled':
-      return 'bg-green-500/15 text-green-300 border-green-500/25';
-    case 'ended':
-    case 'ghosted':
-      return 'bg-white/8 text-white/55 border-white/15';
-    case 'blocked':
-      return 'bg-red-500/15 text-red-300 border-red-500/25';
-    case 'on_break':
-    case 'complicated':
-    case 'fading':
-    case 'unrequited':
-      return 'bg-amber-500/15 text-amber-200 border-amber-500/25';
-    default:
-      return 'bg-white/8 text-white/60 border-white/15';
-  }
 }
 
 function getScoreColor(score: number) {
@@ -207,7 +188,10 @@ export const RelationshipCard = ({
             </h3>
             <Badge
               variant="outline"
-              className={cn('max-w-full truncate text-[10px] font-medium px-1.5 py-0', getStatusTone(relationship.status))}
+              className={cn(
+                'max-w-full truncate text-[10px] font-medium px-1.5 py-0',
+                getRelationshipStatusClasses(relationship).className,
+              )}
             >
               {badgeLabel}
             </Badge>

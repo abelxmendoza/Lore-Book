@@ -17,7 +17,7 @@ export const Badge = ({ className, variant = 'default', ...props }: BadgeProps) 
   return (
     <span
       className={cn(
-        'rounded-full border px-3 py-1 text-xs uppercase tracking-wide',
+        'inline-block rounded-full border px-3 py-1 text-xs uppercase tracking-wide',
         variantClasses[variant],
         className
       )}

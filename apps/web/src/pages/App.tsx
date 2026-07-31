@@ -594,8 +594,12 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
       </div>
       <ModeBadge />
       <GlobalEntityModalHost />
-      <ChatGPTExportReminder />
-      <OnboardingDemoSimulator />
+      {/* These float fixed at bottom-right, the same corner the chat composer's
+          send button occupies — on the chat surface they sit on top of it and
+          silently swallow send clicks (composer isn't itself position:fixed,
+          so it has no z-index to contest with). */}
+      {activeSurface !== 'chat' && <ChatGPTExportReminder />}
+      {activeSurface !== 'chat' && <OnboardingDemoSimulator />}
       <ChatGPTImportDemoSimulator />
     </div>
   );

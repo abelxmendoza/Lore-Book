@@ -10,6 +10,9 @@ import {
   collectAbsoluteParentChildEdges,
   inferSiblingAndInverseParentEdges,
   inverseFamilyEdgeType,
+  resolveFamilyEdgeDirection,
+  alignMarriedInSidesWithSpouse,
+  sortFamilyMembersForDisplay,
   type FamilyMemberDTO,
   type FamilyTreeDTO,
 } from '../../src/services/familyTreeService';
@@ -191,6 +194,111 @@ describe('familyTreeService — bidirectional + shared projection', () => {
     expect(youOnJames.needs_review).toBeFalsy();
   });
 
+  it('re-roots an uncle tree on the same absolute graph without making the account owner his child', () => {
+    const shared: FamilyTreeDTO = {
+      self_id: 'marcus',
+      branches: [{ side: 'maternal', label: 'Maternal', color: '#f472b6' }],
+      members: [
+        member({
+          id: 'marcus',
+          name: 'Marcus',
+          relation: 'related',
+          relation_label: 'You',
+          generation: 0,
+          is_self: true,
+        }),
+        member({
+          id: 'grandmother',
+          name: 'Grandmother',
+          relation: 'parent',
+          relation_label: 'Grandparent',
+          generation: -1,
+          side: 'maternal',
+        }),
+        member({
+          id: 'mother',
+          name: 'Mom (Morgan)',
+          kinship_title: 'Mother',
+          relation: 'related',
+          relation_label: 'Mother',
+          generation: 0,
+          side: 'maternal',
+        }),
+        member({
+          id: 'uncle',
+          name: 'Uncle Jordan',
+          relation: 'uncle',
+          relation_label: 'Uncle',
+          generation: -1,
+          side: 'maternal',
+          parent_id: 'grandmother',
+        }),
+        member({
+          id: 'aunt',
+          name: 'Aunt Taylor',
+          relation: 'aunt',
+          relation_label: 'Aunt',
+          generation: 2,
+          side: 'maternal',
+        }),
+        member({
+          id: 'jamie',
+          name: 'Jamie',
+          relation: 'cousin',
+          relation_label: 'Cousin',
+          generation: 0,
+          side: 'maternal',
+          parent_id: 'aunt',
+        }),
+      ],
+    };
+
+    const absolute = collectAbsoluteParentChildEdges(shared);
+    expect(absolute).toEqual(
+      expect.arrayContaining([
+        { parentId: 'grandmother', childId: 'uncle' },
+        { parentId: 'grandmother', childId: 'mother' },
+        { parentId: 'grandmother', childId: 'aunt' },
+        { parentId: 'mother', childId: 'marcus' },
+        { parentId: 'aunt', childId: 'jamie' },
+      ]),
+    );
+    expect(absolute).not.toContainEqual({ parentId: 'grandmother', childId: 'marcus' });
+    expect(absolute).not.toContainEqual({ parentId: 'uncle', childId: 'marcus' });
+
+    const ontoUncle = projectSharedFamilyTreeOntoEgo(shared, 'uncle');
+    expect(ontoUncle.members.find((m) => m.id === 'grandmother')).toMatchObject({
+      relation: 'parent',
+      relation_label: 'Parent',
+      generation: -1,
+    });
+    expect(ontoUncle.members.find((m) => m.id === 'mother')).toMatchObject({
+      relation: 'sibling',
+      relation_label: 'Sibling',
+      generation: 0,
+      parent_id: 'grandmother',
+    });
+    expect(ontoUncle.members.find((m) => m.id === 'aunt')).toMatchObject({
+      relation: 'sibling',
+      relation_label: 'Sibling',
+      generation: 0,
+      parent_id: 'grandmother',
+    });
+    expect(ontoUncle.members.find((m) => m.id === 'marcus')).toMatchObject({
+      relation: 'niece',
+      relation_label: 'Niece / nephew',
+      generation: 1,
+      parent_id: 'mother',
+      is_account_self: true,
+    });
+    expect(ontoUncle.members.find((m) => m.id === 'jamie')).toMatchObject({
+      relation: 'niece',
+      relation_label: 'Niece / nephew',
+      generation: 1,
+      parent_id: 'aunt',
+    });
+  });
+
   it('scopes step-parent ego trees to partner + shared child, not blood relatives', () => {
     const shared: FamilyTreeDTO = {
       self_id: 'you',
@@ -254,5 +362,167 @@ describe('familyTreeService — bidirectional + shared projection', () => {
     expect(ontoBen.members.find((m) => m.id === 'you')?.relation).toBe('step_child');
     expect(ontoBen.members.some((m) => m.id === 'abuela')).toBe(false);
     expect(ontoBen.members.some((m) => m.id === 'james')).toBe(false);
+  });
+});
+
+describe('familyTreeService — resolveFamilyEdgeDirection', () => {
+  // Reproduces a real bug: an aunt stored as a generic "family" row with
+  // metadata.kinship='aunt', written as (root -> aunt) instead of the
+  // convention every typed edge follows (aunt -> root, e.g. Mom parent_of
+  // You). Left unflipped, BFS generation math placed the aunt one
+  // generation BELOW the user instead of above.
+  it('flips a backwards generic-family aunt edge so root is the target', () => {
+    const { fromId, toId } = resolveFamilyEdgeDirection('root', 'root', 'aunt-1', 'family', 'aunt_of');
+    expect(fromId).toBe('aunt-1');
+    expect(toId).toBe('root');
+  });
+
+  it('flips a backwards generic-family parent edge so root is the target', () => {
+    const { fromId, toId } = resolveFamilyEdgeDirection('root', 'root', 'mom-1', 'related_to', 'parent_of');
+    expect(fromId).toBe('mom-1');
+    expect(toId).toBe('root');
+  });
+
+  it('leaves an already-correct aunt_of edge alone (aunt is the source)', () => {
+    const { fromId, toId } = resolveFamilyEdgeDirection('root', 'aunt-1', 'root', 'aunt_of', 'aunt_of');
+    expect(fromId).toBe('aunt-1');
+    expect(toId).toBe('root');
+  });
+
+  it('leaves a properly-typed generic-family aunt edge alone when root is the target already', () => {
+    const { fromId, toId } = resolveFamilyEdgeDirection('root', 'aunt-1', 'root', 'family', 'aunt_of');
+    expect(fromId).toBe('aunt-1');
+    expect(toId).toBe('root');
+  });
+
+  it('does not flip symmetric relations (cousin, sibling, spouse) even when root is the source', () => {
+    expect(resolveFamilyEdgeDirection('root', 'root', 'cousin-1', 'family', 'cousin_of')).toEqual({
+      fromId: 'root',
+      toId: 'cousin-1',
+    });
+    expect(resolveFamilyEdgeDirection('root', 'root', 'sib-1', 'family', 'sibling_of')).toEqual({
+      fromId: 'root',
+      toId: 'sib-1',
+    });
+  });
+
+  it('does not flip descending relations (root reporting their own child) even from a generic bucket', () => {
+    const { fromId, toId } = resolveFamilyEdgeDirection('root', 'root', 'kid-1', 'family', 'child_of');
+    expect(fromId).toBe('root');
+    expect(toId).toBe('kid-1');
+  });
+
+  it('does not flip an ascending relation when the row already has a real (non-generic) type', () => {
+    // A genuinely mistyped 'aunt_of' row with root as source is a different,
+    // out-of-scope data problem — only the ambiguous generic bucket is corrected.
+    const { fromId, toId } = resolveFamilyEdgeDirection('root', 'root', 'aunt-1', 'aunt_of', 'aunt_of');
+    expect(fromId).toBe('root');
+    expect(toId).toBe('aunt-1');
+  });
+});
+
+describe('familyTreeService — alignMarriedInSidesWithSpouse', () => {
+  // Reproduces a real request: a step-dad (married to Mom, maternal side)
+  // whose own extraction evidence happened to tag him 'paternal' — putting
+  // him in the wrong branch/ring even though he's confirmed spouse_of Mom.
+  it('pulls a step-parent onto their spouse\'s side when a spouse_of edge connects them', () => {
+    const mom = member({ id: 'mom', generation: -1, side: 'maternal', relation: 'parent' });
+    const stepDad = member({ id: 'ben', generation: -1, side: 'paternal', relation: 'step_parent' });
+    const members = [mom, stepDad];
+    const edges = [{ fromId: 'ben', toId: 'mom', type: 'spouse_of' }];
+
+    alignMarriedInSidesWithSpouse(members, edges);
+
+    expect(stepDad.side).toBe('maternal');
+    expect(mom.side).toBe('maternal');
+  });
+
+  it('does nothing when there is no spouse_of edge between them', () => {
+    const mom = member({ id: 'mom', generation: -1, side: 'maternal', relation: 'parent' });
+    const stepDad = member({ id: 'ben', generation: -1, side: 'paternal', relation: 'step_parent' });
+    const members = [mom, stepDad];
+
+    alignMarriedInSidesWithSpouse(members, []);
+
+    expect(stepDad.side).toBe('paternal');
+  });
+
+  it('does not align across mismatched generations (spouse_of edge to the wrong tier)', () => {
+    const grandma = member({ id: 'grandma', generation: -2, side: 'maternal', relation: 'grandparent' });
+    const stepDad = member({ id: 'ben', generation: -1, side: 'paternal', relation: 'step_parent' });
+    const members = [grandma, stepDad];
+    const edges = [{ fromId: 'ben', toId: 'grandma', type: 'spouse_of' }];
+
+    alignMarriedInSidesWithSpouse(members, edges);
+
+    expect(stepDad.side).toBe('paternal');
+  });
+
+  it('leaves blood relations (parent, sibling, cousin, ...) untouched even with a spouse_of edge', () => {
+    const mom = member({ id: 'mom', generation: -1, side: 'maternal', relation: 'parent' });
+    const dad = member({ id: 'dad', generation: -1, side: 'paternal', relation: 'parent' });
+    const members = [mom, dad];
+    const edges = [{ fromId: 'mom', toId: 'dad', type: 'spouse_of' }];
+
+    alignMarriedInSidesWithSpouse(members, edges);
+
+    expect(mom.side).toBe('maternal');
+    expect(dad.side).toBe('paternal');
+  });
+});
+
+describe('familyTreeService — sortFamilyMembersForDisplay', () => {
+  // Reproduces the real follow-up: side alone doesn't move anyone within a
+  // generation row — the row is plain alphabetical by name. A step-dad whose
+  // name alphabetizes far from Mom's (e.g. "Zach" vs "Ana") stayed same-row
+  // but nowhere near her even after side was corrected. Pairing must be a
+  // dedicated sort key, not a side effect of matching side.
+  it('clusters a step-parent next to their spouse even when names sort far apart', () => {
+    const mom = member({ id: 'mom', name: 'Ana Ortiz', generation: -1, side: 'maternal', relation: 'parent' });
+    const stepDad = member({ id: 'ben', name: 'Zach Lopez', generation: -1, side: 'maternal', relation: 'step_parent' });
+    const uncle = member({ id: 'juan', name: 'Juan Ortiz', generation: -1, side: 'maternal', relation: 'uncle' });
+    const members = [uncle, mom, stepDad];
+    // Run the real upstream step first — this is what records the exact
+    // pairing (paired_with_id), not just a side guess.
+    alignMarriedInSidesWithSpouse(members, [{ fromId: 'ben', toId: 'mom', type: 'spouse_of' }]);
+
+    sortFamilyMembersForDisplay(members);
+
+    const order = members.map((m) => m.id);
+    const momIdx = order.indexOf('mom');
+    const benIdx = order.indexOf('ben');
+    expect(Math.abs(momIdx - benIdx)).toBe(1);
+  });
+
+  it('falls back to side-matching (best-effort) when no exact pairing was recorded', () => {
+    // No alignMarriedInSidesWithSpouse call here — simulates a tree built
+    // without raw edges (e.g. the name-inference-only fallback path).
+    const mom = member({ id: 'mom', name: 'Ana Ortiz', generation: -1, side: 'maternal', relation: 'parent' });
+    const stepDad = member({ id: 'ben', name: 'Zach Lopez', generation: -1, side: 'maternal', relation: 'step_parent' });
+    const members = [mom, stepDad];
+
+    sortFamilyMembersForDisplay(members);
+
+    expect(members.map((m) => m.id)).toEqual(['mom', 'ben']);
+  });
+
+  it('keeps plain alphabetical order for members with no married-in pairing', () => {
+    const zoe = member({ id: 'zoe', name: 'Zoe', generation: 0, relation: 'cousin' });
+    const amy = member({ id: 'amy', name: 'Amy', generation: 0, relation: 'cousin' });
+    const members = [zoe, amy];
+
+    sortFamilyMembersForDisplay(members);
+
+    expect(members.map((m) => m.id)).toEqual(['amy', 'zoe']);
+  });
+
+  it('sorts self first within a generation regardless of name', () => {
+    const you = member({ id: 'you', name: 'Zack', generation: 0, is_self: true, relation: 'related' });
+    const cousin = member({ id: 'cousin', name: 'Amy', generation: 0, relation: 'cousin' });
+    const members = [cousin, you];
+
+    sortFamilyMembersForDisplay(members);
+
+    expect(members[0].id).toBe('you');
   });
 });

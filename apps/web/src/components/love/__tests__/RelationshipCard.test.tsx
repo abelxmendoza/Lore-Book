@@ -106,6 +106,64 @@ describe('RelationshipCard', () => {
     expect(screen.getAllByText(/girlfriend/i).length).toBeGreaterThan(0);
   });
 
+  it('gives a committed active relationship its own emerald badge, distinct from a plain active default', () => {
+    const onClick = vi.fn();
+    const { container } = render(<RelationshipCard relationship={mockRelationship} onClick={onClick} />);
+    const badge = container.querySelector('[class*="text-emerald-300"]');
+    expect(badge).toBeInTheDocument();
+  });
+
+  it('gives a crush its own violet shade, not the same as a committed partner', () => {
+    const onClick = vi.fn();
+    const { container } = render(
+      <RelationshipCard
+        relationship={{ ...mockRelationship, id: 'rel-crush', relationship_type: 'crush' }}
+        onClick={onClick}
+      />,
+    );
+    expect(container.querySelector('[class*="text-violet-300"]')).toBeInTheDocument();
+    expect(container.querySelector('[class*="text-emerald-300"]')).not.toBeInTheDocument();
+  });
+
+  it('gives a situationship its own fuchsia shade', () => {
+    const onClick = vi.fn();
+    const { container } = render(
+      <RelationshipCard
+        relationship={{ ...mockRelationship, id: 'rel-sit', relationship_type: 'situationship', is_situationship: true }}
+        onClick={onClick}
+      />,
+    );
+    expect(container.querySelector('[class*="text-fuchsia-300"]')).toBeInTheDocument();
+  });
+
+  it('gives ghosted, ended, and blocked each a distinct color instead of sharing one', () => {
+    const onClick = vi.fn();
+    const ghosted = render(
+      <RelationshipCard relationship={{ ...mockRelationship, id: 'rel-g', status: 'ghosted' }} onClick={onClick} />,
+    );
+    expect(ghosted.container.querySelector('[class*="text-slate-300"]')).toBeInTheDocument();
+    ghosted.unmount();
+
+    const ended = render(
+      <RelationshipCard relationship={{ ...mockRelationship, id: 'rel-e', status: 'ended' }} onClick={onClick} />,
+    );
+    expect(ended.container.querySelector('[class*="text-zinc-300"]')).toBeInTheDocument();
+    ended.unmount();
+
+    const blocked = render(
+      <RelationshipCard relationship={{ ...mockRelationship, id: 'rel-b', status: 'blocked' }} onClick={onClick} />,
+    );
+    expect(blocked.container.querySelector('[class*="text-red-300"]')).toBeInTheDocument();
+  });
+
+  it('gives rekindled its own teal shade, distinct from active green', () => {
+    const onClick = vi.fn();
+    const { container } = render(
+      <RelationshipCard relationship={{ ...mockRelationship, id: 'rel-r', status: 'rekindled' }} onClick={onClick} />,
+    );
+    expect(container.querySelector('[class*="text-teal-300"]')).toBeInTheDocument();
+  });
+
   it('does not dump filter notes or pros/cons counts on the card', () => {
     const onClick = vi.fn();
     render(

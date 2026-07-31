@@ -65,6 +65,12 @@ export interface FamilyMemberDTO {
    *  a one-tap review affordance; the user decides. */
   needs_review?: boolean;
   review_reason?: string;
+  /** Id of this member's confirmed spouse_of partner in the same tree, when
+   *  known from the raw edge graph. Drives display clustering (a step-parent
+   *  sorts next to their actual spouse, not just whoever shares their side —
+   *  side alone is ambiguous when multiple same-side relatives share a
+   *  generation, e.g. an uncle and a mother). */
+  paired_with_id?: string;
 }
 
 export interface FamilyBranchDTO {
@@ -129,6 +135,38 @@ const GEN_DELTA: Record<string, { forward: number; backward: number }> = {
   sister: { forward: 0, backward: 0 },
   sibling: { forward: 0, backward: 0 },
 };
+
+/** "_of" edge types where the source is definitionally older/senior to the
+ *  target (source can never legitimately be the tree's own root). Used to
+ *  detect and correct backwards-written generic-family+kinship rows. */
+const ASCENDING_KIN_EDGE_TYPES = new Set([
+  'parent_of', 'step_parent_of', 'adopted_parent_of', 'godparent_of',
+  'aunt_of', 'uncle_of', 'grandparent_of',
+]);
+
+const GENERIC_FAMILY_BUCKET_TYPES = new Set(['family', 'related_to', 'related']);
+
+/**
+ * A properly-typed row follows "source IS the <kin> of target" (Mom
+ * parent_of You). A generic "family" row carries no such guarantee — its
+ * fromId/toId order just reflects whichever character got extracted first.
+ * When one of those rows has rootId as the source AND resolves to an
+ * ascending relation (aunt, uncle, parent, grandparent, ...), rootId can't
+ * actually BE the elder party of their own tree, so it was written
+ * backwards. Flip it so generation math (GEN_DELTA) sees the same
+ * source=kin/target=root shape every correctly-typed edge already uses.
+ */
+export function resolveFamilyEdgeDirection(
+  rootId: string,
+  sourceId: string,
+  targetId: string,
+  rawRelationshipType: string,
+  normalizedType: string,
+): { fromId: string; toId: string } {
+  const wasGenericBucket = GENERIC_FAMILY_BUCKET_TYPES.has((rawRelationshipType ?? '').toLowerCase());
+  const shouldFlip = wasGenericBucket && sourceId === rootId && ASCENDING_KIN_EDGE_TYPES.has(normalizedType);
+  return shouldFlip ? { fromId: targetId, toId: sourceId } : { fromId: sourceId, toId: targetId };
+}
 
 const RELATION_LABEL: Record<string, string> = {
   parent_of: 'Parent', child_of: 'Child', sibling_of: 'Sibling', spouse_of: 'Spouse',
@@ -1120,7 +1158,7 @@ class FamilyTreeService {
       });
     }
 
-    tree.members.sort((a, b) => a.generation - b.generation || Number(Boolean(b.is_self)) - Number(Boolean(a.is_self)) || a.name.localeCompare(b.name));
+    sortFamilyMembersForDisplay(tree.members);
     return tree;
   }
 
@@ -1157,9 +1195,10 @@ class FamilyTreeService {
       const key = `${r.source_character_id}|${r.target_character_id}|${type}`;
       if (seen.has(key)) continue;
       seen.add(key);
+      const { fromId, toId } = resolveFamilyEdgeDirection(rootId, r.source_character_id, r.target_character_id, r.relationship_type, type);
       edges.push({
-        fromId: r.source_character_id,
-        toId: r.target_character_id,
+        fromId,
+        toId,
         type,
         confidence: 0.75,
         evidence: (r.metadata?.evidence as string) ?? r.summary,
@@ -1556,7 +1595,8 @@ class FamilyTreeService {
       };
     });
 
-    members.sort((a, b) => a.generation - b.generation || a.name.localeCompare(b.name));
+    alignMarriedInSidesWithSpouse(members, edges);
+    sortFamilyMembersForDisplay(members);
 
     return {
       members,
@@ -1576,6 +1616,97 @@ function inferSide(evidence?: string): 'maternal' | 'paternal' | 'both' | 'other
   if (/\b(maternal|mother'?s? side|mom'?s? side|mi mam[aá]|lado materno)\b/.test(t)) return 'maternal';
   if (/\b(paternal|father'?s? side|dad'?s? side|mi pap[aá]|lado paterno)\b/.test(t)) return 'paternal';
   return undefined;
+}
+
+/** Relations someone holds only by marriage/partnership, never by blood —
+ *  their "side" should mirror whichever blood relative they're married to,
+ *  not whatever a loose text match on their OWN edge happened to infer. */
+const MARRIED_IN_RELATIONS = new Set<FamilyRelationType>(['step_parent', 'step_child', 'in_law']);
+
+/**
+ * A step-parent (etc.) belongs on their spouse's side of the tree — e.g. a
+ * step-dad married to Mom sits with the maternal branch, not wherever his
+ * own kinship-extraction evidence text happened to point. Runs after
+ * generation/relation/side are all assigned, using the spouse_of edges from
+ * the same graph walk (same generation tier — same-tier check keeps this
+ * from misfiring on an unrelated spouse_of edge to the wrong generation).
+ */
+export function alignMarriedInSidesWithSpouse(
+  members: FamilyMemberDTO[],
+  edges: Array<{ fromId: string; toId: string; type: string }>,
+): void {
+  const spouseOf = new Map<string, string>();
+  for (const e of edges) {
+    if (e.type !== 'spouse_of') continue;
+    spouseOf.set(e.fromId, e.toId);
+    spouseOf.set(e.toId, e.fromId);
+  }
+  if (spouseOf.size === 0) return;
+
+  const byId = new Map(members.map((m) => [m.id, m]));
+  for (const m of members) {
+    if (!MARRIED_IN_RELATIONS.has(m.relation)) continue;
+    const partner = byId.get(spouseOf.get(m.id) ?? '');
+    if (!partner || partner.generation !== m.generation) continue;
+    if (partner.side && partner.side !== 'other') m.side = partner.side;
+    // Record the exact partner so display sorting can cluster them together
+    // without re-guessing via side/generation, which is ambiguous whenever
+    // more than one same-side blood relative shares that generation (e.g.
+    // an uncle and a mother both maternal) — side match alone can't tell
+    // which of them is actually the spouse.
+    m.paired_with_id = partner.id;
+    partner.paired_with_id = m.id;
+  }
+}
+
+/** Pairing key so a married-in relative (step-parent/step-child/in-law)
+ *  sorts immediately next to the same-generation, same-side blood relative
+ *  they're paired with (their "anchor"), instead of wherever their own name
+ *  happens to fall alphabetically. Everyone else's key is just their own
+ *  name, so they interleave normally. */
+function displayPairKey(m: FamilyMemberDTO, members: FamilyMemberDTO[]): string {
+  if (!MARRIED_IN_RELATIONS.has(m.relation)) return m.name;
+  // Prefer the exact spouse_of partner recorded by alignMarriedInSidesWithSpouse
+  // over guessing by side — side match alone is ambiguous the moment more
+  // than one same-side blood relative shares that generation (an uncle and
+  // a mother are both "maternal" but only one of them is the spouse).
+  if (m.paired_with_id) {
+    const exact = members.find((x) => x.id === m.paired_with_id && x.generation === m.generation);
+    if (exact) return exact.name;
+  }
+  if (!m.side || m.side === 'other') return m.name;
+  const anchor = members.find(
+    (x) =>
+      x.id !== m.id &&
+      x.generation === m.generation &&
+      x.side === m.side &&
+      !MARRIED_IN_RELATIONS.has(x.relation) &&
+      x.relation !== 'related',
+  );
+  return anchor ? anchor.name : m.name;
+}
+
+/**
+ * Sort members for display: generation, self first, then spouse pairs
+ * clustered together (a step-parent sorts right next to the blood relative
+ * they're married to — see displayPairKey), then alphabetical. Without the
+ * pairing step, a step-parent and their spouse only end up adjacent by
+ * alphabetical coincidence even when their side/generation both match.
+ */
+export function sortFamilyMembersForDisplay(members: FamilyMemberDTO[]): FamilyMemberDTO[] {
+  members.sort((a, b) => {
+    if (a.generation !== b.generation) return a.generation - b.generation;
+    const selfDelta = Number(Boolean(b.is_self)) - Number(Boolean(a.is_self));
+    if (selfDelta !== 0) return selfDelta;
+    const aKey = displayPairKey(a, members);
+    const bKey = displayPairKey(b, members);
+    if (aKey !== bKey) return aKey.localeCompare(bKey);
+    const aMarriedIn = MARRIED_IN_RELATIONS.has(a.relation) ? 1 : 0;
+    const bMarriedIn = MARRIED_IN_RELATIONS.has(b.relation) ? 1 : 0;
+    if (aMarriedIn !== bMarriedIn) return aMarriedIn - bMarriedIn;
+    return a.name.localeCompare(b.name);
+  });
+  return members;
 }
 
 const SYNTHETIC_ID_PREFIXES = ['__', 'name-', 'head-', 'group-'];
@@ -1741,15 +1872,60 @@ export function collectAbsoluteParentChildEdges(
     if (
       selfId &&
       !m.is_self &&
+      !kinshipGrandparentHint(m) &&
       (m.relation === 'parent' ||
         m.relation === 'step_parent' ||
         m.relation === 'adopted_parent' ||
-        m.relation === 'godparent')
+        m.relation === 'godparent' ||
+        kinshipParentHint(m) !== null)
     ) {
       push(m.id, selfId);
     }
     if (selfId && !m.is_self && (m.relation === 'child' || m.relation === 'step_child' || m.relation === 'adopted_child')) {
       push(selfId, m.id);
+    }
+  }
+
+  // A title-only grandparent can arrive with a stale generic/parent override,
+  // while the aunts/uncles below it have explicit parent_id placement. Use
+  // that anchored branch to restore the missing account-parent and sibling
+  // links. This keeps a relative-centered projection on the same absolute
+  // graph instead of turning the account owner into the aunt/uncle's child.
+  const members = tree.members.filter((m) => !m.is_placeholder);
+  const accountParents = members.filter(
+    (m) =>
+      m.id !== selfId &&
+      !kinshipGrandparentHint(m) &&
+      (m.relation === 'parent' ||
+        m.relation === 'step_parent' ||
+        m.relation === 'adopted_parent' ||
+        kinshipParentHint(m) !== null),
+  );
+  const auntUncles = members.filter(
+    (m) =>
+      m.relation === 'aunt' ||
+      m.relation === 'uncle' ||
+      kinshipAuntUncleHint(m) !== null,
+  );
+  const grandparents = members.filter(
+    (m) => m.relation === 'grandparent' || kinshipGrandparentHint(m),
+  );
+  const sideMatches = (a: FamilyMemberDTO, b: FamilyMemberDTO): boolean =>
+    !a.side ||
+    a.side === 'other' ||
+    !b.side ||
+    b.side === 'other' ||
+    a.side === 'both' ||
+    b.side === 'both' ||
+    a.side === b.side;
+
+  for (const grandparent of grandparents) {
+    const anchoredBranch = auntUncles.filter((m) => m.parent_id === grandparent.id);
+    if (anchoredBranch.length === 0) continue;
+    for (const relative of [...accountParents, ...auntUncles]) {
+      if (relative.id === grandparent.id || relative.parent_id) continue;
+      if (!anchoredBranch.some((anchor) => sideMatches(anchor, relative))) continue;
+      push(grandparent.id, relative.id);
     }
   }
   return edges;
@@ -2088,6 +2264,15 @@ export function projectSharedFamilyTreeOntoEgo(
   const egoParents = parentsOf.get(egoId) ?? new Set<string>();
   const egoChildren = childrenOf.get(egoId) ?? new Set<string>();
   const egoParentList = [...egoParents];
+  const egoSiblingIds = new Set(
+    shared.members
+      .filter((candidate) => {
+        if (candidate.id === egoId) return false;
+        const candidateParents = parentsOf.get(candidate.id) ?? new Set<string>();
+        return egoParentList.some((parentId) => candidateParents.has(parentId));
+      })
+      .map((candidate) => candidate.id),
+  );
 
   const classify = (m: FamilyMemberDTO): { relation: FamilyRelationType; label: string } => {
     if (m.id === egoId) return { relation: 'related', label: 'You' };
@@ -2099,13 +2284,13 @@ export function projectSharedFamilyTreeOntoEgo(
       const step = m.relation === 'step_parent' || kinshipParentHint(m) === 'step_parent';
       return {
         relation: step ? 'step_parent' : 'parent',
-        label: m.kinship_title || m.relation_label || (step ? 'Step-parent' : 'Parent'),
+        label: step ? 'Step-parent' : 'Parent',
       };
     }
     if (egoChildren.has(m.id)) {
       return {
         relation: m.relation === 'step_child' ? 'step_child' : 'child',
-        label: m.kinship_title || m.relation_label || 'Child',
+        label: m.relation === 'step_child' ? 'Step-child' : 'Child',
       };
     }
     // Shared parent(s) → sibling (brother/sister titles reinforce).
@@ -2115,8 +2300,14 @@ export function projectSharedFamilyTreeOntoEgo(
       const half = sharedParents.length > 0 && egoParentList.length > sharedParents.length;
       return {
         relation: half ? 'half_sibling' : 'sibling',
-        label: m.kinship_title || m.relation_label || (half ? 'Half-sibling' : 'Sibling'),
+        label: half ? 'Half-sibling' : 'Sibling',
       };
+    }
+    // Child of an ego sibling → niece/nephew, never the ego's child.
+    for (const siblingId of egoSiblingIds) {
+      if ((childrenOf.get(siblingId) ?? new Set()).has(m.id)) {
+        return { relation: 'niece', label: 'Niece / nephew' };
+      }
     }
     // Parent of a parent → grandparent
     for (const p of egoParents) {
@@ -2124,7 +2315,7 @@ export function projectSharedFamilyTreeOntoEgo(
         if ((parentsOf.get(p) ?? new Set()).has(m.id) || (generation.get(m.id) ?? 0) <= -2) {
           return {
             relation: 'grandparent',
-            label: m.kinship_title || m.relation_label || 'Grandparent',
+            label: 'Grandparent',
           };
         }
       }
@@ -2132,7 +2323,7 @@ export function projectSharedFamilyTreeOntoEgo(
     if ([...egoParents].some((p) => (parentsOf.get(p) ?? new Set()).has(m.id))) {
       return {
         relation: 'grandparent',
-        label: m.kinship_title || m.relation_label || 'Grandparent',
+        label: 'Grandparent',
       };
     }
     // Child of child → grandchild
@@ -2140,7 +2331,7 @@ export function projectSharedFamilyTreeOntoEgo(
       if ((childrenOf.get(c) ?? new Set()).has(m.id)) {
         return {
           relation: 'grandchild',
-          label: m.kinship_title || m.relation_label || 'Grandchild',
+          label: 'Grandchild',
         };
       }
     }
@@ -2155,13 +2346,13 @@ export function projectSharedFamilyTreeOntoEgo(
             const au = kinshipAuntUncleHint(m) ?? (m.relation === 'uncle' ? 'uncle' : m.relation === 'aunt' ? 'aunt' : 'aunt');
             return {
               relation: au,
-              label: m.kinship_title || m.relation_label || (au === 'uncle' ? 'Uncle' : 'Aunt'),
+              label: au === 'uncle' ? 'Uncle' : 'Aunt',
             };
           }
           if ((childrenOf.get(sib) ?? new Set()).has(m.id)) {
             return {
               relation: 'cousin',
-              label: m.kinship_title || m.relation_label || 'Cousin',
+              label: 'Cousin',
             };
           }
         }
@@ -2199,6 +2390,11 @@ export function projectSharedFamilyTreeOntoEgo(
   const members = shared.members.map((m) => {
     const { relation, label } = classify(m);
     const gen = generation.get(m.id) ?? m.generation;
+    const structuralParents = [...(parentsOf.get(m.id) ?? [])].sort();
+    const parentId =
+      m.parent_id && structuralParents.includes(m.parent_id)
+        ? m.parent_id
+        : structuralParents[0];
     return {
       ...m,
       relation,
@@ -2207,8 +2403,10 @@ export function projectSharedFamilyTreeOntoEgo(
       is_self: m.id === egoId,
       is_account_self: m.id === accountSelfId,
       closeness: m.id === egoId ? 100 : m.closeness,
-      // Preserve absolute parent connectors for bidirectional graph UI.
-      parent_id: m.parent_id,
+      // Re-emit the absolute connector after re-rooting. The DTO only supports
+      // one display parent, so prefer the asserted parent and otherwise choose
+      // a deterministic parent from the canonical graph.
+      parent_id: parentId,
       needs_review: m.id === accountSelfId ? false : m.needs_review,
       review_reason: m.id === accountSelfId ? undefined : m.review_reason,
     };
