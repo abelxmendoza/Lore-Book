@@ -2006,12 +2006,13 @@ export const dummyCharacters: Character[] = [
     alias: ['Reese'],
     pronouns: 'they/them',
     archetype: 'romantic',
-    role: 'Situationship · Not exclusive',
+    // Romance identity lives on Dating & Romance / relationship type — not Role.
+    role: '',
     status: 'active',
     importance_level: 'supporting',
     importance_score: 65,
     is_nickname: false,
-    summary: 'We\'re in a situationship that started about 3 months ago from a dating app. Sam is fun to be around and there\'s no pressure, which was refreshing after my intense relationship with Morgan. We\'ve hung out at coffee shops and gone to a few music events together. Good physical chemistry but there\'s a lack of emotional intimacy and unclear boundaries. I\'m not sure where it\'s going, especially now that I\'m with Alex. Sarah thinks I should end it, but part of me likes having something casual.',
+    summary: 'We met on a dating app about 3 months ago. Sam is fun to be around and there\'s no pressure, which was refreshing after my intense relationship with Morgan. We\'ve hung out at coffee shops and gone to a few music events together. Good physical chemistry but there\'s a lack of emotional intimacy and unclear boundaries. I\'m not sure where it\'s going, especially now that I\'m with Alex. Sarah thinks I should end it, but part of me likes having something casual.',
     tags: ['summer party circuit', 'undefined labels'],
     metadata: {
       relationship_type: 'situationship',
