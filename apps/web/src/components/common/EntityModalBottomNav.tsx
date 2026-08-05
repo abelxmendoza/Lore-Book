@@ -140,10 +140,10 @@ export function EntityModalBottomNav<T extends string>({
             type="button"
             onClick={dangerAction.onClick}
             className={cn(
-              'ml-0.5 flex shrink-0 flex-col items-center justify-center gap-0.5 self-center rounded-md border px-2 py-1 min-h-[36px] touch-manipulation transition-colors',
+              'ml-1 flex shrink-0 items-center gap-1 self-center rounded px-1.5 py-1 touch-manipulation transition-colors',
               dangerAction.active
-                ? 'border-red-400/45 bg-red-500/20 text-red-50'
-                : 'border-red-500/25 bg-transparent text-red-300/75 hover:bg-red-500/10 hover:text-red-100'
+                ? 'bg-red-500/20 text-red-50'
+                : 'text-red-300/55 hover:bg-red-500/10 hover:text-red-100'
             )}
             aria-label={dangerAction.label}
           >

@@ -3345,7 +3345,7 @@ export const CharacterDetailModal = ({
             </div>
 
             {canDeleteCharacter && (
-              <div className="flex-shrink-0 border-t border-white/10 px-2 py-1.5">
+              <div className="mt-auto flex-shrink-0 px-2 pb-1.5 pt-1">
                 <button
                   type="button"
                   onClick={() => {
@@ -3353,10 +3353,10 @@ export const CharacterDetailModal = ({
                     setDeleteConfirmText('');
                     setDeleteError(null);
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium text-amber-200/65 hover:text-amber-100 hover:bg-amber-500/10 transition"
+                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-white/40 hover:text-amber-200/80 hover:bg-amber-500/10 transition"
                   aria-label="Archive character"
                 >
-                  <Trash2 className="h-3 w-3 flex-shrink-0" />
+                  <Trash2 className="h-2.5 w-2.5 flex-shrink-0" />
                   <span>Archive</span>
                 </button>
               </div>
