@@ -3,6 +3,7 @@ import {
   composeRomanticRelationshipBadgeLabel,
   formatExclusivityLabel,
   isRedundantRomanceIdentityLabel,
+  resolveCharacterRomanceIdentity,
 } from './romanticRelationshipLabel';
 import {
   lexicalBadgesFromRelationship,
@@ -41,6 +42,18 @@ describe('romanticRelationshipLabel', () => {
     expect(isRedundantRomanceIdentityLabel('Situationship', 'situationship')).toBe(true);
     expect(isRedundantRomanceIdentityLabel('Girlfriend', 'girlfriend')).toBe(true);
     expect(isRedundantRomanceIdentityLabel('Soft launch', 'situationship')).toBe(false);
+  });
+
+  it('resolves romance identity from character fields when no romance row is linked', () => {
+    expect(
+      resolveCharacterRomanceIdentity({
+        role: 'Situationship',
+        archetype: 'romantic',
+        tags: ['romantic', 'situationship', 'active'],
+        metadata: { relationship_type: 'situationship' },
+        status: 'active',
+      }),
+    ).toBe('Situationship · Not exclusive');
   });
 });
 

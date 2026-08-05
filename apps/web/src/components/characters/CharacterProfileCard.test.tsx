@@ -349,6 +349,7 @@ describe('CharacterProfileCard', () => {
           archetype: 'romantic',
           tags: ['romantic', 'situationship', 'active', 'casual'],
           summary: 'Fun without a label.',
+          metadata: { relationship_type: 'situationship' },
         }}
         relationship={{
           id: 'rel-003',
@@ -376,8 +377,38 @@ describe('CharacterProfileCard', () => {
       />,
     );
 
-    expect(screen.getByText('Situationship · Not exclusive')).toBeInTheDocument();
-    // Role/tags/is_situationship chips must not restate Situationship alone.
+    expect(screen.getByTestId('character-romance-identity')).toHaveTextContent(
+      'Situationship · Not exclusive',
+    );
+    // No bare Situationship chips from role / type / flag / tags / archetype.
+    expect(screen.queryByText(/^Situationship$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Romantic$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^active$/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^casual$/i)).not.toBeInTheDocument();
+    const situationshipMentions = (container.textContent?.match(/Situationship/g) ?? []).length;
+    expect(situationshipMentions).toBe(1);
+  });
+
+  it('still shows one situationship identity when the romance row is missing', () => {
+    const { container } = render(
+      <CharacterProfileCard
+        character={{
+          ...baseCharacter,
+          id: 'char-003',
+          name: 'Sam',
+          role: 'Situationship',
+          archetype: 'romantic',
+          tags: ['romantic', 'situationship', 'active', 'casual'],
+          summary: 'Fun without a label.',
+          metadata: { relationship_type: 'situationship' },
+        }}
+        attributes={[]}
+      />,
+    );
+
+    expect(screen.getByTestId('character-romance-identity')).toHaveTextContent(
+      'Situationship · Not exclusive',
+    );
     expect(screen.queryByText(/^Situationship$/)).not.toBeInTheDocument();
     const situationshipMentions = (container.textContent?.match(/Situationship/g) ?? []).length;
     expect(situationshipMentions).toBe(1);
