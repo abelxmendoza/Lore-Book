@@ -32,6 +32,7 @@ import { RelationshipLifeImpactPanel } from '../love/RelationshipLifeImpactPanel
 import { CharacterLoreProfileSection } from './CharacterLoreProfileSection';
 import type { CharacterLoreProfile } from '../../api/characterLoreProfile';
 import { resolveMockRelationshipInfluence } from '../../mocks/romanticLifeImpact';
+import { composeRomanticRelationshipBadgeLabel } from '../../lib/romanticRelationshipLabel';
 import { suggestDisplayTitleFromNames, getCharacterDisplayTitle } from '../../lib/characterDisplayTitle';
 import { isKinshipNameToken, splitStructuredPersonName } from '../../lib/structuredPersonName';
 import {
@@ -39,6 +40,7 @@ import {
   relationshipToYouLabel,
   resolveRelationshipToYou,
 } from '../../lib/relationshipToYou';
+import { normalizeSignalLabel } from '../../lib/characterCardSignals';
 import { selfCharacterApi } from '../../api/selfCharacter';
 
 type Relationship = {
@@ -618,6 +620,19 @@ export function CharacterInfoPanel({
     }
     return base;
   }, [relationshipToYouValue]);
+
+  const romanceIdentityLabel = relationship
+    ? composeRomanticRelationshipBadgeLabel(relationship)
+    : null;
+  const relationshipToYouDuplicatesRomance = Boolean(
+    relationship &&
+      relationshipToYouValue &&
+      (normalizeSignalLabel(relationshipToYouValue) ===
+        normalizeSignalLabel(relationship.relationship_type) ||
+        (normalizeSignalLabel(relationshipToYouValue) === 'situationship' &&
+          (relationship.is_situationship ||
+            normalizeSignalLabel(relationship.relationship_type) === 'situationship'))),
+  );
   const inferredNameParts = useMemo(
     () => inferNameParts(editedCharacter),
     [
@@ -1510,8 +1525,10 @@ export function CharacterInfoPanel({
         </div>
       </section>
 
-      {/* ── 2a. Relationship to you ──────────────────────────────────── */}
-      {!isSelfCharacter && (
+      {/* ── 2a. Relationship to you ────────────────────────────────────
+          Skip when Dating & Romance already owns this identity (e.g. situationship),
+          so the Info tab does not restate the same label twice. */}
+      {!isSelfCharacter && !relationshipToYouDuplicatesRomance && (
         <section
           className="rounded-2xl border border-rose-500/25 bg-rose-950/15 p-4"
           data-testid="relationship-to-you-section"
@@ -1792,7 +1809,7 @@ export function CharacterInfoPanel({
 
       {/* ── 3. Your relationship (romantic / close) ──────────────────── */}
       {relationship && (
-        <section className="rounded-2xl border border-rose-500/25 bg-rose-950/20 p-4">
+        <section className="rounded-2xl border border-rose-500/25 bg-rose-950/20 p-4" data-testid="your-relationship-section">
           <div className="flex items-center gap-2 mb-3">
             <Heart className="h-4 w-4 text-rose-400" />
             <h3 className="text-sm font-bold text-white">Your relationship</h3>
@@ -1801,7 +1818,11 @@ export function CharacterInfoPanel({
             <EditableField
               label="Relationship type"
               value={relationship.relationship_type}
-              displayValue={relationshipTypeOptions.find((option) => option.value === relationship.relationship_type)?.label ?? humanizeType(relationship.relationship_type)}
+              displayValue={
+                romanceIdentityLabel ??
+                relationshipTypeOptions.find((option) => option.value === relationship.relationship_type)?.label ??
+                humanizeType(relationship.relationship_type)
+              }
               source={toFieldSource(relationship.metadata?.relationship_type_source, Boolean(relationship.relationship_type))}
               variant="select"
               options={relationshipTypeOptions}
@@ -1819,11 +1840,6 @@ export function CharacterInfoPanel({
               disabled={!relationship.id || isMockDataEnabled}
             />
           </div>
-          {relationship.is_situationship && (
-            <div className="mb-3">
-              <Badge variant="outline" className="text-xs border-purple-500/30 text-purple-300">Situationship</Badge>
-            </div>
-          )}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
             <StatCell label="Compatibility" value={`${Math.round((relationship.compatibility_score ?? 0) * 100)}%`} />
             <StatCell label="Health" value={`${Math.round((relationship.relationship_health ?? 0) * 100)}%`} />

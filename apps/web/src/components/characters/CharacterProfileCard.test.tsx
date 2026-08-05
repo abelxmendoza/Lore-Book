@@ -337,4 +337,80 @@ describe('CharacterProfileCard', () => {
     expect(screen.queryByText('Deepening')).not.toBeInTheDocument();
     expect(screen.queryByText('Weakening')).not.toBeInTheDocument();
   });
+
+  it('shows situationship romance identity once, matching Dating & Romance', () => {
+    const { container } = render(
+      <CharacterProfileCard
+        character={{
+          ...baseCharacter,
+          id: 'char-003',
+          name: 'Sam',
+          role: 'Situationship',
+          archetype: 'romantic',
+          tags: ['romantic', 'situationship', 'active', 'casual'],
+          summary: 'Fun without a label.',
+          metadata: { relationship_type: 'situationship' },
+        }}
+        relationship={{
+          id: 'rel-003',
+          person_id: 'char-003',
+          person_type: 'character',
+          person_name: 'Sam',
+          relationship_type: 'situationship',
+          status: 'active',
+          is_current: true,
+          affection_score: 0.65,
+          emotional_intensity: 0.7,
+          compatibility_score: 0.6,
+          relationship_health: 0.55,
+          is_situationship: true,
+          exclusivity_status: 'not_exclusive',
+          strengths: [],
+          weaknesses: [],
+          pros: [],
+          cons: [],
+          red_flags: [],
+          green_flags: [],
+          created_at: new Date().toISOString(),
+        }}
+        attributes={[]}
+      />,
+    );
+
+    expect(screen.getByTestId('character-romance-identity')).toHaveTextContent(
+      'Situationship · Not exclusive',
+    );
+    // No bare Situationship chips from role / type / flag / tags / archetype.
+    expect(screen.queryByText(/^Situationship$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Romantic$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^active$/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^casual$/i)).not.toBeInTheDocument();
+    const situationshipMentions = (container.textContent?.match(/Situationship/g) ?? []).length;
+    expect(situationshipMentions).toBe(1);
+  });
+
+  it('still shows one situationship identity when the romance row is missing', () => {
+    const { container } = render(
+      <CharacterProfileCard
+        character={{
+          ...baseCharacter,
+          id: 'char-003',
+          name: 'Sam',
+          role: 'Situationship',
+          archetype: 'romantic',
+          tags: ['romantic', 'situationship', 'active', 'casual'],
+          summary: 'Fun without a label.',
+          metadata: { relationship_type: 'situationship' },
+        }}
+        attributes={[]}
+      />,
+    );
+
+    expect(screen.getByTestId('character-romance-identity')).toHaveTextContent(
+      'Situationship · Not exclusive',
+    );
+    expect(screen.queryByText(/^Situationship$/)).not.toBeInTheDocument();
+    const situationshipMentions = (container.textContent?.match(/Situationship/g) ?? []).length;
+    expect(situationshipMentions).toBe(1);
+  });
 });
