@@ -25,6 +25,18 @@ function mergeProtocolFields(preferred: Message, fallback: Message): Message {
       (merged as Record<string, unknown>)[key] = fallback[key];
     }
   }
+  const preferredMetadata = preferred.metadata ?? {};
+  const fallbackMetadata = fallback.metadata ?? {};
+  const fallbackGenerationFailure = fallbackMetadata.generationFailure;
+  if (preferredMetadata.generationFailure == null && fallbackGenerationFailure != null) {
+    merged.metadata = {
+      ...preferredMetadata,
+      generationFailure: fallbackGenerationFailure,
+    };
+  }
+  if (!preferred.lifecycle?.lastError && fallback.lifecycle?.lastError) {
+    merged.lifecycle = fallback.lifecycle;
+  }
   return merged;
 }
 

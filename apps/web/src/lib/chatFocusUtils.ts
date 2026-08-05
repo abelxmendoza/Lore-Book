@@ -17,16 +17,27 @@ export function focusToEntityContext(
     case 'project':
     case 'skill':
     case 'quest':
-    case 'event':
     case 'memory':
     case 'relationship':
       return { type: 'ENTITY', id: focus.entityId };
+    case 'perception':
+      // Perceptions are evidence-scoped beliefs, not canonical entities.
+      return undefined;
+    case 'event':
+      // Events are pipeline targets, not generic ENTITY records (which are
+      // currently interpreted as organizations by server-side analytics).
+      // The durable chat row carries this focus into eventContext ingestion.
+      return undefined;
     default:
       return undefined;
   }
 }
 
 export function focusToComposerEntities(focus: ChatFocus): CertifiedEntityMatch[] {
+  // A perception focus is conversational context only. Never turn the belief
+  // itself into a character or another canonical entity chip.
+  if (focus.entityType === 'perception') return [];
+
   const composerType: CertifiedEntityType =
     focus.entityType === 'organization'
       ? 'organization'
@@ -34,6 +45,10 @@ export function focusToComposerEntities(focus: ChatFocus): CertifiedEntityMatch[
         ? 'location'
         : focus.entityType === 'skill'
           ? 'skill'
+          : focus.entityType === 'event'
+            ? 'event'
+            : focus.entityType === 'project'
+              ? 'project'
           : 'character';
 
   return [

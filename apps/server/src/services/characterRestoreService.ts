@@ -229,14 +229,15 @@ class CharacterRestoreService {
 
     for (const entity of omegaEntities ?? []) {
       const beforeIds = new Set((await this.loadCharacters(userId)).map((row) => row.id));
-      const id = await characterFoundationService.promoteOmegaEntityToCharacter(userId, {
+      const promotion = await characterFoundationService.promoteOmegaEntityToCharacter(userId, {
         id: entity.id,
         primary_name: entity.primary_name,
         type: entity.type,
         aliases: entity.aliases,
         mention_count: entity.mention_count ?? 1,
       }, null, { forcePromote: true });
-      if (!id) continue;
+      if (!promotion) continue;
+      const id = promotion.characterId;
       if (!beforeIds.has(id)) {
         report.fromOmegaEntities += 1;
         report.restoredNames.push(entity.primary_name);

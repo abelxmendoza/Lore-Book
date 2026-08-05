@@ -3,7 +3,6 @@ import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
-import { perceptionChatService } from '../services/perceptionChatService';
 import { perceptionService, type CreatePerceptionEntryInput, type UpdatePerceptionEntryInput } from '../services/perceptionService';
 
 const router = Router();
@@ -279,46 +278,6 @@ router.post('/detect', requireAuth, async (req: AuthenticatedRequest, res) => {
   } catch (error) {
     logger.error({ err: error }, 'Failed to detect perception');
     res.status(500).json({ error: 'Failed to detect perception' });
-  }
-});
-
-/**
- * Extract and auto-create perceptions from chat/gossip
- * This is the endpoint for the gossip chat bot
- */
-router.post('/extract-from-chat', requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    const userId = req.user!.id;
-    const { message, conversationHistory = [] } = req.body;
-
-    if (!message || typeof message !== 'string') {
-      return res.status(400).json({ error: 'Message is required' });
-    }
-
-    // Extract perceptions from chat
-    const extraction = await perceptionChatService.extractPerceptionsFromChat(
-      userId,
-      message,
-      conversationHistory
-    );
-
-    // Auto-create perception entries
-    const created = await perceptionChatService.createPerceptionsFromExtraction(userId, extraction);
-
-    res.json({
-      extraction,
-      created,
-      summary: {
-        perceptionsFound: extraction.perceptions.length,
-        perceptionsCreated: created.length,
-        charactersCreated: extraction.charactersCreated.length,
-        charactersLinked: extraction.charactersLinked.length,
-        needsFraming: extraction.needsFraming
-      }
-    });
-  } catch (error) {
-    logger.error({ err: error }, 'Failed to extract perceptions from chat');
-    res.status(500).json({ error: 'Failed to extract perceptions from chat' });
   }
 });
 

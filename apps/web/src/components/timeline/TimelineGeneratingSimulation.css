@@ -502,7 +502,7 @@
 
 .timeline-gen-h-scroll {
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: auto;
   padding-bottom: 1rem;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
@@ -600,8 +600,6 @@
   position: absolute;
   width: 168px;
   max-width: 168px;
-  max-height: 132px;
-  overflow: hidden;
   padding: 0.65rem 0.75rem;
   border-radius: 0.75rem;
   border-width: 1px;
@@ -782,7 +780,6 @@
   .timeline-gen-h-card {
     width: 132px;
     max-width: 132px;
-    max-height: 118px;
     padding: 0.5rem 0.6rem;
   }
 

@@ -284,7 +284,7 @@ class CharacterConversationRescanService {
           charactersSkipped += 1;
           continue;
         }
-        const characterId = await characterFoundationService.promoteOmegaEntityToCharacter(
+        const promotion = await characterFoundationService.promoteOmegaEntityToCharacter(
           userId,
           {
             id: entity.id,
@@ -295,7 +295,7 @@ class CharacterConversationRescanService {
           },
           null,
         );
-        if (characterId) {
+        if (promotion) {
           charactersPromoted += 1;
           promotedNames.push(entity.primary_name);
         } else {

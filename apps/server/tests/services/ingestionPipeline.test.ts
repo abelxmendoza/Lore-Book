@@ -147,6 +147,7 @@ describe('ConversationIngestionPipeline', () => {
         unitIds: [],
         resolvedEntityIds: [],
         resolvedLocationIds: [],
+        promotedEntities: [],
       });
       expect(h.supabaseAdmin.from).not.toHaveBeenCalled();
     });
@@ -273,6 +274,59 @@ describe('ConversationIngestionPipeline', () => {
       );
       expect(scheduleInference).toHaveBeenCalledWith('user-1', 'chat_message');
       expect(scheduleEpisode).toHaveBeenCalledWith('user-1', 'session-1');
+    });
+
+    it('routes an existing Life Log focus into event-scoped enrichment', async () => {
+      setRoute('chat_messages', () => ({
+        data: {
+          id: 'chat-event-1',
+          role: 'user',
+          content: 'You and someone caught up over coffee.',
+          metadata: {
+            lore_context: {
+              focus: {
+                entityId: 'event-existing-1',
+                entityName: 'Catch-up coffee after the gap',
+                entityType: 'event',
+              },
+            },
+          },
+        },
+        error: null,
+      }));
+      setRoute('conversation_messages', () => ({ data: null, error: null }));
+      setRoute('conversation_sessions', ({ terminal }) =>
+        terminal === 'then'
+          ? { data: [{ id: 'session-1' }], error: null }
+          : { data: { id: 'session-1' }, error: null },
+      );
+
+      const spy = vi
+        .spyOn(conversationIngestionPipeline, 'ingestMessage')
+        .mockResolvedValue({
+          messageId: 'conv-msg-event-1',
+          utteranceIds: [],
+          unitIds: ['unit-event-1'],
+          resolvedEntityIds: [],
+          resolvedLocationIds: [],
+        });
+
+      await conversationIngestionPipeline.ingestFromChatMessage(
+        'user-1',
+        'chat-event-1',
+        'session-1',
+      );
+
+      expect(spy).toHaveBeenCalledWith(
+        'user-1',
+        'session-1',
+        'USER',
+        'You and someone caught up over coffee.',
+        undefined,
+        'event-existing-1',
+        undefined,
+        { chatMessageId: 'chat-event-1' },
+      );
     });
 
     it('force re-ingest bypasses the already-ingested guard', async () => {

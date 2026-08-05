@@ -173,7 +173,7 @@ export const PerceptionEntryModal = ({
             </div>
             
             <div>
-              <label className="text-sm font-semibold text-white/90 mb-2 block">Confidence Level</label>
+              <label className="text-sm font-semibold text-white/90 mb-2 block">Certainty</label>
               <input
                 type="range"
                 min="0"
@@ -184,11 +184,11 @@ export const PerceptionEntryModal = ({
                 className="w-full"
               />
               <div className="flex items-center justify-between text-xs text-white/50 mt-1">
-                <span>0% (Very Low)</span>
-                <span className="font-medium text-white">{Math.round((formData.confidence_level ?? 0.3) * 100)}%</span>
-                <span>100% (Very High)</span>
+                <span>0% (Not certain)</span>
+                <span className="font-medium text-white">{Math.round((formData.confidence_level ?? 0.3) * 100)}% certain</span>
+                <span>100% (Certain)</span>
               </div>
-              <p className="text-xs text-white/50 mt-1">Default: 30% (Low) - Never auto-raised</p>
+              <p className="text-xs text-white/50 mt-1">Default: 30% certain — never auto-raised</p>
             </div>
             </div>
             

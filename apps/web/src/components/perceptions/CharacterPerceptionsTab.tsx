@@ -8,16 +8,16 @@ import {
 import { perceptionApi } from '../../api/perceptions';
 import type { PerceptionEntry } from '../../types/perception';
 import { PerceptionEntryModal } from './PerceptionEntryModal';
-import { GossipChatModal } from './GossipChatModal';
 import { shouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { InsufficientData } from '../ui/InsufficientData';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function confidenceLabel(level: number): { label: string; color: string; bar: string } {
-  if (level >= 0.75) return { label: 'HIGH CONFIDENCE',   color: 'text-emerald-400', bar: 'bg-emerald-500' };
-  if (level >= 0.5)  return { label: 'MEDIUM CONFIDENCE', color: 'text-amber-400',   bar: 'bg-amber-500' };
-  if (level >= 0.25) return { label: 'LOW CONFIDENCE',    color: 'text-rose-400',   bar: 'bg-rose-500' };
+function certaintyLabel(level: number): { label: string; color: string; bar: string } {
+  if (level >= 0.75) return { label: 'HIGH CERTAINTY',   color: 'text-emerald-400', bar: 'bg-emerald-500' };
+  if (level >= 0.5)  return { label: 'MEDIUM CERTAINTY', color: 'text-amber-400',   bar: 'bg-amber-500' };
+  if (level >= 0.25) return { label: 'LOW CERTAINTY',    color: 'text-rose-400',   bar: 'bg-rose-500' };
   return                    { label: 'UNCERTAIN',          color: 'text-white/30',    bar: 'bg-white/20' };
 }
 
@@ -152,7 +152,7 @@ function BeliefCard({
   onEdit: (p: PerceptionEntry) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const conf = confidenceLabel(perception.confidence_level);
+  const certainty = certaintyLabel(perception.confidence_level);
   const src = sourceLabel(perception.source);
   const hasEvolution = perception.evolution_notes && perception.evolution_notes.length > 1;
 
@@ -162,8 +162,8 @@ function BeliefCard({
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2">
           {statusIcon(perception.status)}
-          <span className={`text-[10px] font-bold tracking-widest uppercase ${conf.color}`}>
-            {conf.label}
+          <span className={`text-[10px] font-bold tracking-widest uppercase ${certainty.color}`}>
+            {certainty.label}
           </span>
         </div>
         <div className="flex items-center gap-1.5 text-white/30">
@@ -174,12 +174,11 @@ function BeliefCard({
         </div>
       </div>
 
-      {/* Confidence bar */}
+      {/* Certainty bar */}
       <div className="flex items-center gap-2">
         <div className="flex-1 h-1.5 bg-white/8 rounded-full overflow-hidden">
           <div
-            className={`h-full rounded-full ${conf.bar}`}
-            // eslint-disable-next-line react/forbid-dom-props
+            className={`h-full rounded-full ${certainty.bar}`}
             style={{ width: `${Math.round(perception.confidence_level * 100)}%` }}
           />
         </div>
@@ -253,11 +252,22 @@ export const CharacterPerceptionsTab = ({ personId, personName }: Props) => {
   const [perceptions, setPerceptions] = useState<PerceptionEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [showDebrief, setShowDebrief] = useState(false);
   const [editing, setEditing] = useState<PerceptionEntry | null>(null);
   const useMock = shouldUseMockData();
 
   const firstName = shortDisplayName(personName);
+
+  const openDebriefChat = () =>
+    openChatWithFocus({
+      entityId: personId,
+      entityName: personName,
+      entityType: 'character',
+      sourceSurface: 'perceptions',
+      sourceLabel: 'Character Intelligence',
+      knowledgeScope: `what you've noticed, heard, or believe about ${firstName} — not what you know firsthand`,
+      initialPrompt: `I want to talk about ${firstName} — what I've noticed, heard, or believe about them. Please frame anything you save from this as what I heard/believe, not as established fact.`,
+      arrivedAt: Date.now(),
+    });
 
   const load = async () => {
     setLoading(true);
@@ -303,7 +313,7 @@ export const CharacterPerceptionsTab = ({ personId, personName }: Props) => {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setShowDebrief(true)}
+            onClick={openDebriefChat}
             className="flex items-center gap-1.5 text-xs text-purple-400 hover:text-purple-300 border border-purple-500/30 hover:border-purple-500/60 rounded-lg px-3 py-1.5 transition"
           >
             <MessageSquareHeart className="h-3.5 w-3.5" />
@@ -344,7 +354,7 @@ export const CharacterPerceptionsTab = ({ personId, personName }: Props) => {
           action={{
             label: "Tell LoreBook what you've noticed",
             icon: MessageSquareHeart,
-            onClick: () => setShowDebrief(true),
+            onClick: openDebriefChat,
           }}
         />
       )}
@@ -431,12 +441,6 @@ export const CharacterPerceptionsTab = ({ personId, personName }: Props) => {
           personName={personName}
           onClose={() => { setShowAdd(false); setEditing(null); }}
           onSave={() => { setShowAdd(false); setEditing(null); load(); }}
-        />
-      )}
-      {showDebrief && (
-        <GossipChatModal
-          onClose={() => setShowDebrief(false)}
-          onPerceptionsCreated={() => { setShowDebrief(false); load(); }}
         />
       )}
     </div>

@@ -70,14 +70,23 @@ const normalizingFetch: typeof fetch = async (url, init) => {
   return fetch(url, init);
 };
 
+const OPENAI_MAX_RETRIES = Math.max(
+  0,
+  Math.min(5, Number(process.env.OPENAI_MAX_RETRIES ?? 2) || 0),
+);
+const OPENAI_TIMEOUT_MS = Math.max(
+  5_000,
+  Math.min(120_000, Number(process.env.OPENAI_TIMEOUT_MS ?? 30_000) || 30_000),
+);
+
 export const openai = new OpenAI({
   apiKey: config.openAiKey,
   ...(config.openAiWebhookSecret ? { webhookSecret: config.openAiWebhookSecret } : {}),
   // Lowered 3→2: a single chat turn fans out to ~20 detector calls; on a 429
   // burst, 3 retries each multiplied the storm ~4×. With the concurrency gate
   // below the burst is bounded, so fewer retries are both safe and necessary.
-  maxRetries: 2,
-  timeout: 30_000,
+  maxRetries: OPENAI_MAX_RETRIES,
+  timeout: OPENAI_TIMEOUT_MS,
   fetch: normalizingFetch,
 });
 

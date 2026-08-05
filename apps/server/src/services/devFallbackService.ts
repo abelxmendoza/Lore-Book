@@ -11,6 +11,7 @@
 import type { Response } from 'express';
 import { formatSseDataLine } from '@lorebook/api-contracts';
 import { isDevelopmentRuntime } from '../config/runtimePolicy';
+import { isOpenAiCircuitOpenError } from '../lib/openaiCircuitBreaker';
 import { logger } from '../logger';
 
 export function isFallbackEnabled(): boolean {
@@ -29,6 +30,12 @@ export function isFallbackEnabled(): boolean {
 
 /** Returns true for OpenAI errors that warrant a fallback response. */
 export function isFallbackError(error: unknown): boolean {
+  // Once the circuit breaker trips, every call fails fast with this synthetic
+  // error (before any real OpenAI call happens) — its message doesn't contain
+  // any of the substrings below, so it must be checked separately or the
+  // fallback silently stops engaging as soon as the breaker opens.
+  if (isOpenAiCircuitOpenError(error)) return true;
+
   const msg = error instanceof Error ? error.message : String(error);
   return (
     msg.includes('429') ||

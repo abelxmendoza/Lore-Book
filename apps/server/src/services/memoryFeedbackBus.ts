@@ -35,10 +35,14 @@ export interface MemoryFeedbackEvent {
     isVenting: boolean;
   };
 
-  // Who / what was mentioned
+  // Who / what was mentioned. entityId/created are only populated for
+  // PERSON/CHARACTER mentions that went through character promotion —
+  // other entity types (locations, etc.) still only carry name/type.
   entitiesDetected: Array<{
     name: string;
     type: string;
+    entityId?: string;
+    created?: boolean;
   }>;
 
   // Whether a time reference was anchored

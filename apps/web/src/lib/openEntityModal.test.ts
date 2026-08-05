@@ -1,6 +1,12 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { openEntity, updateSelectedEntity } from '../store/slices/selectionSlice';
 import { openEntityModal } from './openEntityModal';
+
+const demoRuntime = vi.hoisted(() => ({ active: false }));
+
+vi.mock('./demoRuntime', () => ({
+  isDemoRuntimeActive: () => demoRuntime.active,
+}));
 
 vi.mock('./hydrateBookEntity', () => ({
   isEphemeralEntityId: (id: string) => id.startsWith('dummy-'),
@@ -35,6 +41,11 @@ vi.mock('./hydrateBookEntity', () => ({
 import { fetchCharacterById } from './hydrateBookEntity';
 
 describe('openEntityModal', () => {
+  beforeEach(() => {
+    demoRuntime.active = false;
+    vi.mocked(fetchCharacterById).mockClear();
+  });
+
   it('opens immediately with a character stub then hydrates from the API', async () => {
     const dispatch = vi.fn();
     openEntityModal(dispatch as never, {
@@ -70,5 +81,20 @@ describe('openEntityModal', () => {
       name: 'Demo',
     });
     expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the local seed without an authenticated fetch in demo runtime', () => {
+    demoRuntime.active = true;
+    const dispatch = vi.fn();
+
+    openEntityModal(dispatch as never, {
+      type: 'character',
+      id: 'char-demo-legacy',
+      name: 'Alex',
+      seed: { id: 'char-demo-legacy', name: 'Alex', role: 'Friend' },
+    });
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(fetchCharacterById).not.toHaveBeenCalled();
   });
 });

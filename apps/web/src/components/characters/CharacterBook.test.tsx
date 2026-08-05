@@ -5,11 +5,12 @@ import { render } from '../../test/utils';
 import { CharacterBook } from './CharacterBook';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 
-const { mockFetchJson, impactDemoMode, impactDemoCharacters, mockGetWithFallbackCharacters, mockUseGetCharactersBookQuery } = vi.hoisted(() => ({
+const { mockFetchJson, impactDemoMode, impactDemoCharacters, mockGetWithFallbackCharacters, mockRegisterCharacters, mockUseGetCharactersBookQuery } = vi.hoisted(() => ({
   mockFetchJson: vi.fn().mockResolvedValue({}),
   impactDemoMode: { current: false },
   impactDemoCharacters: { current: [] as unknown[] },
   mockGetWithFallbackCharacters: vi.fn(),
+  mockRegisterCharacters: vi.fn(),
   mockUseGetCharactersBookQuery: vi.fn(() => ({
     data: undefined,
     isLoading: false,
@@ -34,7 +35,10 @@ vi.mock('../../store/api/entitiesApi', async (importOriginal) => ({
 vi.mock('../../services/mockDataService', () => ({
   mockDataService: {
     register: {
-      characters: vi.fn(),
+      characters: mockRegisterCharacters,
+    },
+    get: {
+      characters: () => impactDemoCharacters.current,
     },
     getWithFallback: {
       characters: (...args: unknown[]) => mockGetWithFallbackCharacters(...args),
@@ -134,6 +138,7 @@ describe('CharacterBook', () => {
   beforeEach(() => {
     impactDemoMode.current = false;
     impactDemoCharacters.current = [];
+    mockRegisterCharacters.mockClear();
     mockUseGetCharactersBookQuery.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -229,6 +234,25 @@ describe('CharacterBook', () => {
       // At minimum, the component should render
       expect(characterBookHeader.length > 0 || characterName.length > 0).toBe(true);
     }, { timeout: 3000 });
+  });
+
+  it('does not erase sample characters when demo mode has an underlying signed-in user', async () => {
+    impactDemoMode.current = true;
+    impactDemoCharacters.current = [{
+      id: 'demo-character-1',
+      name: 'Jamie Rivera',
+      status: 'active',
+      alias: [],
+      tags: [],
+      metadata: {},
+    }];
+
+    render(<CharacterBook />);
+
+    await waitFor(() => {
+      expect(mockRegisterCharacters).not.toHaveBeenCalledWith([]);
+      expect(screen.getAllByText('Jamie Rivera').length).toBeGreaterThan(0);
+    });
   });
 
   it('should show loading state', async () => {
@@ -371,7 +395,6 @@ describe('CharacterBook', () => {
 
     async function waitForCharactersLoaded() {
       await waitFor(() => {
-        expect(mockGetWithFallbackCharacters).toHaveBeenCalledWith(null, true);
         const cards = screen.getAllByTestId('character-card');
         expect(cards.some((card) => card.textContent?.includes('High Impact Minor'))).toBe(true);
       }, { timeout: 8000 });
@@ -395,7 +418,6 @@ describe('CharacterBook', () => {
     it('loads seeded demo characters for impact scenarios', async () => {
       renderImpactBook();
       await waitFor(() => {
-        expect(mockGetWithFallbackCharacters).toHaveBeenCalledWith(null, true);
         expect(screen.getByText(/2 total/)).toBeInTheDocument();
         expect(screen.getAllByTestId('character-card').length).toBeGreaterThan(0);
       }, { timeout: 8000 });

@@ -78,6 +78,30 @@ describe('inferEdges — explicit parent links', () => {
     expect(edges).toContainEqual({ from: 'grace', to: 'jerry' });
     expect(edges).toContainEqual({ from: 'grace', to: 'james' });
   });
+
+  it('does not draw a niece or nephew as the selected character’s child', () => {
+    const members: FamilyMember[] = [
+      m({ id: 'uncle', generation: 0, is_self: true }),
+      m({
+        id: 'mother',
+        generation: 0,
+        relation: 'sibling',
+        parent_id: 'grandmother',
+      }),
+      m({
+        id: 'marcus',
+        generation: 1,
+        relation: 'niece',
+        parent_id: 'mother',
+        is_account_self: true,
+      }),
+      m({ id: 'grandmother', generation: -1, relation: 'parent' }),
+    ];
+
+    const edges = inferEdges(members);
+    expect(edges).toContainEqual({ from: 'mother', to: 'marcus' });
+    expect(edges).not.toContainEqual({ from: 'uncle', to: 'marcus' });
+  });
 });
 
 describe('FamilyTreeView — edit affordances', () => {

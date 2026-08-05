@@ -90,6 +90,18 @@ import {
 import { episodeSegmentationTrigger } from './episodeSegmentationTrigger';
 import { selfCharacterService } from '../selfCharacterService';
 
+export function eventContextFromChatMessageMetadata(metadata: unknown): string | undefined {
+  if (!metadata || typeof metadata !== 'object') return undefined;
+  const loreContext = (metadata as Record<string, unknown>).lore_context;
+  if (!loreContext || typeof loreContext !== 'object') return undefined;
+  const focus = (loreContext as Record<string, unknown>).focus;
+  if (!focus || typeof focus !== 'object') return undefined;
+  const focusRecord = focus as Record<string, unknown>;
+  if (focusRecord.entityType !== 'event') return undefined;
+  const entityId = typeof focusRecord.entityId === 'string' ? focusRecord.entityId.trim() : '';
+  return entityId || undefined;
+}
+
 /**
  * Main ingestion pipeline for conversation messages
  */
@@ -104,7 +116,7 @@ export class ConversationIngestionPipeline {
     sessionId: string,
     conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
     force?: boolean
-  ): Promise<void> {
+  ): Promise<{ entityResolutionFailed?: boolean }> {
     const pipelineStart = Date.now();
     try {
       // Get the chat message
@@ -117,14 +129,14 @@ export class ConversationIngestionPipeline {
 
       if (msgError || !chatMessage) {
         logger.warn({ error: msgError, chatMessageId, userId }, 'Chat message not found for ingestion');
-        return;
+        return {};
       }
 
       // Nothing to extract from an empty/whitespace message — skip before doing
       // any session mapping or downstream scheduling.
       if (typeof chatMessage.content !== 'string' || chatMessage.content.trim().length === 0) {
         logger.debug({ chatMessageId, userId }, 'Chat message has no content; skipping ingestion');
-        return;
+        return {};
       }
 
       // Prefer the durable row's session_id over the job payload. Recovery /
@@ -140,7 +152,7 @@ export class ConversationIngestionPipeline {
           { chatMessageId, userId },
           'Chat message has no session_id; skipping ingestion to avoid orphan session mapping',
         );
-        return;
+        return {};
       }
       if (jobSessionId && rowSessionId && jobSessionId !== rowSessionId) {
         logger.warn(
@@ -174,7 +186,7 @@ export class ConversationIngestionPipeline {
 
         if (existing) {
           logger.debug({ chatMessageId, conversationMessageId: existing.id }, 'Message already ingested');
-          return;
+          return {};
         }
       }
 
@@ -183,6 +195,7 @@ export class ConversationIngestionPipeline {
 
       // Map sender
       const sender: 'USER' | 'AI' = chatMessage.role === 'user' ? 'USER' : 'AI';
+      const eventContext = eventContextFromChatMessageMetadata(chatMessage.metadata);
 
       // Ingest the message (with chat_message_id in metadata for linking)
       const result = await this.ingestMessage(
@@ -191,7 +204,7 @@ export class ConversationIngestionPipeline {
         sender,
         chatMessage.content,
         conversationHistory,
-        undefined,
+        eventContext,
         undefined,
         { chatMessageId, sourceCreatedAt: chatMessage.created_at }
       );
@@ -203,6 +216,7 @@ export class ConversationIngestionPipeline {
           metadata: {
             chat_message_id: chatMessageId,
             chat_session_id: resolvedSessionId,
+            ...(eventContext ? { event_context_id: eventContext } : {}),
           },
         })
         .eq('id', result.messageId);
@@ -236,11 +250,31 @@ export class ConversationIngestionPipeline {
           userId,
           chatMessageId,
           result.utteranceIds,
-          pipelineStart
+          pipelineStart,
+          result.promotedEntities
         ).catch(err => {
           logger.warn({ err, chatMessageId }, 'Failed to build memory feedback (non-critical)');
         });
       });
+
+      // Persist newly-created entities onto the assistant reply's own row —
+      // the memory feedback bus above only updates the live client view, so a
+      // page reload (or a different session) would otherwise keep showing the
+      // stale/incomplete mentionedEntities this turn was generated with.
+      if (result.promotedEntities.length > 0) {
+        void this.patchAssistantMentionedEntities(
+          userId,
+          (chatMessage as { session_id?: string }).session_id,
+          (chatMessage as { turn_number?: number | null }).turn_number ?? null,
+          result.promotedEntities.map((e) => ({
+            id: e.characterId,
+            name: e.name,
+            type: 'character' as const,
+            confidence: 1,
+            provenance: 'character_book' as const,
+          }))
+        );
+      }
 
       // Debounced lore inference (graph, places, orgs, public figures, standing).
       const { inferenceOrchestrator } = await import('../inference/inferenceOrchestrator');
@@ -260,6 +294,8 @@ export class ConversationIngestionPipeline {
           )
           .catch((err) => logger.debug({ err, chatMessageId }, 'association ingestion skipped'));
       });
+
+      return { entityResolutionFailed: result.entityResolutionFailed };
     } catch (error) {
       // This runs in the durable background worker, not on the response path.
       // Re-throw so the job is marked retryable/dead instead of falsely
@@ -273,6 +309,52 @@ export class ConversationIngestionPipeline {
   }
 
   /**
+   * Merge newly-created entities into the assistant reply paired with this user
+   * message (same session_id + turn_number, role='assistant'), so the chip/pill
+   * highlighting is correct on reload — not just in the live client session that
+   * happened to be open when the entity was created moments after the reply
+   * already streamed. Best-effort: never throws into the ingestion job.
+   */
+  private async patchAssistantMentionedEntities(
+    userId: string,
+    sessionId: string | undefined,
+    turnNumber: number | null,
+    newEntities: Array<{ id: string; name: string; type: 'character' | 'event'; confidence: number; provenance: string }>
+  ): Promise<void> {
+    if (!sessionId || turnNumber == null || newEntities.length === 0) return;
+    try {
+      const { data: assistantRow } = await supabaseAdmin
+        .from('chat_messages')
+        .select('id, metadata')
+        .eq('user_id', userId)
+        .eq('session_id', sessionId)
+        .eq('turn_number', turnNumber)
+        .eq('role', 'assistant')
+        .maybeSingle();
+      if (!assistantRow) return;
+
+      const existingMeta = (assistantRow.metadata as Record<string, unknown> | null) ?? {};
+      const existingEntities = Array.isArray(existingMeta.mentionedEntities)
+        ? (existingMeta.mentionedEntities as Array<{ id: string }>)
+        : [];
+      const byId = new Map(existingEntities.map((e) => [e.id, e]));
+      for (const entity of newEntities) {
+        if (!byId.has(entity.id)) byId.set(entity.id, entity);
+      }
+
+      await supabaseAdmin
+        .from('chat_messages')
+        .update({ metadata: { ...existingMeta, mentionedEntities: [...byId.values()] } })
+        .eq('id', assistantRow.id);
+    } catch (err) {
+      logger.warn(
+        { err, userId, sessionId, turnNumber },
+        'Failed to patch assistant mentionedEntities (non-critical)'
+      );
+    }
+  }
+
+  /**
    * Query what the pipeline just extracted and publish it to the MemoryFeedbackBus
    * so the client-side cognition panel can display it.
    * All DB errors are swallowed — this is observability, not load-bearing.
@@ -281,9 +363,12 @@ export class ConversationIngestionPipeline {
     userId: string,
     chatMessageId: string,
     utteranceIds: string[],
-    startedAt: number
+    startedAt: number,
+    promotedEntities: Array<{ entityId: string; characterId: string; name: string; created: boolean }> = []
   ): Promise<void> {
     if (utteranceIds.length === 0) return;
+
+    const promotionByEntityId = new Map(promotedEntities.map(p => [p.entityId, p]));
 
     // Query knowledge units created for this message (linked via utterance_id)
     const { data: kuRows } = await supabaseAdmin
@@ -336,8 +421,21 @@ export class ConversationIngestionPipeline {
       for (const e of (ku.entities ?? []) as any[]) {
         if (e?.id && !seenIds.has(e.id)) {
           seenIds.add(e.id);
-          entitiesDetected.push({ name: String(e.name ?? ''), type: String(e.type ?? 'UNKNOWN') });
+          const promotion = promotionByEntityId.get(e.id);
+          entitiesDetected.push({
+            name: String(e.name ?? ''),
+            type: String(e.type ?? 'UNKNOWN'),
+            ...(promotion ? { entityId: promotion.characterId, created: promotion.created } : {}),
+          });
         }
+      }
+    }
+    // Promoted entities not already surfaced via knowledge_units.entities
+    // (e.g. no KU was created for this turn) still need to reach the client.
+    for (const p of promotedEntities) {
+      if (!seenIds.has(p.entityId)) {
+        seenIds.add(p.entityId);
+        entitiesDetected.push({ name: p.name, type: 'PERSON', entityId: p.characterId, created: p.created });
       }
     }
 
@@ -571,6 +669,8 @@ export class ConversationIngestionPipeline {
     unitIds: string[];
     resolvedEntityIds: string[];
     resolvedLocationIds: string[];
+    entityResolutionFailed?: boolean;
+    promotedEntities: Array<{ entityId: string; characterId: string; name: string; created: boolean }>;
   }> {
     // Defensive validation — these are required, non-optional inputs. A missing
     // userId/threadId is a programming error upstream, not user content, so fail
@@ -595,6 +695,7 @@ export class ConversationIngestionPipeline {
         unitIds: [],
         resolvedEntityIds: [],
         resolvedLocationIds: [],
+        promotedEntities: [],
       };
     }
 
@@ -854,6 +955,21 @@ export class ConversationIngestionPipeline {
       .single();
 
     if (error) {
+      // 23505 = unique_violation on conversation_sessions_user_chat_session_uidx — lost a
+      // race against a concurrent ingestion call that inserted first. Reselect its row
+      // instead of failing the job; this is the expected/handled case, not a real error.
+      if (error.code === '23505') {
+        const { data: raced } = await supabaseAdmin
+          .from('conversation_sessions')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('metadata->>chat_session_id', chatSessionId)
+          .order('created_at', { ascending: true })
+          .limit(1);
+        if (raced?.[0]?.id) {
+          return raced[0].id;
+        }
+      }
       throw error;
     }
 
@@ -1106,6 +1222,8 @@ export class ConversationIngestionPipeline {
     unitIds: string[];
     resolvedEntityIds: string[];
     resolvedLocationIds: string[];
+    entityResolutionFailed?: boolean;
+    promotedEntities: Array<{ entityId: string; characterId: string; name: string; created: boolean }>;
   }> {
       // Collector for shadow mode baseline — populated by synchronous pipeline steps below
       const _shadowBaseline = {
@@ -1119,8 +1237,18 @@ export class ConversationIngestionPipeline {
       // Thread-intelligence collector (Phase 2): resolved entity names this turn,
       // folded into conversation_sessions.metadata.threadMeta after Step 12.
       const _threadMetaTurn = { people: [] as string[], places: [] as string[] };
+      // Populated when a PERSON/CHARACTER entity is promoted below — lets
+      // buildAndPublishFeedback tell the client whether each mentioned entity
+      // was just created (new chip on the response) or already existed
+      // (focus chip in the composer instead) without a second DB round-trip.
+      const _promotedEntities: Array<{ entityId: string; characterId: string; name: string; created: boolean }> = [];
       const _resolvedEntityIds: string[] = [];
       const _resolvedLocationIds: string[] = [];
+      // Set when the entity-resolution block below throws (e.g. the OpenAI call
+      // behind extractEntitiesUncached fails). Surfaced in the return value so
+      // callers can distinguish "resolved zero entities" from "resolution never
+      // ran" instead of a step that silently reports success either way.
+      let _entityResolutionFailed = false;
       // Phase B single-pass: the message-level extract+resolve below is the
       // authoritative entity set for this message. The unit text fed to per-unit
       // conversion is always a subset of the message text, so its entities are a
@@ -1158,6 +1286,7 @@ export class ConversationIngestionPipeline {
             unitIds: [],
             resolvedEntityIds: [],
             resolvedLocationIds: [],
+            promotedEntities: [],
           };
         }
         if (ingestionScope === 'mixed') {
@@ -1332,13 +1461,20 @@ export class ConversationIngestionPipeline {
             const promotedCharacterIds: string[] = [];
             for (const entity of personEntities) {
               try {
-                const characterId = await characterFoundationService.promoteOmegaEntityToCharacter(
+                const promotion = await characterFoundationService.promoteOmegaEntityToCharacter(
                   userId,
                   entity as any,
                   threadId
                 );
-                if (!characterId) continue;
+                if (!promotion) continue;
+                const characterId = promotion.characterId;
                 promotedCharacterIds.push(characterId);
+                _promotedEntities.push({
+                  entityId: (entity as any).id,
+                  characterId,
+                  name: (entity as any).primary_name,
+                  created: promotion.created,
+                });
                 if (threadId) {
                   const { entityConversationLinkService } = await import('./entityConversationLinkService');
                   await entityConversationLinkService
@@ -1430,6 +1566,7 @@ export class ConversationIngestionPipeline {
           }
         }
       } catch (error) {
+        _entityResolutionFailed = true;
         logger.warn({ error }, 'Failed to resolve entities for enrichment, continuing without');
       }
       stageTimer.mark('entity_resolution');
@@ -1964,6 +2101,43 @@ export class ConversationIngestionPipeline {
               const fullEventsMap = new Map(
                 (eventsResult.data ?? []).map((e: any) => [e.id, e])
               );
+
+              // Same self-healing write-back as character promotion: assembleEvents()
+              // runs fire-and-forget (this whole .then() resolves after ingestMessageCore
+              // already returned), so this can't ride the normal _promotedEntities return
+              // path — it does its own lookup of the paired assistant reply and patches it
+              // directly. Safe to run for already-known events too (dedup keeps it a no-op).
+              if (ingestOptions?.chatMessageId) {
+                const eventEntities = [...fullEventsMap.values()]
+                  .filter((e: any) => e?.title)
+                  .map((e: any) => ({
+                    id: e.id as string,
+                    name: e.title as string,
+                    type: 'event' as const,
+                    confidence: 1,
+                    provenance: 'events_book',
+                  }));
+                if (eventEntities.length > 0) {
+                  supabaseAdmin
+                    .from('chat_messages')
+                    .select('session_id, turn_number')
+                    .eq('id', ingestOptions.chatMessageId)
+                    .eq('user_id', userId)
+                    .maybeSingle()
+                    .then(({ data: userRow }) => {
+                      if (!userRow) return;
+                      void this.patchAssistantMentionedEntities(
+                        userId,
+                        userRow.session_id,
+                        userRow.turn_number,
+                        eventEntities
+                      );
+                    })
+                    .catch((err) => {
+                      logger.warn({ err, userId }, 'Failed to look up chat message for event mention patch (non-critical)');
+                    });
+                }
+              }
 
               // Group mention source IDs by event, collect all unique source IDs
               const mentionsByEvent = new Map<string, string[]>();
@@ -2853,6 +3027,8 @@ export class ConversationIngestionPipeline {
         unitIds,
         resolvedEntityIds: _resolvedEntityIds,
         resolvedLocationIds: _resolvedLocationIds,
+        entityResolutionFailed: _entityResolutionFailed,
+        promotedEntities: _promotedEntities,
       };
     }
   }

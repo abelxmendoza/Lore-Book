@@ -16,6 +16,7 @@ export type ChatFocusSourceSurface =
   | 'perceptions'
   | 'lorebook'
   | 'timeline'
+  | 'anchors'
   | 'memoir';
 
 export type ChatFocusEntityType =
@@ -27,7 +28,8 @@ export type ChatFocusEntityType =
   | 'relationship'
   | 'quest'
   | 'event'
-  | 'memory';
+  | 'memory'
+  | 'perception';
 
 export interface ChatFocusSessionStats {
   messagesSent: number;
@@ -72,7 +74,7 @@ export interface ChatFocus {
 
 export const CHAT_FOCUS_SOURCE_LABELS: Record<ChatFocusSourceSurface, string> = {
   love: 'Dating & Romance',
-  characters: 'Characters',
+  characters: 'Character Book',
   locations: 'Locations',
   projects: 'Projects',
   organizations: 'Groups & Organizations',
@@ -83,6 +85,7 @@ export const CHAT_FOCUS_SOURCE_LABELS: Record<ChatFocusSourceSurface, string> = 
   perceptions: 'Perceptions',
   lorebook: 'Lorebooks',
   timeline: 'Omni Timeline',
+  anchors: 'Narrative Anchors',
   memoir: 'LoreBook Editor',
 };
 

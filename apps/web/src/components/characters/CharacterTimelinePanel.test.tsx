@@ -107,6 +107,44 @@ describe('CharacterTimelinePanel', () => {
     expect(fetchJsonMock).toHaveBeenCalledWith('/api/conversation/events/evt-1');
   });
 
+  it('opens a local event detail modal when a demo timeline moment is clicked', async () => {
+    render(
+      <MemoryRouter>
+        <CharacterTimelinePanel
+          characterId="demo-jordan"
+          characterName="Jordan"
+          mockMode
+          active
+        />
+      </MemoryRouter>,
+    );
+
+    const moment = await screen.findByText('Shared hangout #2');
+    fireEvent.click(moment.closest('button')!);
+
+    expect(await screen.findByTestId('event-detail-modal')).toHaveTextContent('Shared hangout #2');
+    expect(fetchJsonMock).not.toHaveBeenCalled();
+  });
+
+  it('opens the same event detail modal from a demo swimlane marker', async () => {
+    render(
+      <MemoryRouter>
+        <CharacterTimelinePanel
+          characterId="demo-alex"
+          characterName="Alex"
+          mockMode
+          active
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Swimlanes/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Shared hangout #2/i }));
+
+    expect(await screen.findByTestId('event-detail-modal')).toHaveTextContent('Shared hangout #2');
+    expect(fetchJsonMock).not.toHaveBeenCalled();
+  });
+
   it('filters the timeline by search term', async () => {
     render(
       <MemoryRouter>

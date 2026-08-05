@@ -82,6 +82,8 @@ describe('AuthGate Integration Tests - Black Screen Prevention', () => {
     // Get the mock function from the module
     const supabaseModule = await import('../lib/supabase');
     mockGetSession = (supabaseModule as any).__mockGetSession;
+    const demoModule = await import('../routes/Demo');
+    vi.mocked(demoModule.isDemoSession).mockReturnValue(false);
   });
 
   // A test that enables fake timers can leak them into later tests (and hang
@@ -112,6 +114,63 @@ describe('AuthGate Integration Tests - Black Screen Prevention', () => {
       expect(container).toBeTruthy();
       expect(container.innerHTML.length).toBeGreaterThan(0);
     }, { timeout: 2000 });
+  });
+
+  it('keeps an active demo session when an existing account session is discovered', async () => {
+    const demoModule = await import('../routes/Demo');
+    vi.mocked(demoModule.isDemoSession).mockReturnValue(true);
+    mockGetSession.mockResolvedValue({
+      data: {
+        session: {
+          user: { id: 'test-user', email: 'test@example.invalid', user_metadata: {} },
+        },
+      },
+      error: null,
+    });
+
+    render(
+      <BrowserRouter>
+        <AuthGate>
+          <div>Demo Character Book</div>
+        </AuthGate>
+      </BrowserRouter>
+    );
+
+    await waitFor(() => expect(mockGetSession).toHaveBeenCalled());
+    expect(demoModule.clearDemoSession).not.toHaveBeenCalled();
+    expect(screen.getByText('Demo Character Book')).toBeInTheDocument();
+  });
+
+  it('always exits an active demo session on an explicit SIGNED_IN event, even if the flag was never cleared beforehand', async () => {
+    // Reproduces the admin/demo bleed bug: a UI control (e.g. the sidebar's
+    // "Exit" button) navigated to /login without calling clearDemoSession()
+    // first, so the demo flag is still set when the real sign-in completes.
+    const demoModule = await import('../routes/Demo');
+    vi.mocked(demoModule.isDemoSession).mockReturnValue(true);
+    mockGetSession.mockResolvedValue({ data: { session: null }, error: null });
+
+    const supabaseModule = await import('../lib/supabase');
+    const mockOnAuthStateChange = (supabaseModule as any).__mockOnAuthStateChange;
+
+    render(
+      <BrowserRouter>
+        <AuthGate>
+          <div>Authenticated Content</div>
+        </AuthGate>
+      </BrowserRouter>
+    );
+
+    await waitFor(() => expect(mockGetSession).toHaveBeenCalled());
+    expect(demoModule.clearDemoSession).not.toHaveBeenCalled();
+
+    const authStateCallback = mockOnAuthStateChange.mock.calls[0][0];
+    act(() => {
+      authStateCallback('SIGNED_IN', {
+        user: { id: 'test-user', email: 'admin@example.invalid', user_metadata: {} },
+      });
+    });
+
+    await waitFor(() => expect(demoModule.clearDemoSession).toHaveBeenCalled());
   });
 
   // Skipped: flaky fake-timer + async-React interaction — advancing the 5s
@@ -234,4 +293,3 @@ describe('AuthGate Integration Tests - Black Screen Prevention', () => {
     }, { timeout: 3000 });
   });
 });
-

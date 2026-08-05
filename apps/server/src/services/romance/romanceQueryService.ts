@@ -3,6 +3,7 @@ import type {
   RomanceQueryResponse,
   RomanceQueryResult,
   RomanceQueryScope,
+  RomanceReciprocity,
 } from "@lorebook/api-contracts";
 
 import { logger } from "../../logger";
@@ -168,6 +169,14 @@ export function deriveRomanceQueryHints(query: string): QueryHints {
   ) {
     scopes.push("crush");
   }
+  if (/\b(?:one[- ]sided|only i like|only they like|my feelings only|their feelings only)\b/i.test(query)) {
+    scopes.push("one_sided");
+  }
+  if (/\b(?:possible|maybe|possibly|might be) mutual(?: (?:crush|interest|attraction))?\b/i.test(query)) {
+    scopes.push("possible_mutual");
+  } else if (/\b(?:mutual (?:crush|interest|attraction)|like each other|both interested)\b/i.test(query)) {
+    scopes.push("mutual_interest");
+  }
   if (
     /\b(?:dating|boyfriends?|girlfriends?|partners?|lovers?|spouses?)\b/i.test(
       query,
@@ -195,7 +204,10 @@ export function deriveRomanceQueryHints(query: string): QueryHints {
 
   if (/\bghosted\b/i.test(query)) statuses.push("ghosted");
   if (/\bblocked\b/i.test(query)) statuses.push("blocked");
-  if (/\bunrequited\b/i.test(query)) statuses.push("unrequited");
+  if (/\bunrequited\b/i.test(query)) {
+    statuses.push("unrequited");
+    scopes.push("one_sided");
+  }
   if (/\bcomplicated\b/i.test(query)) statuses.push("complicated");
   if (/\bon break\b/i.test(query)) statuses.push("on_break");
   if (/\brekindled\b/i.test(query)) statuses.push("rekindled");
@@ -313,6 +325,21 @@ function scoreEvidenceBacked(row: RomanceQuerySource): boolean {
   return typeof count === "number" && count > 0;
 }
 
+function reciprocityFor(row: RomanceQuerySource): RomanceReciprocity {
+  const value = row.metadata?.reciprocity;
+  if (
+    value === "user_interest_only" ||
+    value === "other_interest_only" ||
+    value === "possible_mutual" ||
+    value === "mutual_interest"
+  ) return value;
+  if (normalize(row.status) === "unrequited") return "user_interest_only";
+  const type = normalize(row.relationship_type).replaceAll(" ", "_");
+  if (DATING_TYPES.has(type)) return "mutual_interest";
+  if (CRUSH_TYPES.has(type)) return "user_interest_only";
+  return "unknown";
+}
+
 function evidenceStrength(
   row: RomanceQuerySource,
 ): RomanceQueryResult["evidenceStrength"] {
@@ -349,6 +376,12 @@ function scopesFor(
   if (row.is_situationship || type === "situationship")
     scopes.push("situationship");
   if (CRUSH_TYPES.has(type)) scopes.push("crush");
+  const reciprocity = reciprocityFor(row);
+  if (reciprocity === "user_interest_only" || reciprocity === "other_interest_only") {
+    scopes.push("one_sided");
+  }
+  if (reciprocity === "possible_mutual") scopes.push("possible_mutual");
+  if (reciprocity === "mutual_interest") scopes.push("mutual_interest");
   if (!ended && DATING_TYPES.has(type)) scopes.push("dating");
   if (
     status === "rekindled" ||
@@ -502,6 +535,7 @@ export function compileRomanceQuery(
           (row.person_type === "character" ? row.person_id : null),
         relationshipType: row.relationship_type,
         status: row.status,
+        reciprocity: reciprocityFor(row),
         isCurrent: row.is_current,
         isSituationship: row.is_situationship,
         exclusivityStatus: row.exclusivity_status ?? null,

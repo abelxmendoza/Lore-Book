@@ -125,6 +125,33 @@ describe('RelationshipCard', () => {
     expect(container.querySelector('[class*="text-emerald-300"]')).not.toBeInTheDocument();
   });
 
+  it('labels one-sided, possible mutual, and mutual interest without overstating uncertainty', () => {
+    const onClick = vi.fn();
+    const { rerender } = render(
+      <RelationshipCard
+        relationship={{ ...mockRelationship, id: 'rel-yours', relationship_type: 'crush', metadata: { reciprocity: 'user_interest_only' } }}
+        onClick={onClick}
+      />,
+    );
+    expect(screen.getByText('Your interest')).toBeInTheDocument();
+
+    rerender(
+      <RelationshipCard
+        relationship={{ ...mockRelationship, id: 'rel-possible', relationship_type: 'crush', metadata: { reciprocity: 'possible_mutual' } }}
+        onClick={onClick}
+      />,
+    );
+    expect(screen.getByText('Possible mutual crush')).toBeInTheDocument();
+
+    rerender(
+      <RelationshipCard
+        relationship={{ ...mockRelationship, id: 'rel-mutual', relationship_type: 'crush', metadata: { reciprocity: 'mutual_interest' } }}
+        onClick={onClick}
+      />,
+    );
+    expect(screen.getByText('Mutual interest')).toBeInTheDocument();
+  });
+
   it('gives a situationship its own fuchsia shade', () => {
     const onClick = vi.fn();
     const { container } = render(

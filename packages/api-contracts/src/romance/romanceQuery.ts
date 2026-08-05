@@ -7,6 +7,9 @@ export const ROMANCE_QUERY_SCOPES = [
   "reconnection",
   "situationship",
   "crush",
+  "one_sided",
+  "possible_mutual",
+  "mutual_interest",
   "dating",
   "high_risk",
   "needs_review",
@@ -38,7 +41,7 @@ export const romanceQueryRequestSchema = z.object({
         .max(30)
         .optional(),
       statuses: z.array(z.string().trim().min(1).max(80)).max(30).optional(),
-      scopes: z.array(z.enum(ROMANCE_QUERY_SCOPES)).max(9).optional(),
+      scopes: z.array(z.enum(ROMANCE_QUERY_SCOPES)).max(12).optional(),
       exclusivityStatuses: z
         .array(z.string().trim().min(1).max(80))
         .max(10)
@@ -68,6 +71,12 @@ export const romanceQueryRequestSchema = z.object({
 
 export type RomanceQueryRequest = z.infer<typeof romanceQueryRequestSchema>;
 export type RomanceQueryScope = (typeof ROMANCE_QUERY_SCOPES)[number];
+export type RomanceReciprocity =
+  | "unknown"
+  | "user_interest_only"
+  | "other_interest_only"
+  | "possible_mutual"
+  | "mutual_interest";
 
 export type RomanceQueryResult = {
   relationshipId: string;
@@ -76,6 +85,7 @@ export type RomanceQueryResult = {
   characterId?: string | null;
   relationshipType: string;
   status: string;
+  reciprocity: RomanceReciprocity;
   isCurrent: boolean;
   isSituationship: boolean;
   exclusivityStatus?: string | null;

@@ -29,6 +29,16 @@ describe('metaConversationClassifier', () => {
       expect(classifyIngestionScope('The composer entity chips are confusing')).toBe('product_only');
     });
 
+    it.each([
+      'Recap everything we discussed in this thread.',
+      'Summarize our conversation.',
+      'What did we talk about?',
+      'retry',
+      'try again',
+    ])('keeps conversation-management commands out of autobiographical ingestion: %s', (text) => {
+      expect(classifyIngestionScope(text)).toBe('product_only');
+    });
+
     it('life for normal autobiographical chat', () => {
       expect(classifyIngestionScope('Had coffee with Maria yesterday')).toBe('life');
       expect(classifyIngestionScope('My mom called me this morning')).toBe('life');

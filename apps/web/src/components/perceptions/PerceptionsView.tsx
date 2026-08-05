@@ -7,8 +7,8 @@ import { PerceptionEntryCard } from './PerceptionEntryCard';
 import { perceptionApi } from '../../api/perceptions';
 import type { PerceptionEntry, PerceptionSource, PerceptionStatus } from '../../types/perception';
 import { PerceptionDetailModal } from './PerceptionDetailModal';
-import { GossipChatModal } from './GossipChatModal';
 import { PerceptionSearchBar } from './PerceptionSearchBar';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { PerceptionSearchSuggestions } from './PerceptionSearchSuggestions';
 import { Card, CardContent } from '../ui/card';
 import { shouldUseMockData } from '../../hooks/useShouldUseMockData';
@@ -629,7 +629,6 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
     mockDataService.register.perceptions(mockPerceptions);
   }, []);
   const [selectedPerceptionForDetail, setSelectedPerceptionForDetail] = useState<PerceptionEntry | null>(null);
-  const [showGossipChat, setShowGossipChat] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState<PerceptionSource | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<PerceptionStatus | 'all' | 'unverified_only'>('unverified_only');
@@ -843,13 +842,24 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
           </p>
         </div>
         {showCreateButton && (
-          <Button 
-            onClick={() => setShowGossipChat(true)} 
+          <Button
+            onClick={() =>
+              openChatWithFocus({
+                entityId: 'perceptions-book',
+                entityName: 'Perceptions',
+                entityType: 'memory',
+                sourceSurface: 'perceptions',
+                sourceLabel: 'Perceptions Book',
+                knowledgeScope: 'gossip, rumors, and beliefs about other people — what you heard, not what you know firsthand',
+                initialPrompt: "I want to talk about something I heard or believe about someone. Please frame anything you save from this as what I heard/believe, not as established fact.",
+                arrivedAt: Date.now(),
+              })
+            }
             leftIcon={<MessageSquare className="h-4 w-4" />}
             variant="outline"
             className="bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 border-orange-500/30"
           >
-            Gossip Chat
+            Chat about it
           </Button>
         )}
       </div>
@@ -947,7 +957,7 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
         <Card className="bg-black/40 border-border/60 overflow-hidden">
           <CardContent className="p-0">
             {/* Book Page Container */}
-            <div className="relative w-full min-h-[72dvh] sm:min-h-[600px] bg-gradient-to-br from-orange-50/5 via-orange-100/5 to-orange-50/5 rounded-lg border-2 border-orange-800/30 shadow-2xl overflow-hidden">
+            <div className="relative w-full min-h-[82dvh] sm:min-h-[900px] lg:min-h-[1080px] bg-gradient-to-br from-orange-50/5 via-orange-100/5 to-orange-50/5 rounded-lg border-2 border-orange-800/30 shadow-2xl overflow-hidden">
               {/* Page Content */}
               <div className="absolute inset-0 flex flex-col p-3 sm:p-6">
                 {/* Page Header */}
@@ -970,7 +980,7 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
                 </div>
 
                 {/* Perceptions Grid */}
-                <div className="mb-4 flex min-h-0 flex-1 grid grid-cols-3 gap-2 overflow-y-auto sm:mb-6 sm:grid-cols-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="mb-4 grid min-h-0 flex-1 grid-cols-3 content-start gap-2 overflow-y-auto sm:mb-6 sm:grid-cols-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-4">
                   {paginatedPerceptions.map((perception, index) => (
                     <PerceptionEntryCard
                       key={perception.id || `perception-${index}`}
@@ -1058,14 +1068,6 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
         />
       )}
 
-      {showGossipChat && (
-        <GossipChatModal
-          onClose={() => setShowGossipChat(false)}
-          onPerceptionsCreated={() => {
-            void loadPerceptions();
-          }}
-        />
-      )}
     </div>
   );
 };

@@ -4,7 +4,11 @@ import userEvent from '@testing-library/user-event';
 import { render } from '../test/utils';
 import { Sidebar } from './Sidebar';
 
-const mockNavigate = vi.fn();
+const { mockNavigate, demoRuntime, mockClearDemoSession } = vi.hoisted(() => ({
+  mockNavigate: vi.fn(),
+  demoRuntime: { current: false },
+  mockClearDemoSession: vi.fn(),
+}));
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
@@ -49,6 +53,12 @@ vi.mock('../middleware/roleGuard', () => ({
   canAccessAdmin: () => false,
 }));
 
+vi.mock('../lib/demoRuntime', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/demoRuntime')>()),
+  isDemoRuntimeActive: () => demoRuntime.current,
+  clearDemoSession: mockClearDemoSession,
+}));
+
 vi.mock('../utils/routeMapping', () => ({
   surfaceToRoute: {
     chat: '/chat',
@@ -82,6 +92,7 @@ describe('Sidebar', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    demoRuntime.current = false;
   });
 
   it('renders Chat with "Your story starts here" tagline', () => {
@@ -121,6 +132,33 @@ describe('Sidebar', () => {
     const chatButtons = screen.getAllByRole('button', { name: /Open chat interface/i });
     await user.click(chatButtons[0]);
     expect(mockNavigate).toHaveBeenCalledWith('/chat');
+  });
+
+  it('keeps Character Book navigation inside the public demo runtime', async () => {
+    demoRuntime.current = true;
+    const user = userEvent.setup();
+    render(<Sidebar {...defaultProps} />);
+
+    const characterButtons = screen.getAllByRole('button', { name: /Open characters view/i });
+    await user.click(characterButtons[0]);
+
+    expect(mockNavigate).toHaveBeenCalledWith('/demo/characters');
+  });
+
+  it('clears the demo session before navigating to login when Exit is clicked', async () => {
+    // Regression test: this button used to navigate to /login without
+    // clearing the demo flag, so a subsequent real sign-in in the same tab
+    // left isDemoRuntimeActive() stuck true — mixing demo state into the
+    // authenticated (e.g. admin) session.
+    demoRuntime.current = true;
+    const user = userEvent.setup();
+    render(<Sidebar {...defaultProps} />);
+
+    const exitButton = screen.getByRole('button', { name: /^Exit$/i });
+    await user.click(exitButton);
+
+    expect(mockClearDemoSession).toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalledWith('/login');
   });
 
   it('nests Timelines Library under Omni Timeline and deep-links to the library view', async () => {

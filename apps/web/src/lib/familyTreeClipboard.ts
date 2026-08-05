@@ -87,12 +87,6 @@ function siblingsOf(member: FamilyMember, tree: FamilyTree): string[] {
       if (id !== member.id) sharedParentSiblings.add(id);
     }
   }
-  // Also: anyone for whom this member is an explicit parent.
-  for (const [parentId, kids] of byParent) {
-    if (parentId !== member.id) continue;
-    for (const id of kids) sharedParentSiblings.add(id);
-  }
-
   const named = tree.members
     .filter((m) => {
       if (m.id === member.id || m.is_placeholder) return false;

@@ -120,4 +120,5 @@ describe('OrganizationDetailModal — chat handoff', () => {
       }),
     );
   });
+
 });

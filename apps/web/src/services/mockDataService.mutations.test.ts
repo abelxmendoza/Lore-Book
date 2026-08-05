@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { mockDataService } from './mockDataService';
 import { MOCK_QUESTS } from '../mocks/quests';
@@ -11,6 +11,19 @@ describe('mockDataService.mutate', () => {
     mockDataService.register.characters([]);
     mockDataService.register.skills([]);
     mockDataService.register.skillSuggestions([]);
+  });
+
+  it('notifies Character Book subscribers when demo characters are registered', () => {
+    const listener = vi.fn();
+    const unsubscribe = mockDataService.subscribe(listener);
+
+    const demoCharacter = { id: 'demo-jamie', name: 'Jamie' } as Parameters<
+      typeof mockDataService.register.characters
+    >[0][number];
+    mockDataService.register.characters([demoCharacter]);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
   });
 
   it('creates quests and rebuilds the board with lk:quests-updated', () => {

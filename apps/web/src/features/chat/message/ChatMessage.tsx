@@ -769,39 +769,45 @@ export const ChatMessage = ({
             )}
           </div>
 
-          {/* Evidence consulted for this reply (shown even when nothing was cited by name) */}
-          {message.sources && message.sources.length > 0 && (
-            <div className="pt-2 border-t border-white/8">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-xs text-white/30">
-                  {message.citations && message.citations.length > 0 ? 'also consulted' : 'consulted'}
-                </span>
-                {message.sources.slice(0, 5).map((source, idx) => (
-                  <button
-                    key={`${source.type}:${source.id}:${idx}`}
-                    type="button"
-                    onClick={() => onSourceClick?.(source)}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-white/10 bg-white/4 hover:border-white/20 hover:bg-white/8 transition-colors text-xs text-white/50 hover:text-white/80"
-                    title={
-                      [
-                        source.title,
-                        source.snippet,
-                        source.relevanceScore != null ? `relevance ${source.relevanceScore}` : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' — ')
-                    }
-                  >
-                    <span className="text-white/30">{SOURCE_TYPE_LABELS[source.type] ?? source.type}</span>
-                    <span className="truncate max-w-[120px]">{source.title}</span>
-                  </button>
-                ))}
-                {message.sources.length > 5 && (
-                  <span className="text-xs text-white/25">+{message.sources.length - 5} more</span>
-                )}
+          {/* Evidence consulted for this reply (shown even when nothing was cited by name).
+              Excludes usage:'rejected' — those are kept in message.sources only for the
+              admin diagnostic/clipboard export, same filter ChatSourcesBar already applies. */}
+          {(() => {
+            const acceptedSources = message.sources?.filter((s) => s.usage !== 'rejected') ?? [];
+            if (acceptedSources.length === 0) return null;
+            return (
+              <div className="pt-2 border-t border-white/8">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs text-white/30">
+                    {message.citations && message.citations.length > 0 ? 'also consulted' : 'consulted'}
+                  </span>
+                  {acceptedSources.slice(0, 5).map((source, idx) => (
+                    <button
+                      key={`${source.type}:${source.id}:${idx}`}
+                      type="button"
+                      onClick={() => onSourceClick?.(source)}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-white/10 bg-white/4 hover:border-white/20 hover:bg-white/8 transition-colors text-xs text-white/50 hover:text-white/80"
+                      title={
+                        [
+                          source.title,
+                          source.snippet,
+                          source.relevanceScore != null ? `relevance ${source.relevanceScore}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' — ')
+                      }
+                    >
+                      <span className="text-white/30">{SOURCE_TYPE_LABELS[source.type] ?? source.type}</span>
+                      <span className="truncate max-w-[120px]">{source.title}</span>
+                    </button>
+                  ))}
+                  {acceptedSources.length > 5 && (
+                    <span className="text-xs text-white/25">+{acceptedSources.length - 5} more</span>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Connections - Clickable */}
           {message.connections && message.connections.length > 0 && (

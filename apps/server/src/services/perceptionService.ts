@@ -49,6 +49,9 @@ export type CreatePerceptionEntryInput = {
   impact_on_me: string; // REQUIRED - Key Insight Lever: How did believing this affect my actions, emotions, or decisions?
   created_in_high_emotion?: boolean; // Flag for cool-down review mode
   review_reminder_days?: number; // Days until review reminder (default 7 for high-emotion entries)
+  /** Linkage back to the source (message/utterance/session) this was extracted
+   *  from. Merged into the row's own metadata, not a replacement for it. */
+  metadata?: Record<string, unknown>;
 };
 
 // HARD RULE: Updates track evolution, not overwrites
@@ -117,13 +120,15 @@ class PerceptionService {
       // Store original content for evolution tracking
       const originalContent = input.content;
 
-      // Log metadata for future AI pattern detection
+      // Log metadata for future AI pattern detection, plus any caller-supplied
+      // linkage (source message/utterance/session) — caller keys win on clash.
       const metadata: Record<string, unknown> = {
         created_at: now,
         confidence_level: input.confidence_level ?? 0.3,
         source: input.source,
         has_related_memory: !!input.related_memory_id,
-        high_emotion: input.created_in_high_emotion || false
+        high_emotion: input.created_in_high_emotion || false,
+        ...input.metadata,
       };
 
       const { data, error } = await supabaseAdmin

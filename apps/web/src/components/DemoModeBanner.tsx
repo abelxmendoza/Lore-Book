@@ -4,13 +4,12 @@ import { useNavigate } from 'react-router-dom';
 
 import { useMockData } from '../contexts/MockDataContext';
 import { openChatGPTImportDemo } from '../lib/chatGPTImportDemo';
+import { clearDemoSession, DEMO_SESSION_KEY } from '../lib/demoRuntime';
 import { openOnboardingDemo } from '../lib/onboardingDemo';
 import {
   getDemoActivityCounts,
   type DemoActivityCounts,
 } from '../services/demoMutationEffects';
-
-const DEMO_SESSION_KEY = 'lk_demo_runtime';
 
 /**
  * Compact demo session bar — stays shrink-0 so book pages scroll beneath it.
@@ -106,7 +105,10 @@ export function DemoModeBanner() {
 
         <button
           type="button"
-          onClick={() => navigate('/login')}
+          onClick={() => {
+            clearDemoSession();
+            navigate('/login');
+          }}
           className="flex items-center gap-1 text-white/50 hover:text-white transition-colors shrink-0 px-1 py-0.5"
           aria-label="Sign in"
         >

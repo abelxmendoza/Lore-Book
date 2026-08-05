@@ -603,7 +603,7 @@ class CharacterFoundationService {
     entity: { id: string; primary_name: string; type: string; aliases?: string[] | null; mention_count?: number },
     threadId?: string | null,
     options?: { forcePromote?: boolean }
-  ): Promise<string | null> {
+  ): Promise<{ characterId: string; created: boolean } | null> {
     if (entity.type !== 'PERSON' && entity.type !== 'CHARACTER') return null;
 
     const classification = classifyEntity(entity.primary_name);
@@ -630,7 +630,7 @@ class CharacterFoundationService {
       await this.repairOmegaCharacterName(userId, row, entity);
       await this.reviveIfArchived(userId, row.id);
       scheduleEnsureRelationalPossessor(userId, row.name || entity.primary_name, row.id);
-      return row.id;
+      return { characterId: row.id, created: false };
     }
 
     // Registry choke point: cross-pipeline dedup, junk gate, gray-zone defer.
@@ -664,7 +664,7 @@ class CharacterFoundationService {
         }).catch(() => {});
       }
       scheduleEnsureRelationalPossessor(userId, decision.cleanName, decision.characterId);
-      return decision.characterId;
+      return { characterId: decision.characterId, created: false };
     }
     if (decision.action === 'defer') {
       await characterRegistry.recordPendingQuestion(userId, decision.cleanName, decision.candidates, threadId ?? null, decision.rawName);
@@ -779,7 +779,7 @@ class CharacterFoundationService {
 
     logger.info({ characterId, name: entity.primary_name }, 'Promoted chat entity to character');
     scheduleEnsureRelationalPossessor(userId, cleanedName, characterId);
-    return characterId;
+    return { characterId, created: true };
   }
 }
 

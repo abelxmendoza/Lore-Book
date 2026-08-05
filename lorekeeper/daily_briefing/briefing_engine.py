@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from ..event_schema import TimelineEvent
+
+UTC = timezone.utc
 
 
 class DailyBriefingEngine:

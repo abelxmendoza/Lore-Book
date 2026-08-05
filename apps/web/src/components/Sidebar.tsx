@@ -11,7 +11,7 @@ import { getGuestUsage } from '../components/guest/guestExperience';
 import { useAccountAuthority } from '../hooks/useAccountAuthority';
 import { canAccessAdmin } from '../middleware/roleGuard';
 import { cn } from '../lib/cn';
-import { isDemoRuntimeActive } from '../lib/demoRuntime';
+import { isDemoRuntimeActive, clearDemoSession } from '../lib/demoRuntime';
 import { UserAvatarButton } from './UserAvatarButton';
 
 import { surfaceToRoute, type SurfaceKey } from '../utils/routeMapping';
@@ -44,11 +44,12 @@ const SidebarContent = ({
   const { authority, loading: authorityLoading } = useAccountAuthority();
   const counts = useEntityCounts();
   const userIsAdmin = showRealAccount && canAccessAdmin(authority);
+  const runtimeRoute = (route: string) => demoRuntime ? `/demo${route}` : route;
 
   const handleSurfaceChange = (surface: SurfaceKey) => {
     const route = surfaceToRoute[surface];
     if (route) {
-      navigate(route);
+      navigate(runtimeRoute(route));
     }
     onSurfaceChange?.(surface);
     // Close mobile drawer when navigating
@@ -666,7 +667,7 @@ const SidebarContent = ({
             </div>
             <button
               type="button"
-              onClick={() => { navigate('/login'); onMobileDrawerClose?.(); }}
+              onClick={() => { clearDemoSession(); navigate('/login'); onMobileDrawerClose?.(); }}
               className="text-xs text-amber-100/80 hover:text-white underline underline-offset-2 flex-shrink-0"
             >
               Exit

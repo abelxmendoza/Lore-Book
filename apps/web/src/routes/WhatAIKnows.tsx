@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  AlertCircle, CheckCircle2, Clock, Download, RefreshCw, Sparkles, X,
+  AlertCircle, ArrowLeft, Check, CheckCircle2, Clock, Copy, Download, RefreshCw, Sparkles, X,
 } from 'lucide-react';
 import { useAuth } from '../lib/supabase';
 import { fetchJson } from '../lib/api';
@@ -18,6 +18,8 @@ import {
 } from '../api/loreAssets';
 import { LoreAssetCard } from '../components/loreAssets/LoreAssetCard';
 import { LoreConstellationView } from '../components/loreAssets/LoreConstellationView';
+import { buildLoreAssetsClipboardText, buildLoreAssetsAuditClipboardText } from '../lib/loreAssetsClipboard';
+import { copyTextToClipboard } from '../lib/listClipboard';
 
 const ago = (days: number) => new Date(Date.now() - days * 86400000).toISOString();
 
@@ -239,6 +241,8 @@ export default function WhatAIKnows() {
   const [revising, setRevising] = useState<LoreAsset | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const highlightAssetId = searchParams.get('assetId');
   const highlightArtifactType = searchParams.get('artifactType');
@@ -381,6 +385,24 @@ export default function WhatAIKnows() {
     setSearchParams({ tab: next }, { replace: true });
   };
 
+  const copyText = useMemo(() => {
+    if (tab === 'audit') return buildLoreAssetsAuditClipboardText(auditLog);
+    if (tab === 'constellation') return '';
+    return buildLoreAssetsClipboardText(visibleAssets, tab);
+  }, [tab, auditLog, visibleAssets]);
+
+  const copyAll = useCallback(async () => {
+    const ok = await copyTextToClipboard(copyText);
+    if (!ok) return;
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
+  }, [copyText]);
+
+  useEffect(() => () => {
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+  }, []);
+
   const tabCount = (t: GalleryTab) => {
     if (t === 'stale') return staleAssets.length;
     if (t === 'audit' || t === 'constellation') return null;
@@ -396,14 +418,24 @@ export default function WhatAIKnows() {
     <div className="min-h-screen bg-black text-white">
       <div className="border-b border-zinc-800 px-6 py-5">
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-violet-400" />
-              <h1 className="text-xl font-semibold text-white">Lore Assets</h1>
+          <div className="flex items-start gap-3">
+            <button
+              onClick={() => navigate(-1)}
+              className="flex items-center justify-center h-9 w-9 mt-0.5 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500 transition-colors shrink-0"
+              title="Back"
+              aria-label="Back"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <div>
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-violet-400" />
+                <h1 className="text-xl font-semibold text-white">Lore Assets</h1>
+              </div>
+              <p className="text-zinc-500 text-sm mt-1">
+                Everything in your book — moments, people, files, patterns — with truth states and provenance.
+              </p>
             </div>
-            <p className="text-zinc-500 text-sm mt-1">
-              Everything in your book — moments, people, files, patterns — with truth states and provenance.
-            </p>
           </div>
           <div className="flex items-center gap-3 shrink-0">
             <button onClick={load} className="p-2 text-zinc-400 hover:text-white transition-colors" title="Refresh">
@@ -423,6 +455,19 @@ export default function WhatAIKnows() {
             >
               <Download className="w-4 h-4" />
               Full export
+            </button>
+            <button
+              onClick={() => void copyAll()}
+              disabled={!copyText.trim()}
+              title="Copy the current tab's list and its metadata as plain text"
+              className={`flex items-center gap-2 px-4 py-2 text-sm border rounded-lg transition-colors disabled:opacity-40 ${
+                copied
+                  ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
+                  : 'border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500'
+              }`}
+            >
+              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+              {copied ? 'Copied' : 'Copy all'}
             </button>
           </div>
         </div>

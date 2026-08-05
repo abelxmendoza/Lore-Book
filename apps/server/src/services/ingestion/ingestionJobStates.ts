@@ -175,8 +175,11 @@ export function classifyIngestionError(err: unknown): {
   ) {
     return { category: 'rate_limit', retryable: true, code: 'rate_limit', message: message.slice(0, 500) };
   }
-  if (status === 408 || /timeout|etimedout|econnreset|socket hang up/.test(lower)) {
-    return { category: 'timeout', retryable: true, code: 'timeout', message: message.slice(0, 500) };
+  if (
+    status === 408 ||
+    /timeout|timed out|etimedout|econnreset|enotfound|eai_again|fetch failed|network error|failed to connect|socket hang up/.test(lower)
+  ) {
+    return { category: 'timeout', retryable: true, code: 'network_timeout', message: message.slice(0, 500) };
   }
   if ((typeof status === 'number' && status >= 500) || /5\d\d|internal server error|bad gateway/.test(lower)) {
     return { category: 'provider_5xx', retryable: true, code: 'provider_5xx', message: message.slice(0, 500) };

@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { fetchJson } from '../../lib/api';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { fireEvent, render, screen, waitFor } from '../../test/utils';
 
 import { NarrativeAnchorsBook } from './NarrativeAnchorsBook';
 
 vi.mock('../../lib/api', () => ({ fetchJson: vi.fn() }));
 vi.mock('../../hooks/useShouldUseMockData', () => ({ useShouldUseMockData: vi.fn() }));
+vi.mock('../../lib/openChatWithFocus', () => ({ openChatWithFocus: vi.fn() }));
 
 const anchor = {
   id: 'anchor-1',
@@ -42,7 +44,7 @@ describe('NarrativeAnchorsBook', () => {
     expect(screen.getByText('Strong match')).toBeInTheDocument();
     expect(screen.getByLabelText(/Connected story views/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Moments/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Timeline/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Timeline$/i })).toBeInTheDocument();
   });
 
   it('reveals the evidence behind an anchor', async () => {
@@ -52,6 +54,33 @@ describe('NarrativeAnchorsBook', () => {
 
     expect(screen.getByText('Why Lorekeeper connected this')).toBeInTheDocument();
     expect(screen.getByText('Maya and UCSB recur together')).toBeInTheDocument();
+    expect(screen.getByText('Chapter outline')).toBeInTheDocument();
+  });
+
+  it('shows honest LoreBook readiness and opens an anchor in chat', async () => {
+    render(<NarrativeAnchorsBook />);
+    await screen.findByText('The college years');
+
+    expect(screen.getByText('Vignette · 0/2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /open in chat/i }));
+
+    expect(openChatWithFocus).toHaveBeenCalledWith(expect.objectContaining({
+      entityId: 'anchor-1',
+      entityName: 'The college years',
+      sourceSurface: 'anchors',
+      sourceLabel: 'Narrative Anchors',
+    }));
+  });
+
+  it('opens the canonical timeline search for an anchor', async () => {
+    render(<NarrativeAnchorsBook />);
+    await screen.findByText('The college years');
+
+    fireEvent.click(screen.getByRole('button', { name: /view timeline/i }));
+
+    expect(window.location.pathname + window.location.search).toBe(
+      '/timeline?view=search&q=The%20college%20years',
+    );
   });
 
   it('does not repeat equivalent evidence labels', async () => {

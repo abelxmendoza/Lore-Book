@@ -62,10 +62,10 @@ describe('booksAggregateService.loadCharactersBook', () => {
     for (const key of Object.keys(tableResults)) delete tableResults[key];
   });
 
-  it('filters wrong-domain character cards and dedupes exact display names', async () => {
+  it('keeps legacy null-status cards while filtering hidden, wrong-domain, and duplicate cards', async () => {
     tableResults.characters = {
       error: null,
-      count: 4,
+      count: 7,
       data: [
         {
           id: 'cyberpunk-1',
@@ -103,14 +103,41 @@ describe('booksAggregateService.loadCharactersBook', () => {
           status: 'active',
           metadata: {},
         },
+        {
+          id: 'legacy-1',
+          user_id: 'user-1',
+          name: 'Legacy Friend',
+          importance_score: 7,
+          updated_at: '2026-06-04T00:00:00.000Z',
+          status: null,
+          metadata: {},
+        },
+        {
+          id: 'archived-1',
+          user_id: 'user-1',
+          name: 'Archived Friend',
+          importance_score: 7,
+          updated_at: '2026-06-05T00:00:00.000Z',
+          status: 'archived',
+          metadata: {},
+        },
+        {
+          id: 'reclassified-1',
+          user_id: 'user-1',
+          name: 'Vanguard Robotics',
+          importance_score: 7,
+          updated_at: '2026-06-06T00:00:00.000Z',
+          status: 'reclassified',
+          metadata: {},
+        },
       ],
     };
 
     const book = await loadCharactersBook('user-1');
 
-    expect(book.characters.map((c: any) => c.name)).toEqual(['Shana', 'Renna']);
-    expect(book.characters.map((c: any) => c.id)).toEqual(['shana-new', 'renna-1']);
-    expect(book.counts.characters).toBe(2);
+    expect(book.characters.map((c: any) => c.name)).toEqual(['Shana', 'Renna', 'Legacy Friend']);
+    expect(book.characters.map((c: any) => c.id)).toEqual(['shana-new', 'renna-1', 'legacy-1']);
+    expect(book.counts.characters).toBe(3);
     expect(book.duplicate_groups).toEqual([]);
   });
 });

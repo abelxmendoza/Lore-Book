@@ -46,6 +46,9 @@ import {
 } from '../../lib/timelineSubjectLorebook';
 import { meterFromTimelineOffer } from '../../lib/lorebookContentMeter';
 import type { LorebookForm } from '../../lib/lorebookTiers';
+import { openGeneratedTimelineChat } from '../../lib/generatedTimelineChat';
+import { findTimelineSubjectCharacter } from '../../lib/timelineCharacterSubject';
+import { mockDataService } from '../../services/mockDataService';
 import './OmniTimeline.css';
 
 type View = OmniTimelineView;
@@ -175,7 +178,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   const { user }                     = useAuth();
   const { isGuest }                  = useGuest();
   const { useMockData: mockEnabled } = useMockData();
-  const { openMemory }               = useEntityModal();
+  const { openMemory, openCharacter } = useEntityModal();
   const { readiness }                = useLoreReadiness();
   const isDemoMode = !user && (isGuest ? mockEnabled : mockEnabled);
 
@@ -684,6 +687,12 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
           onToggleCollapse={handleToggleRevealCollapse}
           onClose={closeGeneratedTimeline}
           onRegenerate={() => generateFor(genQuery, { forceRegenerate: true })}
+          onOpenChat={() => openGeneratedTimelineChat({
+            query: genQuery,
+            events: revealEvents.events,
+            isMock: revealEvents.isMock,
+            compilation: revealEvents.compilation,
+          })}
           onCreateLorebook={
             revealLorebookOffer ? handleCreateLorebookFromReveal : undefined
           }
@@ -698,8 +707,31 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
           generationError={subjectCompileError}
           onSelectSubject={handleSelectCompiledSubject}
           onEventClick={(e) => {
+            const compiledSubject = revealEvents.compilation?.subject;
             if (
-              !revealEvents.isMock &&
+              compiledSubject &&
+              /^(character|person)$/i.test(compiledSubject.entityType)
+            ) {
+              const registered = mockDataService.get.characters();
+              const character = registered.find((candidate) => candidate.id === compiledSubject.entityId);
+              openCharacter(character ?? {
+                id: compiledSubject.entityId,
+                name: compiledSubject.displayName,
+              });
+              return;
+            }
+
+            if (revealEvents.isMock) {
+              const character = findTimelineSubjectCharacter(
+                genQuery,
+                e,
+                mockDataService.get.characters(),
+              );
+              if (character) openCharacter(character);
+              return;
+            }
+
+            if (
               'timeline_memberships' in e &&
               (!e.source_kind || e.source_kind === 'journal_entry')
             ) {

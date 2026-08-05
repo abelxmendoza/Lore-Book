@@ -3,13 +3,17 @@
  * Prefers tiered meters when enough signals exist.
  */
 import type { ProjectDetailProfile } from '../components/projects/projectModalTypes';
-import { PROJECT_LOREBOOK_MIN_BEATS } from './projectTimelineClipboard';
+
 import {
+  LOREBOOK_TIER_ORDER,
+  LOREBOOK_TIERS,
+  TIMELINE_TIER_GATES,
   evaluateProjectTierOffer,
   evaluateTimelineTierOffer,
   type LorebookForm,
   type LorebookTierOffer,
 } from './lorebookTiers';
+import { PROJECT_LOREBOOK_MIN_BEATS } from './projectTimelineClipboard';
 import {
   TIMELINE_LOREBOOK_MIN_EVENTS,
   type TimelineSubjectLorebookOffer,
@@ -111,6 +115,41 @@ export function meterFromCount(
     counterLabel: `${Math.min(cur, req)}/${req}`,
     detailLabel: opts?.label ?? `${cur} of ${req} needed`,
     ready,
+  };
+}
+
+/**
+ * Narrative Anchors currently expose linked resolved moments, but not the full
+ * source text needed for the timeline word/day gates. Keep this meter honest by
+ * grading only the moments that are actually attached to the anchor.
+ */
+export function meterFromNarrativeAnchorMoments(
+  momentCount: number,
+): LorebookContentMeterModel {
+  const current = Math.max(0, Math.floor(momentCount));
+  const unlocked = LOREBOOK_TIER_ORDER.filter(
+    (form) => current >= TIMELINE_TIER_GATES[form].events,
+  );
+  const currentForm = unlocked.at(-1) ?? null;
+  const nextForm = LOREBOOK_TIER_ORDER.find((form) => !unlocked.includes(form)) ?? null;
+  const targetForm = nextForm ?? currentForm ?? 'vignette';
+  const target = TIMELINE_TIER_GATES[targetForm].events;
+  const currentLabel = currentForm ? LOREBOOK_TIERS[currentForm].label : null;
+  const targetLabel = LOREBOOK_TIERS[targetForm].shortLabel;
+  const remaining = Math.max(0, target - current);
+
+  return {
+    progress: clamp01(current / target),
+    counterLabel: `${targetLabel} · ${Math.min(current, target)}/${target}`,
+    detailLabel: nextForm
+      ? `${current} linked ${current === 1 ? 'moment' : 'moments'} — ${remaining} more for ${LOREBOOK_TIERS[nextForm].label}`
+      : `${current} linked moments — ${currentLabel ?? 'Vignette'} ready`,
+    ready: currentForm !== null,
+    currentForm,
+    nextForm,
+    segmentProgress: LOREBOOK_TIER_ORDER.map((form) =>
+      clamp01(current / TIMELINE_TIER_GATES[form].events),
+    ),
   };
 }
 

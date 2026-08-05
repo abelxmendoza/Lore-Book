@@ -29,6 +29,7 @@ import {
 } from '../../lib/epistemicLabels';
 import { NarrativeProvenancePanel } from '../narrative/NarrativeProvenancePanel';
 import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -969,6 +970,24 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
     ? toneGradient[eventData.impact.emotionalImpact]
     : getTypeGradient(eventData.type);
 
+  const openInMainChat = () => {
+    openChatWithFocus({
+      entityId: eventData.id,
+      entityName: displayTitle,
+      entityType: 'event',
+      sourceSurface: 'events',
+      sourceLabel: 'Life Log',
+      knowledgeScope: 'event detail, participants, meaning, and connected evidence',
+      initialPrompt:
+        `Let’s talk about “${displayTitle}”. Start by giving me a grounded response about ` +
+        'what LoreBook currently understands about this moment and why it may matter. ' +
+        'Use only recorded details, clearly label uncertainty, and then invite me to add or correct context.',
+      autoSubmit: true,
+      arrivedAt: Date.now(),
+    });
+    onClose();
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-2 sm:p-4">
       <div className="relative w-full max-w-4xl max-h-[92vh] rounded-xl shadow-2xl shadow-primary/15 flex flex-col overflow-hidden border border-white/10 bg-[linear-gradient(160deg,#0d0d1f_0%,#080812_40%,#07070e_100%)]">
@@ -1009,6 +1028,19 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
               <h2 className="text-xl sm:text-2xl font-bold leading-tight text-white">{displayTitle}</h2>
             </div>
             <div className="flex items-center gap-1.5 flex-shrink-0">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={openInMainChat}
+                aria-label="Let's chat about this event"
+                title="Start a focused chat about this moment"
+                data-testid="event-open-main-chat"
+                className="text-white/55 hover:text-violet-200 hover:bg-violet-500/10"
+              >
+                <MessageSquare className="h-4 w-4" />
+                <span className="ml-1.5 hidden sm:inline text-xs">Let’s chat</span>
+              </Button>
               <EntityLorebookCompileControl
                 subjectLabel={displayTitle}
                 signals={{

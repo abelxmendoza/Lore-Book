@@ -23,7 +23,7 @@ type Props<T extends string> = {
   activeTab: T | null;
   onTabChange: (tab: T) => void;
   ariaLabel: string;
-  /** A destructive action (delete/archive) pinned below the grid, styled red — never crowds the main grid. */
+  /** A compact destructive chip (delete/archive) at the end of the tab row. */
   dangerAction?: DangerAction;
   /**
    * Breakpoint at which this bar hides in favor of the modal's own desktop
@@ -40,7 +40,8 @@ type Props<T extends string> = {
  *
  * Always a single horizontally scrollable row — multi-row grids underflow
  * into the home indicator / past the modal bottom once tab counts grow.
- * Destructive actions stay on a pinned strip under the row.
+ * Destructive actions sit as a compact chip at the end of that row (not a
+ * second full-width strip).
  *
  * Mount as a full-bleed sibling under the padded scroll body (not inside
  * horizontal padding) so the bar covers the modal bottom edge-to-edge.
@@ -134,25 +135,23 @@ export function EntityModalBottomNav<T extends string>({
             </button>
           );
         })}
-      </div>
-      {dangerAction && (
-        <div className="mx-2 mt-0.5 mb-0.5">
+        {dangerAction && (
           <button
             type="button"
             onClick={dangerAction.onClick}
             className={cn(
-              'flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-semibold touch-manipulation transition-colors',
+              'ml-0.5 flex shrink-0 flex-col items-center justify-center gap-0.5 self-center rounded-md border px-2 py-1 min-h-[36px] touch-manipulation transition-colors',
               dangerAction.active
-                ? 'border-red-400/50 bg-red-500/25 text-red-50'
-                : 'border-red-500/35 bg-red-500/10 text-red-200 hover:bg-red-500/20 hover:text-red-50'
+                ? 'border-red-400/45 bg-red-500/20 text-red-50'
+                : 'border-red-500/25 bg-transparent text-red-300/75 hover:bg-red-500/10 hover:text-red-100'
             )}
             aria-label={dangerAction.label}
           >
-            <dangerAction.icon className="h-3.5 w-3.5 shrink-0" />
-            {dangerAction.label}
+            <dangerAction.icon className="h-3 w-3 shrink-0" />
+            <span className="text-[9px] font-medium leading-none whitespace-nowrap">{dangerAction.label}</span>
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </nav>
   );
 }

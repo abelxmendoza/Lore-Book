@@ -342,37 +342,46 @@ export function buildDemoChatResponse(
 ): DemoChatSendResult {
   if (chatFocus) {
     const content = getDemoFocusResponse(message, chatFocus);
-    const entityType =
-      chatFocus.entityType === 'location'
-        ? 'location'
-        : chatFocus.entityType === 'organization'
-          ? 'organization'
-          : 'character';
+    const isPerceptionFocus = chatFocus.entityType === 'perception';
+    // Message.mentionedEntities[].type only supports this subset of
+    // ChatFocusEntityType; pass focus types through unchanged when possible
+    // instead of re-guessing, so e.g. an 'event' focus doesn't get relabeled
+    // as 'character' in the chat transcript.
+    const CHIP_COMPATIBLE_ENTITY_TYPES = new Set(['character', 'location', 'organization', 'skill', 'event']);
+    const entityType = CHIP_COMPATIBLE_ENTITY_TYPES.has(chatFocus.entityType)
+      ? (chatFocus.entityType as 'character' | 'location' | 'organization' | 'skill' | 'event')
+      : 'character';
     return {
       content,
-      mentionedEntities: [
-        {
-          id: chatFocus.entityId,
-          name: chatFocus.entityName,
-          type: entityType,
-          mentionStatus: 'confirmed',
-        },
-      ],
+      mentionedEntities: isPerceptionFocus
+        ? undefined
+        : [
+            {
+              id: chatFocus.entityId,
+              name: chatFocus.entityName,
+              type: entityType,
+              mentionStatus: 'confirmed',
+            },
+          ],
       connections: [`Focused on ${chatFocus.entityName} from ${chatFocus.sourceLabel}`],
       timelineUpdates: [`📅 Deepened ${chatFocus.entityName} focus thread`],
       modeDecision: { mode: 'SOCIAL_FOCUS', confidence: 0.95, reasoning: 'Demo focus chat simulation' },
       subtitle: chatFocus.sourceLabel,
       dominantEntities: [chatFocus.entityName],
       loreUpdates: mode === 'guest' ? extractSimulatedGuestLore(message, guestId) : undefined,
-      creationOutcomes: [{
-        mention: chatFocus.entityName,
-        action: 'merge',
-        entityId: chatFocus.entityId,
-        entityName: chatFocus.entityName,
-        reason: `Linked from ${chatFocus.sourceLabel}; available for correction.`,
-        authority: 'core',
-      }],
-      creationOutcomeSummary: 'Focused entity linked with provenance and correction controls.',
+      creationOutcomes: isPerceptionFocus
+        ? undefined
+        : [{
+            mention: chatFocus.entityName,
+            action: 'merge',
+            entityId: chatFocus.entityId,
+            entityName: chatFocus.entityName,
+            reason: `Linked from ${chatFocus.sourceLabel}; available for correction.`,
+            authority: 'core',
+          }],
+      creationOutcomeSummary: isPerceptionFocus
+        ? undefined
+        : 'Focused entity linked with provenance and correction controls.',
     };
   }
   return buildGenericDemoResponse(message, conversationHistory, mode, guestId);

@@ -32,6 +32,7 @@ export type MockRomanticRelationship = {
   rank_among_active?: number;
   // Sprint AD: deterministic dynamics (attachment + obsession) for demo showcase.
   metadata?: {
+    reciprocity?: 'unknown' | 'user_interest_only' | 'other_interest_only' | 'possible_mutual' | 'mutual_interest';
     signals?: {
       obsession_score?: number;
       attachment_intensity?: number;
@@ -90,6 +91,14 @@ function withDemoSignals(rel: MockRomanticRelationship): MockRomanticRelationshi
     ...rel,
     metadata: {
       ...(rel.metadata ?? {}),
+      reciprocity:
+        status === 'unrequited'
+          ? 'user_interest_only'
+          : type === 'crush'
+            ? (rel.green_flags.length > 0 ? 'possible_mutual' : 'user_interest_only')
+            : ['dating', 'boyfriend', 'girlfriend', 'wife', 'husband', 'lover'].includes(type)
+              ? 'mutual_interest'
+              : rel.metadata?.reciprocity ?? 'unknown',
       signals: {
         obsession_score,
         attachment_intensity,

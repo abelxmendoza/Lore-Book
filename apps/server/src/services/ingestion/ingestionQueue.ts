@@ -474,7 +474,7 @@ class IngestionQueue {
         /* optional */
       }
 
-      await runWithMessageCost(
+      const ingestResult = await runWithMessageCost(
         { label: 'ingestion', userId: job.userId, messageId: job.chatMessageId },
         () =>
           conversationIngestionPipeline.ingestFromChatMessage(
@@ -485,6 +485,7 @@ class IngestionQueue {
             job.force,
           ),
       );
+      const entityResolutionFailed = ingestResult?.entityResolutionFailed === true;
 
       // ── MEMORY_QUALITY stage (durable, observable, not fire-and-forget) ──
       // Optional enrichment under provider pressure may SKIP but remains recorded.
@@ -587,7 +588,7 @@ class IngestionQueue {
 
       if (runId) {
         const sinceIso = new Date(attemptStart).toISOString();
-        void this.captureProductionSummary(runId, job.userId, sinceIso, attemptStart);
+        void this.captureProductionSummary(runId, job.userId, sinceIso, attemptStart, entityResolutionFailed);
       }
       if (runId) await pipelineRunService.complete(runId, attemptStart);
       void import('../loreReadiness/loreReadinessService').then(({ loreReadinessService }) => {
@@ -673,6 +674,7 @@ class IngestionQueue {
     userId: string,
     sinceIso: string,
     startedAt: number,
+    entityResolutionFailed = false,
   ): Promise<void> {
     try {
       const [kuRes, evRes, charRes, candRes, kuRes2] = await Promise.allSettled([
@@ -711,7 +713,11 @@ class IngestionQueue {
 
       await pipelineRunService.recordStep(runId, {
         step: 'production_summary',
-        success: true,
+        // A prior entity-resolution failure means these counts are known-incomplete
+        // (the OpenAI call behind extraction threw and was caught upstream) — surface
+        // that here instead of reporting green with silently-zeroed counts.
+        success: !entityResolutionFailed,
+        error: entityResolutionFailed ? 'entity_resolution_failed' : undefined,
         duration_ms: Date.now() - startedAt,
         row_count: kuCount,
         metadata: {
@@ -720,6 +726,7 @@ class IngestionQueue {
           events_assembled: evCount,
           entities_created: charCount,
           event_candidates_created: candCount,
+          entity_resolution_failed: entityResolutionFailed,
         },
       });
     } catch {

@@ -17,6 +17,7 @@ import {
   emptyChatFocusSessionStats,
 } from '../store/slices/selectionSlice';
 import type { ChatFocus } from '../types/chatFocus';
+import { isDemoRuntimeActive } from '../lib/demoRuntime';
 
 import { AuthGate } from '../components/AuthGate';
 import { SkipLink } from '../components/SkipLink';
@@ -75,7 +76,7 @@ import { GlobalEntityModalHost } from '../components/entity/GlobalEntityModalHos
 import { ChatGPTExportReminder } from '../components/account/ChatGPTExportReminder';
 import { ChatGPTImportDemoSimulator } from '../components/account/ChatGPTImportDemoSimulator';
 import { OnboardingDemoSimulator } from '../components/onboarding/OnboardingDemoSimulator';
-import { getSurfaceFromRoute, getRouteFromSurface, type SurfaceKey } from '../utils/routeMapping';
+import { getSurfaceFromRoute, getRuntimeRouteFromSurface, type SurfaceKey } from '../utils/routeMapping';
 import { isLorebookLibraryRoute } from '../lib/lorebookLibrary';
 import { scrollToTop } from '../lib/scrollToTop';
 
@@ -107,9 +108,13 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
   );
   const isMobileDrawerOpen = useAppSelector((s) => s.ui.mobileDrawerOpen);
   const devMode = useAppSelector((s) => s.ui.devMode);
+  const runtimeRoute = useCallback(
+    (surface: SurfaceKey) => getRuntimeRouteFromSurface(surface, isDemoRuntimeActive()),
+    [],
+  );
   const setActiveSurface = useCallback(
-    (surface: SurfaceKey) => navigate(getRouteFromSurface(surface)),
-    [navigate]
+    (surface: SurfaceKey) => navigate(runtimeRoute(surface)),
+    [navigate, runtimeRoute]
   );
   const setIsMobileDrawerOpen = useCallback(
     (open: boolean) => dispatch(setMobileDrawerOpen(open)),
@@ -134,12 +139,12 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
   useEffect(() => {
     const handleNavigate = (e: CustomEvent) => {
       if (e.detail?.surface) {
-        navigate(getRouteFromSurface(e.detail.surface as SurfaceKey));
+        navigate(runtimeRoute(e.detail.surface as SurfaceKey));
       }
     };
     window.addEventListener('navigate', handleNavigate as EventListener);
     return () => window.removeEventListener('navigate', handleNavigate as EventListener);
-  }, [navigate]);
+  }, [navigate, runtimeRoute]);
 
   // Modal → main chat with entity focus (love, characters, projects, etc.)
   useEffect(() => {
@@ -163,7 +168,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
           })
         );
       }
-      navigate('/chat');
+      navigate(runtimeRoute('chat'));
     };
 
     const handleOpenChatFocus = (e: CustomEvent<ChatFocus>) => {
@@ -173,7 +178,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
     const handleOpenChatThread = (e: CustomEvent<{ sessionId?: string; messageId?: string }>) => {
       const sessionId = e.detail?.sessionId?.trim();
       if (!sessionId) return;
-      navigate(`/chat/${encodeURIComponent(sessionId)}`);
+      navigate(`${runtimeRoute('chat')}/${encodeURIComponent(sessionId)}`);
     };
 
     const handleNavigateSurface = (e: CustomEvent<{ surface?: SurfaceKey; context?: string; focus?: ChatFocus }>) => {
@@ -183,7 +188,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
         return;
       }
       if (surface) {
-        navigate(getRouteFromSurface(surface));
+        navigate(runtimeRoute(surface));
       }
     };
 
@@ -202,7 +207,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
       window.removeEventListener('navigate-surface', handleNavigateSurface as EventListener);
       window.removeEventListener('lorebook:chat-prefill', handleChatPrefill as EventListener);
     };
-  }, [dispatch, navigate]);
+  }, [dispatch, navigate, runtimeRoute]);
 
   // Refresh data when mock data toggle changes (not on every render)
   const prevMockDataEnabledRef = useRef(isMockDataEnabled);

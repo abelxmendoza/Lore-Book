@@ -9,6 +9,7 @@ import {
   isEphemeralEntityId,
   locationStub,
 } from './hydrateBookEntity';
+import { isDemoRuntimeActive } from './demoRuntime';
 
 export type GlobalEntityModalType = 'character' | 'location' | 'memory';
 
@@ -102,6 +103,9 @@ async function hydrateEntityModal(dispatch: AppDispatch, input: OpenEntityModalI
 /** Open the global entity modal immediately, then hydrate from the API when possible. */
 export function openEntityModal(dispatch: AppDispatch, input: OpenEntityModalInput): void {
   dispatch(openEntity(buildInitialEntity(input)));
+  // Demo records are complete local seeds. Never let their modal attempt an
+  // authenticated API hydration, including legacy synthetic ids like `char-*`.
+  if (isDemoRuntimeActive()) return;
   if (isEphemeralEntityId(input.id)) return;
   if (input.type === 'memory') return;
   void hydrateEntityModal(dispatch, input);

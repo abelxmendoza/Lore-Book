@@ -90,6 +90,7 @@ import { useChat } from '../useChat';
 import { createElement, type ReactNode } from 'react';
 import { Provider } from 'react-redux';
 import { makeStore } from '../../../../store';
+import type { Message } from '../../message/ChatMessage';
 import {
   latestRecoverableStory,
   resetStorySafetyVaultForTests,
@@ -172,5 +173,64 @@ describe('useChat — assistant bubble durability', () => {
       return Array.isArray(next) && next.length === 0;
     });
     expect(removeCalls).toHaveLength(0);
+  });
+
+  it('shows reply failure even when memory ingestion remains queued', async () => {
+    let threadMessages: Message[] = [];
+    mockMutateThreadMessagesForThread.mockImplementation(
+      (_threadId: string, updater: (prev: Message[]) => Message[]) => {
+        threadMessages = updater(threadMessages);
+      },
+    );
+    mockStreamChat.mockImplementation(
+      async (
+        _msg: string,
+        _history: unknown[],
+        _onChunk: unknown,
+        onMeta: (meta: unknown) => void,
+        _onDone: unknown,
+        onError: (error: string, durability: unknown) => void,
+      ) => {
+        onMeta({ messageId: 'db-user-queued', sessionId: 'thread-chat-1' });
+        onError(
+          'Model provider unavailable',
+          {
+            userMessage: { persisted: true, id: 'db-user-queued' },
+            assistantResponse: { status: 'failed' },
+            ingestion: { status: 'QUEUED', jobId: 'job-queued' },
+          },
+          {
+            code: 'openai_circuit_open',
+            stage: 'response_generation',
+            errorCategory: 'quota',
+            noticeCode: 'message_saved_assistant_failed',
+          },
+        );
+      },
+    );
+
+    const { result } = renderHook(() => useChat(), { wrapper });
+
+    await act(async () => {
+      await result.current.sendMessage('Save this even if the reply fails');
+    });
+
+    const userMessage = threadMessages.find((message) => message.role === 'user');
+    const deliveryNotice = threadMessages.find((message) => message.isDeliveryNotice === true);
+    expect(userMessage?.lifecycle).toMatchObject({
+      cloudPersistence: 'saved',
+      processing: 'failed',
+      lastError: { stage: 'generation', code: 'openai_circuit_open' },
+    });
+    expect(userMessage?.metadata?.ingestionStatus).toBe('QUEUED');
+    expect(userMessage?.metadata?.generationFailure).toMatchObject({
+      code: 'openai_circuit_open',
+      stage: 'response_generation',
+      errorCategory: 'quota',
+    });
+    expect(deliveryNotice?.lifecycle).toMatchObject({
+      cloudPersistence: 'saved',
+      processing: 'failed',
+    });
   });
 });

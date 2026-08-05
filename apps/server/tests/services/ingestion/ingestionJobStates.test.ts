@@ -58,6 +58,18 @@ describe('classifyIngestionError', () => {
     expect(c.retryable).toBe(true);
   });
 
+  it.each([
+    'Request timed out.',
+    'fetch failed',
+    'getaddrinfo ENOTFOUND api.openai.com',
+    'network error while connecting',
+  ])('classifies provider connectivity failure as network_timeout: %s', (message) => {
+    const c = classifyIngestionError(new Error(message));
+    expect(c.category).toBe('timeout');
+    expect(c.code).toBe('network_timeout');
+    expect(c.retryable).toBe(true);
+  });
+
   it('classifies validation as non-retryable', () => {
     const c = classifyIngestionError(new Error('zod validation failed'));
     expect(c.category).toBe('validation');

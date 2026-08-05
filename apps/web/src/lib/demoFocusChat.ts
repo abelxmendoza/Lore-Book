@@ -1,5 +1,8 @@
-import type { ChatFocus } from '../types/chatFocus';
-import { computeChatFocusMessageDelta, isEmotionalChatMessage } from '../types/chatFocus';
+import {
+  computeChatFocusMessageDelta,
+  isEmotionalChatMessage,
+  type ChatFocus,
+} from '../types/chatFocus';
 
 /** Shown on every demo focus reply so users know this isn’t full AI chat. */
 export const DEMO_FOCUS_CAPABILITY_DISCLAIMER =
@@ -85,6 +88,15 @@ export function getDemoFocusResponse(message: string, focus: ChatFocus): string 
         `${deepeningLine}\n\n` +
         `This preview shows how a stitched chapter carries into main chat — focus chip, connection deepening, and a simulated reply. ` +
         `With full AI, LoreBook would explore scenes, people, and places in this timeline using your real memories.`,
+    );
+  }
+
+  if (focus.sourceSurface === 'perceptions') {
+    return withDemoDisclaimer(
+      `*(Demo — Perception Book focus)*\n\n` +
+        `Focused on **${name}** from **${section}**.\n\n` +
+        `I’m treating this as your recorded belief or interpretation at a point in time—not as an objective fact about another person. ` +
+        `A full response would compare its source, confidence, impact, status, and evolution before helping you clarify, resolve, or retract it.`,
     );
   }
 

@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
-import { focusToEntityContext } from './chatFocusUtils';
-import type { ChatFocus } from '../types/chatFocus';
-import { emptyChatFocusSessionStats } from '../types/chatFocus';
+import { emptyChatFocusSessionStats, type ChatFocus } from '../types/chatFocus';
+import { focusToComposerEntities, focusToEntityContext } from './chatFocusUtils';
 
 describe('chatFocusUtils', () => {
   it('maps romantic relationship focus to ROMANTIC_RELATIONSHIP entity context', () => {
@@ -34,5 +33,26 @@ describe('chatFocusUtils', () => {
       type: 'CHARACTER',
       id: 'char-2',
     });
+  });
+
+  it('keeps a Life Log event typed as an event and out of generic entity context', () => {
+    const focus: ChatFocus = {
+      entityId: 'event-1',
+      entityName: 'Catch-up coffee after the gap',
+      entityType: 'event',
+      sourceSurface: 'events',
+      sourceLabel: 'Life Log',
+      sessionStats: emptyChatFocusSessionStats(),
+    };
+
+    expect(focusToEntityContext(focus)).toBeUndefined();
+    expect(focusToComposerEntities(focus)).toEqual([
+      expect.objectContaining({
+        id: 'event-1',
+        name: 'Catch-up coffee after the gap',
+        type: 'event',
+        status: 'confirmed',
+      }),
+    ]);
   });
 });

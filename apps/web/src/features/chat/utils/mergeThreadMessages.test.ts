@@ -180,6 +180,39 @@ describe('mergeThreadMessages', () => {
     expect(merged[0].id).toBe('db-a1');
     expect(merged[0].creationOutcomes).toEqual(creationOutcomes);
   });
+
+  it('preserves generation failure diagnostics and lifecycle across hydration', () => {
+    const generationFailure = {
+      code: 'network_timeout',
+      stage: 'response_generation',
+      errorCategory: 'timeout',
+    };
+    const lifecycle = {
+      localPersistence: 'saved' as const,
+      cloudPersistence: 'saved' as const,
+      processing: 'failed' as const,
+      summary: 'not_requested' as const,
+      retryCount: 0,
+      updatedAt: new Date().toISOString(),
+      lastError: {
+        stage: 'generation' as const,
+        code: 'network_timeout',
+        message: 'Request timed out.',
+        retryable: true,
+        occurredAt: new Date().toISOString(),
+      },
+    };
+    const local = [msg('local-u1', 'user', 'hello', {
+      lifecycle,
+      metadata: { generationFailure },
+    })];
+    const server = [msg('db-u1', 'user', 'hello', { persistStatus: 'saved' })];
+
+    const merged = mergeThreadMessages(local, server);
+
+    expect(merged[0].metadata?.generationFailure).toEqual(generationFailure);
+    expect(merged[0].lifecycle?.lastError?.code).toBe('network_timeout');
+  });
 });
 
 describe('countMissingAssistantTurns', () => {

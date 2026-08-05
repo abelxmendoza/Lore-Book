@@ -112,4 +112,27 @@ describe('EventDetailModal', () => {
     // Should still render without crashing
     expect(screen.getByText('Test Event')).toBeInTheDocument();
   });
+
+  it('opens main chat with this event as the active focus', async () => {
+    const user = userEvent.setup();
+    const dispatch = vi.spyOn(window, 'dispatchEvent');
+    render(<EventDetailModal event={mockEvent} onClose={mockOnClose} />);
+
+    await user.click(screen.getByTestId('event-open-main-chat'));
+
+    const handoff = dispatch.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.type === 'lorebook:open-chat-focus') as CustomEvent;
+    expect(handoff.detail).toMatchObject({
+      entityId: 'event-1',
+      entityName: 'Test Event',
+      entityType: 'event',
+      sourceSurface: 'events',
+      sourceLabel: 'Life Log',
+      autoSubmit: true,
+    });
+    expect(handoff.detail.initialPrompt).toMatch(/start by giving me a grounded response/i);
+    expect(handoff.detail.initialPrompt).toMatch(/invite me to add or correct context/i);
+    expect(mockOnClose).toHaveBeenCalled();
+  });
 });

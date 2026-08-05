@@ -41,10 +41,13 @@ export function buildPostedEventIngestPrompt(input: {
   storyOnly?: boolean;
 }): string {
   const lines = [
+    'EVENT ENRICHMENT MODE',
+    '',
     input.storyOnly
       ? 'I dumped a Life Log moment as a story (details optional). Please process it into LoreBook.'
       : 'I already saved this Life Log event. Please process the attached flyer/photos and my notes into LoreBook.',
     '',
+    'TARGET EVENT',
     `Event id: ${input.eventId}`,
     `Title: ${input.title}`,
     `When: ${input.date}`,
@@ -62,7 +65,13 @@ export function buildPostedEventIngestPrompt(input: {
   }
   lines.push(
     '',
-    'Extract people, places, groups, timing, and what happened from the story and images. Approximate dates and time periods are fine — do not invent exact dates. Update timelines, this Life Log event, and related knowledge bases. Do not invent details that are not in my story or the images. Do not create a duplicate event — enrich the one already saved.',
+    'TASK',
+    'Treat the target event as the canonical ingestion object. Do not create a duplicate event.',
+    'Extract only evidence supported by my notes, attached images, or attached documents.',
+    'Return and merge: participants, organizations/groups, locations, timing, activities, relationships, memories, timeline updates, themes, a concise narrative summary, confidence, and evidence references.',
+    'An explicitly present but unnamed participant must remain an unresolved participant — do not omit them and do not invent a name.',
+    'Approximate dates and time periods are fine. Do not invent exact dates, names, or facts.',
+    'Update the target Life Log event and connected knowledge bases while preserving provenance and review rules.',
   );
   return lines.join('\n');
 }

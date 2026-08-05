@@ -215,7 +215,7 @@ export const PerceptionSearchBar = ({ onSelect, onSearchChange, initialQuery = '
                         <span>{formatDistanceToNow(new Date(perception.timestamp_heard), { addSuffix: true })}</span>
                       </div>
                       <span className="text-violet-400/60">
-                        {Math.round(perception.confidence_level * 100)}% confidence
+                        {Math.round(perception.confidence_level * 100)}% certain
                       </span>
                     </div>
                   </div>

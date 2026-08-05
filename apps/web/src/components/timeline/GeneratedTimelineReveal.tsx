@@ -7,6 +7,7 @@ import {
   X,
   RefreshCw,
   BookMarked,
+  MessageCircle,
   Sparkles,
 } from 'lucide-react';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -66,6 +67,8 @@ type Props = {
   onToggleCollapse?: () => void;
   onClose?: () => void;
   onRegenerate?: () => void;
+  /** Continue this subject in main chat with the timeline context attached. */
+  onOpenChat?: () => void;
   onEventClick?: (event: GeneratedTimelineEvent) => void;
   onArcClick?: (arc: LifeArc) => void;
   /** Open the LoreBook creator prefilled with this timeline's range/query. */
@@ -140,7 +143,6 @@ type EventCardBodyProps = {
 };
 
 function EventCardBody({ event, color, isMobile, compact, onEventClick }: EventCardBodyProps) {
-  const laneLimit = compact || isMobile ? 1 : 2;
   const compiled = isCompiledEvent(event) ? event : null;
   const title = 'title' in event ? event.title : undefined;
   const datePrefix =
@@ -154,7 +156,7 @@ function EventCardBody({ event, color, isMobile, compact, onEventClick }: EventC
         <span className={`text-[10px] font-semibold uppercase tracking-wide ${color.text}`}>
           {datePrefix}{formatDate(event.start_time)}
         </span>
-        {event.timeline_names?.slice(0, laneLimit).map((name) => (
+        {event.timeline_names?.map((name) => (
           <span
             key={name}
             className={`text-[9px] px-1.5 py-0.5 rounded-full ${getLaneColor(name).badgeBg}`}
@@ -184,12 +186,12 @@ function EventCardBody({ event, color, isMobile, compact, onEventClick }: EventC
         className="text-left w-full touch-manipulation"
       >
         {title && title.trim() && (
-          <p className={`font-medium text-white mb-1 line-clamp-2 ${isMobile || compact ? 'text-xs' : 'text-sm'}`}>
+          <p className={`font-medium text-white mb-1 ${isMobile || compact ? 'text-xs' : 'text-sm'}`}>
             {title}
           </p>
         )}
         <p
-          className={`text-white/90 line-clamp-4 hover:text-white leading-snug ${isMobile || compact ? 'text-[11px]' : 'text-sm'}`}
+          className={`text-white/90 hover:text-white leading-snug ${isMobile || compact ? 'text-[11px]' : 'text-sm'}`}
         >
           {event.content}
         </p>
@@ -220,6 +222,7 @@ export function GeneratedTimelineReveal({
   onToggleCollapse,
   onClose,
   onRegenerate,
+  onOpenChat,
   onEventClick,
   onArcClick,
   onCreateLorebook,
@@ -433,6 +436,27 @@ export function GeneratedTimelineReveal({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-start">
+            {onOpenChat && (
+              <button
+                type="button"
+                onClick={onOpenChat}
+                className="group relative inline-flex items-center gap-2 overflow-hidden rounded-xl border border-fuchsia-300/50 bg-gradient-to-r from-primary/35 via-fuchsia-500/30 to-cyan-500/20 px-3.5 py-2 text-xs font-semibold text-white shadow-[0_0_24px_rgba(168,85,247,0.38)] transition-all hover:-translate-y-0.5 hover:border-fuchsia-200/80 hover:shadow-[0_0_34px_rgba(168,85,247,0.58)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300 focus-visible:ring-offset-2 focus-visible:ring-offset-black active:translate-y-0 touch-manipulation"
+                title={
+                  isMock
+                    ? 'Talk about this subject in main chat to replace the preview with real moments'
+                    : 'Continue exploring this timeline context in main chat'
+                }
+                aria-label="Open timeline context in main chat"
+                data-testid="generated-timeline-open-chat"
+              >
+                <span className="relative flex h-2.5 w-2.5 shrink-0" aria-hidden="true">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fuchsia-300 opacity-70" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-fuchsia-200 shadow-[0_0_10px_rgba(244,114,255,0.95)]" />
+                </span>
+                <MessageCircle className="h-4 w-4 shrink-0 transition-transform group-hover:scale-110" />
+                <span>Talk about this in chat</span>
+              </button>
+            )}
             {events.length > 0 && (
               <button
                 type="button"

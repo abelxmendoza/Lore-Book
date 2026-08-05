@@ -30,6 +30,10 @@ const PRODUCT_SIGNAL_PATTERNS: RegExp[] = [
 
 /** Pure meta — no autobiographical content expected. Mirrors memoryExtractionService. */
 const PURE_META_PATTERNS: RegExp[] = [
+  /^\s*(retry|try again|run again)\s*[.!?]*\s*$/i,
+  /\brecap (everything|all|this thread|our conversation|what we discussed)\b/i,
+  /\bsummarize (this thread|our conversation|what we discussed)\b/i,
+  /\bwhat (did|have) we (discuss|discussed|talk about|talked about|cover|covered)\b/i,
   /\bdo you remember\b/i,
   /\bcan you remember\b/i,
   /\bwill you remember\b/i,

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+
 import {
   meterFromCount,
+  meterFromNarrativeAnchorMoments,
   meterFromProjectProfile,
   meterFromTimelineOffer,
 } from './lorebookContentMeter';
@@ -72,5 +74,20 @@ describe('lorebookContentMeter', () => {
   it('supports generic entity counters', () => {
     expect(meterFromCount(4, 6).counterLabel).toBe('4/6');
     expect(meterFromCount(6, 6).ready).toBe(true);
+  });
+});
+
+describe('meterFromNarrativeAnchorMoments', () => {
+  it('shows progress toward a vignette using only linked moments', () => {
+    const meter = meterFromNarrativeAnchorMoments(1);
+    expect(meter.counterLabel).toBe('Vignette · 1/2');
+    expect(meter.ready).toBe(false);
+  });
+
+  it('advances through the available LoreBook forms', () => {
+    const meter = meterFromNarrativeAnchorMoments(4);
+    expect(meter.currentForm).toBe('chapter');
+    expect(meter.nextForm).toBe('short_book');
+    expect(meter.counterLabel).toBe('Short · 4/5');
   });
 });

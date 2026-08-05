@@ -141,9 +141,9 @@ export const PerceptionLensView = () => {
     } else if (groupBy === 'confidence') {
       perceptions.forEach(p => {
         const level = p.confidence_level;
-        let key = 'High Confidence (70-100%)';
-        if (level < 0.4) key = 'Low Confidence (0-40%)';
-        else if (level < 0.7) key = 'Medium Confidence (40-70%)';
+        let key = 'High Certainty (70-100%)';
+        if (level < 0.4) key = 'Low Certainty (0-40%)';
+        else if (level < 0.7) key = 'Medium Certainty (40-70%)';
         
         if (!groups[key]) groups[key] = [];
         groups[key].push(p);
@@ -232,9 +232,9 @@ export const PerceptionLensView = () => {
             </select>
           </div>
 
-          {/* Confidence Range */}
+          {/* Certainty Range */}
           <div>
-            <label className="text-xs text-white/70 mb-1 block">Confidence: {Math.round(confidenceMin * 100)}% - {Math.round(confidenceMax * 100)}%</label>
+            <label className="text-xs text-white/70 mb-1 block">Certainty: {Math.round(confidenceMin * 100)}% - {Math.round(confidenceMax * 100)}%</label>
             <div className="flex items-center gap-2">
               <input
                 type="range"
@@ -308,7 +308,7 @@ export const PerceptionLensView = () => {
               className="text-xs"
             >
               <TrendingUp className="h-3 w-3 mr-1" />
-              Confidence
+              Certainty
             </Button>
             <Button
               size="sm"

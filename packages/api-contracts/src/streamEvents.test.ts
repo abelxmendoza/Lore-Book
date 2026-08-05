@@ -34,6 +34,23 @@ describe('chat SSE contracts', () => {
     expect(event).toEqual({ type: 'chunk', content: 'hi' });
   });
 
+  it('preserves non-sensitive generation failure classifiers', () => {
+    const event = parseChatStreamEvent(JSON.stringify({
+      type: 'error',
+      error: 'Saved, but reply failed',
+      code: 'openai_circuit_open',
+      stage: 'response_generation',
+      errorCategory: 'quota',
+    }));
+
+    expect(event).toMatchObject({
+      type: 'error',
+      code: 'openai_circuit_open',
+      stage: 'response_generation',
+      errorCategory: 'quota',
+    });
+  });
+
   it('returns null for garbage JSON', () => {
     expect(parseChatStreamEvent('not-json')).toBeNull();
     expect(parseChatStreamEvent('')).toBeNull();

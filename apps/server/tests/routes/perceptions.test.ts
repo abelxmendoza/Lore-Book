@@ -4,11 +4,9 @@ import express from 'express';
 import perceptionsRouter from '../../src/routes/perceptions';
 import { requireAuth } from '../../src/middleware/auth';
 import { perceptionService } from '../../src/services/perceptionService';
-import { perceptionChatService } from '../../src/services/perceptionChatService';
 
 vi.mock('../../src/middleware/auth');
 vi.mock('../../src/services/perceptionService');
-vi.mock('../../src/services/perceptionChatService');
 
 const app = express();
 app.use(express.json());
@@ -161,27 +159,4 @@ describe('Perceptions API Routes', () => {
     });
   });
 
-  describe('POST /api/perceptions/extract-from-chat', () => {
-    it('should extract and create perceptions from chat', async () => {
-      const extraction = { perceptions: [], charactersCreated: [], charactersLinked: [], needsFraming: [] };
-      vi.mocked(perceptionChatService.extractPerceptionsFromChat).mockResolvedValue(extraction as any);
-      vi.mocked(perceptionChatService.createPerceptionsFromExtraction).mockResolvedValue([]);
-
-      const response = await request(app)
-        .post('/api/perceptions/extract-from-chat')
-        .send({ message: 'I heard from Sarah that Jake is leaving.' })
-        .expect(200);
-
-      expect(response.body).toHaveProperty('extraction');
-      expect(response.body).toHaveProperty('created');
-      expect(response.body).toHaveProperty('summary');
-    });
-
-    it('should return 400 when message is missing', async () => {
-      await request(app)
-        .post('/api/perceptions/extract-from-chat')
-        .send({})
-        .expect(400);
-    });
-  });
 });

@@ -100,6 +100,47 @@ function toSwim(event: CharTimelineEvent, laneKey: string): SwimlaneEvent {
   };
 }
 
+function toMockEventDetail(event: CharTimelineEvent, characterName: string): Event {
+  const now = new Date().toISOString();
+  return {
+    // EventDetailModal treats `event-*` as a complete synthetic record and
+    // never tries to hydrate it from the authenticated API.
+    id: `event-${event.eventId ?? event.id}`,
+    title: event.eventTitle,
+    summary: event.eventSummary ?? null,
+    type: event.eventType ?? null,
+    start_time: event.eventDate,
+    end_time: null,
+    confidence: 0.85,
+    people: [characterName, event.connectionCharacter].filter(
+      (name): name is string => Boolean(name),
+    ),
+    locations: [],
+    activities: event.eventType ? [event.eventType] : [],
+    source_count: 1,
+    created_at: now,
+    updated_at: now,
+    impact: {
+      type: event.userWasPresent ? 'direct_participant' : 'related_person_affected',
+      connectionCharacter: characterName,
+      connectionType: event.characterRole,
+      emotionalImpact:
+        event.emotionalImpact === 'positive' ||
+        event.emotionalImpact === 'negative' ||
+        event.emotionalImpact === 'neutral' ||
+        event.emotionalImpact === 'mixed'
+          ? event.emotionalImpact
+          : undefined,
+      impactIntensity: 0.75,
+      impactDescription: event.eventSummary,
+    },
+    metadata: {
+      created_via: 'demo_character_timeline',
+      source_event_id: event.eventId ?? event.id,
+    },
+  };
+}
+
 function scopeChipClass(active: boolean): string {
   return active
     ? 'bg-white/12 text-white border-white/20'
@@ -149,12 +190,16 @@ export function CharacterStoryPanel({
   const lifeLogHref = `/events?q=${encodeURIComponent(characterName)}`;
   const omniHref = `/timeline?view=events&characterId=${encodeURIComponent(characterId)}`;
 
-  const openEventDetail = useCallback(async (eventId?: string) => {
-    if (!eventId || mockMode) return;
+  const openEventDetail = useCallback(async (event: CharTimelineEvent) => {
+    if (mockMode) {
+      setSelectedEvent(toMockEventDetail(event, characterName));
+      return;
+    }
+    if (!event.eventId) return;
     setLoadingEvent(true);
     try {
       const result = await fetchJson<{ success: boolean; event: Event }>(
-        `/api/conversation/events/${eventId}`,
+        `/api/conversation/events/${event.eventId}`,
       );
       if (result.success && result.event) setSelectedEvent(result.event);
     } catch {
@@ -162,7 +207,7 @@ export function CharacterStoryPanel({
     } finally {
       setLoadingEvent(false);
     }
-  }, [mockMode]);
+  }, [characterName, mockMode]);
 
   const loadTimelines = useCallback(async () => {
     if (!characterId) return;
@@ -513,6 +558,10 @@ export function CharacterStoryPanel({
         loading={isBusy && !loaded && chronologicalEvents.length === 0 && sortedMemories.length === 0}
         emptyTitle={finalEmptyTitle}
         emptyHint={finalEmptyHint}
+        onEventSelect={(swimEvent) => {
+          const event = filteredEventsForSwim.find((candidate) => candidate.id === swimEvent.id);
+          if (event) void openEventDetail(event);
+        }}
         renderListItem={(item) => {
           if (item.kind === 'event') {
             const event = item.event;
@@ -527,8 +576,8 @@ export function CharacterStoryPanel({
                 <button
                   type="button"
                   data-testid={`character-timeline-event-${event.id}`}
-                  disabled={!event.eventId || loadingEvent}
-                  onClick={() => void openEventDetail(event.eventId)}
+                  disabled={(!mockMode && !event.eventId) || loadingEvent}
+                  onClick={() => void openEventDetail(event)}
                   className="w-full text-left rounded-lg border border-white/10 bg-black/25 p-3 hover:bg-black/35 transition-colors disabled:cursor-default disabled:hover:bg-black/25"
                 >
                   <div className="flex flex-wrap items-center gap-2 mb-1">
@@ -551,8 +600,10 @@ export function CharacterStoryPanel({
                         {event.eventType}
                       </Badge>
                     )}
-                    {event.eventId && (
-                      <span className="text-[10px] text-white/35 ml-auto">Open in Life Log</span>
+                    {(mockMode || event.eventId) && (
+                      <span className="text-[10px] text-white/35 ml-auto">
+                        {mockMode ? 'Open moment' : 'Open in Life Log'}
+                      </span>
                     )}
                   </div>
                   <h4 className="text-sm font-semibold text-white">{event.eventTitle}</h4>

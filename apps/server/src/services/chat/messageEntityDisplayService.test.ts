@@ -24,14 +24,18 @@ const fixture = {
   ],
 };
 
+const failedTables = new Set<keyof typeof fixture>();
+
 vi.mock('../supabaseClient', () => ({
   supabaseAdmin: {
     from: vi.fn((table: keyof typeof fixture) => ({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue({
-            data: fixture[table] ?? [],
-            error: null,
+          limit: vi.fn().mockImplementation(async () => {
+            if (failedTables.has(table)) {
+              return { data: null, error: { message: `${table} unavailable` } };
+            }
+            return { data: fixture[table] ?? [], error: null };
           }),
         }),
       }),
@@ -42,6 +46,7 @@ vi.mock('../supabaseClient', () => ({
 describe('resolveMessageEntitiesForDisplay', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    failedTables.clear();
   });
 
   it('returns character, location, and organization chips for a multi-entity message', async () => {
@@ -108,5 +113,29 @@ describe('resolveMessageEntitiesForDisplay', () => {
       'Just a quiet day at home.'
     );
     expect(chips).toEqual([]);
+  });
+
+  it('does not match entity names embedded inside unrelated words', async () => {
+    fixture.organizations.push({ id: 'o2', name: 'Art' });
+    try {
+      const chips = await resolveMessageEntitiesForDisplay(
+        'user-1',
+        'The party starts after dinner.'
+      );
+      expect(chips.find((chip) => chip.id === 'o2')).toBeUndefined();
+    } finally {
+      fixture.organizations.pop();
+    }
+  });
+
+  it('keeps chat enrichment usable when one entity source is unavailable', async () => {
+    failedTables.add('organizations');
+
+    const chips = await resolveMessageEntitiesForDisplay(
+      'user-1',
+      'Tía Maria met me at Acme Corp in San Diego.'
+    );
+
+    expect(chips.map((chip) => chip.name).sort()).toEqual(['San Diego', 'Tía Maria']);
   });
 });

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   getSurfaceFromRoute,
   getRouteFromSurface,
+  getRuntimeRouteFromSurface,
   routeToSurface,
   surfaceToRoute,
   isAppShellRoute,
@@ -28,6 +29,12 @@ describe('routeMapping', () => {
 
     it('returns correct surface for /characters', () => {
       expect(getSurfaceFromRoute('/characters')).toBe('characters');
+    });
+
+    it('maps public demo book paths to their real surfaces', () => {
+      expect(getSurfaceFromRoute('/demo')).toBe('chat');
+      expect(getSurfaceFromRoute('/demo/characters')).toBe('characters');
+      expect(getSurfaceFromRoute('/demo/lorebook/library')).toBe('lorebook');
     });
 
     it('strips query and hash', () => {
@@ -82,6 +89,17 @@ describe('routeMapping', () => {
 
     it('returns /privacy for privacy-settings surface', () => {
       expect(getRouteFromSurface('privacy-settings')).toBe('/privacy');
+    });
+  });
+
+  describe('getRuntimeRouteFromSurface', () => {
+    it('keeps demo navigation inside the public demo sandbox', () => {
+      expect(getRuntimeRouteFromSurface('characters', true)).toBe('/demo/characters');
+      expect(getRuntimeRouteFromSurface('chat', true)).toBe('/demo/chat');
+    });
+
+    it('uses normal app routes outside demo mode', () => {
+      expect(getRuntimeRouteFromSurface('characters', false)).toBe('/characters');
     });
   });
 

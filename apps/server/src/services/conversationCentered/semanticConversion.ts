@@ -7,8 +7,7 @@
 import { logger } from '../../logger';
 import type { ExtractedUnit } from '../../types/conversationCentered';
 import { memoryService } from '../memoryService';
-import { omegaMemoryService } from '../omegaMemoryService';
-import { perceptionService } from '../perceptionService';
+import { perceptionChatService } from '../perceptionChatService';
 import { supabaseAdmin } from '../supabaseClient';
 
 export type ConversionContext = {
@@ -54,10 +53,8 @@ export class SemanticConversionService {
       try {
         // PERCEPTION → perception_entries
         if (unit.type === 'PERCEPTION') {
-          const perceptionId = await this.convertPerceptionToEntry(unit, context);
-          if (perceptionId) {
-            result.perceptionEntries.push(perceptionId);
-          }
+          const perceptionIds = await this.convertPerceptionToEntry(unit, context);
+          result.perceptionEntries.push(...perceptionIds);
         }
 
         // EXPERIENCE (ONGOING) → journal_entries
@@ -100,89 +97,65 @@ export class SemanticConversionService {
   }
 
   /**
-   * Convert PERCEPTION unit to perception_entry
+   * Convert PERCEPTION unit(s) to perception_entry rows. Delegates the actual
+   * subject/content/source/sentiment/impact extraction to
+   * perceptionChatService — the same LLM extraction that used to be reachable
+   * only from the standalone Gossip Chat modal, now running automatically on
+   * ordinary chat once the upstream classifier already flagged this unit as
+   * perception-shaped. A hand-rolled regex ("by X" / "from X") used to do this
+   * job and missed nearly everything that wasn't phrased that exact way.
    */
   private async convertPerceptionToEntry(
     unit: ExtractedUnit,
     context: ConversionContext
-  ): Promise<string | null> {
+  ): Promise<string[]> {
     try {
-      // Extract subject (who the perception is about)
-      const subject = this.extractSubject(unit.content);
-      if (!subject) {
-        logger.debug({ unitId: unit.id }, 'No subject found for perception, skipping');
-        return null;
+      const extraction = await perceptionChatService.extractPerceptionsFromChat(
+        context.userId,
+        unit.content,
+        context.conversationHistory ?? []
+      );
+
+      if (extraction.perceptions.length === 0) {
+        logger.debug({ unitId: unit.id }, 'No perception content extracted from unit, skipping');
+        return [];
       }
 
-      // Normalize belief framing (ensure it's "I believe..." not "They do...")
-      const normalizedContent = this.normalizeBeliefFraming(unit.content);
-
-      // Estimate confidence (perceptions are low confidence by default)
-      const confidence = this.estimatePerceptionConfidence(unit);
-
-      // Infer impact on user
-      const impact = this.inferImpact(unit.content);
-
-      // Try to resolve subject to character
-      let subjectPersonId: string | null = null;
-      try {
-        const subjectLower = subject.toLowerCase();
-        const matchPerson = (
-          people: Array<{ id: string; type: string; name: string }>
-        ): string | null => {
-          const hit = people.find(
+      // Fall back to the message-level resolved entities for any perception
+      // the LLM's own character lookup didn't already resolve to a person.
+      if (context.resolvedEntities?.length) {
+        for (const perception of extraction.perceptions) {
+          if (perception.subject_person_id) continue;
+          const subjectLower = perception.subject_alias.toLowerCase();
+          const hit = context.resolvedEntities.find(
             e => e.type === 'PERSON' && e.name && subjectLower.includes(e.name.toLowerCase())
           );
-          return hit ? hit.id : null;
-        };
-
-        if (context.resolvedEntities !== undefined) {
-          // Phase B: reuse the message-level set. The unit is a subset of the
-          // message, so re-extracting here would (at best) find the same person.
-          subjectPersonId = matchPerson(context.resolvedEntities);
-        } else {
-          // No message-level set threaded in — resolve from the unit directly.
-          const entities = await omegaMemoryService.extractEntities(unit.content);
-          const resolved = await omegaMemoryService.resolveEntities(context.userId, entities);
-          subjectPersonId = matchPerson(
-            resolved.map(e => ({ id: e.id, type: e.type, name: e.primary_name }))
-          );
+          if (hit) perception.subject_person_id = hit.id;
         }
-      } catch (error) {
-        logger.debug({ error }, 'Failed to resolve perception subject to character');
       }
 
-      // Fixed: Use unit's own utterance_id if available
       const utteranceId = unit.utterance_id ?? context.utteranceId;
-
-      // Create perception entry
-      const perception = await perceptionService.createPerceptionEntry(context.userId, {
-        subject_alias: subject,
-        subject_person_id: subjectPersonId || undefined,
-        content: normalizedContent,
-        source: 'intuition', // Default for chat-derived perceptions
-        confidence_level: confidence,
-        sentiment: this.inferSentiment(unit.content),
-        timestamp_heard: new Date().toISOString(),
-        impact_on_me: impact,
-        metadata: {
+      const created = await perceptionChatService.createPerceptionsFromExtraction(
+        context.userId,
+        extraction,
+        {
           source_message_id: context.messageId,
           utterance_id: utteranceId,
           session_id: context.sessionId,
           extracted_unit_id: unit.id,
-        },
-      });
+        }
+      );
 
-      logger.info({ 
-        userId: context.userId, 
-        perceptionId: perception.id, 
-        subject 
+      logger.info({
+        userId: context.userId,
+        unitId: unit.id,
+        perceptionIds: created.map(p => p.id),
       }, 'Converted PERCEPTION unit to perception_entry');
 
-      return perception.id;
+      return created.map(p => p.id);
     } catch (error) {
       logger.error({ error, unitId: unit.id }, 'Failed to convert PERCEPTION to entry');
-      return null;
+      return [];
     }
   }
 
@@ -323,93 +296,6 @@ export class SemanticConversionService {
   }
 
   // ========== Helper Methods ==========
-
-  /**
-   * Extract subject from perception content
-   * "I get disrespected by my family" → "my family"
-   */
-  private extractSubject(content: string): string | null {
-    // Pattern: "by [subject]" or "from [subject]" or "[subject] [verb]"
-    const byPattern = /(?:by|from)\s+(?:my|the|a|an)?\s*([a-z\s]+?)(?:\s|$|,|\.)/i;
-    const match = content.match(byPattern);
-    if (match && match[1]) {
-      return match[1].trim();
-    }
-
-    // Fallback: look for common relationship terms
-    const relationshipTerms = ['family', 'parents', 'mother', 'father', 'sibling', 
-                               'friend', 'colleague', 'boss', 'partner'];
-    const lowerContent = content.toLowerCase();
-    for (const term of relationshipTerms) {
-      if (lowerContent.includes(term)) {
-        return term;
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Normalize belief framing to "I believe..." format
-   */
-  private normalizeBeliefFraming(content: string): string {
-    // If already starts with "I believe", "I think", etc., keep it
-    if (/^i\s+(believe|think|feel|perceive|sense)/i.test(content)) {
-      return content;
-    }
-
-    // Otherwise, frame it as a belief
-    return `I believe ${content.toLowerCase()}`;
-  }
-
-  /**
-   * Estimate confidence for perception (defaults low)
-   */
-  private estimatePerceptionConfidence(unit: ExtractedUnit): number {
-    // Perceptions are inherently uncertain
-    // Use unit confidence if available, but cap at 0.5
-    const baseConfidence = unit.confidence || 0.4;
-    return Math.min(baseConfidence, 0.5);
-  }
-
-  /**
-   * Infer impact on user from content
-   */
-  private inferImpact(content: string): string {
-    const lower = content.toLowerCase();
-    
-    if (lower.includes('disrespect') || lower.includes('disrespected')) {
-      return 'Makes me feel disrespected and affects my relationship';
-    }
-    if (lower.includes('hurt') || lower.includes('hurts')) {
-      return 'Causes emotional pain';
-    }
-    if (lower.includes('angry') || lower.includes('anger')) {
-      return 'Triggers anger and affects my emotional state';
-    }
-    if (lower.includes('sad') || lower.includes('sadness')) {
-      return 'Causes sadness and affects my mood';
-    }
-    
-    return 'Affects my emotional state and relationships';
-  }
-
-  /**
-   * Infer sentiment from content
-   */
-  private inferSentiment(content: string): 'positive' | 'negative' | 'neutral' | 'mixed' {
-    const lower = content.toLowerCase();
-    const negativeWords = ['disrespect', 'hurt', 'angry', 'sad', 'disappointed', 'frustrated'];
-    const positiveWords = ['happy', 'proud', 'grateful', 'appreciated'];
-    
-    const hasNegative = negativeWords.some(word => lower.includes(word));
-    const hasPositive = positiveWords.some(word => lower.includes(word));
-    
-    if (hasNegative && hasPositive) return 'mixed';
-    if (hasNegative) return 'negative';
-    if (hasPositive) return 'positive';
-    return 'neutral';
-  }
 
   /**
    * Infer temporal scope from content

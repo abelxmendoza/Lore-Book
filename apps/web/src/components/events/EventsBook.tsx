@@ -8,7 +8,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Calendar, Clock, MapPin, Users, Sparkles, AlertCircle, Search,
   RefreshCw, ChevronLeft, ChevronRight, Filter, X, Cake, PartyPopper,
-  Music2, Building2, Briefcase, Plane, Heart,
+  Music2, Building2, Briefcase, Plane, Heart, Crown, Trophy,
+  Gem, GraduationCap, Church, Gift, Handshake, Landmark,
   Repeat2, Star, TrendingUp, BookOpen, ArrowLeft, ArrowRight, Plus,
 } from 'lucide-react';
 import {
@@ -27,7 +28,7 @@ import {
   type EventCategory,
 } from '../../lib/eventsBookCategories';
 import { clipboardFilterLines } from '../../lib/listClipboard';
-import { patternContinuityLabel } from '../../lib/patternsClipboard';
+import { patternContinuityLabel, buildPatternsClipboardText } from '../../lib/patternsClipboard';
 import { formatEventTime } from '../../lib/formatEventTime';
 import { fetchJson } from '../../lib/api';
 import { getDisplayTitle } from '../../utils/displayTitle';
@@ -96,13 +97,21 @@ const CATEGORY_CHIPS: { value: EventCategory; label: string; icon: React.Element
   { value: 'all', label: 'All', icon: Calendar },
   { value: 'recent', label: 'Recent', icon: Clock },
   { value: 'birthdays', label: 'Birthdays', icon: Cake, shortLabel: 'Bdays' },
+  { value: 'quinceaneras', label: 'Quinceañeras', icon: Crown, shortLabel: 'Quince' },
+  { value: 'weddings', label: 'Weddings', icon: Gem },
   { value: 'parties', label: 'Parties', icon: PartyPopper },
   { value: 'concerts_shows', label: 'Concerts & Shows', icon: Music2, shortLabel: 'Shows' },
   { value: 'conventions', label: 'Conventions', icon: Building2, shortLabel: 'Cons' },
+  { value: 'sports', label: 'Sports', icon: Trophy },
+  { value: 'festivals', label: 'Festivals', icon: Sparkles },
+  { value: 'graduations', label: 'Graduations', icon: GraduationCap, shortLabel: 'Grads' },
+  { value: 'religious_milestones', label: 'Religious & Cultural', icon: Church, shortLabel: 'Religious' },
   { value: 'work', label: 'Work', icon: Briefcase },
   { value: 'travel', label: 'Travel', icon: Plane },
   { value: 'family', label: 'Family', icon: Heart },
-  { value: 'festivals', label: 'Festivals', icon: Sparkles },
+  { value: 'holidays', label: 'Holidays', icon: Gift },
+  { value: 'community', label: 'Community', icon: Handshake },
+  { value: 'government_civic', label: 'Government & Civic', icon: Landmark, shortLabel: 'Civic' },
   { value: 'with_people', label: 'With People', icon: Users },
   { value: 'with_locations', label: 'With Location', icon: MapPin },
 ];
@@ -187,55 +196,197 @@ const IMPACT_DESCRIPTIONS: Record<ImpactType, string[]> = {
 const CONNECTION_TYPES = ['close friend', 'family member', 'partner', 'colleague', 'roommate', 'mentor'];
 
 const generateMockEvents = (): Event[] => {
-  const eventTypes = ['work', 'social', 'health', 'recreation', 'travel', 'education', 'family', 'personal'];
-  const locations = ['Home', 'The Office', 'Corner Café', 'Riverside Park', 'The Gym', 'Cinema', 'Italian Place', 'Library', 'The Beach', 'Mountain Trail', 'Airport', 'Hotel Bar', 'Campus', 'Hospital', 'Museum of Art'];
+  // Each bucket's titles/summaries are written to contain the same keywords
+  // eventsBookCategories.ts's CATEGORY_KEYWORDS matches on, so every Life Log
+  // category filter (birthdays, quinceañeras, weddings, parties, concerts &
+  // shows, conventions, sports, festivals, graduations, religious milestones,
+  // work, travel, family, holidays, community, government & civic) has demo
+  // events that actually show up when that filter is selected.
+  // health/education/personal/social/recreation are general "day-to-day"
+  // flavor with no dedicated category — they still surface under
+  // All/Recent/With People/With Location. None of the title-array lengths
+  // below (4-8) divide the bucket count (21), so every bucket's 4
+  // occurrences land on different title-array indices — no accidental
+  // duplicate titles within a category. typeIdx's step (5) is coprime with
+  // 21 so it still cycles through every bucket evenly.
+  const eventTypes = [
+    'birthday', 'quinceañera', 'wedding', 'party', 'concert', 'convention', 'sports',
+    'festival', 'graduation', 'religious milestone', 'work', 'travel', 'family', 'holiday',
+    'community event', 'civic event',
+    'health', 'education', 'personal', 'social', 'recreation',
+  ];
+  const locations = ['Home', 'The Office', 'Corner Café', 'Riverside Park', 'The Gym', 'Cinema', 'Italian Place', 'Library', 'The Beach', 'Mountain Trail', 'Airport', 'Hotel Bar', 'Campus', 'Hospital', 'Museum of Art', 'The Venue', 'The Stadium', 'Community Hall'];
   const peopleNames = ['Maya', 'Jordan', 'Sarah', 'Marcus', 'Elena', 'Tom', 'Priya', 'Chris', 'Nadia', 'Sam', 'Alex', 'Lena', 'Mom', 'Dad', 'my sister', 'my brother'];
   const activities = ['meeting', 'coffee', 'hiking', 'workout', 'dinner', 'movie', 'talking', 'coding', 'traveling', 'learning', 'celebrating', 'cooking', 'drinking', 'dancing', 'running'];
   const events: Event[] = [];
   const now = Date.now();
 
   const titles: Record<string, string[]> = {
+    birthday: [
+      "Maya's Birthday Rooftop Party", 'Surprise Birthday Dinner for Jordan', 'My Birthday, Alone This Year',
+      "Dad's 60th Birthday Bash", "Kid's Birthday Party at the Park", 'Turning Thirty Party That Got Wild',
+      'Quiet Birthday With Just Family', 'Best Birthday in Years',
+    ],
+    quinceañera: [
+      "Elena's Quinceañera at the Ballroom", "My Cousin's Quinceañera Court Rehearsal", 'Sofia\'s Quince Años Celebration',
+      "Best Friend's Quinceañera Weekend", "My Sister's Quinceañera Photoshoot", 'Quinceañera Mass Followed by the Party',
+      "My Niece's Quinceañera", 'Quinceañera Court Dance Rehearsal',
+    ],
+    wedding: [
+      "Priya's Wedding Day", "Best Friend's Wedding in the Mountains", "My Cousin's Backyard Wedding",
+      "Officiating My Brother's Wedding", 'Destination Wedding in Mexico', 'Courthouse Wedding, Just the Two of Us',
+      'Dancing at the Wedding Reception Until 2am', 'Vows Under String Lights',
+    ],
+    party: [
+      'House Party Into the Next Morning', "Jamie and Taylor's Wedding Reception", 'Baby Shower for Alex',
+      "Game Night at Jordan's", 'Underground Rave Until Sunrise', "Afters at Sam's Place",
+      'Backyard Wedding, Small and Perfect', 'Bridal Shower Brunch',
+    ],
+    concert: [
+      'Concert at The Venue', 'Punk Show at the Basement', 'Open Mic Night',
+      'Backyard Show at Northwind', 'Comedy Night Downtown', 'Fight Night Downtown',
+      'Broadway Theater Night', 'Local Scene Gig at the Dive Bar',
+    ],
+    convention: [
+      'Conference in Austin', 'Anime Expo Convention', 'Networking Meetup Downtown',
+      'Comic Con Weekend', 'Industry Summit', 'Startup Expo Booth Duty',
+      'Fan Con Weekend', 'Tech Meetup Mixer',
+    ],
+    sports: [
+      'Rangers Baseball Game with Dad', 'Rec League Basketball Championship', 'Watching the Super Bowl With Friends',
+      'Pickup Soccer Tournament', "My Team's Playoff Game", 'Little League Game Day',
+      'Tailgate Before the Football Game', 'Watch Party for the World Cup Final',
+    ],
+    festival: [
+      'Desert Rave Festival', 'Weekend Music Festival', 'Food Festival Downtown',
+      'Art Fair in the Park', 'Multi-Day Camping Festival', 'Three-Day Arts Festival',
+      'Neighborhood Food Fest', 'Electronic Festival Weekend',
+    ],
+    graduation: [
+      'Walking at Graduation', 'College Graduation Ceremony', 'High School Graduation Day',
+      'Grad School Commencement', "My Sister's Graduation", 'Graduation Dinner With the Whole Family',
+      'Diploma in Hand, Finally', 'Cap and Gown Photos Before the Ceremony',
+    ],
+    'religious milestone': [
+      "My Nephew's Baptism", 'Bar Mitzvah at the Temple', 'Bat Mitzvah Celebration for Maya',
+      'First Communion Sunday', 'Confirmation Ceremony', 'Christening at the Family Church',
+      'Godparent Duties at the Baptism', 'Family Gathered for the Bar Mitzvah',
+    ],
     work: [
       'Performance Review', 'Client Presentation Panic', 'Sprint Planning', 'Late Night Crunch Session',
       'Promotion Discussion', 'New Manager First Meeting', 'Project Deadline Push', 'Team Standup That Went Sideways',
     ],
-    social: [
-      "Maya's Birthday Rooftop Party", 'Impromptu Dive Bar Night', 'First Date at The Observatory',
-      'Concert at The Venue', 'Reconnecting With an Old Friend', 'Group Dinner That Went Long',
-      'Game Night at Jordan\'s', 'House Party Into the Next Morning',
+    travel: [
+      'Weekend Getaway to Portland', 'Surprise Road Trip With Friends', 'First International Solo Vacation',
+      'Business Trip to Austin', 'Family Visit Across the Country', 'Wrong Turn Road Trip That Led Somewhere Good',
+      'Camping Weekend Vacation', 'Flight Delay Turned Into a Story',
+    ],
+    family: [
+      'Family Reunion After 3 Years', 'Holiday Tension at Family Dinner', 'Anniversary Dinner Nobody Enjoyed',
+      "Grandma's Family Visit", 'Family Dinner That Ran Long', "Dad's Retirement Anniversary",
+      "Sibling's Big Announcement at Family Dinner", 'Family Video Call That Ran Long',
+    ],
+    holiday: [
+      "Christmas Morning at Mom's", 'Thanksgiving Dinner, Tense as Usual', "New Year's Eve Countdown With Friends",
+      'Fourth of July Cookout', 'Easter Brunch With the Family', "Halloween Party at the Neighbors'",
+      'Hanukkah Candles With Grandma', 'Family Holiday Card Photo Chaos',
+    ],
+    'community event': [
+      'Neighborhood Cleanup Day', 'Volunteering at the Food Bank', 'Charity Fundraiser Gala',
+      'Blood Drive at the Community Center', 'Street Fair Volunteer Shift', 'Food Drive for the Local Shelter',
+      'Habitat for Humanity Build Day', 'Community Garden Volunteer Morning',
+    ],
+    'civic event': [
+      'Voting on Election Day', 'Jury Duty Week', 'City Council Meeting About the New Zoning',
+      'Town Hall on the School Budget', 'Naturalization Ceremony Day', 'Public Hearing on the New Development',
+      'Standing in Line to Vote Before Work', 'Civic Duty Call for Jury Selection',
     ],
     health: [
       'Therapy Session Breakthrough', 'First Day Back at the Gym', 'ER Visit at 2am',
       'Anxiety Spike During Work Call', 'Running Personal Record', 'Skipped Doctor Visit Again',
       'Sleep Clinic Consultation', 'Burnout Day',
     ],
-    recreation: [
-      'BJJ Competition', 'Open Mic Night', 'Gallery Opening', 'Pickup Soccer at the Park',
-      'Sunrise Hike', 'Punk Show at the Basement', 'First Time Surfing', 'Spontaneous Road Trip',
-    ],
-    travel: [
-      'Weekend in Portland', 'Conference in Austin', 'Surprise Road Trip With Friends',
-      'First International Solo Trip', 'Camping Weekend', 'Train Ride Across the State',
-      'Flight Delay That Turned Into a Story', 'Wrong Turn That Led Somewhere Good',
-    ],
     education: [
       'Accepted to the Program', 'Failed the Exam', 'Study Group Breakthrough',
       'Graduation Day', 'Dropped the Course', 'First Day of Class',
       'Research Presentation', 'Mentor Conversation That Changed Things',
-    ],
-    family: [
-      "Mom's Health Scare", 'Holiday Tension at Dinner', 'Family Reunion After 3 Years',
-      "Dad's Retirement Party", "Sibling's Big Announcement", 'Family Video Call That Ran Long',
-      'Grandma Visit', 'Anniversary Dinner Nobody Enjoyed',
     ],
     personal: [
       'Moved Into New Apartment', 'Cleared Out Old Storage Unit', 'Big Decision Made Alone at Night',
       'Quiet Day That Changed Something', 'Reconnected With an Old Hobby', 'Wrote the Letter',
       'That Walk Where Everything Clicked', 'Deleted the App Finally',
     ],
+    social: [
+      'Impromptu Dive Bar Night', 'First Date at The Observatory', 'Reconnecting With an Old Friend',
+      'Group Dinner That Went Long', 'Coffee Catch-Up That Ran Hours',
+    ],
+    recreation: [
+      'BJJ Open Mat Session', 'Gallery Opening', 'Sunrise Hike',
+      'First Time Surfing', 'Spontaneous Nature Walk',
+    ],
   };
 
   const summaries: Record<string, string[]> = {
+    birthday: [
+      'Good energy all night. Stayed longer than anyone planned.',
+      'A quieter one this year, but it still meant something.',
+      'Everyone showed up. That mattered more than the cake.',
+      "Didn't expect to cry but the surprise got you.",
+    ],
+    quinceañera: [
+      'The whole family in one room, dressed up and proud.',
+      "Months of planning came together in one long, loud night.",
+      'A tradition that means more every time you see it.',
+      'Court, dances, dinner — a night nobody wanted to end.',
+    ],
+    wedding: [
+      'The kind of day you replay for years.',
+      'Speeches, tears, way too much cake — perfect.',
+      'Vows outside, dinner under string lights, dancing till it hurt.',
+      'Everyone who matters, in one room, for one reason.',
+    ],
+    party: [
+      'Good energy all night. Stayed longer than anyone planned.',
+      "Didn't want it to end. Didn't sleep much after either.",
+      'Ended up somewhere unexpected. The best kind of night.',
+      'One of those nights where you feel like yourself again.',
+    ],
+    concert: [
+      'Loud, sweaty, and completely worth it.',
+      'The kind of set that reminds you why you go to shows.',
+      'Front row, no phone out, just there for it.',
+      'Small crowd, big energy — the local scene at its best.',
+    ],
+    convention: [
+      'Packed schedule but the hallway conversations were the real value.',
+      'Left with more business cards than you know what to do with.',
+      'Exhausting but energizing — the good kind of overwhelmed.',
+      'Ran into people you hadn\'t seen since last year.',
+    ],
+    sports: [
+      "Loud stadium, bad seats, best time in months.",
+      "Came down to the final minute. Everyone was on their feet.",
+      "Lost the game but the day was still a win.",
+      "Screamed yourself hoarse and don't regret it.",
+    ],
+    festival: [
+      'Three days, no sleep schedule, completely worth it.',
+      'Discovered a new favorite act by accident.',
+      'Hot, crowded, and somehow still magical.',
+      'The kind of weekend you plan the whole year around.',
+    ],
+    graduation: [
+      'Years of work compressed into one long ceremony and it was worth every minute.',
+      "Proud doesn't begin to cover it.",
+      'Sat through three hours of names just to hear one.',
+      'The tassel move hit different than expected.',
+    ],
+    'religious milestone': [
+      'A ceremony that means more than the party after it.',
+      'Old traditions, same room, new generation.',
+      'Everyone dressed up for something that actually mattered.',
+      'Quiet, formal, and somehow still emotional.',
+    ],
     work: [
       'The meeting went sideways — someone finally said what everyone was thinking.',
       'Harder conversation than expected but something important got clarified.',
@@ -243,12 +394,35 @@ const generateMockEvents = (): Event[] => {
       'Stayed late again. Made progress but the pressure is real.',
       'Left the room not sure if that went well or terribly.',
     ],
-    social: [
-      'Good energy all night. Stayed longer than anyone planned.',
-      'One of those nights where you feel like yourself again.',
-      'A bit awkward at first, then something clicked and it was great.',
-      "Didn't want it to end. Didn't sleep much after either.",
-      'Ended up somewhere unexpected. The best kind of night.',
+    travel: [
+      'New place, new version of yourself for a few days.',
+      'The delays and wrong turns were part of it.',
+      'Left feeling like you needed to do this more often.',
+      "The trip that made you realize what you'd been missing.",
+    ],
+    family: [
+      "Quality time that reminded you why it's complicated and worth it.",
+      'Old patterns showing up but this time you handled it differently.',
+      "It's never just a dinner with family.",
+      'More said between the lines than out loud.',
+    ],
+    holiday: [
+      'Same traditions, same chaos, still good.',
+      'The holiday that reminded you why you only do this once a year.',
+      'Loud, warm, over too fast.',
+      'Different this year, but still felt like the holiday.',
+    ],
+    'community event': [
+      "Small effort, real difference — worth the Saturday.",
+      "Didn't expect to feel this good about a few hours of work.",
+      'Met more neighbors in one morning than in the last year.',
+      'Tiring, unglamorous, and exactly the kind of thing that matters.',
+    ],
+    'civic event': [
+      'Waited in line longer than expected but it felt important.',
+      'The kind of civic thing you complain about and still show up for.',
+      'More people showed up than you expected. That mattered.',
+      'Bureaucratic, slow, and somehow still meaningful.',
     ],
     health: [
       'Harder than expected but you went. That matters.',
@@ -257,29 +431,11 @@ const generateMockEvents = (): Event[] => {
       'The kind of session where something shifts in how you see yourself.',
       "Not the news you wanted but you're dealing with it.",
     ],
-    recreation: [
-      'Lost track of time in the best way.',
-      'Exactly what you needed. No agenda, just the thing itself.',
-      'One of those rare moments where you were fully present.',
-      'Messy but alive. Wouldn\'t have skipped it.',
-    ],
-    travel: [
-      'New place, new version of yourself for a few days.',
-      'The delays and wrong turns were part of it.',
-      'Left feeling like you needed to do this more often.',
-      "The trip that made you realize what you'd been missing.",
-    ],
     education: [
       'Walked out with more questions than answers. Good ones.',
       'The kind of learning that makes you rethink something older.',
       'Slower going than expected but real ground was covered.',
       "Something clicked that hadn't clicked before.",
-    ],
-    family: [
-      "Quality time that reminded you why it's complicated and worth it.",
-      'Old patterns showing up but this time you handled it differently.',
-      "It's never just a dinner with family.",
-      'More said between the lines than out loud.',
     ],
     personal: [
       'Small moment that had more weight than expected.',
@@ -287,25 +443,50 @@ const generateMockEvents = (): Event[] => {
       'A decision made quietly that will matter later.',
       'Alone but not lonely. Something resolved.',
     ],
+    social: [
+      'A bit awkward at first, then something clicked and it was great.',
+      'Ended up talking for way longer than planned.',
+      'One of those nights where you feel like yourself again.',
+      'Good conversation, nothing fancy, exactly what you needed.',
+    ],
+    recreation: [
+      'Lost track of time in the best way.',
+      'Exactly what you needed. No agenda, just the thing itself.',
+      'One of those rare moments where you were fully present.',
+      'Messy but alive. Wouldn\'t have skipped it.',
+    ],
   };
 
   // Emotional tone by type — guides card accent color
   const emotionalTone: Record<string, Array<'positive' | 'negative' | 'mixed' | 'neutral'>> = {
+    birthday: ['positive', 'positive', 'mixed', 'positive'],
+    quinceañera: ['positive', 'positive', 'mixed', 'positive'],
+    wedding: ['positive', 'positive', 'mixed', 'positive'],
+    party: ['positive', 'positive', 'mixed', 'positive'],
+    concert: ['positive', 'positive', 'neutral', 'positive'],
+    convention: ['neutral', 'positive', 'mixed', 'neutral'],
+    sports: ['positive', 'mixed', 'negative', 'positive'],
+    festival: ['positive', 'positive', 'mixed', 'positive'],
+    graduation: ['positive', 'positive', 'neutral', 'positive'],
+    'religious milestone': ['positive', 'neutral', 'positive', 'mixed'],
     work: ['mixed', 'mixed', 'negative', 'neutral'],
-    social: ['positive', 'positive', 'mixed', 'positive'],
-    health: ['mixed', 'negative', 'positive', 'neutral'],
-    recreation: ['positive', 'positive', 'mixed', 'positive'],
     travel: ['positive', 'mixed', 'positive', 'positive'],
-    education: ['neutral', 'positive', 'mixed', 'neutral'],
     family: ['mixed', 'negative', 'positive', 'mixed'],
+    holiday: ['mixed', 'positive', 'mixed', 'positive'],
+    'community event': ['positive', 'positive', 'neutral', 'positive'],
+    'civic event': ['neutral', 'mixed', 'positive', 'neutral'],
+    health: ['mixed', 'negative', 'positive', 'neutral'],
+    education: ['neutral', 'positive', 'mixed', 'neutral'],
     personal: ['neutral', 'positive', 'mixed', 'neutral'],
+    social: ['positive', 'positive', 'mixed', 'positive'],
+    recreation: ['positive', 'positive', 'mixed', 'positive'],
   };
 
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 84; i++) {
     const daysAgo = Math.floor(Math.random() * 365);
     const startTime = new Date(now - daysAgo * 86400000);
     const endTime = new Date(startTime.getTime() + (Math.floor(Math.random() * 8) + 1) * 3600000);
-    const typeIdx = (i * 7 + 3) % eventTypes.length; // pseudo-random but stable
+    const typeIdx = (i * 5 + 3) % eventTypes.length; // pseudo-random but stable; step must stay coprime with eventTypes.length
     const type = eventTypes[typeIdx];
     const peopleCount = Math.random() > 0.25 ? Math.floor(Math.random() * 4) + 1 : 0;
     const locationCount = Math.random() > 0.2 ? 1 : 0;
@@ -708,6 +889,11 @@ export const EventsBook: React.FC = () => {
       activeFilterCount,
       sortBy,
     ],
+  );
+
+  const patternsClipboardText = useMemo(
+    () => buildPatternsClipboardText(recurringScenes),
+    [recurringScenes],
   );
 
   // ─── Render ─────────────────────────────────────────────────────────────────
@@ -1336,7 +1522,7 @@ export const EventsBook: React.FC = () => {
               <GridListViewToolbar
                 viewMode={patternsViewMode}
                 onViewModeChange={setPatternsViewMode}
-                showCopy={false}
+                copyText={patternsClipboardText}
                 storageKey={PATTERNS_CARD_VIEW_STORAGE_KEY}
               />
             </div>

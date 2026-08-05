@@ -122,7 +122,14 @@ const ROUTE_PREFIXES = Object.entries(routeToSurface).sort(
  * Get surface key from route path (App shell only).
  */
 export function getSurfaceFromRoute(pathname: string): SurfaceKey {
-  const path = pathname.split('?')[0].split('#')[0];
+  const rawPath = pathname.split('?')[0].split('#')[0];
+  // Demo books stay under a public /demo/* route so refreshing a demo surface
+  // never falls through to its authenticated counterpart.
+  const path = rawPath === '/demo'
+    ? '/chat'
+    : rawPath.startsWith('/demo/')
+      ? rawPath.slice('/demo'.length)
+      : rawPath;
 
   if (routeToSurface[path]) {
     return routeToSurface[path];
@@ -142,6 +149,12 @@ export function getSurfaceFromRoute(pathname: string): SurfaceKey {
  */
 export function getRouteFromSurface(surface: SurfaceKey): string {
   return surfaceToRoute[surface] ?? '/chat';
+}
+
+/** Preserve the public demo sandbox while navigating between App surfaces. */
+export function getRuntimeRouteFromSurface(surface: SurfaceKey, demoRuntime: boolean): string {
+  const route = getRouteFromSurface(surface);
+  return demoRuntime ? `/demo${route}` : route;
 }
 
 /** True when pathname is an App shell route (not public marketing). */

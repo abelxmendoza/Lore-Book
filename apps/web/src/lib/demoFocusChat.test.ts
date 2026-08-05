@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { DEMO_FOCUS_CAPABILITY_DISCLAIMER, getDemoFocusResponse } from './demoFocusChat';
-import type { ChatFocus } from '../types/chatFocus';
-import { emptyChatFocusSessionStats } from '../types/chatFocus';
+import { emptyChatFocusSessionStats, type ChatFocus } from '../types/chatFocus';
 
 describe('demoFocusChat', () => {
   const loveFocus: ChatFocus = {
@@ -58,5 +57,21 @@ describe('demoFocusChat', () => {
     expect(text).toContain('Street Photography');
     expect(text).toMatch(/does \*\*not\*\* call the OpenAI API/i);
     expect(text).toMatch(/isn’t at full capability/i);
+  });
+
+  it('keeps Perception Book focus uncertainty-aware', () => {
+    const focus: ChatFocus = {
+      ...loveFocus,
+      entityName: 'Perception about Jamie',
+      entityType: 'perception',
+      sourceSurface: 'perceptions',
+      sourceLabel: 'Perception Book',
+      relationshipId: undefined,
+      baseline: undefined,
+    };
+    const text = getDemoFocusResponse('Help me examine this belief.', focus);
+    expect(text).toContain('Perception Book');
+    expect(text).toMatch(/not as an objective fact/i);
+    expect(text).toMatch(/clarify, resolve, or retract/i);
   });
 });

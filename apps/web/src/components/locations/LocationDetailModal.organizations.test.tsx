@@ -81,4 +81,29 @@ describe('LocationDetailModal — Groups & Organizations', () => {
     expect(screen.getByText(/chronological view of memories and recorded visits/i)).toBeInTheDocument();
     expect(await screen.findByText(/visits & memories/i)).toBeInTheDocument();
   });
+
+  it('opens the place timeline in main chat and requests the opening response automatically', async () => {
+    const onClose = vi.fn();
+    const dispatch = vi.spyOn(window, 'dispatchEvent');
+    render(<LocationDetailModal location={location} onClose={onClose} />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /timeline/i })[0]!);
+    fireEvent.click(screen.getByTestId('location-timeline-open-main-chat'));
+
+    const handoff = dispatch.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.type === 'lorebook:open-chat-focus') as CustomEvent;
+    expect(handoff.detail).toMatchObject({
+      entityId: 'dummy-loc-1',
+      entityName: 'Novara HQ',
+      entityType: 'location',
+      sourceSurface: 'locations',
+      sourceLabel: 'Locations',
+      autoSubmit: true,
+      startNewThread: true,
+    });
+    expect(handoff.detail.knowledgeScope).toMatch(/chronological place history/i);
+    expect(handoff.detail.initialPrompt).toMatch(/start with a grounded chronological response/i);
+    expect(onClose).toHaveBeenCalled();
+  });
 });

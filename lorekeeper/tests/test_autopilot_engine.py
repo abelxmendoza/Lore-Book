@@ -1,9 +1,16 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+import json
+from datetime import datetime, timedelta, timezone
+from io import StringIO
 
+import pytest
+
+from lorekeeper.autopilot_cli import run_cli
 from lorekeeper.autopilot_engine import AutopilotEngine
 from lorekeeper.event_schema import TimelineEvent
+
+UTC = timezone.utc
 
 
 class DummyInsight:
@@ -91,3 +98,23 @@ def test_evidence_is_propagated():
 
     assert burnout.evidence
     assert any("Focus areas" in item for item in daily.evidence)
+
+
+@pytest.mark.parametrize(
+    ("command", "result_key"),
+    [
+        ("daily", "daily_plan"),
+        ("weekly", "weekly_strategy"),
+        ("monthly", "monthly_correction"),
+        ("transition", "arc_transition"),
+        ("alerts", "alerts"),
+        ("momentum", "momentum"),
+    ],
+)
+def test_cli_commands_return_json(command, result_key, monkeypatch, capsys):
+    monkeypatch.setattr("sys.stdin", StringIO(""))
+
+    assert run_cli([command, "--format", "json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert result_key in payload

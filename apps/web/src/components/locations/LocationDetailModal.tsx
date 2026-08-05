@@ -673,6 +673,24 @@ export const LocationDetailModal = ({
     });
   };
 
+  const openLocationTimelineMainChat = () => {
+    onClose();
+    openChatWithFocus({
+      entityId: location.id,
+      entityName: location.name,
+      entityType: 'location',
+      sourceSurface: 'locations',
+      sourceLabel: CHAT_FOCUS_SOURCE_LABELS.locations,
+      knowledgeScope: 'chronological place history, recorded visits, memories, posted events, people, and significance',
+      initialPrompt:
+        `Let’s explore ${location.name} across time. Start with a grounded chronological response ` +
+        'about the recorded visits, memories, posted events, people, and changes connected to this place. ' +
+        'Use only supported LoreBook evidence, clearly label gaps or uncertainty, and then ask what part I want to deepen.',
+      autoSubmit: true,
+      startNewThread: true,
+    });
+  };
+
   const handleChatSubmit = async (message: string) => {
     if (!message.trim() || chatLoading) return;
     setChatMessages(prev => [...prev, { role: 'user', content: message, timestamp: new Date() }]);
@@ -1598,6 +1616,26 @@ export const LocationDetailModal = ({
           {/* ── TIMELINE ── */}
           {activeTab === 'timeline' && (
             <div className="space-y-3" data-testid="location-timeline-tab">
+              <button
+                type="button"
+                onClick={openLocationTimelineMainChat}
+                data-testid="location-timeline-open-main-chat"
+                className="group flex w-full items-center justify-between gap-3 rounded-xl border border-violet-400/30 bg-gradient-to-r from-violet-500/15 via-fuchsia-500/10 to-transparent px-3.5 py-3 text-left transition hover:border-violet-300/50 hover:from-violet-500/25 focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+              >
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-violet-50">
+                    <MessageSquare className="h-4 w-4 text-violet-300" />
+                    Explore this timeline in main chat
+                  </p>
+                  <p className="mt-1 text-[11px] text-white/50">
+                    LoreBook will respond first with a grounded view of {location.name} across time.
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full border border-violet-300/25 bg-violet-300/10 px-2.5 py-1 text-[11px] font-medium text-violet-100 transition group-hover:bg-violet-300/20">
+                  Open in chat
+                </span>
+              </button>
+
               <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-400/20 bg-amber-500/[0.06] px-3.5 py-3">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-amber-50">Events here</p>

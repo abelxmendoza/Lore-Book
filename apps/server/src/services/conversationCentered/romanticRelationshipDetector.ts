@@ -4,11 +4,17 @@
 // =====================================================
 
 import { logger } from '../../logger';
-import { openai } from '../openaiClient';
-import { supabaseAdmin } from '../supabaseClient';
 import { isIndividualPersonName } from '../../utils/personNameValidation';
-import { assessRomanticPartnerEligibility } from './romanticEligibility';
+import { openai } from '../openaiClient';
 import { organizationService } from '../organizationService';
+import {
+  inferRomanceReciprocity,
+  mergeRomanceReciprocity,
+  type RomanceReciprocity,
+} from '../romance/romanceReciprocity';
+import { supabaseAdmin } from '../supabaseClient';
+
+import { assessRomanticPartnerEligibility } from './romanticEligibility';
 import { persistThirdPartyRomances } from './thirdPartyRelationshipService';
 
 export type RomanticRelationshipType =
@@ -53,6 +59,8 @@ export interface DetectedRomanticRelationship {
   exclusivityStatus?: 'exclusive' | 'non_exclusive' | 'unknown' | 'complicated';
   /** Resolved partner name, used for eligibility guards when available. */
   partnerName?: string;
+  reciprocity?: RomanceReciprocity;
+  reciprocityEvidence?: string;
 }
 
 export class RomanticRelationshipDetector {
@@ -125,6 +133,15 @@ Status types:
 - "fading": Connection is still present but weakening
 - "rekindled": A past connection is becoming active again
 
+Reciprocity types (direction of interest, separate from relationship status):
+- "user_interest_only": The user expresses interest; there is no evidence the other person reciprocates
+- "other_interest_only": The other person expresses interest; the user does not
+- "possible_mutual": There are ambiguous hints of reciprocity. Use this for "maybe", "I think", flirting, or uncertain signs
+- "mutual_interest": Both people explicitly express interest, or the message clearly says the interest is mutual
+- "unknown": Direction cannot be established
+
+Never promote smiling, friendliness, attention, or a single ambiguous interaction to mutual_interest. "Unrequited" requires explicit rejection or explicit non-reciprocity; lack of evidence alone is only user_interest_only.
+
 Return JSON:
 {
   "relationships": [
@@ -136,7 +153,9 @@ Return JSON:
       "evidence": "quote from message",
       "startDate": "YYYY-MM-DD" (if mentioned),
       "isSituationship": true/false,
-      "exclusivityStatus": "exclusive" | "non_exclusive" | "unknown" | "complicated"
+      "exclusivityStatus": "exclusive" | "non_exclusive" | "unknown" | "complicated",
+      "reciprocity": "unknown" | "user_interest_only" | "other_interest_only" | "possible_mutual" | "mutual_interest",
+      "reciprocityEvidence": "short quote that supports the direction"
     }
   ]
 }
@@ -180,6 +199,14 @@ IMPORTANT: Only detect romantic relationships with INDIVIDUAL people. Never clas
               startDate: rel.startDate,
               isSituationship: rel.isSituationship || rel.relationshipType === 'situationship',
               exclusivityStatus: rel.exclusivityStatus,
+              partnerName: entity.name,
+              reciprocity: inferRomanceReciprocity({
+                relationshipType: rel.relationshipType,
+                status: rel.status,
+                evidence: rel.reciprocityEvidence || rel.evidence,
+                detected: rel.reciprocity,
+              }),
+              reciprocityEvidence: rel.reciprocityEvidence || rel.evidence,
             });
           }
         }
@@ -257,6 +284,12 @@ IMPORTANT: Only detect romantic relationships with INDIVIDUAL people. Never clas
       return;
     }
     try {
+      const inferredReciprocity = inferRomanceReciprocity({
+        relationshipType: relationship.relationshipType,
+        status: relationship.status,
+        evidence: relationship.reciprocityEvidence || relationship.evidence,
+        detected: relationship.reciprocity,
+      });
       // One romantic relationship per person — match on identity only, not on
       // (relationship_type, status). Matching those too spawned a fresh row each
       // time a person's status evolved (one_night_stand -> ex_lover), which is
@@ -272,6 +305,12 @@ IMPORTANT: Only detect romantic relationships with INDIVIDUAL people. Never clas
         .maybeSingle();
 
       if (existing) {
+        const reciprocity = mergeRomanceReciprocity(
+          existing.metadata?.reciprocity,
+          inferredReciprocity,
+          relationship.status,
+          relationship.reciprocityEvidence || relationship.evidence,
+        );
         // Update existing — evolve type/status on the single canonical row.
         await supabaseAdmin
           .from('romantic_relationships')
@@ -288,6 +327,9 @@ IMPORTANT: Only detect romantic relationships with INDIVIDUAL people. Never clas
               last_detected_at: new Date().toISOString(),
               evidence: relationship.evidence,
               source_message_id: sourceMessageId,
+              reciprocity,
+              reciprocity_evidence: relationship.reciprocityEvidence || relationship.evidence,
+              reciprocity_confidence: relationship.confidence,
             },
           })
           .eq('id', existing.id);
@@ -308,6 +350,9 @@ IMPORTANT: Only detect romantic relationships with INDIVIDUAL people. Never clas
             detected_at: new Date().toISOString(),
             source_message_id: sourceMessageId,
             confidence: relationship.confidence,
+            reciprocity: inferredReciprocity,
+            reciprocity_evidence: relationship.reciprocityEvidence || relationship.evidence,
+            reciprocity_confidence: relationship.confidence,
           },
         });
       }

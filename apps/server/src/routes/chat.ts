@@ -77,7 +77,7 @@ const soulProfileContextSchema = z.object({
 const chatFocusSchema = z.object({
   entityId: z.string().min(1),
   entityName: z.string(),
-  entityType: z.enum(['character', 'location', 'organization', 'project', 'skill', 'relationship', 'quest', 'event', 'memory']),
+  entityType: z.enum(['character', 'location', 'organization', 'project', 'skill', 'relationship', 'quest', 'event', 'memory', 'perception']),
   sourceSurface: z.string(),
   sourceLabel: z.string(),
   relationshipId: z.string().optional(),
@@ -424,6 +424,8 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
             ingestion: contract.ingestion,
             durability: contract.durability,
             code: setupError.code,
+            stage: setupError.stage,
+            errorCategory: setupError.category,
           });
           if (!res.writableEnded) res.end();
           return;
@@ -462,6 +464,8 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
             ingestion: contract.ingestion,
             durability: contract.durability,
             code: classified.code,
+            stage: 'response_generation',
+            errorCategory: classified.category,
           });
           if (!res.writableEnded) res.end();
           return;
@@ -789,14 +793,24 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
             assistantResponse: contract.assistantResponse,
             ingestion: contract.ingestion,
             durability: contract.durability,
+            code: isOpenAIQuotaError(streamError) ? 'openai_quota_exhausted' : 'stream_error',
+            stage: 'response_generation',
+            errorCategory: isOpenAIQuotaError(streamError) ? 'quota' : 'unknown',
           });
         } else {
+          const classified = classifyIngestionError(streamError);
           const error = isOpenAIQuotaError(streamError)
             ? 'I saved your message when possible. Response generation stopped because the OpenAI quota is exhausted — this assistant reply is incomplete.'
             : streamError instanceof Error
               ? streamError.message
               : 'Unknown stream error';
-          sseWrite({ type: 'error', error });
+          sseWrite({
+            type: 'error',
+            error,
+            code: classified.code,
+            stage: 'response_generation',
+            errorCategory: classified.category,
+          });
         }
         if (!res.writableEnded) res.end();
       }
@@ -809,7 +823,14 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
     if (!res.headersSent) {
       res.status(500).json({ error: 'Internal server error' });
     } else if (!res.writableEnded) {
-      sseWrite({ type: 'error', error: 'Internal server error' });
+      const classified = classifyIngestionError(error);
+      sseWrite({
+        type: 'error',
+        error: 'Internal server error',
+        code: classified.code,
+        stage: 'response_generation',
+        errorCategory: classified.category,
+      });
       res.end();
     }
   }

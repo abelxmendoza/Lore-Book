@@ -149,6 +149,7 @@ function messageRecord(message: Message) {
     persistence: {
       persistStatus: message.persistStatus ?? null,
       lifecycle: message.lifecycle ?? null,
+      generationFailure: metadata.generationFailure ?? null,
     },
     interpretation: {
       intent: metadata.intent ?? null,
@@ -250,6 +251,12 @@ export function formatComposerAndContextDebugSection(
     }
     if (focus.knowledgeScope) lines.push(`  knowledgeScope: ${focus.knowledgeScope}`);
     if (focus.initialPrompt) lines.push(`  initialPrompt: ${focus.initialPrompt}`);
+    if (focus.entityType === 'event') {
+      lines.push('Event enrichment target:');
+      lines.push(`  canonical event: ${focus.entityName} [${focus.entityId}]`);
+      lines.push('  duplicate policy: exclude from creation; keep as enrichment target');
+      lines.push('  ingestion: extract evidence, merge into event, refresh connected knowledge');
+    }
   } else {
     lines.push('Focus chip: (none)');
   }
@@ -294,7 +301,13 @@ export function formatComposerAndContextDebugSection(
     const fromFocus = ctx.composerEntitiesFromFocus ?? [];
     lines.push(`  composerEntities from focus (${fromFocus.length}):`);
     if (fromFocus.length === 0) lines.push('    (none)');
-    else lines.push(...fromFocus.map((chip) => `  ${formatChipEntityLine(chip)}`));
+    else {
+      lines.push(
+        ...fromFocus.map((chip) =>
+          `  ${formatChipEntityLine({ ...chip, included: undefined, confirming: false })}`,
+        ),
+      );
+    }
   }
 
   return lines.join('\n');

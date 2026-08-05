@@ -95,6 +95,43 @@ describe('buildChatConversationCopyText', () => {
     expect(text).toContain('composerEntities from focus (1):');
   });
 
+  it('describes event focus as a canonical enrichment target, not an excluded character', () => {
+    const eventFocus = {
+      entityId: 'event-1',
+      entityName: 'Catch-up coffee after the gap',
+      entityType: 'event' as const,
+      sourceSurface: 'events' as const,
+      sourceLabel: 'Life Log',
+      sessionStats: {
+        messagesSent: 0,
+        connectionDelta: 0,
+        affectionDelta: 0,
+        lastUpdatedAt: '2026-07-25T12:00:00.000Z',
+      },
+    };
+    const eventChip = {
+      id: 'event-1',
+      name: 'Catch-up coffee after the gap',
+      type: 'event' as const,
+      status: 'confirmed' as const,
+      aliases: [],
+      mentionKeys: ['catch-up coffee after the gap'],
+      matchedLabel: 'Catch-up coffee after the gap',
+    };
+    const snapshot = buildComposerAndContextDebugSnapshot({
+      chatFocus: eventFocus,
+      composerEntitiesFromFocus: [eventChip],
+    });
+
+    const text = buildChatConversationCopyText([message()], undefined, snapshot);
+    expect(text).toContain('Focus chip: Catch-up coffee after the gap · Life Log (events/event)');
+    expect(text).toContain('canonical event: Catch-up coffee after the gap [event-1]');
+    expect(text).toContain('exclude from creation; keep as enrichment target');
+    expect(text).toContain('Catch-up coffee after the gap (event; confirmed)');
+    expect(text).not.toContain('Catch-up coffee after the gap (character');
+    expect(text).not.toContain('event; confirmed, excluded');
+  });
+
   it('annotates message chips in the transcript', () => {
     const text = buildChatConversationCopyText([
       message({
@@ -275,5 +312,43 @@ describe('buildChatConversationCopyText', () => {
     expect(text).not.toContain('sk-example-secret');
     expect(text).toContain('"safeCount": 2');
     expect(text).toContain('"sourceCount": 3');
+  });
+
+  it('includes the classified generation failure in the admin receipt', () => {
+    const input = message({
+      role: 'assistant',
+      content: 'Reply failed',
+      persistStatus: 'failed',
+      lifecycle: {
+        localPersistence: 'saved',
+        cloudPersistence: 'saved',
+        processing: 'failed',
+        summary: 'not_requested',
+        retryCount: 0,
+        updatedAt: '2026-07-25T12:02:00.000Z',
+        lastError: {
+          stage: 'generation',
+          code: 'openai_circuit_open',
+          message: 'Saved, but reply failed',
+          retryable: true,
+          occurredAt: '2026-07-25T12:02:00.000Z',
+        },
+      },
+      metadata: {
+        generationFailure: {
+          code: 'openai_circuit_open',
+          stage: 'response_generation',
+          errorCategory: 'quota',
+          noticeCode: 'message_saved_assistant_failed',
+        },
+      },
+    });
+
+    const text = buildChatConversationCopyText([input], { threadId: 'thread-1' });
+
+    expect(text).toContain('"generationFailure"');
+    expect(text).toContain('"openai_circuit_open"');
+    expect(text).toContain('"response_generation"');
+    expect(text).toContain('"errorCategory": "quota"');
   });
 });

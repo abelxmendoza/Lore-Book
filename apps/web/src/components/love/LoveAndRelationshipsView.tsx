@@ -94,6 +94,7 @@ export type RomanticRelationship = {
   };
   // Sprint AD: deterministic dynamics persisted under metadata.signals.
   metadata?: {
+    reciprocity?: 'unknown' | 'user_interest_only' | 'other_interest_only' | 'possible_mutual' | 'mutual_interest';
     signals?: {
       obsession_score?: number;
       attachment_intensity?: number;
@@ -139,6 +140,10 @@ const isActiveRelationship = (relationship: RomanticRelationship) =>
   relationship.is_current && !isEndedRelationship(relationship);
 const isCrushRelationship = (relationship: RomanticRelationship) =>
   CRUSH_TYPES.has(relationshipType(relationship));
+const romanceReciprocity = (relationship: RomanticRelationship) =>
+  relationship.status === 'unrequited'
+    ? 'user_interest_only'
+    : relationship.metadata?.reciprocity ?? 'unknown';
 const isDatingRelationship = (relationship: RomanticRelationship) =>
   DATING_TYPES.has(relationshipType(relationship)) && isActiveRelationship(relationship);
 const isNoContactRelationship = (relationship: RomanticRelationship) =>
@@ -683,6 +688,18 @@ export const LoveAndRelationshipsView = () => {
   const situationships = filteredRelationships.filter(r => r.is_situationship);
   const datingRelationships = filteredRelationships.filter(isDatingRelationship);
   const crushes = filteredRelationships.filter(isCrushRelationship);
+  const oneSidedCrushes = crushes.filter((relationship) =>
+    ['user_interest_only', 'other_interest_only'].includes(romanceReciprocity(relationship)),
+  );
+  const possibleMutualCrushes = crushes.filter(
+    (relationship) => romanceReciprocity(relationship) === 'possible_mutual',
+  );
+  const mutualCrushes = crushes.filter(
+    (relationship) => romanceReciprocity(relationship) === 'mutual_interest',
+  );
+  const unknownDirectionCrushes = crushes.filter(
+    (relationship) => romanceReciprocity(relationship) === 'unknown',
+  );
   const highRiskRelationships = filteredRelationships.filter(isHighRiskRelationship);
   const visibleRelationships = (() => {
     switch (activeFilter) {
@@ -925,7 +942,7 @@ export const LoveAndRelationshipsView = () => {
         demoMode={shouldUseMockData}
         domains={['romance']}
         title="Ask Dating & Romance"
-        description="Query current and past connections, crushes, situationships, history, risk flags, evidence strength, or Character Book linkage."
+        description="Query current and past connections, one-sided or unrequited crushes, possible mutual interest, confirmed mutual interest, situationships, history, risk flags, evidence strength, or Character Book linkage."
         placeholder='Try “show my past relationships”'
         resultNoun="connection"
         compact
@@ -1081,13 +1098,42 @@ export const LoveAndRelationshipsView = () => {
           )}
 
           {/* Crushes Section */}
-          {(activeFilter === 'all' || activeFilter === 'crushes') && crushes.length > 0 && (
+          {activeFilter === 'all' && crushes.length > 0 && (
             <div className={activeFilter === 'all' ? 'mb-8' : ''}>
               <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-pink-400" />
                 Crushes & Interests
               </h2>
               {renderRelationshipCollection(crushes)}
+            </div>
+          )}
+
+          {activeFilter === 'crushes' && crushes.length > 0 && (
+            <div className="space-y-7">
+              {mutualCrushes.length > 0 && (
+                <section>
+                  <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-emerald-200">Mutual interest</h2>
+                  {renderRelationshipCollection(mutualCrushes)}
+                </section>
+              )}
+              {possibleMutualCrushes.length > 0 && (
+                <section>
+                  <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-amber-100">Possible mutual — not confirmed</h2>
+                  {renderRelationshipCollection(possibleMutualCrushes)}
+                </section>
+              )}
+              {oneSidedCrushes.length > 0 && (
+                <section>
+                  <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-violet-200">One-sided & unrequited</h2>
+                  {renderRelationshipCollection(oneSidedCrushes)}
+                </section>
+              )}
+              {unknownDirectionCrushes.length > 0 && (
+                <section>
+                  <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-white/45">Reciprocity unknown</h2>
+                  {renderRelationshipCollection(unknownDirectionCrushes)}
+                </section>
+              )}
             </div>
           )}
 

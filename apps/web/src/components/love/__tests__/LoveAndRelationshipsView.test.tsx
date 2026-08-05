@@ -235,6 +235,28 @@ describe('LoveAndRelationshipsView', () => {
     });
   });
 
+  it('groups crushes by one-sided, possible mutual, and mutual interest', async () => {
+    const user = userEvent.setup();
+    const crushBase = {
+      ...mockRelationships[0],
+      relationship_type: 'crush',
+      status: 'active',
+      is_current: true,
+    };
+    (getMockRomanticRelationshipsByFilter as any).mockReturnValue([
+      { ...crushBase, id: 'crush-one', person_id: 'person-one', person_name: 'Jamie', metadata: { reciprocity: 'user_interest_only' } },
+      { ...crushBase, id: 'crush-possible', person_id: 'person-possible', person_name: 'Riley', metadata: { reciprocity: 'possible_mutual' } },
+      { ...crushBase, id: 'crush-mutual', person_id: 'person-mutual', person_name: 'Casey', metadata: { reciprocity: 'mutual_interest' } },
+    ]);
+
+    render(<LoveAndRelationshipsView />);
+    await user.click(await screen.findByRole('tab', { name: /^crushes$/i }));
+
+    expect(await screen.findByText('One-sided & unrequited')).toBeInTheDocument();
+    expect(screen.getByText('Possible mutual — not confirmed')).toBeInTheDocument();
+    expect(screen.getAllByText('Mutual interest')).toHaveLength(2);
+  });
+
   it('shows search functionality', async () => {
     render(<LoveAndRelationshipsView />);
     

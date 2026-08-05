@@ -60,9 +60,18 @@ function characterProvenanceText(row: { metadata?: unknown }): string {
     .join('\n');
 }
 
-function isVisibleCharacter(row: { name?: string | null; metadata?: unknown }): boolean {
+function isVisibleCharacter(row: {
+  name?: string | null;
+  metadata?: unknown;
+  status?: string | null;
+}): boolean {
   const name = String(row.name ?? '').trim();
   if (!name) return false;
+  // Keep legacy rows whose lifecycle status predates the `active` default.
+  // PostgREST `.neq('status', ...)` translates to SQL `<>`, which also drops
+  // NULL values. Filtering after the tenant-scoped read preserves those cards
+  // while still keeping archived/reclassified records out of the book.
+  if (row.status === 'archived' || row.status === 'reclassified') return false;
   return !evaluateWrongDomain(name, characterProvenanceText(row)).wrongDomain;
 }
 
@@ -95,9 +104,6 @@ export async function loadCharactersBook(userId: string, opts?: { includeDuplica
       .from('characters')
       .select('*')
       .eq('user_id', userId)
-      .neq('status', 'archived')
-      // Reclassified characters live in another book now (see reclassifyCharacterService)
-      .neq('status', 'reclassified')
       .order('updated_at', { ascending: false }),
     loadCounts(userId),
   ]);

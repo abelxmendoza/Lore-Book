@@ -2619,6 +2619,7 @@ export const CharacterBook = () => {
   const dispatch = useAppDispatch();
   const highlightedCharacterIds = useAppSelector(selectHighlightedCharacterIds);
   const { user, loading: authLoading } = useAuth();
+  const hasAuthenticatedUser = Boolean(user);
   const { useMockData: isMockDataEnabled, runtimeDataMode } = useMockData();
   const { isGuest, guestState } = useGuest();
   const {
@@ -2646,7 +2647,8 @@ export const CharacterBook = () => {
   
   // Seed demo characters once per session; never overwrite in-memory demo edits on remount.
   useEffect(() => {
-    if (user) {
+    const demoCharactersEnabled = isMockDataEnabled || isMockEnabled;
+    if (hasAuthenticatedUser && !demoCharactersEnabled) {
       mockDataService.register.characters([]);
       return;
     }
@@ -2656,7 +2658,7 @@ export const CharacterBook = () => {
     if (current.length === 0 || merged.length !== current.length) {
       mockDataService.register.characters(merged);
     }
-  }, [user]);
+  }, [hasAuthenticatedUser, isMockDataEnabled, isMockEnabled]);
   const [loading, setLoading] = useState(false);
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [characterModalInitialTab, setCharacterModalInitialTab] = useState<
@@ -2710,7 +2712,9 @@ export const CharacterBook = () => {
 
   const serverCharacters = useMemo((): Character[] => {
     if (isMockEnabled || isMockDataEnabled) {
-      return mockDataService.getWithFallback.characters(null, true).data.map(withDemoAnalytics);
+      const registeredCharacters = mockDataService.get.characters();
+      const demoCharacters = registeredCharacters.length > 0 ? registeredCharacters : dummyCharacters;
+      return demoCharacters.map(withDemoAnalytics);
     }
     if (isGuestRuntime && guestId) {
       return getGuestCharacters(guestId);

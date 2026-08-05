@@ -4,6 +4,23 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { OmniTimeline } from './OmniTimeline';
 
+const entityModalMocks = vi.hoisted(() => ({
+  openMemory: vi.fn(),
+  openCharacter: vi.fn(),
+}));
+
+const demoCharacters = vi.hoisted(() => ([
+  {
+    id: 'demo-alex',
+    name: 'Alex',
+    first_name: 'Alex',
+    alias: ['Alex'],
+    role: 'Girlfriend',
+    importance_score: 95,
+    metadata: { relationship_type: 'romantic' },
+  },
+]));
+
 vi.mock('../../hooks/useIsMobile', () => ({
   useIsMobile: vi.fn(() => false),
 }));
@@ -67,7 +84,15 @@ vi.mock('../../contexts/MockDataContext', () => ({
 }));
 
 vi.mock('../../contexts/EntityModalContext', () => ({
-  useEntityModal: vi.fn(() => ({ openMemory: vi.fn() })),
+  useEntityModal: vi.fn(() => entityModalMocks),
+}));
+
+vi.mock('../../services/mockDataService', () => ({
+  mockDataService: {
+    get: {
+      characters: () => demoCharacters,
+    },
+  },
 }));
 
 vi.mock('./TimelineSwimlanes', () => ({
@@ -118,13 +143,21 @@ vi.mock('./GeneratedTimelineReveal', () => ({
     query,
     events,
     compilation,
+    onOpenChat,
+    onEventClick,
   }: {
     query: string;
-    events?: unknown[];
+    events?: Array<{ content?: string; timeline_names?: string[] }>;
     compilation?: { subject?: { displayName?: string } | null };
+    onOpenChat?: () => void;
+    onEventClick?: (event: { content?: string; timeline_names?: string[] }) => void;
   }) => (
     <div data-testid="generated-timeline-reveal">
       {query} · {events?.length ?? 0} · {compilation?.subject?.displayName ?? 'unresolved'}
+      {onOpenChat && <button type="button" onClick={onOpenChat}>Open in chat</button>}
+      {onEventClick && events?.[0] && (
+        <button type="button" onClick={() => onEventClick(events[0])}>Open first moment</button>
+      )}
     </div>
   ),
 }));
@@ -156,6 +189,8 @@ function renderOmniTimeline(initialRoute = '/timeline') {
 
 describe('OmniTimeline layout and navigation', () => {
   beforeEach(() => {
+    entityModalMocks.openMemory.mockReset();
+    entityModalMocks.openCharacter.mockReset();
     vi.mocked(useIsMobile).mockReturnValue(false);
     vi.mocked(useMockData).mockReturnValue({ useMockData: true } as ReturnType<typeof useMockData>);
     vi.mocked(useAuth).mockReturnValue({ user: null, loading: false });
@@ -229,6 +264,33 @@ describe('OmniTimeline layout and navigation', () => {
     expect(screen.getByTestId('timeline-swimlanes-view')).toBeInTheDocument();
     expect(screen.getByTestId('universal-timeline-search-desktop')).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: /^search$/i })).not.toBeInTheDocument();
+  });
+
+  it('opens a simulated subject in main chat without passing preview moments as evidence', async () => {
+    const user = userEvent.setup();
+    const dispatch = vi.spyOn(window, 'dispatchEvent');
+    renderOmniTimeline('/timeline?q=Everything%20with%20Alex');
+
+    await user.click(screen.getByRole('button', { name: 'Open in chat' }));
+
+    const event = dispatch.mock.calls
+      .map(([value]) => value)
+      .find((value) => value.type === 'lorebook:open-chat-focus') as CustomEvent;
+    expect(event.detail.entityName).toBe('Everything with Alex');
+    expect(event.detail.sourceSurface).toBe('timeline');
+    expect(event.detail.knowledgeScope).toContain('simulated preview only');
+  });
+
+  it('opens the matching Character Book modal from a demo person timeline moment', async () => {
+    const user = userEvent.setup();
+    renderOmniTimeline('/timeline?q=Everything%20with%20Alex');
+
+    await user.click(screen.getByRole('button', { name: 'Open first moment' }));
+
+    expect(entityModalMocks.openCharacter).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'demo-alex', name: 'Alex' }),
+    );
+    expect(entityModalMocks.openMemory).not.toHaveBeenCalled();
   });
 
   it('shows data error banner with retry', async () => {

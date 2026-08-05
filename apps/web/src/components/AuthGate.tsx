@@ -94,8 +94,10 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
           console.log('[AuthGate] Session loaded:', data.session ? 'Authenticated' : 'Not authenticated');
           setSession(data.session);
 
-          // Exiting demo/guest runtime when a real session is established
-          if (data.session?.user) {
+          // A browser may already have a real session underneath the isolated
+          // public demo. Passive session discovery must not end that demo;
+          // only an explicit sign-in/exit action should do so.
+          if (data.session?.user && !isDemoSession()) {
             clearDemoSession();
             endGuestSession();
           }
@@ -128,8 +130,15 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
       console.log('[AuthGate] Auth state changed:', event, newSession ? 'Authenticated' : 'Not authenticated');
       setSession(newSession);
 
-      // Exiting demo/guest runtime when a real session is established
-      if (newSession?.user) {
+      // Keep an active demo isolated from passive auth refresh/INITIAL_SESSION
+      // events — those must not silently end a demo the user is still
+      // browsing. But a SIGNED_IN event means the user just completed an
+      // explicit sign-in (password, magic link, OAuth) and must always exit
+      // demo/guest state, even if the UI control that triggered it forgot to
+      // clear the flag first — otherwise the real session renders with
+      // isDemoRuntimeActive() still true, and mock data / demo chrome keeps
+      // masking the authenticated account.
+      if (newSession?.user && (event === 'SIGNED_IN' || !isDemoSession())) {
         clearDemoSession();
         endGuestSession();
       }

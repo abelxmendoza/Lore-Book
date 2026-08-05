@@ -21,6 +21,11 @@ describe('buildPostedEventIngestPrompt', () => {
     expect(prompt).toContain('Eastside Collective');
     expect(prompt).toContain('Marcus brought the PA.');
     expect(prompt).toContain('2 flyer/photos');
+    expect(prompt).toContain('EVENT ENRICHMENT MODE');
+    expect(prompt).toContain('TARGET EVENT');
+    expect(prompt).toMatch(/canonical ingestion object/i);
+    expect(prompt).toMatch(/unresolved participant/i);
+    expect(prompt).toMatch(/organizations\/groups/i);
     expect(prompt).toMatch(/Do not create a duplicate event/i);
     expect(prompt).not.toMatch(/\bpost an event\b/i);
   });

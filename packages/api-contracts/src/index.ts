@@ -98,6 +98,7 @@ export {
   ROMANCE_QUERY_SORTS,
   romanceQueryRequestSchema,
   type RomanceQueryRequest,
+  type RomanceReciprocity,
   type RomanceQueryScope,
   type RomanceQueryResult,
   type RomanceQueryResponse,

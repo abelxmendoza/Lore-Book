@@ -200,6 +200,30 @@ describe('CharacterDetailModal', () => {
     expect(screen.getAllByText('John Doe').length).toBeGreaterThan(0);
   });
 
+  it('displays LoreBook forms prominently at the top of the modal', async () => {
+    const user = userEvent.setup();
+    render(
+      <CharacterDetailModal
+        character={mockCharacter}
+        onClose={mockOnClose}
+        onUpdate={mockOnUpdate}
+      />
+    );
+
+    const forms = screen.getByTestId('character-modal-lorebook-top');
+    expect(within(forms).getByText('LoreBook forms')).toBeInTheDocument();
+    expect(within(forms).getByText('Compile a LoreBook')).toBeInTheDocument();
+    expect(within(forms).getByText(/About/)).toHaveTextContent(/John Doe/);
+
+    await user.click(within(forms).getByRole('button', { name: /collapse lorebook forms/i }));
+    expect(within(forms).queryByRole('button', { name: /open forms/i })).not.toBeInTheDocument();
+    expect(within(forms).getByRole('button', { name: /expand lorebook forms/i })).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(within(forms).getByRole('button', { name: /expand lorebook forms/i }));
+    await user.click(within(forms).getByRole('button', { name: /open forms/i }));
+    expect(await screen.findByRole('dialog', { name: /compile a lorebook/i })).toBeInTheDocument();
+  });
+
   it('should call onClose when close button is clicked', async () => {
     const user = userEvent.setup();
     render(
@@ -235,6 +259,21 @@ describe('CharacterDetailModal', () => {
     expect(screen.queryByRole('button', { name: /^their network$/i })).not.toBeInTheDocument();
   });
 
+  it('keeps Intelligent Chat as the second character tab after Info', () => {
+    render(
+      <CharacterDetailModal
+        character={mockCharacter}
+        onClose={mockOnClose}
+        onUpdate={mockOnUpdate}
+      />
+    );
+
+    const characterNav = screen.getAllByRole('navigation', { name: 'Character sections' })[0]!;
+    const tabButtons = within(characterNav).getAllByRole('button');
+    expect(tabButtons[0]).toHaveAccessibleName('Info');
+    expect(tabButtons[1]).toHaveAccessibleName('Intelligent Chat');
+  });
+
   it('maps legacy network initialTab to Connections and shows wider network', async () => {
     render(
       <CharacterDetailModal
@@ -254,7 +293,7 @@ describe('CharacterDetailModal', () => {
     expect(screen.getAllByTestId('character-tab-connections').some((el) => el.getAttribute('aria-current') === 'page')).toBe(true);
   });
 
-  it('maps legacy history initialTab to Story and hides the old History tab', async () => {
+  it('maps legacy history initialTab to Timelines and hides the old History tab', async () => {
     render(
       <MemoryRouter>
         <CharacterDetailModal
@@ -275,7 +314,7 @@ describe('CharacterDetailModal', () => {
     expect(screen.queryByRole('button', { name: /^history$/i })).not.toBeInTheDocument();
   });
 
-  it('Intelligence Chat tab opens an in-modal launchpad without leaving the profile', async () => {
+  it('Intelligent Chat tab opens an in-modal launchpad without leaving the profile', async () => {
     const user = userEvent.setup();
     render(
       <CharacterDetailModal
@@ -285,7 +324,7 @@ describe('CharacterDetailModal', () => {
       />
     );
 
-    await user.click(screen.getAllByRole('button', { name: /intelligence chat/i })[0]!);
+    await user.click(screen.getAllByRole('button', { name: /intelligent chat/i })[0]!);
 
     expect(mockOnClose).not.toHaveBeenCalled();
     expect(mockOpenChatWithFocus).not.toHaveBeenCalled();
@@ -293,7 +332,7 @@ describe('CharacterDetailModal', () => {
     expect(screen.queryByTestId('chat-composer')).not.toBeInTheDocument();
   });
 
-  it('Open main chat from the Intelligence Chat launchpad hands off with the focus chip', async () => {
+  it('Open main chat from the Intelligent Chat launchpad hands off with the focus chip', async () => {
     const user = userEvent.setup();
     render(
       <CharacterDetailModal
@@ -303,7 +342,7 @@ describe('CharacterDetailModal', () => {
       />
     );
 
-    await user.click(screen.getAllByRole('button', { name: /intelligence chat/i })[0]!);
+    await user.click(screen.getAllByRole('button', { name: /intelligent chat/i })[0]!);
     await user.click(screen.getByTestId('character-open-main-chat'));
 
     expect(mockOnClose).toHaveBeenCalled();
@@ -313,11 +352,55 @@ describe('CharacterDetailModal', () => {
         entityName: 'John Doe',
         entityType: 'character',
         sourceSurface: 'characters',
+        sourceLabel: 'Character Book',
       }),
     );
   });
 
-  it('deep-linking with initialTab="chat" lands on the Intelligence Chat launchpad', async () => {
+  it('keeps Character Book visible when the character also has romance context', async () => {
+    const user = userEvent.setup();
+    render(
+      <CharacterDetailModal
+        character={mockCharacter}
+        onClose={mockOnClose}
+        onUpdate={mockOnUpdate}
+        relationship={{
+          id: 'romance-1',
+          person_id: 'char-1',
+          person_type: 'character',
+          person_name: 'John Doe',
+          relationship_type: 'crush',
+          status: 'active',
+          is_current: true,
+          affection_score: 0.7,
+          emotional_intensity: 0.6,
+          compatibility_score: 0.5,
+          relationship_health: 0.5,
+          is_situationship: false,
+          strengths: [],
+          weaknesses: [],
+          pros: [],
+          cons: [],
+          red_flags: [],
+          green_flags: [],
+          created_at: '2026-01-01T00:00:00.000Z',
+        }}
+      />
+    );
+
+    await user.click(screen.getAllByRole('button', { name: /intelligent chat/i })[0]!);
+    await user.click(screen.getByTestId('character-open-main-chat'));
+
+    expect(mockOpenChatWithFocus).toHaveBeenCalledWith(
+      expect.objectContaining({
+        relationshipId: 'romance-1',
+        sourceSurface: 'characters',
+        sourceLabel: 'Character Book',
+      }),
+    );
+  });
+
+  it('deep-linking with initialTab="chat" lands on the Intelligent Chat launchpad', async () => {
     render(
       <CharacterDetailModal
         character={mockCharacter}

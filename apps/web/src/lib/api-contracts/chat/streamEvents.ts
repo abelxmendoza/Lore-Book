@@ -57,6 +57,7 @@ export const chatStreamErrorEventSchema = z.object({
   ingestion: z.unknown().optional(),
   code: z.string().optional(),
   stage: z.string().optional(),
+  errorCategory: z.string().optional(),
 });
 
 export const chatStreamEventSchema = z.discriminatedUnion('type', [

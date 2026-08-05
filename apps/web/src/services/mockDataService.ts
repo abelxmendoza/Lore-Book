@@ -282,7 +282,6 @@ class MockDataRegistry {
         ? list.map((c, i) => (i === idx ? { ...c, ...character } : c))
         : [...list, character];
     this.registerCharacters(next);
-    this.emitChange('characters');
     const label = character.name || 'Character';
     if (character.status === 'archived') {
       emitDemoEffect({
@@ -300,7 +299,6 @@ class MockDataRegistry {
 
   removeCharacter(characterId: string): void {
     this.registerCharacters(this.getCharacters().filter((c) => c.id !== characterId));
-    this.emitChange('characters');
   }
 
   ensureGoalsValuesSeed(): GoalsValuesMockData {
@@ -507,6 +505,10 @@ class MockDataRegistry {
    */
   registerCharacters(characters: Character[]) {
     this.characters = characters;
+    // Registration can happen after a Book's first render during a direct
+    // /demo/characters load. Notify subscribers so the seeded roster becomes
+    // visible without requiring navigation or a manual refresh.
+    this.emitChange('characters');
   }
 
   registerLocations(locations: LocationProfile[]) {
@@ -1066,4 +1068,3 @@ export const mockDataService = {
       getEntityRelationships(entityType, entityId),
   },
 };
-

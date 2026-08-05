@@ -1,17 +1,15 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, MessageSquare, FileText, Eye, Save, RefreshCw, Loader2, AlertTriangle, Clock, User } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, MessageSquare, FileText, Eye, Save, Loader2, AlertTriangle, Clock, User, ArrowRight } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
-import { ChatComposer } from '../../features/chat/composer/ChatComposer';
-import { ChatMessage, type Message } from '../../features/chat/message/ChatMessage';
-import { useChatStream } from '../../hooks/useChatStream';
 import { perceptionApi } from '../../api/perceptions';
 import type { PerceptionEntry, PerceptionStatus } from '../../types/perception';
 import { formatDistanceToNow } from 'date-fns';
 import { Textarea } from '../ui/textarea';
 import { ReactionList } from '../reactions/ReactionList';
 import { PerceptionEvolutionTimeline } from './PerceptionEvolutionTimeline';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
 
 interface PerceptionDetailModalProps {
   perception: PerceptionEntry;
@@ -19,10 +17,9 @@ interface PerceptionDetailModalProps {
   onUpdate?: (perception: PerceptionEntry) => void;
 }
 
-type TabKey = 'chat' | 'details' | 'evolution';
+type TabKey = 'details' | 'evolution';
 
 const tabs: Array<{ key: TabKey; label: string; icon: typeof MessageSquare }> = [
-  { key: 'chat', label: 'Chat', icon: MessageSquare },
   { key: 'details', label: 'Details', icon: FileText },
   { key: 'evolution', label: 'Evolution', icon: Eye }
 ];
@@ -32,12 +29,10 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
   onClose,
   onUpdate
 }) => {
-  const [activeTab, setActiveTab] = useState<TabKey>('chat');
+  const [activeTab, setActiveTab] = useState<TabKey>('details');
   const [perception, setPerception] = useState<PerceptionEntry>(initialPerception);
   const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({
     content: perception.content,
@@ -45,9 +40,6 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
     status: perception.status,
     resolution_note: perception.resolution_note || ''
   });
-  const chatMessagesEndRef = useRef<HTMLDivElement>(null);
-
-  const { streamChat } = useChatStream();
 
   // Load full perception details
   useEffect(() => {
@@ -65,103 +57,22 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
     void loadPerception();
   }, [initialPerception.id]);
 
-  // Auto-scroll chat to bottom
-  useEffect(() => {
-    if (chatMessagesEndRef.current) {
-      chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages]);
-
-  // Handle chat with perception context
-  const handleChatMessage = useCallback(async (message: string) => {
-    if (!message.trim() || isLoading) return;
-
-    const userMessage: Message = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: message,
-      timestamp: new Date()
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setIsLoading(true);
-
-    try {
-      const contextPrompt = buildContextPrompt(perception);
-      const fullMessage = `${contextPrompt}\n\nUser: ${message}`;
-      
-      const assistantMessage: Message = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: '',
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, assistantMessage]);
-
-      let accumulatedContent = '';
-      await streamChat(
-        fullMessage,
-        [], // conversation history
-        (chunk: string) => {
-          accumulatedContent += chunk;
-          setMessages(prev => {
-            const updated = [...prev];
-            const lastMsg = updated[updated.length - 1];
-            if (lastMsg && lastMsg.role === 'assistant') {
-              lastMsg.content = accumulatedContent;
-            }
-            return updated;
-          });
-        },
-        () => {}, // onMetadata
-        () => {
-          setIsLoading(false);
-        },
-        (error: string) => {
-          console.error('Chat error:', error);
-          setIsLoading(false);
-        },
-        {
-          type: 'PERCEPTION',
-          id: perception.id
-        }
-      );
-    } catch (error) {
-      console.error('Error sending message:', error);
-      setIsLoading(false);
-    }
-  }, [perception, isLoading, streamChat]);
-
-  // Build context prompt for chat
-  const buildContextPrompt = (perception: PerceptionEntry): string => {
-    let prompt = `You are discussing a perception entry about ${perception.subject_alias}.\n\n`;
-    prompt += `HARD RULE: This is the user's perception, not objective truth about others.\n\n`;
-    prompt += `Perception Details:\n`;
-    prompt += `- Subject: ${perception.subject_alias}\n`;
-    prompt += `- Content: ${perception.content}\n`;
-    prompt += `- Source: ${perception.source}${perception.source_detail ? ` (${perception.source_detail})` : ''}\n`;
-    prompt += `- Confidence: ${Math.round(perception.confidence_level * 100)}%\n`;
-    prompt += `- Status: ${perception.status}\n`;
-    prompt += `- Impact on User: ${perception.impact_on_me}\n`;
-    if (perception.sentiment) {
-      prompt += `- Sentiment: ${perception.sentiment}\n`;
-    }
-    if (perception.resolution_note) {
-      prompt += `- Resolution: ${perception.resolution_note}\n`;
-    }
-    if (perception.evolution_notes && perception.evolution_notes.length > 0) {
-      prompt += `- Evolution Notes: ${perception.evolution_notes.join('; ')}\n`;
-    }
-    if (perception.original_content && perception.original_content !== perception.content) {
-      prompt += `- Original Belief: ${perception.original_content}\n`;
-    }
-    
-    prompt += `\nHelp the user understand, reflect on, or update this perception. `;
-    prompt += `Remember: This is their perception at a point in time, not objective truth. `;
-    prompt += `They can retract, resolve, or add evolution notes. `;
-    prompt += `Be conversational and help them process how this belief affected them.`;
-    
-    return prompt;
+  const openPerceptionInMainChat = () => {
+    onClose();
+    openChatWithFocus({
+      entityId: perception.id,
+      entityName: `Perception about ${perception.subject_alias}`,
+      entityType: 'perception',
+      sourceSurface: 'perceptions',
+      sourceLabel: 'Perception Book',
+      knowledgeScope: 'the recorded belief, its source, certainty, impact, status, and evolution',
+      initialPrompt:
+        `Let’s examine my recorded perception about ${perception.subject_alias}. Start with a grounded response ` +
+        'that clearly treats it as my belief at the time, not an objective fact about another person. Summarize the ' +
+        'recorded evidence, uncertainty, impact on me, and evolution, then invite me to clarify, resolve, or retract it.',
+      autoSubmit: true,
+      startNewThread: true,
+    });
   };
 
   const handleSave = async () => {
@@ -261,6 +172,26 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
           </div>
         </div>
 
+        <div className="border-b border-border/60 bg-orange-500/[0.06] px-4 py-3 sm:px-6">
+          <button
+            type="button"
+            onClick={openPerceptionInMainChat}
+            data-testid="perception-open-main-chat"
+            className="group flex w-full items-center justify-between gap-4 rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-left transition hover:border-orange-400/60 hover:bg-orange-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
+          >
+            <span className="flex min-w-0 items-center gap-3">
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-orange-300">
+                <MessageSquare className="h-4 w-4" />
+              </span>
+              <span className="min-w-0">
+                <span className="block font-semibold text-white">Focus this perception in main chat</span>
+                <span className="block text-xs text-white/60">LoreBook responds first while preserving uncertainty and evidence.</span>
+              </span>
+            </span>
+            <ArrowRight className="h-4 w-4 flex-shrink-0 text-orange-300 transition-transform group-hover:translate-x-1" />
+          </button>
+        </div>
+
         {/* Tabs */}
         <div className="flex items-center gap-1 px-6 pt-4 border-b border-border/60">
           {tabs.map((tab) => {
@@ -283,50 +214,10 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 pb-32">
+        <div className="flex-1 overflow-y-auto p-6">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            </div>
-          ) : activeTab === 'chat' ? (
-            <div className="h-full flex flex-col">
-              {/* Chat Messages */}
-              <div className="flex-1 overflow-y-auto space-y-4 mb-4">
-                {messages.length === 0 ? (
-                  <div className="text-center py-12">
-                    <MessageSquare className="w-12 h-12 text-white/30 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-white mb-2">Start a conversation</h3>
-                    <p className="text-sm text-white/60 mb-4">
-                      Ask questions, reflect on, or update this perception about {perception.subject_alias}
-                    </p>
-                    <div className="flex flex-wrap gap-2 justify-center">
-                      <button
-                        onClick={() => handleChatMessage(`Tell me more about this perception of ${perception.subject_alias}`)}
-                        className="text-xs px-3 py-1.5 bg-orange-500/20 text-orange-400 border border-orange-500/30 rounded hover:bg-orange-500/30 transition-colors"
-                      >
-                        Tell me more
-                      </button>
-                      <button
-                        onClick={() => handleChatMessage(`How did this perception affect me?`)}
-                        className="text-xs px-3 py-1.5 bg-orange-500/20 text-orange-400 border border-orange-500/30 rounded hover:bg-orange-500/30 transition-colors"
-                      >
-                        Impact analysis
-                      </button>
-                      <button
-                        onClick={() => handleChatMessage(`Should I retract or resolve this perception?`)}
-                        className="text-xs px-3 py-1.5 bg-orange-500/20 text-orange-400 border border-orange-500/30 rounded hover:bg-orange-500/30 transition-colors"
-                      >
-                        Resolution help
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  messages.map((message) => (
-                    <ChatMessage key={message.id} message={message} />
-                  ))
-                )}
-                <div ref={chatMessagesEndRef} />
-              </div>
             </div>
           ) : activeTab === 'details' ? (
             <div className="space-y-6">
@@ -441,7 +332,7 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
                         <p className="text-sm text-white/80 italic">{perception.impact_on_me}</p>
                       </div>
 
-                      {/* Source & Confidence */}
+                      {/* Source & Certainty */}
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="text-xs text-white/60 mb-1 block">Source</label>
@@ -457,7 +348,7 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
                           )}
                         </div>
                         <div>
-                          <label className="text-xs text-white/60 mb-1 block">Confidence</label>
+                          <label className="text-xs text-white/60 mb-1 block">Certainty</label>
                           <p className="text-sm text-white">{Math.round(perception.confidence_level * 100)}%</p>
                         </div>
                       </div>
@@ -515,15 +406,6 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
           ) : null}
         </div>
 
-        {/* Sticky Chatbox - Always visible at bottom */}
-        <div className="sticky bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-black/90 border-t border-primary/30 p-4 z-10 backdrop-blur-sm shadow-lg shadow-black/50">
-          <ChatComposer
-            onSubmit={handleChatMessage}
-            loading={isLoading}
-            disabled={isLoading}
-            threadId={`perception-chat:${perception.id}`}
-          />
-        </div>
       </div>
     </div>
   );

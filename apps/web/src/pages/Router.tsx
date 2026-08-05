@@ -229,9 +229,9 @@ export const Router = () => {
         }
       />
 
-      {/* /demo — public showcase runtime, no AuthGate, no ToS, synthetic cognition only */}
+      {/* /demo/* — public showcase runtime, no AuthGate, no ToS, synthetic cognition only */}
       <Route
-        path="/demo"
+        path="/demo/*"
         element={
           <LazyRoute>
             <Demo />

@@ -50,6 +50,7 @@ type RomanticRelationship = {
     note?: string;
   };
   metadata?: {
+    reciprocity?: 'unknown' | 'user_interest_only' | 'other_interest_only' | 'possible_mutual' | 'mutual_interest';
     signals?: {
       obsession_score?: number;
       attachment_intensity?: number;
@@ -58,6 +59,20 @@ type RomanticRelationship = {
     };
   } & Record<string, unknown>;
 };
+
+function reciprocityLabel(relationship: RomanticRelationship): string | null {
+  if (relationship.status.toLowerCase() === 'unrequited') return 'Unrequited';
+  switch (relationship.metadata?.reciprocity) {
+    case 'user_interest_only': return 'Your interest';
+    case 'other_interest_only': return 'Their interest';
+    case 'possible_mutual':
+      return relationship.relationship_type.toLowerCase() === 'crush'
+        ? 'Possible mutual crush'
+        : 'Possible mutual interest';
+    case 'mutual_interest': return 'Mutual interest';
+    default: return null;
+  }
+}
 
 interface RelationshipCardProps {
   relationship: RomanticRelationship;
@@ -161,6 +176,7 @@ export const RelationshipCard = ({
     (relationship.green_flags?.length ?? 0) > 0;
   const duration = getDuration(relationship);
   const heartFill = Math.max(0.15, Math.min(1, relationship.affection_score || 0.4));
+  const directionLabel = reciprocityLabel(relationship);
 
   const handleCardAction = (
     event: MouseEvent<HTMLButtonElement>,
@@ -206,6 +222,22 @@ export const RelationshipCard = ({
             strokeWidth={2}
           />
         </div>
+
+        {directionLabel && (
+          <p
+            className={cn(
+              'w-fit rounded-full border px-2 py-0.5 text-[10px] font-medium',
+              relationship.metadata?.reciprocity === 'mutual_interest'
+                ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-200'
+                : relationship.metadata?.reciprocity === 'possible_mutual'
+                  ? 'border-amber-300/25 bg-amber-300/10 text-amber-100'
+                  : 'border-violet-300/20 bg-violet-300/10 text-violet-200',
+            )}
+            data-testid="relationship-reciprocity"
+          >
+            {directionLabel}
+          </p>
+        )}
 
         {teaser && (
           <p className="text-[12px] leading-snug text-white/55 line-clamp-2 sm:text-[13px]">

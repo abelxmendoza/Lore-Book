@@ -7,13 +7,21 @@ export type EventCategory =
   | 'all'
   | 'recent'
   | 'birthdays'
+  | 'quinceaneras'
+  | 'weddings'
   | 'parties'
   | 'concerts_shows'
   | 'conventions'
+  | 'sports'
+  | 'festivals'
+  | 'graduations'
+  | 'religious_milestones'
   | 'work'
   | 'travel'
   | 'family'
-  | 'festivals'
+  | 'holidays'
+  | 'community'
+  | 'government_civic'
   | 'with_people'
   | 'with_locations';
 
@@ -34,12 +42,23 @@ export const CATEGORY_SUB_TABS: Partial<Record<EventCategory, { value: string; l
     { value: 'others', label: "Others'" },
     { value: 'kids', label: "Kids'" },
   ],
+  quinceaneras: [
+    { value: 'all', label: 'All' },
+    { value: 'mine', label: 'Mine' },
+    { value: 'family', label: 'Family' },
+    { value: 'friends', label: "Friends'" },
+  ],
+  weddings: [
+    { value: 'all', label: 'All' },
+    { value: 'ceremony', label: 'Ceremony' },
+    { value: 'reception', label: 'Reception' },
+    { value: 'destination', label: 'Destination' },
+  ],
   parties: [
     { value: 'all', label: 'All' },
     { value: 'raves', label: 'Raves' },
     { value: 'afters', label: 'Afters' },
     { value: 'celebrations', label: 'Celebrations' },
-    { value: 'weddings', label: 'Weddings' },
     { value: 'baby_showers', label: 'Baby Showers' },
     { value: 'game_nights', label: 'Game Nights' },
     { value: 'house_parties', label: 'House Parties' },
@@ -61,6 +80,13 @@ export const CATEGORY_SUB_TABS: Partial<Record<EventCategory, { value: string; l
     { value: 'meetups', label: 'Meetups' },
     { value: 'fan_cons', label: 'Fan Cons' },
   ],
+  sports: [
+    { value: 'all', label: 'All' },
+    { value: 'games', label: 'Games' },
+    { value: 'tournaments', label: 'Tournaments' },
+    { value: 'playing', label: 'Playing' },
+    { value: 'watching', label: 'Watching' },
+  ],
   work: [
     { value: 'all', label: 'All' },
     { value: 'meetings', label: 'Meetings' },
@@ -79,7 +105,6 @@ export const CATEGORY_SUB_TABS: Partial<Record<EventCategory, { value: string; l
     { value: 'dinners', label: 'Dinners' },
     { value: 'reunions', label: 'Reunions' },
     { value: 'holidays', label: 'Holidays' },
-    { value: 'weddings', label: 'Weddings' },
     { value: 'baby_showers', label: 'Baby Showers' },
   ],
   festivals: [
@@ -89,10 +114,50 @@ export const CATEGORY_SUB_TABS: Partial<Record<EventCategory, { value: string; l
     { value: 'arts', label: 'Arts' },
     { value: 'food', label: 'Food' },
   ],
+  graduations: [
+    { value: 'all', label: 'All' },
+    { value: 'high_school', label: 'High School' },
+    { value: 'college', label: 'College' },
+    { value: 'grad_school', label: 'Grad School' },
+  ],
+  religious_milestones: [
+    { value: 'all', label: 'All' },
+    { value: 'baptism', label: 'Baptism' },
+    { value: 'bar_bat_mitzvah', label: 'Bar/Bat Mitzvah' },
+    { value: 'first_communion', label: 'First Communion' },
+    { value: 'other_religious', label: 'Other' },
+  ],
+  holidays: [
+    { value: 'all', label: 'All' },
+    { value: 'christmas', label: 'Christmas' },
+    { value: 'thanksgiving', label: 'Thanksgiving' },
+    { value: 'new_year', label: "New Year's" },
+    { value: 'other_holiday', label: 'Other' },
+  ],
+  community: [
+    { value: 'all', label: 'All' },
+    { value: 'volunteering', label: 'Volunteering' },
+    { value: 'fundraisers', label: 'Fundraisers' },
+    { value: 'neighborhood', label: 'Neighborhood' },
+  ],
+  government_civic: [
+    { value: 'all', label: 'All' },
+    { value: 'voting', label: 'Voting' },
+    { value: 'civic_duty', label: 'Civic Duty' },
+    { value: 'public_meetings', label: 'Public Meetings' },
+  ],
 };
 
 export const CATEGORY_KEYWORDS: Partial<Record<EventCategory, string[]>> = {
   birthdays: ['birthday', 'birthdays', 'bday'],
+  quinceaneras: [
+    'quinceañera', 'quinceanera', 'quinceañeras', 'quinceaneras', 'quince',
+    'quince años', 'quince anos', 'sweet fifteen', 'xv años', 'xv anos', 'xv party',
+  ],
+  weddings: [
+    'wedding', 'weddings', 'bride', 'groom', 'vows', 'bridal', 'marriage ceremony',
+    'elopement', 'destination wedding', 'wedding reception', 'wedding day',
+  ],
   parties: [
     'party', 'parties', 'rave', 'raves', 'celebration', 'gathering', 'game night',
     'house party', 'afters', 'afterparty', 'after-party', 'after party', 'underground',
@@ -107,6 +172,13 @@ export const CATEGORY_KEYWORDS: Partial<Record<EventCategory, string[]>> = {
     'convention', 'conventions', 'conference', 'conferences', 'expo', 'expos',
     'meetup', 'meetups', 'summit', 'con',
   ],
+  sports: [
+    'sports', 'sporting event', 'game day', 'ballgame', 'tournament', 'tournaments',
+    'championship', 'playoff', 'playoffs', 'season opener', 'watch party',
+    'football game', 'basketball game', 'baseball game', 'hockey game', 'soccer game',
+    'tennis match', 'volleyball game', 'little league', 'rec league', 'pickup game',
+    'nfl', 'nba', 'mlb', 'nhl', 'mls', 'world cup', 'super bowl', 'world series',
+  ],
   work: [
     'work', 'meeting', 'meetings', 'presentation', 'client', 'office', 'conference',
     'business trip', 'offsite', 'interview',
@@ -120,13 +192,34 @@ export const CATEGORY_KEYWORDS: Partial<Record<EventCategory, string[]>> = {
     'wedding', 'weddings', 'baby shower',
   ],
   festivals: ['festival', 'festivals', 'fair', 'multi-day', 'rave festival', 'music fest'],
+  graduations: [
+    'graduation', 'graduations', 'graduated', 'commencement', 'diploma',
+    'cap and gown', 'degree ceremony',
+  ],
+  religious_milestones: [
+    'baptism', 'baptisms', 'christening', 'bar mitzvah', 'bat mitzvah', "b'nai mitzvah",
+    'first communion', 'communion', 'confirmation', 'religious ceremony', 'religious milestone',
+  ],
+  holidays: [
+    'holiday', 'holidays', 'christmas', 'thanksgiving', 'new year', "new year's",
+    'easter', 'halloween', 'hanukkah', 'fourth of july', 'independence day',
+  ],
+  community: [
+    'community event', 'community events', 'volunteer', 'volunteering', 'volunteer day',
+    'neighborhood event', 'neighborhood cleanup', 'fundraiser', 'charity event',
+    'food drive', 'blood drive', 'town fair', 'street fair',
+  ],
+  government_civic: [
+    'civic event', 'civic duty', 'jury duty', 'town hall', 'city council', 'voting', 'voted',
+    'election day', 'polling place', 'naturalization ceremony', 'swearing in',
+    'protest', 'rally', 'public hearing',
+  ],
 };
 
 export const SUB_KEYWORDS: Record<string, string[]> = {
   afters: ['afters', 'afterparty', 'after-party', 'after party', 'underground rave', 'rave afters'],
   raves: ['rave', 'raves', 'edm', 'underground'],
   celebrations: ['celebration', 'celebrations', 'birthday party', 'anniversary'],
-  weddings: ['wedding', 'weddings', 'reception', 'bridal', 'marriage ceremony'],
   baby_showers: ['baby shower', 'baby showers', 'bridal shower', 'gender reveal'],
   game_nights: ['game night', 'game nights', 'board game'],
   house_parties: ['house party', 'house parties'],
@@ -154,9 +247,35 @@ export const SUB_KEYWORDS: Record<string, string[]> = {
   rave_festivals: ['rave festival', 'edm festival', 'electronic festival', 'festival rave'],
   arts: ['arts festival', 'art fair', 'art festival'],
   food: ['food festival', 'food fair', 'food fest'],
-  mine: ['my birthday', 'my bday', 'turned today', 'celebrated my'],
+  mine: ['my birthday', 'my bday', 'turned today', 'celebrated my', 'my quinceañera', 'my quince', 'turning 15', 'my xv'],
   others: ['birthday party', 'birthday for', "friend's birthday", 'surprise party'],
   kids: ['kid birthday', "kid's birthday", 'child birthday', "children's party", 'kids party'],
+  family: ['sister', 'cousin', 'niece', "daughter's quince", 'family quinceañera', "daughter's quinceañera"],
+  friends: ["friend's quinceañera", "friend's quince", "best friend's quince"],
+  games: ['game', 'games', 'ballgame', 'match', 'matches', 'game day'],
+  tournaments: ['tournament', 'tournaments', 'championship', 'playoff', 'playoffs', 'bracket'],
+  playing: ['played', 'playing', 'i played', 'we played', 'my team', 'league game', 'rec league', 'pickup game'],
+  watching: ['watched', 'watching', 'watch party', 'tailgate', 'spectator'],
+  ceremony: ['ceremony', 'vows', 'altar', 'officiant'],
+  reception: ['reception', 'dancing', 'wedding reception'],
+  destination: ['destination wedding', 'abroad', 'overseas wedding'],
+  high_school: ['high school graduation', 'high school diploma', 'hs graduation'],
+  college: ['college graduation', 'college commencement', 'university graduation', "bachelor's"],
+  grad_school: ['grad school', 'graduate school', "master's", 'phd', 'doctorate'],
+  baptism: ['baptism', 'baptisms', 'christening'],
+  bar_bat_mitzvah: ['bar mitzvah', 'bat mitzvah', "b'nai mitzvah"],
+  first_communion: ['first communion', 'communion'],
+  other_religious: ['confirmation', 'religious ceremony'],
+  christmas: ['christmas', 'xmas'],
+  thanksgiving: ['thanksgiving'],
+  new_year: ['new year', "new year's", 'nye'],
+  other_holiday: ['easter', 'halloween', 'hanukkah', 'fourth of july', 'independence day'],
+  volunteering: ['volunteer', 'volunteering', 'volunteer day'],
+  fundraisers: ['fundraiser', 'charity event', 'food drive', 'blood drive'],
+  neighborhood: ['neighborhood event', 'neighborhood cleanup', 'town fair', 'street fair'],
+  voting: ['voting', 'voted', 'election day', 'polling place'],
+  civic_duty: ['jury duty', 'civic duty', 'naturalization ceremony', 'swearing in'],
+  public_meetings: ['town hall', 'city council', 'public hearing'],
 };
 
 export function eventCategoryText(event: EventsBookCategoryEvent): string {

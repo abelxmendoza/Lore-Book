@@ -1,5 +1,5 @@
 /**
- * @deprecated Import from CharacterStoryPanel — Timeline and History are now one Story tab.
+ * @deprecated Import from CharacterStoryPanel — Timeline and History are now one Timelines tab.
  * Re-exports kept so existing tests and deep imports keep working.
  */
 export {

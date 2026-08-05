@@ -235,7 +235,7 @@ class KeywordLexicalRescanService {
       const resolved = await omegaMemoryService.resolveEntities(userId, candidates);
       for (const entity of resolved) {
         if (entity.type !== 'PERSON' && entity.type !== 'CHARACTER') continue;
-        const characterId = await characterFoundationService.promoteOmegaEntityToCharacter(
+        const promotion = await characterFoundationService.promoteOmegaEntityToCharacter(
           userId,
           {
             id: entity.id,
@@ -247,7 +247,7 @@ class KeywordLexicalRescanService {
           null,
           { forcePromote: true }
         );
-        if (characterId) charactersPromoted += 1;
+        if (promotion) charactersPromoted += 1;
         else charactersSkipped += 1;
       }
 

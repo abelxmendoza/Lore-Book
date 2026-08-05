@@ -1,17 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Calendar, Tag, Users, Sparkles, MapPin, ChevronLeft, ChevronRight, FileText, Network, MessageSquare, Brain, Clock, Layers, Link2 } from 'lucide-react';
+import { X, Calendar, Tag, Users, Sparkles, MapPin, ChevronLeft, ChevronRight, FileText, Network, MessageSquare, Brain, Clock, Layers, Link2, ArrowRight } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
-import { ChatComposer } from '../../features/chat/composer/ChatComposer';
 import { MemoryComponents } from './MemoryComponents';
 import { KnowledgeGraphViewer } from '../graph/KnowledgeGraphViewer';
 import { ReactionList } from '../reactions/ReactionList';
 import { fetchJson } from '../../lib/api';
-import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { shouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { buildMockMemoryModalData } from '../../mocks/modalDemoData';
 import { memoryEntryToCard, type MemoryCard, type LinkedMemory } from '../../types/memory';
 import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
 
 type MemoryDetailModalProps = {
   memory: MemoryCard;
@@ -20,7 +20,7 @@ type MemoryDetailModalProps = {
   allMemories?: MemoryCard[]; // For navigation between memories
 };
 
-type TabKey = 'overview' | 'chat' | 'context' | 'connections' | 'linked' | 'insights';
+type TabKey = 'overview' | 'context' | 'connections' | 'linked' | 'insights';
 
 const moodColors: Record<string, string> = {
   happy: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',
@@ -45,7 +45,6 @@ const formatDate = (dateString: string) => {
 
 const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: 'overview', label: 'Overview', icon: FileText },
-  { key: 'chat', label: 'Chat', icon: MessageSquare },
   { key: 'context', label: 'Context', icon: Layers },
   { key: 'connections', label: 'Connections', icon: Network },
   { key: 'linked', label: 'Linked Memories', icon: Link2 },
@@ -74,8 +73,6 @@ export const MemoryDetailModal = ({ memory, onClose, onNavigate, allMemories = [
   const [chapterMemories, setChapterMemories] = useState<MemoryCard[]>([]);
   const [insights, setInsights] = useState<any>(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
-  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date }>>([]);
-  const [chatLoading, setChatLoading] = useState(false);
   const [linkedSearchTerm, setLinkedSearchTerm] = useState('');
   const [expandedLinkedId, setExpandedLinkedId] = useState<string | null>(null);
   const [similarMemories, setSimilarMemories] = useState<MemoryCard[]>([]);
@@ -306,7 +303,7 @@ export const MemoryDetailModal = ({ memory, onClose, onNavigate, allMemories = [
       } else if (e.key === 'ArrowRight' && nextMemory && !(e.target instanceof HTMLTextAreaElement)) {
         e.preventDefault();
         onNavigate?.(nextMemory.id);
-      } else if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '6') {
+      } else if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '5') {
         e.preventDefault();
         const tabIndex = parseInt(e.key) - 1;
         if (tabs[tabIndex]) {
@@ -319,106 +316,22 @@ export const MemoryDetailModal = ({ memory, onClose, onNavigate, allMemories = [
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [prevMemory, nextMemory, onClose, onNavigate]);
 
-  const handleChatSubmit = async (message: string) => {
-    if (!message.trim() || chatLoading) return;
-
-    const userMessage = { role: 'user' as const, content: message, timestamp: new Date() };
-    setChatMessages(prev => [...prev, userMessage]);
-    setChatLoading(true);
-
-    try {
-      // Build context about the memory
-      const memoryContext = `You are helping the user with a specific memory entry. Here's the context:
-
-Memory ID: ${memory.id}
-Date: ${memory.date}
-Title: ${memory.title}
-Content: ${fullContent || memory.content}
-Tags: ${memory.tags.join(', ')}
-Mood: ${memory.mood || 'none'}
-Characters: ${memory.characters.join(', ')}
-
-The user can ask questions about this memory, request to add details, update tags, change mood, or modify metadata. When they request updates, respond with a JSON object in this format: {"updates": {"tags": [...], "mood": "...", "summary": "...", "metadata": {...}}}`;
-
-      // Build conversation history with context
-      const conversationHistory = [
-        { role: 'assistant' as const, content: memoryContext },
-        ...chatMessages.map(msg => ({ role: msg.role, content: msg.content }))
-      ];
-
-      // Call chat API with memory context
-      const response = await fetchJson<{ answer: string; metadata?: any }>('/api/chat', {
-        method: 'POST',
-        body: JSON.stringify({
-          message,
-          conversationHistory,
-          entityContext: {
-            type: 'MEMORY',
-            id: memory.id
-          }
-        })
-      });
-
-      let assistantContent = response.answer || 'I understand. How can I help you with this memory?';
-      
-      // Try to parse updates from response if it contains JSON
-      let updates = null;
-      try {
-        const jsonMatch = assistantContent.match(/\{[\s\S]*"updates"[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          updates = parsed.updates;
-          // Remove JSON from response text
-          assistantContent = assistantContent.replace(jsonMatch[0], '').trim();
-        }
-      } catch (e) {
-        // Ignore JSON parsing errors
-      }
-
-      const assistantMessage = { 
-        role: 'assistant' as const, 
-        content: assistantContent, 
-        timestamp: new Date() 
-      };
-      setChatMessages(prev => [...prev, assistantMessage]);
-
-      // If updates are provided, apply them
-      if (updates) {
-        try {
-          await fetchJson(`/api/entries/${memory.id}`, {
-            method: 'PATCH',
-            body: JSON.stringify(updates)
-          });
-          // Show success message
-          const successMessage = { 
-            role: 'assistant' as const, 
-            content: '✓ Memory updated successfully!', 
-            timestamp: new Date() 
-          };
-          setChatMessages(prev => [...prev, successMessage]);
-          // Refresh page to show updates
-          setTimeout(() => window.location.reload(), 1000);
-        } catch (updateError) {
-          console.error('Update error:', updateError);
-          const errorMsg = { 
-            role: 'assistant' as const, 
-            content: 'Failed to update memory. Please try again.', 
-            timestamp: new Date() 
-          };
-          setChatMessages(prev => [...prev, errorMsg]);
-        }
-      }
-    } catch (error) {
-      console.error('Chat error:', error);
-      const errorMessage = { 
-        role: 'assistant' as const, 
-        content: 'Sorry, I encountered an error. Please try again.', 
-        timestamp: new Date() 
-      };
-      setChatMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setChatLoading(false);
-    }
+  const openMemoryInMainChat = () => {
+    onClose();
+    openChatWithFocus({
+      entityId: memory.id,
+      entityName: memory.title,
+      entityType: 'memory',
+      sourceSurface: 'lorebook',
+      sourceLabel: 'Memory Explorer',
+      knowledgeScope: 'this memory, its context, connections, linked memories, and supporting evidence',
+      initialPrompt:
+        `Let’s talk about “${memory.title}”. Start by giving me a grounded response about what LoreBook ` +
+        'currently understands about this memory and why it may matter. Use only recorded details, clearly ' +
+        'label uncertainty, connect it to supported people, places, and timeline moments, and then invite me to add or correct context.',
+      autoSubmit: true,
+      startNewThread: true,
+    });
   };
 
   const moodColor = memory.mood ? moodColors[memory.mood.toLowerCase()] || 'bg-gray-500/20 text-gray-300 border-gray-500/30' : undefined;
@@ -497,6 +410,27 @@ The user can ask questions about this memory, request to add details, update tag
               <X className="h-4 w-4" />
             </Button>
           </div>
+        </div>
+
+        {/* Main chat handoff */}
+        <div className="border-b border-border/60 bg-primary/[0.06] px-4 py-3 sm:px-6">
+          <button
+            type="button"
+            onClick={openMemoryInMainChat}
+            data-testid="memory-open-main-chat"
+            className="group flex w-full items-center justify-between gap-4 rounded-xl border border-primary/30 bg-primary/10 px-4 py-3 text-left transition hover:border-primary/60 hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <span className="flex min-w-0 items-center gap-3">
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary/20 text-primary">
+                <MessageSquare className="h-4 w-4" />
+              </span>
+              <span className="min-w-0">
+                <span className="block font-semibold text-white">Focus this memory in main chat</span>
+                <span className="block text-xs text-white/60">LoreBook responds first with a grounded view of this memory.</span>
+              </span>
+            </span>
+            <ArrowRight className="h-4 w-4 flex-shrink-0 text-primary transition-transform group-hover:translate-x-1" />
+          </button>
         </div>
 
         {/* Tab Navigation */}
@@ -1029,54 +963,6 @@ The user can ask questions about this memory, request to add details, update tag
                     <p>No linked memories found.</p>
                   </div>
                 )}
-              </div>
-            )}
-
-            {/* Chat Tab */}
-            {activeTab === 'chat' && (
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-2">Chat about this Memory</h3>
-                  <p className="text-sm text-white/60 mb-4">
-                    Ask questions, add details, or update information about this memory through conversation.
-                  </p>
-                </div>
-                <div className="space-y-4 max-h-[400px] overflow-y-auto">
-                  {chatMessages.length === 0 ? (
-                    <div className="text-center py-8 text-white/60">
-                      <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                      <p>Start a conversation about this memory</p>
-                      <p className="text-xs mt-2">Try: "Add more details about..." or "What tags should this have?"</p>
-                    </div>
-                  ) : (
-                    chatMessages.map((msg, idx) => (
-                      <div
-                        key={idx}
-                        className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                      >
-                        <div
-                          className={`max-w-[80%] rounded-lg p-3 ${
-                            msg.role === 'user'
-                              ? 'bg-primary/20 text-white'
-                              : 'bg-black/40 border border-border/50 text-white'
-                          }`}
-                        >
-                          <p className="text-sm">{msg.content}</p>
-                          <p className="text-xs text-white/40 mt-1">
-                            {msg.timestamp.toLocaleTimeString()}
-                          </p>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-                <div className="border-t border-border/60 pt-4">
-                  <ChatComposer
-                    onSubmit={handleChatSubmit}
-                    loading={chatLoading}
-                    threadId={`memory-chat:${memory.id}`}
-                  />
-                </div>
               </div>
             )}
 

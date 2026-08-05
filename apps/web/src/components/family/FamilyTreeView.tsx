@@ -258,14 +258,30 @@ export function inferEdges(members: FamilyMember[]): Array<{ from: string; to: s
     }
   }
 
-  // Self → Children
+  // Self → actual children. A niece/nephew may also be one generation below
+  // the selected ego, but that must not be drawn as a parent→child edge.
   if (self) {
-    for (const child of children) edges.push({ from: self.id, to: child.id });
+    for (const child of children) {
+      if (
+        child.relation === 'child' ||
+        child.relation === 'step_child' ||
+        child.relation === 'adopted_child' ||
+        child.relation === 'godchild'
+      ) {
+        edges.push({ from: self.id, to: child.id });
+      }
+    }
   }
 
   // Children → Grandchildren (side match)
-  for (const child of children) {
+  for (const child of children.filter(
+    (m) =>
+      m.relation === 'child' ||
+      m.relation === 'step_child' ||
+      m.relation === 'adopted_child',
+  )) {
     for (const gc of grandchildren) {
+      if (gc.relation !== 'grandchild') continue;
       if (gc.side && child.side && gc.side === child.side) {
         edges.push({ from: child.id, to: gc.id });
       }

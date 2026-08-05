@@ -70,6 +70,46 @@ describe('demoChatSimulation', () => {
     expect(result.mentionedEntities?.some((e) => e.name === 'San Diego')).toBe(true);
   });
 
+  it('does not misclassify a focused perception as a character', () => {
+    const result = buildDemoChatResponse('Help me examine this belief.', {
+      entityId: 'perception-1',
+      entityName: 'Perception about Jamie',
+      entityType: 'perception',
+      sourceSurface: 'perceptions',
+      sourceLabel: 'Perception Book',
+      sessionStats: {
+        messagesSent: 0,
+        connectionDelta: 0,
+        affectionDelta: 0,
+        lastUpdatedAt: new Date().toISOString(),
+      },
+    });
+
+    expect(result.content).toMatch(/not as an objective fact/i);
+    expect(result.mentionedEntities).toBeUndefined();
+    expect(result.creationOutcomes).toBeUndefined();
+  });
+
+  it('does not misclassify a focused event as a character', () => {
+    const result = buildDemoChatResponse('Tell me about this moment.', {
+      entityId: 'event-5',
+      entityName: 'Destination Wedding in Mexico',
+      entityType: 'event',
+      sourceSurface: 'events',
+      sourceLabel: 'Life Log',
+      sessionStats: {
+        messagesSent: 0,
+        connectionDelta: 0,
+        affectionDelta: 0,
+        lastUpdatedAt: new Date().toISOString(),
+      },
+    });
+
+    expect(result.mentionedEntities).toEqual([
+      expect.objectContaining({ id: 'event-5', name: 'Destination Wedding in Mexico', type: 'event' }),
+    ]);
+  });
+
   it('uses lexical ontology for new entities in demo chat', () => {
     mockDataService.register.characters([]);
     const result = buildDemoChatResponse(

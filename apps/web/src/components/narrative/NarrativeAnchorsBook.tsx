@@ -7,12 +7,14 @@ import {
   Calendar,
   Check,
   ChevronDown,
+  Clock3,
   Compass,
   FolderKanban,
   GraduationCap,
   Heart,
   Info,
   MapPin,
+  MessageCircle,
   Plane,
   RefreshCw,
   Repeat2,
@@ -23,14 +25,20 @@ import {
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { fetchJson } from '../../lib/api';
 import { cn } from '../../lib/cn';
+import { clipboardFilterLines } from '../../lib/listClipboard';
+import { meterFromNarrativeAnchorMoments } from '../../lib/lorebookContentMeter';
 import { isPrimaryNarrativeAnchor } from '../../lib/narrativeAnchorOntology';
 import { buildNarrativeAnchorsClipboardText } from '../../lib/narrativeAnchorsClipboard';
-import { clipboardFilterLines } from '../../lib/listClipboard';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { MOCK_NARRATIVE_ANCHORS } from '../../mocks/narrativeAnchors';
+import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
+import { LorebookContentMeter } from '../lorebook/LorebookContentMeter';
+import { BookQueryPanel } from '../query/BookQueryPanel';
 import { StorySurfaceLinks } from '../story/StorySurfaceLinks';
 import { Button } from '../ui/button';
 import {
@@ -39,7 +47,6 @@ import {
   type CardViewMode,
 } from '../ui/GridListViewToolbar';
 import { Input } from '../ui/input';
-import { BookQueryPanel } from '../query/BookQueryPanel';
 
 const ANCHORS_VIEW_STORAGE_KEY = 'lorebook.narrativeAnchors.viewMode';
 
@@ -139,7 +146,48 @@ function collectMembers(anchor: NarrativeAnchor) {
   ];
 }
 
-function NarrativeAnchorCard({ anchor }: { anchor: NarrativeAnchor }) {
+type AnchorActions = {
+  onOpenChat: (anchor: NarrativeAnchor) => void;
+  onOpenTimeline: (anchor: NarrativeAnchor) => void;
+};
+
+function AnchorChapterOutline({ anchor }: { anchor: NarrativeAnchor }) {
+  const years = formatYears(anchor.startDate, anchor.endDate);
+  const cast = [...anchor.entities, ...anchor.groups, ...anchor.places]
+    .map((member) => member.name)
+    .slice(0, 5);
+
+  return (
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">Chapter outline</p>
+      <ol className="mt-2 space-y-2 text-sm leading-relaxed text-white/65">
+        <li><span className="font-medium text-white/80">Setting:</span> {[years, cast.join(', ')].filter(Boolean).join(' · ') || 'Still being discovered'}</li>
+        <li><span className="font-medium text-white/80">Key moments:</span> {anchor.events.length ? anchor.events.map((event) => event.name).join(' · ') : 'Talk about this chapter to add its first moment.'}</li>
+        <li><span className="font-medium text-white/80">Meaning:</span> {anchor.evidence.length ? `${anchor.evidence.length} supporting ${anchor.evidence.length === 1 ? 'signal is' : 'signals are'} ready to explore.` : 'Lorekeeper is still learning what this chapter changed.'}</li>
+      </ol>
+    </div>
+  );
+}
+
+function AnchorCardActions({ anchor, onOpenChat, onOpenTimeline }: { anchor: NarrativeAnchor } & AnchorActions) {
+  const meter = meterFromNarrativeAnchorMoments(anchor.events.length);
+
+  return (
+    <div className="relative flex flex-wrap items-center gap-2 border-t border-white/[0.07] px-4 py-3 sm:px-5">
+      <div className="mr-auto rounded-full border border-amber-300/10 bg-amber-300/[0.04] px-2.5 py-1.5">
+        <LorebookContentMeter meter={meter} />
+      </div>
+      <Button type="button" size="sm" onClick={() => onOpenChat(anchor)} className="h-8 bg-cyan-300 text-slate-950 hover:bg-cyan-200">
+        <MessageCircle className="mr-1.5 h-3.5 w-3.5" /> Open in chat
+      </Button>
+      <Button type="button" size="sm" variant="outline" onClick={() => onOpenTimeline(anchor)} className="h-8 border-white/10 bg-white/[0.03] text-white/70 hover:bg-white/[0.08] hover:text-white">
+        <Clock3 className="mr-1.5 h-3.5 w-3.5" /> View timeline
+      </Button>
+    </div>
+  );
+}
+
+function NarrativeAnchorCard({ anchor, onOpenChat, onOpenTimeline }: { anchor: NarrativeAnchor } & AnchorActions) {
   const [expanded, setExpanded] = useState(false);
   const meta = TYPE_META[anchor.anchorType];
   const Icon = meta.icon;
@@ -198,7 +246,8 @@ function NarrativeAnchorCard({ anchor }: { anchor: NarrativeAnchor }) {
 
       {expanded && (
         <div className="relative mx-4 border-t border-white/[0.07] pb-5 pt-4 sm:mx-5">
-          <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+          <div className="grid gap-5 lg:grid-cols-2">
+            <AnchorChapterOutline anchor={anchor} />
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">Why Lorekeeper connected this</p>
               {visibleEvidence.length > 0 ? (
@@ -214,14 +263,13 @@ function NarrativeAnchorCard({ anchor }: { anchor: NarrativeAnchor }) {
                 <p className="mt-2 text-sm text-white/45">This connection comes from repeated people, places, and events in your memories.</p>
               )}
             </div>
-            {anchor.provenance?.builtAt && (
-              <p className="text-xs text-white/30 sm:text-right">
-                Updated {formatDistanceToNow(parseISO(anchor.provenance.builtAt), { addSuffix: true })}
-              </p>
-            )}
           </div>
+          {anchor.provenance?.builtAt && (
+            <p className="mt-4 text-xs text-white/30">Updated {formatDistanceToNow(parseISO(anchor.provenance.builtAt), { addSuffix: true })}</p>
+          )}
         </div>
       )}
+      <AnchorCardActions anchor={anchor} onOpenChat={onOpenChat} onOpenTimeline={onOpenTimeline} />
     </article>
   );
 }
@@ -230,11 +278,13 @@ function NarrativeAnchorListRow({
   anchor,
   expanded,
   onToggle,
+  onOpenChat,
+  onOpenTimeline,
 }: {
   anchor: NarrativeAnchor;
   expanded: boolean;
   onToggle: () => void;
-}) {
+} & AnchorActions) {
   const meta = TYPE_META[anchor.anchorType];
   const Icon = meta.icon;
   const years = formatYears(anchor.startDate, anchor.endDate);
@@ -276,21 +326,27 @@ function NarrativeAnchorListRow({
       </button>
       {expanded && (
         <div className="border-t border-white/[0.06] px-3 pb-4 pt-3 sm:px-4 sm:pl-[3.25rem]">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">Why Lorekeeper connected this</p>
-          {visibleEvidence.length > 0 ? (
-            <ul className="mt-2 space-y-1.5">
-              {visibleEvidence.slice(0, 5).map((evidence) => (
-                <li key={evidence.id} className="flex items-start gap-2 text-sm leading-relaxed text-white/65">
-                  <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-emerald-300/80" />
-                  <span>{evidence.label}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-2 text-sm text-white/45">This connection comes from repeated people, places, and events in your memories.</p>
-          )}
+          <div className="grid gap-5 lg:grid-cols-2">
+            <AnchorChapterOutline anchor={anchor} />
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">Why Lorekeeper connected this</p>
+              {visibleEvidence.length > 0 ? (
+                <ul className="mt-2 space-y-1.5">
+                  {visibleEvidence.slice(0, 5).map((evidence) => (
+                    <li key={evidence.id} className="flex items-start gap-2 text-sm leading-relaxed text-white/65">
+                      <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-emerald-300/80" />
+                      <span>{evidence.label}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-sm text-white/45">This connection comes from repeated people, places, and events in your memories.</p>
+              )}
+            </div>
+          </div>
         </div>
       )}
+      <AnchorCardActions anchor={anchor} onOpenChat={onOpenChat} onOpenTimeline={onOpenTimeline} />
     </div>
   );
 }
@@ -311,6 +367,7 @@ function LoadingState() {
 }
 
 export function NarrativeAnchorsBook() {
+  const navigate = useNavigate();
   const sharedDemoMode = useShouldUseMockData();
   // Authenticated users are intentionally prevented from enabling global mock
   // data. A scoped query flag allows safe visual QA of this surface without
@@ -392,6 +449,23 @@ export function NarrativeAnchorsBook() {
     setSearch('');
     setActiveType('all');
   };
+
+  const openAnchorInChat = useCallback((anchor: NarrativeAnchor) => {
+    openChatWithFocus({
+      entityId: anchor.id,
+      entityName: anchor.title,
+      entityType: 'memory',
+      sourceSurface: 'anchors',
+      sourceLabel: CHAT_FOCUS_SOURCE_LABELS.anchors,
+      knowledgeScope: 'the people, places, moments, evidence, and unanswered questions in this recurring life chapter',
+      initialPrompt: `I want to talk about the chapter “${anchor.title}”. Help me add real memories, clarify what happened, and strengthen its timeline and LoreBook.`,
+      startNewThread: true,
+    });
+  }, []);
+
+  const openAnchorTimeline = useCallback((anchor: NarrativeAnchor) => {
+    navigate(`/timeline?view=search&q=${encodeURIComponent(anchor.title)}`);
+  }, [navigate]);
 
   const clipboardText = useMemo(
     () =>
@@ -522,6 +596,8 @@ export function NarrativeAnchorsBook() {
                       onToggle={() =>
                         setExpandedListId((current) => (current === anchor.id ? null : anchor.id))
                       }
+                      onOpenChat={openAnchorInChat}
+                      onOpenTimeline={openAnchorTimeline}
                     />
                   ))}
                 </div>
@@ -531,7 +607,12 @@ export function NarrativeAnchorsBook() {
                   data-testid="narrative-anchors-grid"
                 >
                   {filtered.map((anchor) => (
-                    <NarrativeAnchorCard key={anchor.id} anchor={anchor} />
+                    <NarrativeAnchorCard
+                      key={anchor.id}
+                      anchor={anchor}
+                      onOpenChat={openAnchorInChat}
+                      onOpenTimeline={openAnchorTimeline}
+                    />
                   ))}
                 </div>
               )}

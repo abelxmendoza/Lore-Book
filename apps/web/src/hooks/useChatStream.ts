@@ -32,6 +32,14 @@ export type ChatStreamResult = {
   continuityCallback?: ContinuityCallback;
 };
 
+/** Non-sensitive classifier fields carried by a failed server stream. */
+export type ChatStreamFailureDetails = {
+  code?: string;
+  stage?: string;
+  errorCategory?: string;
+  noticeCode?: string;
+};
+
 export type MemoryFeedbackEvent = {
   chatMessageId: string;
   userId: string;
@@ -50,7 +58,7 @@ export type MemoryFeedbackEvent = {
     intensity: 'LOW' | 'MEDIUM' | 'HIGH' | null;
     isVenting: boolean;
   };
-  entitiesDetected: Array<{ name: string; type: string }>;
+  entitiesDetected: Array<{ name: string; type: string; entityId?: string; created?: boolean }>;
   temporalAnchor: { detected: boolean; precision?: string; confidence?: number };
   contradictionsDetected: Array<{ description: string }>;
 };
@@ -137,7 +145,11 @@ export const useChatStream = () => {
     onChunk: (content: string) => void,
     onMetadata: (metadata: any) => void,
     onComplete: (result?: ChatStreamResult) => void,
-    onError: (error: string, durability?: ChatStreamDurability) => void,
+    onError: (
+      error: string,
+      durability?: ChatStreamDurability,
+      details?: ChatStreamFailureDetails,
+    ) => void,
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
     currentContext?: CurrentContext,
     soulProfileContext?: SoulProfileContext | null,
@@ -434,8 +446,15 @@ export const useChatStream = () => {
             const streamErr = new Error(data.error || 'Stream error') as Error & {
               durability?: ChatStreamDurability;
               status?: number;
+              failureDetails?: ChatStreamFailureDetails;
             };
             if (data.durability) streamErr.durability = data.durability;
+            streamErr.failureDetails = {
+              ...(data.code ? { code: data.code } : {}),
+              ...(data.stage ? { stage: data.stage } : {}),
+              ...(data.errorCategory ? { errorCategory: data.errorCategory } : {}),
+              ...(data.notice?.code ? { noticeCode: data.notice.code } : {}),
+            };
             // Setup errors now arrive as SSE frames instead of HTTP status codes
             // (headers commit before chatStream() runs — see chat.ts). Synthesize
             // the one status code a downstream consumer actually branches on:
@@ -471,7 +490,11 @@ export const useChatStream = () => {
         error && typeof error === 'object' && 'durability' in error
           ? (error as { durability?: ChatStreamDurability }).durability
           : undefined;
-      onError(error instanceof Error ? error.message : 'Unknown error', durability);
+      const failureDetails =
+        error && typeof error === 'object' && 'failureDetails' in error
+          ? (error as { failureDetails?: ChatStreamFailureDetails }).failureDetails
+          : undefined;
+      onError(error instanceof Error ? error.message : 'Unknown error', durability, failureDetails);
     }
   }, [pollMemoryFeedback]);
 

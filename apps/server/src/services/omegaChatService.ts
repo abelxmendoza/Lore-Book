@@ -172,9 +172,9 @@ export type OmegaChatResponse = {
   mentionedEntities?: Array<{
     id: string;
     name: string;
-    type: 'character' | 'location' | 'organization';
+    type: 'character' | 'location' | 'organization' | 'event';
     confidence?: number;
-    provenance?: 'character_book' | 'location_book' | 'organization_book' | 'omega_entity';
+    provenance?: 'character_book' | 'location_book' | 'organization_book' | 'events_book' | 'omega_entity';
     mentionStatus?: 'confirmed' | 'mentioned_only';
     lifecycleStatus?: 'RESOLVED' | 'UNRESOLVED' | 'GENERIC' | 'GROUP' | 'IGNORE';
     identityStage?: 'MENTION' | 'CANDIDATE' | 'RESOLVED' | 'CHARACTER' | 'CORE_CHARACTER';
@@ -210,7 +210,7 @@ export type ChatSuggestedAction = {
 function buildSuggestedActions(input: {
   message: string;
   sources: ChatSource[];
-  mentionedEntities: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>;
+  mentionedEntities: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' | 'event' }>;
   timelineUpdates: string[];
   memorySuggestion: MemorySuggestion | null;
   disambiguationPrompt: StreamingChatResponse['metadata']['disambiguationPrompt'] | null;
@@ -372,9 +372,9 @@ export type StreamingChatResponse = {
     mentionedEntities?: Array<{
       id: string;
       name: string;
-      type: 'character' | 'location' | 'organization';
+      type: 'character' | 'location' | 'organization' | 'event';
       confidence?: number;
-      provenance?: 'character_book' | 'location_book' | 'organization_book' | 'omega_entity';
+      provenance?: 'character_book' | 'location_book' | 'organization_book' | 'events_book' | 'omega_entity';
       mentionStatus?: 'confirmed' | 'mentioned_only';
       lifecycleStatus?: 'RESOLVED' | 'UNRESOLVED' | 'GENERIC' | 'GROUP' | 'IGNORE';
       identityStage?: 'MENTION' | 'CANDIDATE' | 'RESOLVED' | 'CHARACTER' | 'CORE_CHARACTER';
@@ -409,9 +409,9 @@ export type StreamingChatResponse = {
 export type MentionedEntityChip = {
   id: string;
   name: string;
-  type: 'character' | 'location' | 'organization';
+  type: 'character' | 'location' | 'organization' | 'event';
   confidence?: number;
-  provenance?: 'character_book' | 'location_book' | 'organization_book' | 'omega_entity';
+  provenance?: 'character_book' | 'location_book' | 'organization_book' | 'events_book' | 'omega_entity';
   mentionStatus?: 'confirmed' | 'mentioned_only';
   lifecycleStatus?: 'RESOLVED' | 'UNRESOLVED' | 'GENERIC' | 'GROUP' | 'IGNORE';
   identityStage?: 'MENTION' | 'CANDIDATE' | 'RESOLVED' | 'CHARACTER' | 'CORE_CHARACTER';
@@ -796,14 +796,18 @@ class OmegaChatService {
         : '';
     const eventNote =
       chatFocus.sourceSurface === 'events' || chatFocus.entityType === 'event'
-        ? ' The user already saved this Life Log event. Do not create a duplicate. Read any attached flyer/photos, extract people/places/groups/what happened from evidence only, and enrich timelines plus related knowledge bases for this existing event.'
+        ? ` EVENT ENRICHMENT MODE: **${chatFocus.entityName}** (id: ${chatFocus.entityId}) is the canonical target event. Exclude it from duplicate event/entity creation, but never exclude it as the ingestion target. Extract participants, organizations/groups, locations, timing, activities, relationships, memories, timeline updates, themes, a concise narrative summary, confidence, and evidence references from user-authored notes and attachments only. Merge supported knowledge into this existing event and refresh connected knowledge bases. If the evidence explicitly establishes another participant without naming them, preserve an unresolved participant rather than omitting the person or inventing a name. Clearly label uncertainty and preserve provenance/review rules.`
+        : '';
+    const perceptionNote =
+      chatFocus.sourceSurface === 'perceptions' || chatFocus.entityType === 'perception'
+        ? ' PERCEPTION REFLECTION MODE: Treat the focused record as the user’s belief, interpretation, or secondhand claim at a point in time—not as objective truth about another person. Preserve its source, confidence, status, impact, evolution, and uncertainty. Do not create a character or canonical fact from the perception itself. Help the user clarify, resolve, retract, or add supported evolution while keeping provenance explicit.'
         : '';
     const timelineNote =
       chatFocus.sourceSurface === 'timeline'
         ? ' The user opened chat from a stitched Omni Timeline chapter. Treat the focus name and knowledge scope as the chapter’s working knowledge base: help them explore scenes, ask clarifying questions, and connect people/places/projects/skills that belong to this arc. Prefer evidence from their memories over invention. Call out gaps that would unlock a vignette or LoreBook compile, and propose durable connections when the user affirms them (Living Memory review before canon for high-risk claims).'
         : '';
     return `\n\n**USER NAVIGATION FOCUS**
-The user opened chat from **${chatFocus.sourceLabel}** (${chatFocus.sourceSurface}), actively focusing on **${chatFocus.entityName}**.${relationshipLine}${scopeLine}${deepening}${loveNote}${organizationNote}${eventNote}${timelineNote}
+The user opened chat from **${chatFocus.sourceLabel}** (${chatFocus.sourceSurface}), actively focusing on **${chatFocus.entityName}**.${relationshipLine}${scopeLine}${deepening}${loveNote}${organizationNote}${eventNote}${perceptionNote}${timelineNote}
 When updating relationship analytics or emotional signals from this thread, weight this focus context heavily.`;
   }
 
@@ -1407,7 +1411,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         entityContext = { type: 'CHARACTER', id: chatFocus.entityId };
       } else if (chatFocus.entityType === 'location') {
         entityContext = { type: 'LOCATION', id: chatFocus.entityId };
-      } else {
+      } else if (chatFocus.entityType !== 'event') {
         entityContext = { type: 'ENTITY', id: chatFocus.entityId };
       }
     }

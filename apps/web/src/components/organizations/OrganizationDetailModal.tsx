@@ -56,8 +56,7 @@ import { OrganizationActivityPanel } from './OrganizationActivityPanel';
 import { PostEventComposer, type PostEventComposerPrefill } from '../events/PostEventComposer';
 import { listDemoUserPostedEventsForOrganization, getDemoUserPostedEvent } from '../../mocks/userPostedEventsDemo';
 import { OrgTimelineMomentPanel } from './OrgTimelineMomentPanel';
-import { buildOrgTimelineMomentChatPrompt } from './orgTimelineMomentChat';
-import type { OrgDerivedEvent } from '../../mocks/organizationTimeline';
+import { openOrgTimelineMomentChat } from './orgTimelineMomentChat';
 import {
   FOCUSED_ENTITY_CHAT_PRESETS,
   ORGANIZATION_ROSTER_KNOWLEDGE_SCOPE,
@@ -67,7 +66,10 @@ import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { mutationErrorMessage } from '../../store/rtkMutationUtils';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
-import { getMockOrganizationDerivedEvents } from '../../mocks/organizationTimeline';
+import {
+  getMockOrganizationDerivedEvents,
+  type OrgDerivedEvent,
+} from '../../mocks/organizationTimeline';
 import {
   getMockOrganizationMentionTrace,
   getMockMemberAffiliations,
@@ -3789,10 +3791,12 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
         onContinueInChat={() => {
           const moment = timelineMoment;
           setTimelineMoment(null);
-          openOrgMainChat(
-            buildOrgTimelineMomentChatPrompt(moment, editedOrg.name),
-            'group timeline moment — recount, correct, and update knowledge',
-          );
+          onClose();
+          openOrgTimelineMomentChat({
+            event: moment,
+            organizationId: editedOrg.id,
+            organizationName: editedOrg.name,
+          });
         }}
         onPostAsEvent={
           timelineMoment.source === 'user_posted'

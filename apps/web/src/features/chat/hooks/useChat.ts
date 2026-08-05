@@ -31,11 +31,14 @@ import { threadPersistenceTracker } from '../services/threadPersistenceTracker';
 import { parseSlashCommand, handleSlashCommand } from '../../../utils/chatCommands';
 import { analytics } from '../../../lib/monitoring';
 import { useAppDispatch } from '../../../store/hooks';
-import { recordChatFocusMessage } from '../../../store/slices/selectionSlice';
+import { recordChatFocusMessage, setChatFocus } from '../../../store/slices/selectionSlice';
+import { emptyChatFocusSessionStats } from '../../../types/chatFocus';
 import type { ChatFocus } from '../../../types/chatFocus';
 import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
-import type { ChatImageAttachment } from '../types/chatImageAttachment';
-import { IMAGE_ATTACHED_PLACEHOLDER } from '../types/chatImageAttachment';
+import {
+  IMAGE_ATTACHED_PLACEHOLDER,
+  type ChatImageAttachment,
+} from '../types/chatImageAttachment';
 import type { ThreadEntity } from '../utils/collectThreadEntities';
 import {
   clearStoryAttempt,
@@ -440,10 +443,19 @@ export const useChat = () => {
     // (possibly lagging) active-thread adapter, which could append to whatever
     // thread is active by the time React commits and merge conversations.
     const streamThreadId = threadId;
-    const updateStreamMessage = (messageId: string, updates: Partial<Message>, opts?: { touchActivity?: boolean }) => {
+    const updateStreamMessage = (
+      messageId: string,
+      updates: Partial<Message> | ((msg: Message) => Partial<Message>),
+      opts?: { touchActivity?: boolean }
+    ) => {
       mutateThreadMessagesForThread(
         streamThreadId,
-        (prev) => prev.map((msg) => (msg.id === messageId ? { ...msg, ...updates } : msg)),
+        (prev) =>
+          prev.map((msg) =>
+            msg.id === messageId
+              ? { ...msg, ...(typeof updates === 'function' ? updates(msg) : updates) }
+              : msg
+          ),
         opts
       );
     };
@@ -1058,7 +1070,7 @@ export const useChat = () => {
             setTimeout(doRefresh, 11000);
           }
         },
-        (error, durability) => {
+        (error, durability, generationFailure) => {
           if (progressIntervalRef.current) {
             clearInterval(progressIntervalRef.current);
             progressIntervalRef.current = null;
@@ -1118,6 +1130,7 @@ export const useChat = () => {
               processing: 'failed',
               lastError: {
                 stage: userSaved ? 'generation' : 'cloud',
+                ...(generationFailure?.code ? { code: generationFailure.code } : {}),
                 message: String(error),
                 retryable: true,
                 occurredAt: new Date().toISOString(),
@@ -1130,6 +1143,7 @@ export const useChat = () => {
               relatedUserMessageId: userMessage.id,
               originalUserText: userMessage.content,
               frontendRecoveryDecision,
+              generationFailure,
               failedStage: userSaved
                 ? (durability?.assistantResponse?.status === 'failed'
                     ? 'assistant_generation'
@@ -1147,9 +1161,14 @@ export const useChat = () => {
               lifecycle: withLifecyclePatch(userMessage.lifecycle, {
                 localPersistence: 'saved',
                 cloudPersistence: 'saved',
-                processing: ingestionActive ? 'processing' : 'failed',
+                // Memory ingestion may continue after the assistant fails, but
+                // this lifecycle field describes the chat turn. Keeping it in
+                // "processing" hides the generation failure behind a generic
+                // "Saved to cloud" status and makes the turn look stuck.
+                processing: 'failed',
                 lastError: {
                   stage: 'generation',
+                  ...(generationFailure?.code ? { code: generationFailure.code } : {}),
                   message: String(error),
                   retryable: true,
                   occurredAt: new Date().toISOString(),
@@ -1160,6 +1179,7 @@ export const useChat = () => {
                 durability,
                 ingestionStatus: ingestionStatus ?? (ingestionActive ? 'QUEUED' : undefined),
                 frontendRecoveryDecision,
+                generationFailure,
               },
             });
             clearStoryAttempt(safetyAttempt.id);
@@ -1199,6 +1219,38 @@ export const useChat = () => {
         soulProfileContext ?? undefined,
         (feedback) => {
           updateStreamMessage(assistantMessageId, { cognitionFeedback: feedback });
+
+          const detected = feedback.entitiesDetected ?? [];
+          const newlyCreated = detected.filter((e) => e.created === true && e.entityId);
+          const alreadyExisting = detected.filter((e) => e.created === false && e.entityId);
+
+          // Newly-created entities: attach as chips on this turn's response,
+          // the same UI already used for entities resolved during the stream.
+          if (newlyCreated.length > 0) {
+            updateStreamMessage(assistantMessageId, (msg) => ({
+              mentionedEntities: [
+                ...(msg.mentionedEntities ?? []),
+                ...newlyCreated
+                  .filter((e) => !(msg.mentionedEntities ?? []).some((m) => m.id === e.entityId))
+                  .map((e) => ({ id: e.entityId as string, name: e.name, type: 'character' as const })),
+              ],
+            }));
+          }
+
+          // Already-existing entities: bring into the composer as a focus chip
+          // instead of re-announcing them as new. Single-slot — last one wins.
+          if (alreadyExisting.length > 0) {
+            const last = alreadyExisting[alreadyExisting.length - 1];
+            dispatch(setChatFocus({
+              entityId: last.entityId as string,
+              entityName: last.name,
+              entityType: 'character',
+              sourceSurface: 'characters',
+              sourceLabel: 'Character Book',
+              sessionStats: emptyChatFocusSessionStats(),
+              startNewThread: false,
+            }));
+          }
         },
         threadId,
         mergedThreadEntities.length > 0 ? mergedThreadEntities : undefined,

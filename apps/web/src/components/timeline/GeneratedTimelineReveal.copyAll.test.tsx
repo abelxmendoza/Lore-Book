@@ -44,4 +44,14 @@ describe('GeneratedTimelineReveal — Copy all', () => {
     render(<GeneratedTimelineReveal query="empty" events={[]} />);
     expect(screen.queryByTestId('generated-timeline-copy-all')).not.toBeInTheDocument();
   });
+
+  it('opens the current timeline context in main chat', () => {
+    const onOpenChat = vi.fn();
+    render(<GeneratedTimelineReveal query="Everything with Marcus" events={[]} onOpenChat={onOpenChat} />);
+
+    fireEvent.click(screen.getByTestId('generated-timeline-open-chat'));
+
+    expect(onOpenChat).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Talk about this in chat')).toBeInTheDocument();
+  });
 });

@@ -4,6 +4,8 @@
  */
 
 import type { OrgDerivedEvent } from '../../mocks/organizationTimeline';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 
 function fmtDate(iso: string | null): string | null {
   if (!iso) return null;
@@ -47,6 +49,25 @@ export function buildOrgTimelineMomentChatPrompt(
   ]
     .filter(Boolean)
     .join(' ');
+}
+
+export function openOrgTimelineMomentChat(input: {
+  event: OrgDerivedEvent;
+  organizationId: string;
+  organizationName: string;
+}): void {
+  openChatWithFocus({
+    entityId: input.organizationId,
+    entityName: input.organizationName,
+    entityType: 'organization',
+    sourceSurface: 'organizations',
+    sourceLabel: CHAT_FOCUS_SOURCE_LABELS.organizations,
+    knowledgeScope: 'group timeline moment — recount, correct, and update knowledge',
+    initialPrompt: buildOrgTimelineMomentChatPrompt(input.event, input.organizationName),
+    autoSubmit: true,
+    startNewThread: true,
+    arrivedAt: Date.now(),
+  });
 }
 
 /** True when this timeline row is a durable Life Log Event (vs detected stub). */

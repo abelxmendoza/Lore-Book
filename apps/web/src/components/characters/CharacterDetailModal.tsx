@@ -64,7 +64,7 @@ import { EntityProvenancePanel } from './EntityProvenancePanel';
 import { ContradictionResolutionPanel } from './ContradictionResolutionPanel';
 import { CharacterStoryPanel } from './CharacterStoryPanel';
 import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
-import { CharacterKnowledgeBase } from './CharacterKnowledgeBase';
+import { CharacterKnowledgeBase, type CharacterKnowledgeBaseData } from './CharacterKnowledgeBase';
 import { CharacterEvidenceLocker } from './CharacterEvidenceLocker';
 import { CharacterMediaPanel } from './CharacterMediaPanel';
 import { RelationshipPeripheralsPanel } from './RelationshipPeripheralsPanel';
@@ -85,7 +85,6 @@ import { getCharacterDisplayTitle } from '../../lib/characterDisplayTitle';
 import { CharacterTitleSection } from './CharacterTitleSection';
 import { useCharacterQuery } from '../../hooks/useCharacterQuery';
 import type { CharacterChatMention } from '../../hooks/useCharacterProfileBundleTypes';
-import type { CharacterKnowledgeBaseData } from './CharacterKnowledgeBase';
 import { useUpdateCharacterMutation, useReclassifyEntityMutation } from '../../store/api/entitiesApi';
 
 type SocialMedia = {
@@ -198,7 +197,7 @@ type CharacterDetailModalProps = {
 
 type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'timeline' | 'chat' | 'insights' | 'metadata' | 'knowledge' | 'evidence' | 'photos' | 'messages';
 
-/** Legacy `network` deep-links land on Connections; legacy `history` → Story. */
+/** Legacy `network` deep-links land on Connections; legacy `history` → Timelines. */
 function resolveInitialTab(tab: TabKey | 'network' | 'history' | undefined): TabKey {
   if (tab === 'network') return 'relationships';
   if (tab === 'history') return 'timeline';
@@ -207,10 +206,10 @@ function resolveInitialTab(tab: TabKey | 'network' | 'history' | undefined): Tab
 
 const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof FileText }> = [
   { key: 'info',          label: 'Info',              shortLabel: 'Info',       icon: FileText },
+  { key: 'chat',          label: 'Intelligent Chat',  shortLabel: 'Chat',       icon: MessageSquare },
   { key: 'knowledge',     label: 'What I Know',       shortLabel: 'Know',       icon: Brain },
-  { key: 'chat',          label: 'Intelligence Chat', shortLabel: 'Chat',       icon: MessageSquare },
   { key: 'relationships', label: 'Connections',       shortLabel: 'Links',      icon: Network },
-  { key: 'timeline',      label: 'Story',             shortLabel: 'Story',      icon: BookOpen },
+  { key: 'timeline',      label: 'Timelines',         shortLabel: 'Timelines',  icon: BookOpen },
   { key: 'insights',      label: 'Insights',          shortLabel: 'Insights',   icon: BarChart3 },
   { key: 'perceptions',   label: 'Perceptions',       shortLabel: 'Views',      icon: Eye },
   { key: 'photos',        label: 'Photo Gallery',     shortLabel: 'Photos',     icon: ImageIcon },
@@ -349,6 +348,7 @@ export const CharacterDetailModal = ({
   const [updateCharacter] = useUpdateCharacterMutation();
   const [editingImportance, setEditingImportance] = useState(false);
   const [importanceSaving, setImportanceSaving] = useState(false);
+  const [lorebookFormsExpanded, setLorebookFormsExpanded] = useState(true);
   const isMainCharacter = isMainCharacterProp ?? isSelfCharacter(character);
   const characterQueryEnabled =
     !isMockDataEnabled &&
@@ -1339,8 +1339,10 @@ export const CharacterDetailModal = ({
         entityType: 'character',
         relationshipId: romantic.id,
         relationshipName: getCharacterDisplayTitle(editedCharacter),
-        sourceSurface: 'love',
-        sourceLabel: CHAT_FOCUS_SOURCE_LABELS.love,
+        // The relationship context still travels with the handoff, but the
+        // visible source remains the Character Book the user opened it from.
+        sourceSurface: 'characters',
+        sourceLabel: CHAT_FOCUS_SOURCE_LABELS.characters,
         knowledgeScope: 'romantic relationship from character profile',
         ...(trimmed ? { initialPrompt: trimmed } : {}),
         arrivedAt: Date.now(),
@@ -2077,7 +2079,7 @@ export const CharacterDetailModal = ({
     }
   }, [activeTab, insights, loadingInsights, editedCharacter]);
 
-  // ── Load intelligence (dynamics + influence) for Info / Story tabs ───────────
+  // ── Load intelligence (dynamics + influence) for Info / Timelines tabs ───────
   useEffect(() => {
     if ((activeTab !== 'info' && activeTab !== 'timeline') || dynamicsLoaded) return;
     const name = encodeURIComponent(character.name);
@@ -3061,14 +3063,8 @@ export const CharacterDetailModal = ({
                   </p>
                 )}
 
-                {/* LoreBook + meta chips share one row */}
+                {/* Identity meta chips */}
                 <div className="flex flex-wrap items-center gap-1">
-                  <EntityLorebookCompileControl
-                    subjectLabel={displayName || editedCharacter.name}
-                    focus={{ characterId: editedCharacter.id, themes: displayName || editedCharacter.name }}
-                    testId="character-modal-lorebook-compile"
-                    className="py-0.5 pl-1.5 pr-1.5"
-                  />
                   {editingImportance ? (
                     <select
                       autoFocus
@@ -3265,6 +3261,51 @@ export const CharacterDetailModal = ({
           </div>
         </div>
 
+        {/* LoreBook forms — prominent and consistent across mobile + desktop */}
+        <section
+          className="shrink-0 border-b border-amber-500/25 bg-gradient-to-r from-amber-500/10 via-amber-950/15 to-transparent"
+          data-testid="character-modal-lorebook-top"
+          aria-labelledby="character-modal-lorebook-title"
+        >
+          <button
+            type="button"
+            onClick={() => setLorebookFormsExpanded((expanded) => !expanded)}
+            className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-amber-500/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-400/60 sm:px-4"
+            aria-expanded={lorebookFormsExpanded}
+            aria-controls="character-modal-lorebook-content"
+            aria-label={`${lorebookFormsExpanded ? 'Collapse' : 'Expand'} LoreBook forms`}
+          >
+            <span className="min-w-0">
+              <span className="block text-[9px] font-mono uppercase tracking-[0.16em] text-amber-400/70">LoreBook forms</span>
+              <span id="character-modal-lorebook-title" className="block truncate text-sm font-semibold text-amber-50">
+                Compile a LoreBook
+              </span>
+            </span>
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 text-amber-300/70 transition-transform ${lorebookFormsExpanded ? 'rotate-180' : ''}`}
+              aria-hidden
+            />
+          </button>
+
+          {lorebookFormsExpanded && (
+            <div
+              id="character-modal-lorebook-content"
+              className="flex flex-col gap-2 border-t border-amber-500/10 px-3 pb-2.5 pt-2 sm:flex-row sm:items-center sm:justify-between sm:px-4"
+            >
+              <p className="min-w-0 truncate text-[11px] text-amber-100/55">
+                About <span className="text-amber-200/90">“{displayName || editedCharacter.name}”</span> — see what unlocks as you gather moments.
+              </p>
+              <EntityLorebookCompileControl
+                subjectLabel={displayName || editedCharacter.name}
+                focus={{ characterId: editedCharacter.id, themes: displayName || editedCharacter.name }}
+                buttonLabel="Open forms"
+                testId="character-modal-lorebook-compile"
+                className="shrink-0 self-start sm:self-auto"
+              />
+            </div>
+          )}
+        </section>
+
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
           <div className="flex-1 overflow-hidden flex flex-col md:flex-row min-h-0">
           {/* Desktop: vertical sidebar */}
@@ -3304,7 +3345,7 @@ export const CharacterDetailModal = ({
             </div>
 
             {canDeleteCharacter && (
-              <div className="flex-shrink-0 border-t border-amber-500/15 p-2 sm:p-3">
+              <div className="flex-shrink-0 border-t border-white/10 px-2 py-1.5">
                 <button
                   type="button"
                   onClick={() => {
@@ -3312,11 +3353,11 @@ export const CharacterDetailModal = ({
                     setDeleteConfirmText('');
                     setDeleteError(null);
                   }}
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-xs sm:text-sm font-medium text-amber-200/80 hover:text-amber-100 hover:bg-amber-500/10 border border-transparent hover:border-amber-500/20 transition text-left"
+                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium text-amber-200/65 hover:text-amber-100 hover:bg-amber-500/10 transition"
                   aria-label="Archive character"
                 >
-                  <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
-                  <span>Archive character</span>
+                  <Trash2 className="h-3 w-3 flex-shrink-0" />
+                  <span>Archive</span>
                 </button>
               </div>
             )}
@@ -4057,7 +4098,7 @@ export const CharacterDetailModal = ({
               />
             )}
 
-            {/* Story Tab — events + journal memories (was Timeline / History) */}
+            {/* Timelines Tab — events + journal memories (was Story / History) */}
             {!loadingDetails && activeTab === 'timeline' && (
               <CharacterStoryPanel
                 characterId={character.id}
@@ -4443,7 +4484,7 @@ export const CharacterDetailModal = ({
                   </h3>
                   <p className="text-sm text-white/50 max-w-md mx-auto">
                     Stay in this profile to keep browsing tabs. When you&apos;re ready, open main chat
-                    with their focus chip — full thread, memory, and composer live there.
+                    with their Character Book focus chip — full thread, memory, and composer live there.
                   </p>
                 </div>
                 <div className="grid grid-cols-1 gap-1.5 sm:gap-2 max-w-lg mx-auto text-left">

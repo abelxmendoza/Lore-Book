@@ -98,6 +98,24 @@ const rows: RomanceQuerySource[] = [
     relationship_health: 0.25,
   }),
   row({
+    id: "possible-mutual",
+    person_name: "Riley",
+    relationship_type: "crush",
+    metadata: {
+      reciprocity: "possible_mutual",
+      signals: { signal_strength: "moderate" },
+    },
+  }),
+  row({
+    id: "mutual",
+    person_name: "Casey",
+    relationship_type: "crush",
+    metadata: {
+      reciprocity: "mutual_interest",
+      signals: { signal_strength: "strong" },
+    },
+  }),
+  row({
     id: "review",
     person_name: "Taylor",
     relationship_type: "talking",
@@ -117,8 +135,8 @@ describe("romanceQueryService", () => {
       scopes: ["crush"],
     });
     const result = compileRomanceQuery(rows, request("Show my crushes"));
-    expect(result.results.map((item) => item.personName)).toEqual(["Jamie"]);
-    expect(result.results[0].scopes).not.toContain("dating");
+    expect(result.results.map((item) => item.personName)).toEqual(["Casey", "Jamie", "Riley"]);
+    expect(result.results.every((item) => !item.scopes.includes("dating"))).toBe(true);
   });
 
   it("queries active dating connections and past history", () => {
@@ -133,6 +151,24 @@ describe("romanceQueryService", () => {
         (item) => item.personName,
       ),
     ).toEqual(["Morgan"]);
+  });
+
+  it("separates one-sided, possible mutual, and confirmed mutual interest", () => {
+    expect(
+      compileRomanceQuery(rows, request("Show one-sided crushes")).results.map(
+        (item) => item.personName,
+      ),
+    ).toEqual(["Jamie"]);
+    expect(
+      compileRomanceQuery(rows, request("Show possible mutual crushes")).results.map(
+        (item) => item.personName,
+      ),
+    ).toEqual(["Riley"]);
+    expect(
+      compileRomanceQuery(rows, request("Show mutual interest")).results.map(
+        (item) => item.personName,
+      ),
+    ).toEqual(["Casey", "Marcus"]);
   });
 
   it("does not expose unsupported scores or rank them above grounded scores", () => {

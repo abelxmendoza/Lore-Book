@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ..event_schema import TimelineEvent
+
+UTC = timezone.utc
 
 
 class MonthlyArcEngine:

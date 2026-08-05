@@ -236,7 +236,10 @@ IMPORTANT:
    */
   async createPerceptionsFromExtraction(
     userId: string,
-    extraction: PerceptionExtractionResult
+    extraction: PerceptionExtractionResult,
+    /** Linkage back to the source this was extracted from (e.g. the chat
+     *  message/utterance/session), merged into every created entry's metadata. */
+    linkageMetadata?: Record<string, unknown>
   ): Promise<Array<{ id: string; subject_alias: string }>> {
     const created: Array<{ id: string; subject_alias: string }> = [];
 
@@ -251,7 +254,8 @@ IMPORTANT:
           confidence_level: perception.confidence_level ?? 0.3,
           sentiment: perception.sentiment,
           timestamp_heard: perception.timestamp_heard || new Date().toISOString(),
-          impact_on_me: perception.impact_on_me
+          impact_on_me: perception.impact_on_me,
+          metadata: linkageMetadata,
         };
 
         const createdPerception = await perceptionService.createPerceptionEntry(userId, input);

@@ -133,13 +133,13 @@ describe('EventsBook', () => {
 
     expect(screen.getByRole('tablist', { name: /Moment categories/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Birthdays/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Weddings/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Parties/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Concerts|Shows/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Conventions/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: /Parties/i }));
     expect(screen.getByTestId('events-book-subcategory-tabs')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Weddings/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Baby Showers/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Raves/i })).toBeInTheDocument();
 
@@ -200,7 +200,7 @@ describe('EventsBook', () => {
     expect(screen.getByRole('button', { name: /copy all/i })).toBeInTheDocument();
   });
 
-  it('supports grid and list on Patterns without Copy all', async () => {
+  it('supports grid and list on Patterns, with Copy all', async () => {
     vi.mocked(fetchJson).mockResolvedValue({
       success: true,
       scenes: [samplePattern],
@@ -211,7 +211,7 @@ describe('EventsBook', () => {
 
     expect(await screen.findByText('Punk Shows')).toBeInTheDocument();
     expect(screen.getByTestId('patterns-book-grid')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /copy all/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /copy all/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /list view/i }));
     expect(screen.getByTestId('patterns-book-list')).toBeInTheDocument();
@@ -219,6 +219,29 @@ describe('EventsBook', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /grid view/i }));
     expect(screen.getByTestId('patterns-book-grid')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /copy all/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /copy all/i })).toBeInTheDocument();
+  });
+
+  it('copies pattern data to the clipboard from Patterns', async () => {
+    vi.mocked(fetchJson).mockResolvedValue({
+      success: true,
+      scenes: [samplePattern],
+    });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(<EventsBook />);
+    fireEvent.click(screen.getByRole('button', { name: /^Patterns$/i }));
+    expect(await screen.findByText('Punk Shows')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /copy all/i }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const copied = writeText.mock.calls[0][0] as string;
+    expect(copied).toContain('Life Log / Patterns');
+    expect(copied).toContain('Punk Shows');
   });
 });
