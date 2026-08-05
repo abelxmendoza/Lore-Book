@@ -3176,11 +3176,24 @@ export const CharacterBook = () => {
     setCurrentPage(1);
   }, [searchTerm, activeCategory, importanceFilter, sortOrder]);
 
-  // Calculate pagination - always use grid pagination (multiple characters per page)
-  const totalPages = Math.ceil(filteredCharacters.length / ITEMS_PER_PAGE);
+  // Calculate pagination — paginate the same ordered list the grid actually
+  // renders (clipboardCharacters already matches sortOrder: standing/impact/role).
+  const totalPages = Math.ceil(clipboardCharacters.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
-  const paginatedCharacters = filteredCharacters.slice(startIndex, endIndex);
+  const paginatedCharacters = clipboardCharacters.slice(startIndex, endIndex);
+
+  // Current page's characters re-grouped by importance level, for the "By role" view —
+  // headers show the full group size, but only this page's members render underneath.
+  const pagedGroupedByImportance = useMemo(() => {
+    const groups: Record<string, Character[]> = {};
+    paginatedCharacters.forEach((char) => {
+      const level = isPublicFigure(char) ? 'public_figure' : char.importance_level || 'minor';
+      if (!groups[level]) groups[level] = [];
+      groups[level].push(char);
+    });
+    return groups;
+  }, [paginatedCharacters]);
 
   // Arrow key navigation
   useEffect(() => {
@@ -3927,7 +3940,7 @@ export const CharacterBook = () => {
                       <span className="text-xs font-normal text-white/40">({charactersByStanding.length})</span>
                     </h4>
                     <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                      {charactersByStanding.map((character, index) => {
+                      {paginatedCharacters.map((character, index) => {
                         try {
                           const isUpdated = character.id && recentlyUpdatedIds.has(character.id);
                           return (
@@ -3961,7 +3974,7 @@ export const CharacterBook = () => {
                       <span className="text-xs font-normal text-white/40">({charactersByImpact.length})</span>
                     </h4>
                     <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                      {charactersByImpact.map((character, index) => {
+                      {paginatedCharacters.map((character, index) => {
                         try {
                           const isUpdated = character.id && recentlyUpdatedIds.has(character.id);
                           return (
@@ -4002,10 +4015,15 @@ export const CharacterBook = () => {
                     })
                     .map(([level, chars]) => {
                       const isCollapsed = collapsedSections[level] ?? (['minor', 'background'].includes(level));
-                      
-                      // Skip empty groups
+
+                      // Skip groups with no members at all under the current filters
                       if (chars.length === 0) return null;
-                      
+
+                      // Only this page's slice of the group actually renders below —
+                      // a group can be fully on another page, so hide it here too.
+                      const pageChars = pagedGroupedByImportance[level] ?? [];
+                      if (pageChars.length === 0) return null;
+
                       return (
                         <div key={level} className="space-y-2">
                           <button
@@ -4020,7 +4038,7 @@ export const CharacterBook = () => {
                           </button>
                           {!isCollapsed && (
                             <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                              {chars.map((character, index) => {
+                              {pageChars.map((character, index) => {
                                 try {
                                   const isUpdated = character.id && recentlyUpdatedIds.has(character.id);
                                   return (
@@ -4059,6 +4077,7 @@ export const CharacterBook = () => {
                   size="sm"
                   onClick={goToPrevious}
                   disabled={currentPage === 1}
+                  data-testid="character-book-page-previous"
                   className="text-white/50 hover:text-white hover:bg-purple-500/10 disabled:opacity-30 w-full sm:w-auto text-xs sm:text-sm"
                 >
                   <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
@@ -4105,6 +4124,7 @@ export const CharacterBook = () => {
                   size="sm"
                   onClick={goToNext}
                   disabled={currentPage === totalPages}
+                  data-testid="character-book-page-next"
                   className="text-white/50 hover:text-white hover:bg-purple-500/10 disabled:opacity-30 w-full sm:w-auto text-xs sm:text-sm"
                 >
                   Next
