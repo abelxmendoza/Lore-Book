@@ -115,15 +115,35 @@ describe('Sidebar', () => {
     expect(screen.getAllByText('Account & help').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('renders story-entity nav: Characters, Locations, Life Log, Groups, Skills, Dating & Romance', () => {
+  it('renders story-entity nav: Characters, Family, Dating & Romance, then Groups', () => {
     render(<Sidebar {...defaultProps} />);
     expect(screen.getAllByRole('button', { name: /Open chat interface/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open characters view/i }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole('button', { name: /Open family view/i }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole('button', { name: /Open love and relationships/i }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole('button', { name: /Open groups view/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open locations view/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open life log/i }).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByRole('button', { name: /Open groups view/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open skills view/i }).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByRole('button', { name: /Open love and relationships/i }).length).toBeGreaterThanOrEqual(1);
+
+    const focusButtons = screen
+      .getAllByRole('button')
+      .map((btn) => btn.getAttribute('aria-label') ?? '')
+      .filter((label) =>
+        [
+          'Open characters view',
+          'Open family view',
+          'Open love and relationships',
+          'Open groups view',
+        ].includes(label),
+      );
+    // Desktop + mobile drawers both render the Focus on… cluster; assert the first cluster order.
+    expect(focusButtons.slice(0, 4)).toEqual([
+      'Open characters view',
+      'Open family view',
+      'Open love and relationships',
+      'Open groups view',
+    ]);
   });
 
   it('navigates when Chat is clicked', async () => {

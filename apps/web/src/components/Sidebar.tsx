@@ -154,6 +154,21 @@ const SidebarContent = ({
           </button>
           <button
             type="button"
+            onClick={() => handleSurfaceChange('love')}
+            aria-label="Open love and relationships"
+            aria-current={activeSurface === 'love' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
+              activeSurface === 'love'
+                ? 'border-pink-500 bg-pink-500/10 text-white'
+                : 'border-transparent text-white/70 hover:border-pink-500 hover:bg-pink-500/10'
+            )}
+          >
+            <Heart className="h-4 w-4 text-pink-400 shrink-0" aria-hidden="true" />
+            <span className="flex-1 text-left">Dating & Romance</span>
+          </button>
+          <button
+            type="button"
             onClick={() => handleSurfaceChange('organizations')}
             aria-label="Open groups view"
             aria-current={activeSurface === 'organizations' ? 'page' : undefined}
@@ -256,20 +271,6 @@ const SidebarContent = ({
             {counts && counts.projects > 0 && (
               <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.projects}</span>
             )}
-          </button>
-          <button
-            onClick={() => handleSurfaceChange('love')}
-            aria-label="Open love and relationships"
-            aria-current={activeSurface === 'love' ? 'page' : undefined}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
-              activeSurface === 'love'
-                ? 'border-pink-500 bg-pink-500/10 text-white'
-                : 'border-transparent text-white/70 hover:border-pink-500 hover:bg-pink-500/10'
-            )}
-          >
-            <Heart className="h-4 w-4 text-pink-400" aria-hidden="true" />
-            Dating & Romance
           </button>
 
           {/* 3. Gossip & claims */}
