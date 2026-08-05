@@ -45,6 +45,12 @@ import { useGuest } from '../../contexts/GuestContext';
 import { getGuestCharacters } from '../../services/guestLoreStore';
 import { getMockRomanticRelationships } from '../../mocks/romanticRelationships';
 import { mergeRomanticDemoCharacters } from '../../mocks/romanticPeripheralCharacters';
+import {
+  isCoParentRomanceType,
+  isDivorcedRomanceType,
+  isMarriedRomanceType,
+  normalizeRomanceTypeKey,
+} from '../../lib/romanticRelationshipLabel';
 import { FocusedEntityChatLauncher } from '../chat/FocusedEntityChatLauncher';
 import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
 import { openFocusedEntityChat } from '../../lib/openFocusedEntityChat';
@@ -351,24 +357,27 @@ export const dummyCharacters: Character[] = [
     last_name: '',
     alias: ['Alex'],
     pronouns: 'she/her',
-    archetype: 'romantic',
-    role: 'Girlfriend',
+    // Duplicate of Dating & Romance girlfriend Alex (char-001) — keep graph id
+    // but do not show a second Romantic bond card.
+    archetype: 'friend',
+    role: 'Studio visitor',
     status: 'active',
-    importance_level: 'protagonist',
-    importance_score: 95,
+    importance_level: 'supporting',
+    importance_score: 40,
     proximity_level: 'direct',
     relationship_depth: 'close',
     has_met: true,
     is_nickname: false,
-    summary: 'My girlfriend of 6 months. We met through Sarah at a coffee shop a year ago. She\'s incredibly supportive of my creative journey, often visiting my home studio to listen to my music. She makes me laugh, remembers the little things, and we share a love for hiking and nature. Our relationship has been growing stronger, and she was the first person I called when I had the EP concept breakthrough.',
-    tags: ['romantic', 'supportive', 'relationship', 'creative'],
+    summary: 'Same person as girlfriend Alex in Dating & Romance — retained for older demo graph links. Open char-001 for the bond.',
+    tags: ['creative', 'supportive'],
     metadata: {
-      relationship_type: 'romantic',
+      relationship_type: 'friend',
       closeness_score: 92,
-      first_met: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 1 year ago
+      merged_into: 'char-001',
+      first_met: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       relationships: {
-        'dummy-1': { type: 'friend', closeness: 75 }, // Sarah
-        'dummy-2': { type: 'friend', closeness: 70 }, // Marcus
+        'dummy-1': { type: 'friend', closeness: 75 },
+        'dummy-2': { type: 'friend', closeness: 70 },
       },
       locations: {
         'loc-home-studio': { visit_count: 18, first_visit: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString(), last_visit: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString() },
@@ -378,7 +387,7 @@ export const dummyCharacters: Character[] = [
       },
     },
     social_media: {},
-    memory_count: 32, // Matches relationship timeline
+    memory_count: 32,
     relationship_count: 5
   },
   {
@@ -1952,13 +1961,14 @@ export const dummyCharacters: Character[] = [
     alias: ['Alex'],
     pronouns: 'she/her',
     archetype: 'romantic',
-    role: 'Girlfriend',
+    // Romance identity lives on Dating & Romance — not Role / tags.
+    role: '',
     status: 'active',
     importance_level: 'protagonist',
     importance_score: 95,
     is_nickname: false,
     summary: 'My girlfriend of 6 months. We met at a coffee shop downtown when I was working on a writing project during my creative transition. Alex is incredibly supportive of my shift from tech to creative work - she even helped me set up my home studio. She\'s met Sarah (my best friend) and Jordan (my sibling), and they all get along well. We often go on walks in Golden Gate Park together, and she makes me laugh even when I\'m stressed about music production deadlines. Great communication, shares my values, and respects my creative process.',
-    tags: ['romantic', 'girlfriend', 'active', 'love', 'relationship'],
+    tags: ['home studio'],
     metadata: {
       relationship_type: 'girlfriend',
       closeness_score: 92,
@@ -2438,6 +2448,9 @@ type CharacterCategory =
   | 'family'
   | 'friends'
   | 'romantic'
+  | 'married'
+  | 'divorced'
+  | 'co_parents'
   | 'romantic_peripheral'
   | 'exes'
   | 'enemies'
@@ -2498,7 +2511,7 @@ const relationshipSignalsFor = (char: Character): Set<string> => {
     .join(' ');
 
   if (/\b(?:my|his|her|their|our)\s+(?:grandmother|grandfather|mom|dad|mother|father|sister|brother|cousin|aunt|uncle|grandma|grandpa|abuela|abuelo|t[ií]o|t[ií]a|family)\b/.test(text) || /\bfamily\s+(?:member|side|relative)\b/.test(text)) signals.add('family');
-  if (/\b(dated|dating|date|romantic|girlfriend|boyfriend|situationship|crush|ex|hooked up|went out|partner|wife|husband)\b/.test(text)) signals.add('romantic');
+  if (/\b(dated|dating|date|romantic|girlfriend|boyfriend|situationship|crush|ex|hooked up|went out|partner|wife|husband|divorced|co-?parent|baby mama|baby daddy|married)\b/.test(text)) signals.add('romantic');
   if (/\b(mentor|mentorship|teacher|instructor|bootcamp|coach|professor|advisor|taught me|guided me)\b/.test(text)) signals.add('mentor');
   if (/\b(summit staffing|northwind logistics|agency|recruiter|onboarding|hiring|background check|identity verification|paperwork|professional|colleague|coworker|co worker|job|career|client|manager|boss)\b/.test(text)) signals.add('professional');
   if (/\b(bandmate|creative|collaborator|collab|co founder|cofounder|artist|music|writing|producer|dj|show|set|song|studio|make music|record|perform)\b/.test(text)) signals.add('creative');
@@ -2553,13 +2566,33 @@ const relationshipSignalsFor = (char: Character): Set<string> => {
 const characterMatchesRelationshipCategory = (char: Character, category: CharacterCategory): boolean => {
   const signals = relationshipSignalsFor(char);
   const met = char.status !== 'unmet';
+  const romanceType = normalizeRomanceTypeKey(
+    typeof char.metadata?.relationship_type === 'string' ? char.metadata.relationship_type : null,
+  );
   switch (category) {
     case 'family':
       return signals.has('family');
     case 'friends':
       return met && (signals.has('friend') || signals.has('ally'));
     case 'romantic':
-      return met && (signals.has('romantic') || signals.has('past_romantic') || signals.has('dating') || signals.has('ex_girlfriend') || signals.has('ex_boyfriend') || signals.has('situationship') || signals.has('crush'));
+      return met && (
+        signals.has('romantic')
+        || signals.has('past_romantic')
+        || signals.has('dating')
+        || signals.has('ex_girlfriend')
+        || signals.has('ex_boyfriend')
+        || signals.has('situationship')
+        || signals.has('crush')
+        || isMarriedRomanceType(romanceType)
+        || isDivorcedRomanceType(romanceType)
+        || isCoParentRomanceType(romanceType)
+      );
+    case 'married':
+      return met && isMarriedRomanceType(romanceType);
+    case 'divorced':
+      return isDivorcedRomanceType(romanceType);
+    case 'co_parents':
+      return met && isCoParentRomanceType(romanceType);
     case 'mentors':
       return met && (signals.has('mentor') || signals.has('coach') || signals.has('teacher') || signals.has('instructor'));
     case 'professional':
@@ -2567,7 +2600,7 @@ const characterMatchesRelationshipCategory = (char: Character, category: Charact
     case 'creative':
       return met && (signals.has('creative') || signals.has('collaborator') || signals.has('bandmate'));
     case 'exes':
-      return signals.has('ex') || char.archetype === 'past_romantic' || /^ex_/.test(String(char.metadata?.relationship_type ?? ''));
+      return signals.has('ex') || char.archetype === 'past_romantic' || /^ex_/.test(String(char.metadata?.relationship_type ?? '')) || isDivorcedRomanceType(romanceType);
     case 'enemies':
       return signals.has('enemy') || signals.has('nemesis');
     case 'rivals':
@@ -2614,6 +2647,11 @@ type RomanticRelationship = {
   created_at: string;
   rank_among_all?: number;
   rank_among_active?: number;
+  character_id?: string;
+  metadata?: {
+    has_kids_together?: boolean;
+    [key: string]: unknown;
+  };
 };
 
 export const CharacterBook = () => {
@@ -3057,6 +3095,9 @@ export const CharacterBook = () => {
           case 'family':
           case 'friends':
           case 'romantic':
+          case 'married':
+          case 'divorced':
+          case 'co_parents':
           case 'exes':
           case 'enemies':
           case 'rivals':
@@ -3066,6 +3107,23 @@ export const CharacterBook = () => {
           case 'professional':
           case 'creative':
             // Public figures belong in their own tab, not personal relationships.
+            // Prefer linked Dating & Romance row type when present so Character Book
+            // Married / Divorced / Co-parents match the Dating surface.
+            if (activeCategory === 'married' || activeCategory === 'divorced' || activeCategory === 'co_parents') {
+              const linked = relationships.get(char.id);
+              const linkedType = linked?.relationship_type ?? (
+                typeof char.metadata?.relationship_type === 'string'
+                  ? char.metadata.relationship_type
+                  : null
+              );
+              if (activeCategory === 'married') {
+                return !isPublicFigure(char) && isMarriedRomanceType(linkedType);
+              }
+              if (activeCategory === 'divorced') {
+                return !isPublicFigure(char) && isDivorcedRomanceType(linkedType);
+              }
+              return !isPublicFigure(char) && isCoParentRomanceType(linkedType);
+            }
             return !isPublicFigure(char) && characterMatchesRelationshipCategory(char, activeCategory);
           case 'public_figure':
             return isPublicFigure(char);
@@ -3104,7 +3162,7 @@ export const CharacterBook = () => {
     }
     
     return filtered;
-  }, [characters, searchTerm, activeCategory, importanceFilter]);
+  }, [characters, searchTerm, activeCategory, importanceFilter, relationships]);
 
   const mainCharacter = useMemo(() => {
     const self = characters.find(isSelfCharacter);
@@ -3520,6 +3578,31 @@ export const CharacterBook = () => {
             >
               <HeartIcon className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>Romantic</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="married"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-300 text-xs sm:text-sm flex-shrink-0"
+              data-testid="character-filter-married"
+            >
+              <Heart className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span>Married</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="divorced"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-stone-500/20 data-[state=active]:text-stone-300 text-xs sm:text-sm flex-shrink-0"
+              data-testid="character-filter-divorced"
+            >
+              <HeartCrack className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span>Divorced</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="co_parents"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-cyan-500/20 data-[state=active]:text-cyan-300 text-xs sm:text-sm flex-shrink-0"
+              data-testid="character-filter-co-parents"
+            >
+              <Users className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Co-parents</span>
+              <span className="sm:hidden">Co-par.</span>
             </TabsTrigger>
             <TabsTrigger
               value="exes"

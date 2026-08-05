@@ -35,12 +35,21 @@ const ROMANCE_IDENTITY_TYPES = new Set([
   'ex_wife',
   'ex_husband',
   'ex_lover',
+  'divorced',
+  'co_parent',
+  'baby_mama',
+  'baby_daddy',
   'infatuation',
   'obsession',
   'hooking_up',
   'friends_with_benefits',
   'talking',
 ]);
+
+/** Married / divorced / co-parent taxonomies — shared with Dating & Romance tabs. */
+export const MARRIED_ROMANCE_TYPES = new Set(['wife', 'husband']);
+export const DIVORCED_ROMANCE_TYPES = new Set(['divorced', 'ex_wife', 'ex_husband']);
+export const CO_PARENT_ROMANCE_TYPES = new Set(['co_parent', 'baby_mama', 'baby_daddy']);
 
 /** Tags that only restate romance / status already on the card. */
 export const ROMANCE_NOISE_TAGS = new Set([
@@ -57,6 +66,13 @@ export const ROMANCE_NOISE_TAGS = new Set([
   'partner',
   'girlfriend',
   'boyfriend',
+  'wife',
+  'husband',
+  'divorced',
+  'co_parent',
+  'baby_mama',
+  'baby_daddy',
+  'married',
 ]);
 
 export function humanizeRomanceToken(value: string): string {
@@ -84,7 +100,21 @@ export function isRomanceIdentityType(value?: string | null): boolean {
   if (!key) return false;
   if (ROMANCE_IDENTITY_TYPES.has(key)) return true;
   if (key.startsWith('ex_')) return true;
-  return /situationship|girlfriend|boyfriend|wife|husband|crush|dating|lover|fianc/.test(key);
+  return /situationship|girlfriend|boyfriend|wife|husband|crush|dating|lover|fianc|divorced|co[_ ]?parent|baby[_ ]?(mama|daddy)/.test(
+    key,
+  );
+}
+
+export function isMarriedRomanceType(value?: string | null): boolean {
+  return MARRIED_ROMANCE_TYPES.has(normalizeRomanceTypeKey(value));
+}
+
+export function isDivorcedRomanceType(value?: string | null): boolean {
+  return DIVORCED_ROMANCE_TYPES.has(normalizeRomanceTypeKey(value));
+}
+
+export function isCoParentRomanceType(value?: string | null): boolean {
+  return CO_PARENT_ROMANCE_TYPES.has(normalizeRomanceTypeKey(value));
 }
 
 /** True when a badge label is just restating situationship / the romance type. */
@@ -118,6 +148,19 @@ export function composeRomanticRelationshipBadgeLabel(rel: RomanticLabelInput): 
     statusKey && statusKey !== 'active'
       ? humanizeRomanceToken(statusKey)
       : null;
+
+  // Married / divorced / co-parent — same vocabulary as Dating & Romance showcase.
+  if (isMarriedRomanceType(type)) {
+    return ['Married', statusLabel ?? (statusKey === 'active' || !statusKey ? 'Active' : null)]
+      .filter(Boolean)
+      .join(' · ');
+  }
+  if (isDivorcedRomanceType(type)) {
+    return ['Divorced', statusLabel ?? 'Ended'].filter(Boolean).join(' · ');
+  }
+  if (isCoParentRomanceType(type)) {
+    return ['Co-parent', statusLabel].filter(Boolean).join(' · ') || 'Co-parent';
+  }
 
   // Situationship identity once — match Dating & Romance showcase shape.
   if (type === 'situationship' || rel.is_situationship) {
@@ -160,11 +203,11 @@ export function resolveCharacterRomanceIdentity(input: {
   const roleType = isRomanceIdentityType(input.role) ? input.role : null;
   const tagType = (input.tags ?? []).find((tag) => isRomanceIdentityType(tag)) ?? null;
   const type = metaType || roleType || tagType;
-  if (!type && !/romantic|past_romantic/i.test(String(input.archetype ?? ''))) {
-    return null;
-  }
+  // Do not invent a Dating bond from archetype alone — Dating & Romance owns that.
+  if (!type) return null;
 
-  const inferredType = normalizeRomanceTypeKey(type) || 'dating';
+  const inferredType = normalizeRomanceTypeKey(type);
+  if (!inferredType) return null;
   const isSituationship =
     inferredType === 'situationship' ||
     (input.tags ?? []).some((tag) => normalizeSignalLabel(tag) === 'situationship');

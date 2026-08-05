@@ -30,7 +30,12 @@ import {
 import { getMockCharacterSuggestionBookNames } from '../../mocks/characterSuggestions';
 import type { CharacterSuggestion } from '../../api/entitySuggestions';
 import { getRomanticDemoProfile } from '../../mocks/romanticDemoProfiles';
-import { composeRomanticRelationshipBadgeLabel } from '../../lib/romanticRelationshipLabel';
+import {
+  composeRomanticRelationshipBadgeLabel,
+  isCoParentRomanceType,
+  isDivorcedRomanceType,
+  isMarriedRomanceType,
+} from '../../lib/romanticRelationshipLabel';
 import {
   getMockRomanticBookCharacterById,
   mergeRomanticDemoCharacters,
@@ -135,9 +140,6 @@ const NO_CONTACT_STATUSES = new Set(['ghosted', 'blocked']);
 const RECONNECTION_STATUSES = new Set(['rekindled']);
 const CRUSH_TYPES = new Set(['crush', 'obsession', 'infatuation', 'lust']);
 const DATING_TYPES = new Set(['dating', 'boyfriend', 'girlfriend', 'lover', 'in_love', 'fiancé', 'fiancée', 'wife', 'husband']);
-const MARRIED_TYPES = new Set(['wife', 'husband']);
-const DIVORCED_TYPES = new Set(['divorced', 'ex_wife', 'ex_husband']);
-const CO_PARENT_TYPES = new Set(['co_parent', 'baby_mama', 'baby_daddy']);
 
 const relationshipStatus = (relationship: RomanticRelationship) => relationship.status.toLowerCase();
 const relationshipType = (relationship: RomanticRelationship) => relationship.relationship_type.toLowerCase();
@@ -157,11 +159,11 @@ const romanceReciprocity = (relationship: RomanticRelationship) =>
 const isDatingRelationship = (relationship: RomanticRelationship) =>
   DATING_TYPES.has(relationshipType(relationship)) && isActiveRelationship(relationship);
 const isMarriedRelationship = (relationship: RomanticRelationship) =>
-  MARRIED_TYPES.has(relationshipType(relationship));
+  isMarriedRomanceType(relationship.relationship_type);
 const isDivorcedRelationship = (relationship: RomanticRelationship) =>
-  DIVORCED_TYPES.has(relationshipType(relationship));
+  isDivorcedRomanceType(relationship.relationship_type);
 const isCoParentRelationship = (relationship: RomanticRelationship) =>
-  CO_PARENT_TYPES.has(relationshipType(relationship));
+  isCoParentRomanceType(relationship.relationship_type);
 const isNoContactRelationship = (relationship: RomanticRelationship) =>
   NO_CONTACT_STATUSES.has(relationshipStatus(relationship));
 const hasReconnectionPotential = (relationship: RomanticRelationship) =>

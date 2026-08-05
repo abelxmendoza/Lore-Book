@@ -35,6 +35,10 @@ import {
   type DemoMetricKey,
 } from '../../mocks/romanticDemoProfiles';
 import { pickMetricReason } from '../../lib/relationshipScoreReasons';
+import {
+  composeRomanticRelationshipBadgeLabel,
+} from '../../lib/romanticRelationshipLabel';
+import { getRelationshipStatusClasses } from './relationshipStatusColors';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 import {
   useDeleteRomanticRelationshipMutation,
@@ -533,8 +537,12 @@ export const RelationshipDetailModal = ({
             <Heart className="w-5 h-5 sm:w-6 sm:h-6 text-pink-400 shrink-0" />
             <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3 flex-1 min-w-0 !text-lg sm:!text-2xl">
               <span className="text-white truncate">{displayName}</span>
-              <Badge variant="outline" className="w-fit max-w-full truncate bg-pink-500/20 text-pink-300 border-pink-500/30 sm:ml-auto">
-                {formatRelationshipType(relationship.relationship_type)}
+              <Badge
+                variant="outline"
+                className={`w-fit max-w-full truncate sm:ml-auto ${getRelationshipStatusClasses(relationship).className}`}
+                data-testid="relationship-modal-bond-badge"
+              >
+                {composeRomanticRelationshipBadgeLabel(relationship)}
               </Badge>
             </DialogTitle>
           </div>
