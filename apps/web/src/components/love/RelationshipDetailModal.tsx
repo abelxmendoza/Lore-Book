@@ -676,7 +676,7 @@ export const RelationshipDetailModal = ({
                       {relationship.status}
                     </Badge>
                   </div>
-                  {relationship.is_situationship && (
+                  {relationship.is_situationship && relationship.relationship_type !== 'situationship' && (
                     <div className="flex items-center justify-between gap-1">
                       <span className="text-white/55 text-[10px] sm:text-sm shrink-0">Type</span>
                       <Badge variant="outline" className="text-[9px] sm:text-xs px-1.5 py-0 bg-purple-500/20 text-purple-300 border-purple-500/30">

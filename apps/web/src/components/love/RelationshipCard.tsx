@@ -12,6 +12,7 @@ import {
   metricLabel,
   type DemoMetricKey,
 } from '../../mocks/romanticDemoProfiles';
+import { composeRomanticRelationshipBadgeLabel, humanizeRomanceToken } from '../../lib/romanticRelationshipLabel';
 import { getRelationshipStatusClasses } from './relationshipStatusColors';
 
 type RomanticRelationship = {
@@ -84,11 +85,7 @@ interface RelationshipCardProps {
 }
 
 function formatRelationshipType(type: string) {
-  return type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
-}
-
-function formatStatus(status: string) {
-  return status.replace(/_/g, ' ');
+  return humanizeRomanceToken(type);
 }
 
 function getScoreColor(score: number) {
@@ -148,15 +145,7 @@ export const RelationshipCard = ({
       ? relationship.metadata.lexical_evidence
       : null);
 
-  const badgeLabel =
-    demoProfile?.showcaseTag ??
-    [
-      formatRelationshipType(relationship.relationship_type),
-      relationship.is_situationship ? 'Situationship' : null,
-      formatStatus(relationship.status),
-    ]
-      .filter(Boolean)
-      .join(' · ');
+  const badgeLabel = composeRomanticRelationshipBadgeLabel(relationship);
 
   const metricKeys: DemoMetricKey[] = (
     demoProfile?.primaryMetrics ?? (['compatibility', 'health'] as const)

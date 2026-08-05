@@ -1815,7 +1815,7 @@ export function CharacterInfoPanel({
               disabled={!relationship.id || isMockDataEnabled}
             />
           </div>
-          {relationship.is_situationship && (
+          {relationship.is_situationship && relationship.relationship_type !== 'situationship' && (
             <div className="mb-3">
               <Badge variant="outline" className="text-xs border-purple-500/30 text-purple-300">Situationship</Badge>
             </div>

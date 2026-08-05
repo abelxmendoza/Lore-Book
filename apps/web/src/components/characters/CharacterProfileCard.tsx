@@ -10,7 +10,14 @@ import { fetchJson } from '../../lib/api';
 import { canCallAuthenticatedApi } from '../../lib/runtimeIdentity';
 import { getCharacterWittyTagline } from '../../lib/characterDisplay';
 import { getCharacterDisplayTitle, getCharacterSubtitle } from '../../lib/characterDisplayTitle';
-import { getUniqueDisplayTags } from '../../lib/characterCardSignals';
+import { getUniqueDisplayTags, normalizeSignalLabel } from '../../lib/characterCardSignals';
+import {
+  composeRomanticRelationshipBadgeLabel,
+  formatExclusivityLabel,
+} from '../../lib/romanticRelationshipLabel';
+import {
+  getRelationshipStatusClasses,
+} from '../love/relationshipStatusColors';
 import {
   CONNECTION_STAGE_LABELS,
   getPublicFigureConnection,
@@ -293,6 +300,19 @@ export const CharacterProfileCard = ({
   // Tags frequently restate the role/archetype/status already shown elsewhere
   // on the card (e.g. a "romantic" tag next to a "Romantic" archetype badge) —
   // filter those out so each signal only shows once.
+  const romanceBadgeLabel = relationship
+    ? composeRomanticRelationshipBadgeLabel(relationship)
+    : '';
+  const roleCoveredByRomance = Boolean(
+    romanceBadgeLabel &&
+      primaryRole &&
+      (normalizeSignalLabel(romanceBadgeLabel).includes(normalizeSignalLabel(primaryRole)) ||
+        normalizeSignalLabel(primaryRole) ===
+          normalizeSignalLabel(relationship?.relationship_type ?? '') ||
+        (normalizeSignalLabel(primaryRole) === 'situationship' &&
+          (relationship?.is_situationship ||
+            normalizeSignalLabel(relationship?.relationship_type ?? '') === 'situationship'))),
+  );
   const displayTags = getUniqueDisplayTags(character.tags, [
     primaryRole,
     primaryArchetype ? archetypeDisplayLabel(primaryArchetype) : '',
@@ -301,6 +321,13 @@ export const CharacterProfileCard = ({
     hasMet === false ? 'Unmet' : '',
     proximity === 'third_party' ? 'Third Party' : '',
     relationshipDepth === 'mentioned_only' ? 'Mentioned Only' : '',
+    romanceBadgeLabel,
+    relationship?.relationship_type,
+    relationship?.is_situationship ? 'Situationship' : '',
+    relationship?.status,
+    relationship?.exclusivity_status
+      ? formatExclusivityLabel(relationship.exclusivity_status)
+      : '',
   ]);
 
   const displayName = getCharacterDisplayTitle(character);
@@ -490,17 +517,19 @@ export const CharacterProfileCard = ({
                 {displayName}
               </h3>
             </div>
-            {/* Show role prominently on mobile; keep short on card, full text in modal */}
-            {character.role ? (
+            {/* Show role prominently on mobile; keep short on card, full text in modal.
+                When Dating & Romance already supplies the identity badge (e.g. Situationship · Not exclusive),
+                skip a role line that only repeats that same word. */}
+            {character.role && !roleCoveredByRomance ? (
               <p className="text-[9px] sm:text-xs text-white/70 mt-0.5 line-clamp-1 truncate" title={character.role}>
                 {primaryRole}
                 {roleCount > 1 ? ` +${roleCount - 1}` : ''}
               </p>
-            ) : unknownRoleFallbackLabel ? (
+            ) : !roleCoveredByRomance && unknownRoleFallbackLabel ? (
               <p className="text-[9px] sm:text-xs text-white/70 mt-0.5 line-clamp-1 truncate" title={unknownRoleFallbackLabel}>
                 {unknownRoleFallbackLabel}
               </p>
-            ) : (
+            ) : !roleCoveredByRomance ? (
               <div className="mt-0.5">
                 <UnknownField
                   compact
@@ -519,7 +548,7 @@ export const CharacterProfileCard = ({
                   }
                 />
               </div>
-            )}
+            ) : null}
             {character.primary_organization?.name ? (
               <div className="mt-1">
                 <Badge
@@ -601,21 +630,13 @@ export const CharacterProfileCard = ({
           )}
         </div>
         
-        {/* Relationship Badge (interest levels moved to modal) */}
+        {/* Relationship Badge — one Dating & Romance–aligned identity line */}
         {relationship && (
           <div className="space-y-1.5 sm:space-y-2 pt-1 border-t border-border/30">
             <div className="flex items-center gap-2 flex-wrap">
               <Badge
                 variant="outline"
-                className={`text-[9px] sm:text-[10px] px-1.5 py-0 ${
-                  relationship.status === 'active' 
-                    ? 'bg-green-500/20 text-green-300 border-green-500/30' 
-                    : relationship.status === 'ended'
-                    ? 'bg-gray-500/20 text-gray-300 border-gray-500/30'
-                    : relationship.status === 'on_break'
-                    ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
-                    : 'bg-white/10 text-white/70 border-white/20'
-                }`}
+                className={`text-[9px] sm:text-[10px] px-1.5 py-0 ${getRelationshipStatusClasses(relationship).className}`}
               >
                 <Heart
                   className="w-2.5 h-2.5 mr-1"
@@ -625,13 +646,8 @@ export const CharacterProfileCard = ({
                   stroke="currentColor"
                   strokeWidth={2}
                 />
-                {relationship.relationship_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                {romanceBadgeLabel}
               </Badge>
-              {relationship.is_situationship && (
-                <Badge variant="outline" className="text-[9px] sm:text-[10px] px-1.5 py-0 bg-purple-500/20 text-purple-300 border-purple-500/30">
-                  Situationship
-                </Badge>
-              )}
               <LexicalSignalBadges relationship={relationship} />
             </div>
           </div>
