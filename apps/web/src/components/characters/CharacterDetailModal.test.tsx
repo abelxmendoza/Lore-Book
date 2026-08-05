@@ -821,6 +821,117 @@ describe('CharacterDetailModal', () => {
       expect(screen.getByTestId('character-groups-section')).toBeInTheDocument();
     });
 
+    it('keeps a just-added group when Character Query returns a laggy empty organizations list', async () => {
+      const { fetchJson } = await import('../../lib/api');
+
+      // Seed Character Query with an empty organizations section up front (the
+      // production core query always includes this key). Previously this blocked
+      // by-character refetch and a silent query reload wiped optimistic adds.
+      characterQueryMock.state = {
+        query: {
+          characterId: 'char-jamie-groups',
+          subject: 'other',
+          generatedAt: new Date().toISOString(),
+          sections: {
+            identity: {
+              ...mockCharacter,
+              id: 'char-jamie-groups',
+              name: 'Jamie',
+              shared_memories: [],
+              relationships: [],
+            },
+            organizations: [],
+          },
+        },
+        loading: false,
+        error: null,
+        reload: vi.fn(),
+        loadSections: vi.fn(),
+      };
+
+      vi.mocked(fetchJson).mockImplementation(async (input: RequestInfo, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.url;
+        if (url === '/api/organizations') {
+          return {
+            success: true,
+            organizations: [
+              { id: 'org-vanguard', name: 'Vanguard Robotics', user_relationship: 'member', members: [] },
+            ],
+          } as never;
+        }
+        if (url === '/api/organizations/org-vanguard/members' && init?.method === 'POST') {
+          return {
+            success: true,
+            member: {
+              id: 'm-jamie',
+              character_id: 'char-jamie-groups',
+              character_name: 'Jamie',
+              role: 'member',
+            },
+          } as never;
+        }
+        if (url.startsWith('/api/organizations/by-character')) {
+          return { success: true, organizations: [] } as never;
+        }
+        throw new Error('Not found');
+      });
+
+      const { rerender } = render(
+        <CharacterDetailModal
+          character={{ ...mockCharacter, id: 'char-jamie-groups', name: 'Jamie' }}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+          initialTab="relationships"
+        />,
+      );
+
+      await userEvent.click(await screen.findByTestId('add-membership-toggle'));
+      const select = await screen.findByLabelText('Existing group or organization');
+      await waitFor(() =>
+        expect(screen.getByRole('option', { name: 'Vanguard Robotics' })).toBeInTheDocument(),
+      );
+      await userEvent.selectOptions(select, 'org-vanguard');
+      await userEvent.selectOptions(screen.getByTestId('add-membership-role'), 'member');
+      await userEvent.click(screen.getByTestId('add-membership-submit'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('character-groups-section')).toHaveTextContent('Vanguard Robotics');
+      });
+
+      // Simulate the post-add Character Query silent reload still returning [].
+      characterQueryMock.state = {
+        ...characterQueryMock.state,
+        query: {
+          characterId: 'char-jamie-groups',
+          subject: 'other',
+          generatedAt: new Date().toISOString(),
+          sections: {
+            identity: {
+              ...mockCharacter,
+              id: 'char-jamie-groups',
+              name: 'Jamie',
+              shared_memories: [],
+              relationships: [],
+            },
+            organizations: [],
+          },
+        },
+      };
+      rerender(
+        <CharacterDetailModal
+          character={{ ...mockCharacter, id: 'char-jamie-groups', name: 'Jamie' }}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+          initialTab="relationships"
+        />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('character-groups-section')).toHaveTextContent('Vanguard Robotics');
+        expect(screen.getByTestId('character-groups-section')).toHaveTextContent(/1 total/i);
+      });
+    });
+
     it('jumps to the exact thread and message when a "From your chats" mention is clicked', async () => {
       const user = userEvent.setup();
       characterQueryMock.state = {

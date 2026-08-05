@@ -1721,21 +1721,30 @@ export const CharacterDetailModal = ({
     if (Array.isArray(profileBundle.organizations)) {
       const list = profileBundle.organizations as Organization[];
       const activeRels = new Set(['founder', 'leader', 'member', 'collaborator', 'adjacent', 'alumnus']);
-      setCharacterOrganizations(
-        list.map((org) => {
-          const member = org.members?.find(
-            (m) =>
-              (detail.id && m.character_id === detail.id) ||
-              m.character_name?.toLowerCase() === String(detail.name ?? '').toLowerCase(),
-          );
-          return {
-            ...org,
-            user_is_member: activeRels.has(org.user_relationship),
-            character_role: member?.role,
-            character_member_notes: member?.notes,
-          };
-        }),
+      const withMeta = list.map((org) => {
+        const member = org.members?.find(
+          (m) =>
+            (detail.id && m.character_id === detail.id) ||
+            m.character_name?.toLowerCase() === String(detail.name ?? '').toLowerCase(),
+        );
+        return {
+          ...org,
+          user_is_member: activeRels.has(org.user_relationship),
+          character_role: member?.role,
+          character_member_notes: member?.notes,
+        };
+      });
+      // Character Query silent reloads after add/remove can lag behind the write.
+      // Keep just-added groups visible until the server list confirms them.
+      const confirmedIds = new Set(withMeta.map((o) => o.id));
+      pendingOptimisticOrgsRef.current = pendingOptimisticOrgsRef.current.filter(
+        (o) => !confirmedIds.has(o.id),
       );
+      const merged = [...withMeta];
+      for (const pending of pendingOptimisticOrgsRef.current) {
+        if (!merged.some((o) => o.id === pending.id)) merged.push(pending);
+      }
+      setCharacterOrganizations(merged);
       setOrgsLoaded(true);
     }
     if (profileBundle.provenance) {
@@ -2275,10 +2284,15 @@ export const CharacterDetailModal = ({
     pendingOptimisticOrgsRef.current = [];
   }, [character.id]);
 
-  // Fetch real organizations for this character (skip when Character Query already provided them).
+  // Fetch real organizations for this character.
+  // Character Query may seed an initial list, but empty arrays and post-mutation
+  // reloads must still hit by-character (name-only roster rows + fresh writes).
   useEffect(() => {
     if (isMockDataEnabled) return;
-    if (profileBundle?.organizations) return;
+    const queryOrgs = profileBundle?.organizations;
+    const querySeeded =
+      Array.isArray(queryOrgs) && queryOrgs.length > 0 && orgsReloadToken === 0;
+    if (querySeeded) return;
     let cancelled = false;
     const load = async () => {
       invalidateOrganizationMembershipCaches({
