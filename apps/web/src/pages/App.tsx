@@ -422,7 +422,10 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
             isViewportLocked ? 'contents' : 'min-w-0 min-h-0 flex-1 space-y-3 sm:space-y-6'
           }
         >
-        {activeSurface !== 'chat' && activeSurface !== 'home' && activeSurface !== 'guide' && activeSurface !== 'memoir' && activeSurface !== 'lorebook' && activeSurface !== 'saga' && activeSurface !== 'timeline' && activeSurface !== 'discovery' && activeSurface !== 'quests' && (
+        {/* Book surfaces own their chrome — keep the generic Home “Welcome back”
+            header off Characters (and other books) so /demo/characters opens on
+            the Character Book, not a Home-looking first viewport. */}
+        {activeSurface !== 'chat' && activeSurface !== 'home' && activeSurface !== 'guide' && activeSurface !== 'memoir' && activeSurface !== 'lorebook' && activeSurface !== 'saga' && activeSurface !== 'timeline' && activeSurface !== 'discovery' && activeSurface !== 'quests' && activeSurface !== 'characters' && activeSurface !== 'love' && activeSurface !== 'family' && activeSurface !== 'locations' && activeSurface !== 'organizations' && activeSurface !== 'events' && activeSurface !== 'anchors' && (
           <>
             <header className="hidden lg:flex items-center justify-between rounded-2xl border border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(126,34,206,0.35),_transparent)] p-4 shadow-panel">
               <div>
@@ -432,6 +435,13 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
               </div>
             </header>
 
+            <GuestBanner />
+            <TrialBanner />
+          </>
+        )}
+        {/* Still surface guest/trial banners on book pages without the Home header. */}
+        {(activeSurface === 'characters' || activeSurface === 'love' || activeSurface === 'family' || activeSurface === 'locations' || activeSurface === 'organizations' || activeSurface === 'events' || activeSurface === 'anchors') && (
+          <>
             <GuestBanner />
             <TrialBanner />
           </>
