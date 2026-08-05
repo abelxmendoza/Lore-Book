@@ -2646,18 +2646,34 @@ export const CharacterBook = () => {
   });
   const [relationships, setRelationships] = useState<Map<string, RomanticRelationship>>(new Map());
   
-  // Seed demo characters once per session; never overwrite in-memory demo edits on remount.
+  // Seed demo characters once per fixture version. Bump DEMO_CHARACTERS_SEED_VERSION
+  // when dummyCharacters presentation fields change so stale in-memory demo rows
+  // (e.g. old Situationship role spam) refresh without wiping unrelated books.
   useEffect(() => {
     const demoCharactersEnabled = isMockDataEnabled || isMockEnabled;
     if (hasAuthenticatedUser && !demoCharactersEnabled) {
       mockDataService.register.characters([]);
       return;
     }
+    const SEED_KEY = 'lk:demo-characters-seed-version';
+    const DEMO_CHARACTERS_SEED_VERSION = 'romance-identity-v3';
+    let seedVersion: string | null = null;
+    try {
+      seedVersion = sessionStorage.getItem(SEED_KEY);
+    } catch {
+      seedVersion = null;
+    }
     const current = mockDataService.get.characters();
-    const base = current.length > 0 ? current : dummyCharacters;
+    const needsFixtureRefresh = seedVersion !== DEMO_CHARACTERS_SEED_VERSION;
+    const base = needsFixtureRefresh || current.length === 0 ? dummyCharacters : current;
     const merged = mergeRomanticDemoCharacters(base);
-    if (current.length === 0 || merged.length !== current.length) {
+    if (needsFixtureRefresh || current.length === 0 || merged.length !== current.length) {
       mockDataService.register.characters(merged);
+      try {
+        sessionStorage.setItem(SEED_KEY, DEMO_CHARACTERS_SEED_VERSION);
+      } catch {
+        // private mode / quota — in-memory register still applies this session
+      }
     }
   }, [hasAuthenticatedUser, isMockDataEnabled, isMockEnabled]);
   const [loading, setLoading] = useState(false);
