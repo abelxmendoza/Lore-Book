@@ -7,6 +7,7 @@
 export type DatingRomanceModalTab =
   | 'overview'
   | 'chat'
+  | 'kids'
   | 'timeline'
   | 'pros-cons'
   | 'analytics'

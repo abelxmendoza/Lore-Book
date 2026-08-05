@@ -2814,7 +2814,7 @@ export const CharacterDetailModal = ({
   const handleOpenDatingArc = () => {
     const relationshipId = resolvedRomanticRelationship?.id;
     if (!relationshipId) {
-      openDatingRomanceModal({ characterId: character.id, tab: 'timeline' });
+      openDatingRomanceModal({ characterId: character.id, tab: 'overview' });
       onClose();
       return;
     }
@@ -2825,7 +2825,7 @@ export const CharacterDetailModal = ({
     openDatingRomanceModal({
       relationshipId,
       characterId: character.id,
-      tab: 'timeline',
+      tab: 'overview',
     });
     onClose();
   };
@@ -3477,6 +3477,11 @@ export const CharacterDetailModal = ({
                 focusField={initialFocusField}
                 onFocusFieldHandled={onInitialFocusFieldHandled}
                 isSelfCharacter={isMainCharacter}
+                onOpenDatingArc={
+                  !isMainCharacter && resolvedRomanticRelationship
+                    ? handleOpenDatingArc
+                    : undefined
+                }
               />
             )}
 
