@@ -123,6 +123,9 @@ type FilterType =
   | 'situationships'
   | 'dating'
   | 'crushes'
+  | 'married'
+  | 'divorced'
+  | 'co_parents'
   | 'high_risk'
   | 'rankings';
 
@@ -131,11 +134,17 @@ const NO_CONTACT_STATUSES = new Set(['ghosted', 'blocked']);
 const RECONNECTION_STATUSES = new Set(['rekindled']);
 const CRUSH_TYPES = new Set(['crush', 'obsession', 'infatuation', 'lust']);
 const DATING_TYPES = new Set(['dating', 'boyfriend', 'girlfriend', 'lover', 'in_love', 'fiancé', 'fiancée', 'wife', 'husband']);
+const MARRIED_TYPES = new Set(['wife', 'husband']);
+const DIVORCED_TYPES = new Set(['divorced', 'ex_wife', 'ex_husband']);
+const CO_PARENT_TYPES = new Set(['co_parent', 'baby_mama', 'baby_daddy']);
 
 const relationshipStatus = (relationship: RomanticRelationship) => relationship.status.toLowerCase();
 const relationshipType = (relationship: RomanticRelationship) => relationship.relationship_type.toLowerCase();
 const isEndedRelationship = (relationship: RomanticRelationship) =>
-  !relationship.is_current || END_STATE_STATUSES.has(relationshipStatus(relationship)) || relationshipType(relationship).startsWith('ex_');
+  !relationship.is_current ||
+  END_STATE_STATUSES.has(relationshipStatus(relationship)) ||
+  relationshipType(relationship).startsWith('ex_') ||
+  relationshipType(relationship) === 'divorced';
 const isActiveRelationship = (relationship: RomanticRelationship) =>
   relationship.is_current && !isEndedRelationship(relationship);
 const isCrushRelationship = (relationship: RomanticRelationship) =>
@@ -146,6 +155,12 @@ const romanceReciprocity = (relationship: RomanticRelationship) =>
     : relationship.metadata?.reciprocity ?? 'unknown';
 const isDatingRelationship = (relationship: RomanticRelationship) =>
   DATING_TYPES.has(relationshipType(relationship)) && isActiveRelationship(relationship);
+const isMarriedRelationship = (relationship: RomanticRelationship) =>
+  MARRIED_TYPES.has(relationshipType(relationship));
+const isDivorcedRelationship = (relationship: RomanticRelationship) =>
+  DIVORCED_TYPES.has(relationshipType(relationship));
+const isCoParentRelationship = (relationship: RomanticRelationship) =>
+  CO_PARENT_TYPES.has(relationshipType(relationship));
 const isNoContactRelationship = (relationship: RomanticRelationship) =>
   NO_CONTACT_STATUSES.has(relationshipStatus(relationship));
 const hasReconnectionPotential = (relationship: RomanticRelationship) =>
@@ -160,7 +175,7 @@ const isHighRiskRelationship = (relationship: RomanticRelationship) =>
   relationshipType(relationship) === 'obsession';
 
 const RELATIONSHIP_GRID_CLASS =
-  'grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4 auto-rows-fr';
+  'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4 auto-rows-fr';
 const LOVE_VIEW_STORAGE_KEY = 'lk_dating_romance_view';
 
 export const LoveAndRelationshipsView = () => {
@@ -688,6 +703,9 @@ export const LoveAndRelationshipsView = () => {
   const situationships = filteredRelationships.filter(r => r.is_situationship);
   const datingRelationships = filteredRelationships.filter(isDatingRelationship);
   const crushes = filteredRelationships.filter(isCrushRelationship);
+  const marriedRelationships = filteredRelationships.filter(isMarriedRelationship);
+  const divorcedRelationships = filteredRelationships.filter(isDivorcedRelationship);
+  const coParentRelationships = filteredRelationships.filter(isCoParentRelationship);
   const oneSidedCrushes = crushes.filter((relationship) =>
     ['user_interest_only', 'other_interest_only'].includes(romanceReciprocity(relationship)),
   );
@@ -717,6 +735,12 @@ export const LoveAndRelationshipsView = () => {
         return datingRelationships;
       case 'crushes':
         return crushes;
+      case 'married':
+        return marriedRelationships;
+      case 'divorced':
+        return divorcedRelationships;
+      case 'co_parents':
+        return coParentRelationships;
       case 'high_risk':
         return highRiskRelationships;
       case 'rankings':
@@ -1061,6 +1085,25 @@ export const LoveAndRelationshipsView = () => {
             <Heart className="h-3 w-3 sm:h-4 sm:w-4" />
             <span>Dating</span>
           </TabsTrigger>
+          <TabsTrigger
+            value="married"
+            className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-300 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0 min-w-[75px] sm:min-w-0"
+          >
+            <span>Married</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="divorced"
+            className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-stone-500/20 data-[state=active]:text-stone-300 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0 min-w-[75px] sm:min-w-0"
+          >
+            <span>Divorced</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="co_parents"
+            className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-cyan-500/20 data-[state=active]:text-cyan-300 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0 min-w-[90px] sm:min-w-0"
+          >
+            <span className="hidden sm:inline">Co-parents</span>
+            <span className="sm:hidden">Kids</span>
+          </TabsTrigger>
           <TabsTrigger 
             value="crushes"
             className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-pink-500/20 data-[state=active]:text-pink-400 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0 min-w-[70px] sm:min-w-0"
@@ -1156,6 +1199,18 @@ export const LoveAndRelationshipsView = () => {
           {activeFilter === 'dating' &&
             datingRelationships.length > 0 &&
             renderRelationshipCollection(datingRelationships)}
+
+          {activeFilter === 'married' &&
+            marriedRelationships.length > 0 &&
+            renderRelationshipCollection(marriedRelationships)}
+
+          {activeFilter === 'divorced' &&
+            divorcedRelationships.length > 0 &&
+            renderRelationshipCollection(divorcedRelationships)}
+
+          {activeFilter === 'co_parents' &&
+            coParentRelationships.length > 0 &&
+            renderRelationshipCollection(coParentRelationships)}
 
           {/* No Contact Section */}
           {activeFilter === 'no_contact' && noContactRelationships.length > 0 && (

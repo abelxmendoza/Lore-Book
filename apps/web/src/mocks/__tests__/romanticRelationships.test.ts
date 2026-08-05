@@ -100,10 +100,37 @@ describe('Romantic Relationships Mock Data', () => {
       });
     });
 
+    it('should filter married relationships', () => {
+      const married = getMockRomanticRelationshipsByFilter('married');
+      expect(married.length).toBeGreaterThan(0);
+      married.forEach((rel) => {
+        expect(['wife', 'husband']).toContain(rel.relationship_type);
+      });
+    });
+
+    it('should filter divorced relationships', () => {
+      const divorced = getMockRomanticRelationshipsByFilter('divorced');
+      expect(divorced.length).toBeGreaterThan(0);
+      divorced.forEach((rel) => {
+        expect(['divorced', 'ex_wife', 'ex_husband']).toContain(rel.relationship_type);
+      });
+    });
+
+    it('should filter co-parent relationships including multiple baby mommas', () => {
+      const coParents = getMockRomanticRelationshipsByFilter('co_parents');
+      expect(coParents.length).toBeGreaterThanOrEqual(4);
+      const babyMamas = coParents.filter((rel) => rel.relationship_type === 'baby_mama');
+      expect(babyMamas.length).toBeGreaterThanOrEqual(2);
+      coParents.forEach((rel) => {
+        expect(['co_parent', 'baby_mama', 'baby_daddy']).toContain(rel.relationship_type);
+      });
+    });
+
     it('should return all relationships for "all" filter', () => {
       const all = getMockRomanticRelationshipsByFilter('all');
       const total = getMockRomanticRelationships();
       expect(all.length).toBe(total.length);
+      expect(all.length).toBe(15);
     });
   });
 

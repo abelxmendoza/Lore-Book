@@ -12,10 +12,19 @@ describe('relationshipStatusColors', () => {
 
   it('differentiates active relationships by relationship_type', () => {
     expect(getRelationshipColorKey({ status: 'active', relationship_type: 'girlfriend' })).toBe('committed');
+    expect(getRelationshipColorKey({ status: 'active', relationship_type: 'wife' })).toBe('committed');
     expect(getRelationshipColorKey({ status: 'active', relationship_type: 'crush' })).toBe('early_interest');
     expect(getRelationshipColorKey({ status: 'active', relationship_type: 'situationship' })).toBe('situationship');
     expect(getRelationshipColorKey({ status: 'active', relationship_type: 'infatuation' })).toBe('intense');
+    expect(getRelationshipColorKey({ status: 'active', relationship_type: 'baby_mama' })).toBe('co_parent');
+    expect(getRelationshipColorKey({ status: 'active', relationship_type: 'co_parent' })).toBe('co_parent');
     expect(getRelationshipColorKey({ status: 'active', relationship_type: 'something_unmapped' })).toBe('active_default');
+  });
+
+  it('uses divorced palette for divorce and ex-spouse types', () => {
+    expect(getRelationshipColorKey({ status: 'ended', relationship_type: 'divorced' })).toBe('divorced');
+    expect(getRelationshipColorKey({ status: 'ended', relationship_type: 'ex_wife' })).toBe('divorced');
+    expect(getRelationshipColorKey({ status: 'ended', relationship_type: 'ex_husband' })).toBe('divorced');
   });
 
   it('treats is_situationship as authoritative even if relationship_type does not say so', () => {
@@ -29,9 +38,13 @@ describe('relationshipStatusColors', () => {
   it('every color key resolves to a non-empty className with bg/text/border', () => {
     const relationships = [
       { status: 'active', relationship_type: 'girlfriend' },
+      { status: 'active', relationship_type: 'wife' },
       { status: 'active', relationship_type: 'crush' },
       { status: 'active', relationship_type: 'situationship' },
       { status: 'active', relationship_type: 'infatuation' },
+      { status: 'active', relationship_type: 'baby_mama' },
+      { status: 'active', relationship_type: 'co_parent' },
+      { status: 'ended', relationship_type: 'divorced' },
       { status: 'active' },
       { status: 'on_break' },
       { status: 'paused' },

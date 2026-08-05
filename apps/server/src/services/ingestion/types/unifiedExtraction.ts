@@ -101,6 +101,7 @@ export type RomanticSignalType =
   | 'fiancé' | 'fiancée' | 'lover' | 'fuck_buddy'
   | 'crush' | 'obsession' | 'infatuation' | 'lust'
   | 'ex_boyfriend' | 'ex_girlfriend' | 'ex_wife' | 'ex_husband' | 'ex_lover'
+  | 'divorced' | 'co_parent' | 'baby_mama' | 'baby_daddy'
   | 'situationship' | 'dating' | 'talking' | 'hooking_up'
   | 'one_night_stand' | 'complicated' | 'on_break'
   | 'friends_with_benefits' | 'in_love';

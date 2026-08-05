@@ -23,7 +23,10 @@ describe('romanticLoreTestCases fixtures', () => {
   });
 
   it('links every card character to lore', () => {
-    const cardNames = ['Alex', 'Jordan', 'Sam', 'Taylor', 'Morgan', 'Casey', 'Riley', 'Nova', 'Elena'];
+    const cardNames = [
+      'Alex', 'Jordan', 'Sam', 'Taylor', 'Morgan', 'Casey', 'Riley', 'Nova', 'Elena',
+      'Jamie', 'Avery', 'Priya', 'Harper', 'Daniel', 'Sage',
+    ];
     for (const name of cardNames) {
       expect(getLoreCharacterByName(name)).toBeDefined();
     }
@@ -31,7 +34,10 @@ describe('romanticLoreTestCases fixtures', () => {
 
   it('covers all major filter tabs', () => {
     const tabs = new Set(ROMANTIC_LORE_TEST_CASES.map((tc) => tc.filterTab));
-    for (const required of ['active', 'past', 'crushes', 'situationships', 'no_contact', 'reconnection', 'dating', 'high_risk']) {
+    for (const required of [
+      'active', 'past', 'crushes', 'situationships', 'no_contact', 'reconnection',
+      'high_risk', 'married', 'divorced', 'co_parents',
+    ]) {
       expect(tabs.has(required as typeof tabs extends Set<infer T> ? T : never)).toBe(true);
     }
   });
@@ -45,12 +51,16 @@ describe('romanticLoreTestCases fixtures', () => {
     const map = getLoreLexicalSnippetMap();
     expect(map.Alex?.cue).toBe('my girlfriend');
     expect(map.Jordan?.cue).toBeTruthy();
-    expect(map.Priya).toBeUndefined();
+    expect(map.Jamie?.cue).toBe('my wife');
+    expect(map.Priya?.cue).toBe('baby mama');
   });
 
   it('groups cases by category', () => {
     expect(getLoreTestCasesByCategory('ghosted')).toHaveLength(1);
     expect(getLoreTestCasesByCategory('crush').length).toBeGreaterThanOrEqual(1);
+    expect(getLoreTestCasesByCategory('married')).toHaveLength(1);
+    expect(getLoreTestCasesByCategory('divorced')).toHaveLength(1);
+    expect(getLoreTestCasesByCategory('co_parent').length).toBeGreaterThanOrEqual(4);
   });
 
   it('groups cases by filter tab', () => {

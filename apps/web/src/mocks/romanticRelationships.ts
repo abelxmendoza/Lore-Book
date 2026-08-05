@@ -5,6 +5,15 @@ import type { CharacterSuggestion } from '../api/entitySuggestions';
 import { enrichMockAnalytics } from './romanticDemoProfiles';
 import { getLoreLexicalSnippetMap } from './romanticLoreTestCases.ts';
 
+export type MockKidTogether = {
+  id: string;
+  name: string;
+  /** 'together' = both parents; 'step' = belongs to just one of them. */
+  relation: 'together' | 'step';
+  belongsTo?: 'both' | 'self' | 'partner';
+  coParents?: Array<{ id?: string; name: string; relation_label?: string }>;
+};
+
 export type MockRomanticRelationship = {
   id: string;
   person_id: string;
@@ -143,12 +152,18 @@ const ROMANTIC_LORE_CHAPTER_BY_NAME: Record<string, number> = {
   Morgan: 1,
   Nova: 1,
   Taylor: 2,
+  Avery: 2,
   Jordan: 2,
   Alex: 3,
+  Jamie: 3,
   Sam: 3,
   Casey: 3,
   Riley: 4,
   Elena: 4,
+  Priya: 4,
+  Harper: 4,
+  Daniel: 4,
+  Sage: 4,
 };
 
 export type MockDateEvent = {
@@ -632,7 +647,199 @@ export function generateMockRomanticRelationships(): MockRomanticRelationship[] 
       created_at: new Date(now.getTime() - 640 * 24 * 60 * 60 * 1000).toISOString(),
       rank_among_all: 8,
       rank_among_active: undefined
-    }
+    },
+
+    // Marriage — current spouse
+    {
+      id: 'rel-010',
+      person_id: 'char-jamie-spouse',
+      person_type: 'character',
+      person_name: 'Jamie',
+      relationship_type: 'wife',
+      status: 'active',
+      is_current: true,
+      affection_score: 0.94,
+      emotional_intensity: 0.8,
+      compatibility_score: 0.91,
+      relationship_health: 0.88,
+      is_situationship: false,
+      exclusivity_status: 'exclusive',
+      strengths: ['Steady partnership', 'Shared household rhythm', 'Long-term trust'],
+      weaknesses: ['Busy seasons leave less date energy'],
+      pros: ['Marriage feels like teamwork', 'We still choose each other on ordinary Tuesdays'],
+      cons: ['Logistics can crowd romance'],
+      red_flags: [],
+      green_flags: ['Shows up for hard weeks', 'Talks through money and kids calmly'],
+      start_date: threeYearsAgo.toISOString(),
+      created_at: threeYearsAgo.toISOString(),
+      rank_among_all: 2,
+      rank_among_active: 1,
+      metadata: {
+        has_kids_together: true,
+        kids_names: ['Mia', 'Eli'],
+        kids_together: [
+          { id: 'kid-mia', name: 'Mia', relation: 'together', belongsTo: 'both' },
+          {
+            id: 'kid-eli',
+            name: 'Eli',
+            relation: 'step',
+            belongsTo: 'partner',
+            coParents: [{ name: 'Jordan Ellis', relation_label: "Jamie's ex-husband" }],
+          },
+        ],
+      },
+    },
+
+    // Divorce — marriage ended
+    {
+      id: 'rel-011',
+      person_id: 'char-avery-ex',
+      person_type: 'character',
+      person_name: 'Avery',
+      relationship_type: 'divorced',
+      status: 'ended',
+      is_current: false,
+      affection_score: 0.35,
+      emotional_intensity: 0.4,
+      compatibility_score: 0.42,
+      relationship_health: 0.5,
+      is_situationship: false,
+      exclusivity_status: undefined,
+      strengths: ['Amicable paperwork', 'Clear boundaries after the split'],
+      weaknesses: ['Different life goals'],
+      pros: ['Divorce stayed respectful', 'No ongoing drama'],
+      cons: ['Grief still surfaces around holidays'],
+      red_flags: [],
+      green_flags: ['Cooperative on shared obligations'],
+      start_date: threeYearsAgo.toISOString(),
+      end_date: oneYearAgo.toISOString(),
+      created_at: threeYearsAgo.toISOString(),
+      rank_among_all: 10,
+      rank_among_active: undefined,
+      metadata: { has_kids_together: false },
+    },
+
+    // Multiple baby mommas / co-parents
+    {
+      id: 'rel-012',
+      person_id: 'char-priya',
+      person_type: 'character',
+      person_name: 'Priya',
+      relationship_type: 'baby_mama',
+      status: 'active',
+      is_current: true,
+      affection_score: 0.55,
+      emotional_intensity: 0.45,
+      compatibility_score: 0.6,
+      relationship_health: 0.7,
+      is_situationship: false,
+      exclusivity_status: 'non_exclusive',
+      strengths: ['Solid co-parenting schedule', 'Kids come first'],
+      weaknesses: ['Romance is closed; logistics dominate'],
+      pros: ['Pickup handoffs are calm', 'Shared parenting group chat works'],
+      cons: ['Not dating — parenting only'],
+      red_flags: [],
+      green_flags: ['Consistent with child support and school events'],
+      start_date: twoYearsAgo.toISOString(),
+      created_at: twoYearsAgo.toISOString(),
+      rank_among_all: 11,
+      rank_among_active: 5,
+      metadata: {
+        has_kids_together: true,
+        kids_names: ['Noah'],
+        kids_together: [{ id: 'kid-noah', name: 'Noah', relation: 'together', belongsTo: 'both' }],
+      },
+    },
+    {
+      id: 'rel-013',
+      person_id: 'char-harper',
+      person_type: 'character',
+      person_name: 'Harper',
+      relationship_type: 'baby_mama',
+      status: 'active',
+      is_current: true,
+      affection_score: 0.48,
+      emotional_intensity: 0.42,
+      compatibility_score: 0.58,
+      relationship_health: 0.66,
+      is_situationship: false,
+      exclusivity_status: 'non_exclusive',
+      strengths: ['Protective of the kids', 'Flexible when schedules shift'],
+      weaknesses: ['Texting can get sharp under stress'],
+      pros: ['Two households, one kid plan'],
+      cons: ['Different parenting styles on bedtime'],
+      red_flags: [],
+      green_flags: ['Shows up to games and conferences'],
+      start_date: oneYearAgo.toISOString(),
+      created_at: oneYearAgo.toISOString(),
+      rank_among_all: 12,
+      rank_among_active: 6,
+      metadata: {
+        has_kids_together: true,
+        kids_names: ['Zoe'],
+        kids_together: [{ id: 'kid-zoe', name: 'Zoe', relation: 'together', belongsTo: 'both' }],
+      },
+    },
+    {
+      id: 'rel-014',
+      person_id: 'char-daniel',
+      person_type: 'character',
+      person_name: 'Daniel',
+      relationship_type: 'baby_daddy',
+      status: 'active',
+      is_current: true,
+      affection_score: 0.5,
+      emotional_intensity: 0.4,
+      compatibility_score: 0.62,
+      relationship_health: 0.72,
+      is_situationship: false,
+      exclusivity_status: 'non_exclusive',
+      strengths: ['Reliable weekends', 'Keeps medical paperwork current'],
+      weaknesses: ['Slow to reply mid-week'],
+      pros: ['Kids look forward to his days'],
+      cons: ['Not a romantic partner'],
+      red_flags: [],
+      green_flags: ['Never misses a birthday'],
+      start_date: twoYearsAgo.toISOString(),
+      created_at: twoYearsAgo.toISOString(),
+      rank_among_all: 13,
+      rank_among_active: 7,
+      metadata: {
+        has_kids_together: true,
+        kids_names: ['Leo'],
+        kids_together: [{ id: 'kid-leo', name: 'Leo', relation: 'together', belongsTo: 'both' }],
+      },
+    },
+    {
+      id: 'rel-015',
+      person_id: 'char-sage',
+      person_type: 'character',
+      person_name: 'Sage',
+      relationship_type: 'co_parent',
+      status: 'active',
+      is_current: true,
+      affection_score: 0.52,
+      emotional_intensity: 0.38,
+      compatibility_score: 0.65,
+      relationship_health: 0.74,
+      is_situationship: false,
+      exclusivity_status: 'non_exclusive',
+      strengths: ['Neutral co-parent label fits', 'Shared calendar discipline'],
+      weaknesses: ['Holidays need advance planning'],
+      pros: ['Kids feel stable across homes'],
+      cons: ['Romance is not on the table'],
+      red_flags: [],
+      green_flags: ['Joint decisions on school and health'],
+      start_date: twoYearsAgo.toISOString(),
+      created_at: twoYearsAgo.toISOString(),
+      rank_among_all: 14,
+      rank_among_active: 8,
+      metadata: {
+        has_kids_together: true,
+        kids_names: ['Riley'],
+        kids_together: [{ id: 'kid-riley', name: 'Riley', relation: 'together', belongsTo: 'both' }],
+      },
+    },
   ];
   return base.map(withDemoSignals);
 }
@@ -1038,7 +1245,7 @@ export function getMockRomanticRelationships(): MockRomanticRelationship[] {
  * Get mock relationships by filter
  */
 export function getMockRomanticRelationshipsByFilter(
-  filter: 'all' | 'active' | 'past' | 'no_contact' | 'reconnection' | 'situationships' | 'dating' | 'crushes' | 'high_risk' | 'rankings'
+  filter: 'all' | 'active' | 'past' | 'no_contact' | 'reconnection' | 'situationships' | 'dating' | 'crushes' | 'married' | 'divorced' | 'co_parents' | 'high_risk' | 'rankings'
 ): MockRomanticRelationship[] {
   const all = getMockRomanticRelationships();
   
@@ -1057,6 +1264,12 @@ export function getMockRomanticRelationshipsByFilter(
       return all.filter(isDatingMockRelationship);
     case 'crushes':
       return all.filter(isCrushMockRelationship);
+    case 'married':
+      return all.filter(isMarriedMockRelationship);
+    case 'divorced':
+      return all.filter(isDivorcedMockRelationship);
+    case 'co_parents':
+      return all.filter(isCoParentMockRelationship);
     case 'high_risk':
       return all.filter(isHighRiskMockRelationship);
     default:
@@ -1068,7 +1281,10 @@ const END_STATE_STATUSES = new Set(['ended', 'broken_up', 'separated', 'ghosted'
 const NO_CONTACT_STATUSES = new Set(['ghosted', 'blocked']);
 const RECONNECTION_STATUSES = new Set(['rekindled', 'fading']);
 const CRUSH_TYPES = new Set(['crush', 'obsession', 'infatuation']);
-const DATING_TYPES = new Set(['dating', 'girlfriend', 'boyfriend', 'partner', 'romantic_interest']);
+const DATING_TYPES = new Set(['dating', 'girlfriend', 'boyfriend', 'partner', 'romantic_interest', 'wife', 'husband']);
+const MARRIED_TYPES = new Set(['wife', 'husband']);
+const DIVORCED_TYPES = new Set(['divorced', 'ex_wife', 'ex_husband']);
+const CO_PARENT_TYPES = new Set(['co_parent', 'baby_mama', 'baby_daddy']);
 
 function normalizedMockStatus(relationship: MockRomanticRelationship): string {
   return relationship.status.toLowerCase();
@@ -1081,7 +1297,7 @@ function normalizedMockType(relationship: MockRomanticRelationship): string {
 function isEndedMockRelationship(relationship: MockRomanticRelationship): boolean {
   const status = normalizedMockStatus(relationship);
   const type = normalizedMockType(relationship);
-  return !relationship.is_current || END_STATE_STATUSES.has(status) || type.startsWith('ex_');
+  return !relationship.is_current || END_STATE_STATUSES.has(status) || type.startsWith('ex_') || type === 'divorced';
 }
 
 function isActiveMockRelationship(relationship: MockRomanticRelationship): boolean {
@@ -1094,6 +1310,18 @@ function isCrushMockRelationship(relationship: MockRomanticRelationship): boolea
 
 function isDatingMockRelationship(relationship: MockRomanticRelationship): boolean {
   return isActiveMockRelationship(relationship) && DATING_TYPES.has(normalizedMockType(relationship));
+}
+
+function isMarriedMockRelationship(relationship: MockRomanticRelationship): boolean {
+  return MARRIED_TYPES.has(normalizedMockType(relationship));
+}
+
+function isDivorcedMockRelationship(relationship: MockRomanticRelationship): boolean {
+  return DIVORCED_TYPES.has(normalizedMockType(relationship));
+}
+
+function isCoParentMockRelationship(relationship: MockRomanticRelationship): boolean {
+  return CO_PARENT_TYPES.has(normalizedMockType(relationship));
 }
 
 function isNoContactMockRelationship(relationship: MockRomanticRelationship): boolean {
@@ -1144,6 +1372,26 @@ export function getMockRelationshipAnalytics(relationshipId: string): MockRelati
   const relationship = getMockRomanticRelationshipById(relationshipId);
   if (!relationship) return undefined;
   return generateMockRelationshipAnalytics(relationship);
+}
+
+/**
+ * Get mock "Kids Together" data for a relationship — offspring, step-kids,
+ * and any other co-parents on that same kid. Falls back to synthesizing
+ * simple "together" entries from the legacy `kids_names` list when a
+ * relationship doesn't carry structured `kids_together` metadata.
+ */
+export function getMockKidsTogether(relationshipId: string): MockKidTogether[] {
+  const relationship = getMockRomanticRelationshipById(relationshipId);
+  if (!relationship) return [];
+  const structured = relationship.metadata?.kids_together as MockKidTogether[] | undefined;
+  if (structured?.length) return structured;
+  const names = (relationship.metadata?.kids_names as string[] | undefined) ?? [];
+  return names.map((name, i) => ({
+    id: `${relationship.id}-kid-${i}`,
+    name,
+    relation: 'together' as const,
+    belongsTo: 'both' as const,
+  }));
 }
 
 /**

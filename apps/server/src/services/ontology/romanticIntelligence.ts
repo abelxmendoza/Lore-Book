@@ -32,6 +32,10 @@ const JUNK_NAMES = new Set(['me', 'myself', 'you', 'i', 'we', 'they', 'her', 'hi
 const TYPE_RULES: Array<{ re: RegExp; type: RomanticRelationshipType; weight: number }> = [
   { re: /\bmy\s+wife\b|\bmarried\s+to\b|\bhusband\b(?!\s+material)/i, type: 'wife', weight: 0.9 },
   { re: /\bmy\s+husband\b/i, type: 'husband', weight: 0.9 },
+  { re: /\b(?:we|i)\s+(?:got\s+)?divorced\b|\band\s+i\s+(?:got\s+)?divorced\b|\bmy\s+ex[\s-]?spouse\b|\bdivorced\s+(?:from|last)\b/i, type: 'divorced', weight: 0.9 },
+  { re: /\bbaby\s*mama\b|\bbaby\s*momma\b/i, type: 'baby_mama', weight: 0.9 },
+  { re: /\bbaby\s*daddy\b|\bbaby\s*dad\b/i, type: 'baby_daddy', weight: 0.9 },
+  { re: /\bco[\s-]?parent(?:ing|s)?\b|\bkids?\s+with\b|\bshare(?:d)?\s+(?:custody|kids?|children)\b/i, type: 'co_parent', weight: 0.86 },
   { re: /\bfianc[ée]e\b|\bengaged\s+to\b/i, type: 'fiancée', weight: 0.88 },
   { re: /\bmy\s+girlfriend\b|\bshe(?:'s| is)\s+my\s+girl\b/i, type: 'girlfriend', weight: 0.88 },
   { re: /\bmy\s+boyfriend\b|\bhe(?:'s| is)\s+my\s+man\b/i, type: 'boyfriend', weight: 0.88 },
@@ -65,7 +69,7 @@ const TYPE_RULES: Array<{ re: RegExp; type: RomanticRelationshipType; weight: nu
 const STATUS_RULES: Array<{ re: RegExp; status: RelationshipStatus; weight: number }> = [
   { re: /\bghosted\b|\bleft\s+on\s+read\b|\bstopped\s+responding\b|\bdisappeared\b/i, status: 'ghosted', weight: 0.85 },
   { re: /\bblocked\b|\bblocked\s+me\b/i, status: 'blocked', weight: 0.88 },
-  { re: /\bbroke\s+up\b|\bbreakup\b|\bended\s+things\b|\bsplit\s+up\b|\bmy\s+ex\b/i, status: 'ended', weight: 0.82 },
+  { re: /\bbroke\s+up\b|\bbreakup\b|\bended\s+things\b|\bsplit\s+up\b|\bmy\s+ex\b|\bdivorced\b/i, status: 'ended', weight: 0.82 },
   { re: /\bon\s+a\s+break\b|\btaking\s+a\s+break\b/i, status: 'on_break', weight: 0.8 },
   { re: /\brekindled\b|\bback\s+together\b|\btalking\s+again\b/i, status: 'rekindled', weight: 0.78 },
   { re: /\bunrequited\b|\bone[\s-]?sided\b|\bthey\s+don(?:'t| not)\s+feel\b/i, status: 'unrequited', weight: 0.76 },
@@ -75,9 +79,11 @@ const STATUS_RULES: Array<{ re: RegExp; status: RelationshipStatus; weight: numb
 ];
 
 const NAME_PATTERNS: RegExp[] = [
-  /\b(?:my\s+)?(?:girlfriend|boyfriend|partner|wife|husband|fianc[ée]e|crush|ex|lover)\s+([A-ZÀ-Ý][a-zà-ÿ'’.-]+(?:\s+[A-ZÀ-Ý][a-zà-ÿ'’.-]+){0,2})\b/g,
-  /\b(?:dating|seeing|talking\s+to|hooking\s+up\s+with|went\s+on\s+a\s+date\s+with|situationship\s+with|in\s+love\s+with|crush\s+on|attracted\s+to|obsessed\s+with|infatuation\s+with|feelings\s+for)\s+([A-ZÀ-Ý][a-zà-ÿ'’.-]+(?:\s+[A-ZÀ-Ý][a-zà-ÿ'’.-]+){0,2})\b/gi,
-  /\b([A-ZÀ-Ý][a-zà-ÿ'’.-]+(?:\s+[A-ZÀ-Ý][a-zà-ÿ'’.-]+){0,2})\s+(?:and\s+)?(?:I|we)\s+(?:went\s+on\s+a\s+date|are\s+dating|hooked\s+up|broke\s+up|are\s+on\s+a\s+break|might\s+be\s+rekindled)\b/g,
+  /\b([A-ZÀ-Ý][a-zà-ÿ'’.-]+)\s+is\s+(?:also\s+)?my\s+baby\s*(?:mama|momma|daddy)\b/gi,
+  /\b(?:my\s+)?(?:girlfriend|boyfriend|partner|wife|husband|fianc[ée]e|crush|ex|lover|baby\s*mama|baby\s*momma|baby\s*daddy)\s+([A-ZÀ-Ý][a-zà-ÿ'’.-]+(?:\s+[A-ZÀ-Ý][a-zà-ÿ'’.-]+){0,2})\b/g,
+  /\bmy\s+co[\s-]?parent\s+([A-ZÀ-Ý][a-zà-ÿ'’.-]+(?:\s+[A-ZÀ-Ý][a-zà-ÿ'’.-]+){0,2})\b/gi,
+  /\b(?:dating|seeing|talking\s+to|hooking\s+up\s+with|went\s+on\s+a\s+date\s+with|situationship\s+with|in\s+love\s+with|crush\s+on|attracted\s+to|obsessed\s+with|infatuation\s+with|feelings\s+for|divorced\s+from|co[\s-]?parent(?:ing)?\s+with)\s+([A-ZÀ-Ý][a-zà-ÿ'’.-]+(?:\s+[A-ZÀ-Ý][a-zà-ÿ'’.-]+){0,2})\b/gi,
+  /\b([A-ZÀ-Ý][a-zà-ÿ'’.-]+(?:\s+[A-ZÀ-Ý][a-zà-ÿ'’.-]+){0,2})\s+(?:and\s+)?(?:I|we)\s+(?:went\s+on\s+a\s+date|are\s+dating|hooked\s+up|broke\s+up|are\s+on\s+a\s+break|might\s+be\s+rekindled|got\s+divorced|co[\s-]?parent)\b/g,
   /\b(?:with|from|things\s+with)\s+([A-ZÀ-Ý][a-zà-ÿ'’.-]+)\b/gi,
   /\b([A-ZÀ-Ý][a-zà-ÿ'’.-]+)\s+blocked\s+me\b/gi,
   /\b([A-ZÀ-Ý][a-zà-ÿ'’.-]+)\s+was\s+my\s+ex\s+lover\b/gi,
@@ -98,7 +104,7 @@ function inferStatus(text: string, type: RomanticRelationshipType): Relationship
   for (const rule of STATUS_RULES) {
     if (rule.re.test(text)) return rule.status;
   }
-  if (type.startsWith('ex_')) return 'ended';
+  if (type.startsWith('ex_') || type === 'divorced') return 'ended';
   if (['ghosted', 'blocked'].includes(type)) return type as RelationshipStatus;
   return 'active';
 }
@@ -128,7 +134,8 @@ function extractPartnerNames(text: string): string[] {
     'girlfriend', 'boyfriend', 'dating', 'date with', 'crush', 'lover', 'situationship',
     'hooked up', 'in love', 'my ex', 'ex lover', 'wife', 'husband', 'talking to',
     'blocked', 'broke up', 'rekindled', 'infatuation', 'complicated', 'on a break',
-    'feelings for', 'things with', 'ghosted',
+    'feelings for', 'things with', 'ghosted', 'divorced', 'baby mama', 'baby daddy',
+    'co-parent', 'coparent',
   ];
   let match: RegExpExecArray | null;
   while ((match = properNoun.exec(text)) !== null) {

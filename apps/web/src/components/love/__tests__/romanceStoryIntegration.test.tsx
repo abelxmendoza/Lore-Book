@@ -32,13 +32,16 @@ describe('Dating & Romance — lore story integration', () => {
   it('renders full connected cast from real mock data', async () => {
     render(<LoveAndRelationshipsView />);
 
-    const cardNames = ['Alex', 'Jordan', 'Sam', 'Taylor', 'Morgan', 'Casey', 'Riley', 'Nova', 'Elena'];
+    const cardNames = [
+      'Alex', 'Jordan', 'Sam', 'Taylor', 'Morgan', 'Casey', 'Riley', 'Nova', 'Elena',
+      'Jamie', 'Avery', 'Priya', 'Harper', 'Daniel', 'Sage',
+    ];
     await waitFor(() => {
       for (const name of cardNames) {
         expect(screen.getAllByText(name).length).toBeGreaterThan(0);
       }
     });
-    expect(screen.getByText(/9 relationship/i)).toBeInTheDocument();
+    expect(screen.getByText(/15 relationship/i)).toBeInTheDocument();
   });
 
   it('shows lexical evidence on relationship cards', async () => {
@@ -86,12 +89,37 @@ describe('Dating & Romance — lore story integration', () => {
 
   it('lore relationships have consistent metadata', () => {
     const rels = getMockRomanticRelationships();
-    expect(rels).toHaveLength(9);
+    expect(rels).toHaveLength(15);
     for (const rel of rels) {
       expect(rel.metadata?.lexical_evidence).toBeTruthy();
       expect(rel.metadata?.glossary_cues?.length).toBeGreaterThan(0);
       expect(rel.metadata?.signals?.signal_strength).toBeTruthy();
     }
+  });
+
+  it('filters married, divorced, and co-parents from real mock data', async () => {
+    const user = userEvent.setup();
+    render(<LoveAndRelationshipsView />);
+
+    await waitFor(() => expect(screen.getAllByText('Alex').length).toBeGreaterThan(0));
+
+    await user.click(screen.getByRole('tab', { name: /^married$/i }));
+    await waitFor(() => {
+      expect(screen.getAllByText('Jamie').length).toBeGreaterThan(0);
+    });
+
+    await user.click(screen.getByRole('tab', { name: /^divorced$/i }));
+    await waitFor(() => {
+      expect(screen.getAllByText('Avery').length).toBeGreaterThan(0);
+    });
+
+    await user.click(screen.getByRole('tab', { name: /co-parents/i }));
+    await waitFor(() => {
+      expect(screen.getAllByText('Priya').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Harper').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Daniel').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Sage').length).toBeGreaterThan(0);
+    });
   });
 
 });

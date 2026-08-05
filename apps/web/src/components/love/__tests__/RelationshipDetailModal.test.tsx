@@ -131,6 +131,7 @@ describe('RelationshipDetailModal', () => {
     // getAllByRole, not getByRole — the desktop TabsList and the mobile
     // EntityModalBottomNav (both real, both visible in jsdom with no CSS
     // media queries applied) render every tab twice with the same name.
+    expect(screen.getAllByRole('tab', { name: /kids together/i })[0]).toBeInTheDocument();
     expect(screen.getAllByRole('tab', { name: /timeline/i })[0]).toBeInTheDocument();
     expect(screen.getAllByRole('tab', { name: /pros & cons/i })[0]).toBeInTheDocument();
     expect(screen.getAllByRole('tab', { name: /analytics/i })[0]).toBeInTheDocument();

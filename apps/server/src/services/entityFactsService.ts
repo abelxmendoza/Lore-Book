@@ -537,7 +537,7 @@ class EntityFactsService {
     if (archetype === 'romantic') {
       try {
         const { romanticRelationshipDetector } = await import('./conversationCentered/romanticRelationshipDetector');
-        const endedTypes = ['ex_girlfriend', 'ex_boyfriend', 'ex_wife', 'ex_husband', 'ex_lover', 'one_night_stand'];
+        const endedTypes = ['ex_girlfriend', 'ex_boyfriend', 'ex_wife', 'ex_husband', 'ex_lover', 'divorced', 'one_night_stand'];
         const validStatuses = ['active', 'on_break', 'ended', 'complicated', 'paused', 'ghosted', 'blocked', 'unrequited', 'fading', 'rekindled'];
         // Prefer the LLM's status (it reads ending signals like "she blocked
         // me"); fall back to mapping ex_* types to ended.

@@ -35,6 +35,10 @@ export type RomanticRelationshipType =
   | 'ex_wife'
   | 'ex_husband'
   | 'ex_lover'
+  | 'divorced'
+  | 'co_parent'
+  | 'baby_mama'
+  | 'baby_daddy'
   | 'situationship'
   | 'dating'
   | 'talking'
@@ -112,6 +116,9 @@ Relationship types:
 - "infatuation": Strong but possibly temporary attraction
 - "lust": Primarily physical attraction
 - "ex_boyfriend", "ex_girlfriend", "ex_wife", "ex_husband", "ex_lover": Past relationships
+- "divorced": Divorced from this person (marriage ended legally)
+- "co_parent": Share kids with this person (gender-neutral)
+- "baby_mama", "baby_daddy": Colloquial co-parent roles when you have kids together
 - "situationship": Undefined romantic/sexual relationship
 - "dating": Currently dating but not exclusive
 - "talking": Early stage, getting to know each other

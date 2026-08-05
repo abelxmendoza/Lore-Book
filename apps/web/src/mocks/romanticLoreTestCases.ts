@@ -17,7 +17,10 @@ export type RomanticLoreCategory =
   | 'talking'
   | 'on_break'
   | 'complicated'
-  | 'unrequited';
+  | 'unrequited'
+  | 'married'
+  | 'divorced'
+  | 'co_parent';
 
 export type RomanticLoreFilterTab =
   | 'all'
@@ -28,6 +31,9 @@ export type RomanticLoreFilterTab =
   | 'situationships'
   | 'dating'
   | 'crushes'
+  | 'married'
+  | 'divorced'
+  | 'co_parents'
   | 'high_risk';
 
 export type RomanticLoreCharacter = {
@@ -57,13 +63,13 @@ export type RomanticLoreTestCase = {
 };
 
 export const ROMANTIC_LORE_SYNOPSIS =
-  'After an intense chapter with Morgan and a painful ending with Nova, you rebuilt. Taylor taught you what you did not want. Alex became home. Jordan lingers as a crush from Taylor\'s art world. Sam and Riley trace the same summer party — one a situationship, one a ghost. Elena reappears with respect. Priya opens a new dating arc. The lore is one timeline, not isolated cards.';
+  'After an intense chapter with Morgan and a painful ending with Nova, you rebuilt. Taylor taught you what you did not want. Alex became home. Jamie is marriage and kids. Avery is divorce. Priya and Harper are baby mommas; Daniel and Sage are co-parents. Jordan lingers as a crush. Sam and Riley trace the same summer party. Elena reappears with respect.';
 
 export const ROMANTIC_LORE_CHAPTERS = [
   { chapter: 1, title: 'Fire & Burnout', summary: 'Morgan intensity → Nova blocked. High risk, no contact.' },
-  { chapter: 2, title: 'Lessons & Distance', summary: 'Taylor breakup. Jordan crush enters through the studio.' },
-  { chapter: 3, title: 'Present Tense', summary: 'Alex committed. Sam situationship. Casey infatuation.' },
-  { chapter: 4, title: 'Loose Ends', summary: 'Riley ghosted. Elena rekindled. Priya & Daniel on the horizon.' },
+  { chapter: 2, title: 'Lessons & Distance', summary: 'Taylor breakup. Avery divorce. Jordan crush enters through the studio.' },
+  { chapter: 3, title: 'Present Tense', summary: 'Alex committed. Jamie married. Sam situationship. Casey infatuation.' },
+  { chapter: 4, title: 'Loose Ends & Kids', summary: 'Riley ghosted. Elena rekindled. Priya, Harper, Daniel, Sage co-parent.' },
 ] as const;
 
 export const ROMANTIC_LORE_CHARACTERS: RomanticLoreCharacter[] = [
@@ -76,8 +82,12 @@ export const ROMANTIC_LORE_CHARACTERS: RomanticLoreCharacter[] = [
   { id: 'char-riley', name: 'Riley', role: 'Ghosted hookup', connection: 'Sam\'s party circuit', relationshipId: 'rel-007' },
   { id: 'char-nova', name: 'Nova', role: 'Blocked ex', connection: 'Morgan-era fallout', relationshipId: 'rel-008' },
   { id: 'char-elena', name: 'Elena', role: 'Rekindled ex', connection: 'College sweetheart — respectful ending', relationshipId: 'rel-009' },
-  { id: 'char-priya', name: 'Priya', role: 'New dating', connection: 'Fresh arc — not on a card yet', relationshipId: undefined },
-  { id: 'char-daniel', name: 'Daniel', role: 'Talking stage', connection: 'Undefined — suggestion only', relationshipId: undefined },
+  { id: 'char-jamie-spouse', name: 'Jamie', role: 'Wife', connection: 'Marriage and shared kid Mia', relationshipId: 'rel-010' },
+  { id: 'char-avery-ex', name: 'Avery', role: 'Divorced', connection: 'Marriage ended — amicable', relationshipId: 'rel-011' },
+  { id: 'char-priya', name: 'Priya', role: 'Baby mama', connection: 'Co-parent — Noah', relationshipId: 'rel-012' },
+  { id: 'char-harper', name: 'Harper', role: 'Baby mama', connection: 'Co-parent — Zoe (second household)', relationshipId: 'rel-013' },
+  { id: 'char-daniel', name: 'Daniel', role: 'Baby daddy', connection: 'Co-parent — Leo', relationshipId: 'rel-014' },
+  { id: 'char-sage', name: 'Sage', role: 'Co-parent', connection: 'Shared kids — neutral label', relationshipId: 'rel-015' },
 ];
 
 export const ROMANTIC_LORE_TEST_CASES: RomanticLoreTestCase[] = [
@@ -226,36 +236,100 @@ export const ROMANTIC_LORE_TEST_CASES: RomanticLoreTestCase[] = [
     relationshipId: 'rel-009',
   },
   {
-    id: 'lore-priya-dating',
-    category: 'dating_new',
-    label: 'New dating arc',
-    filterTab: 'dating',
-    chapter: 4,
-    storyBeat: 'Priya — fresh dating thread, not yet a full card.',
-    chatSnippet: 'I went on a date with Priya last night — coffee turned into a four-hour conversation.',
-    expectedPartner: 'Priya',
-    expectedType: 'dating',
+    id: 'lore-jamie-wife',
+    category: 'married',
+    label: 'Married partner',
+    filterTab: 'married',
+    chapter: 3,
+    storyBeat: 'Jamie is marriage — home and kid Mia.',
+    chatSnippet: 'Jamie is my wife — we have been married three years and Mia just started school.',
+    expectedPartner: 'Jamie',
+    expectedType: 'wife',
     expectedStatus: 'active',
-    glossaryCue: 'went on a date',
-    lexicalSnippet: '…went on a date with Priya — coffee turned into a four-hour conversation…',
-    connectedCharacterIds: ['char-priya'],
-    isSuggestion: true,
+    glossaryCue: 'my wife',
+    lexicalSnippet: '…Jamie is my wife — married three years…',
+    connectedCharacterIds: ['char-jamie-spouse', 'char-alex'],
+    relationshipId: 'rel-010',
   },
   {
-    id: 'lore-daniel-talking',
-    category: 'talking',
-    label: 'Talking stage',
-    filterTab: 'situationships',
+    id: 'lore-avery-divorced',
+    category: 'divorced',
+    label: 'Divorced',
+    filterTab: 'divorced',
+    chapter: 2,
+    storyBeat: 'Avery — divorce closed cleanly.',
+    chatSnippet: 'Avery and I got divorced last year — the paperwork is done and we stayed amicable.',
+    expectedPartner: 'Avery',
+    expectedType: 'divorced',
+    expectedStatus: 'ended',
+    glossaryCue: 'divorced',
+    lexicalSnippet: '…Avery and I got divorced last year…',
+    connectedCharacterIds: ['char-avery-ex'],
+    relationshipId: 'rel-011',
+  },
+  {
+    id: 'lore-priya-baby-mama',
+    category: 'co_parent',
+    label: 'Baby mama',
+    filterTab: 'co_parents',
     chapter: 4,
-    storyBeat: 'Daniel — early talking stage, suggestion only.',
-    chatSnippet: 'I am in a talking stage with Daniel and honestly have no idea what we are yet.',
-    expectedPartner: 'Daniel',
-    expectedType: 'talking',
+    storyBeat: 'Priya — co-parent Noah.',
+    chatSnippet: 'Priya is my baby mama — we co-parent Noah and keep the schedule tight.',
+    expectedPartner: 'Priya',
+    expectedType: 'baby_mama',
     expectedStatus: 'active',
-    glossaryCue: 'talking stage',
-    lexicalSnippet: '…talking stage with Daniel — no idea what we are yet…',
-    connectedCharacterIds: ['char-daniel', 'char-sam'],
-    isSuggestion: true,
+    glossaryCue: 'baby mama',
+    lexicalSnippet: '…Priya is my baby mama — we co-parent Noah…',
+    connectedCharacterIds: ['char-priya', 'char-harper'],
+    relationshipId: 'rel-012',
+  },
+  {
+    id: 'lore-harper-baby-mama',
+    category: 'co_parent',
+    label: 'Second baby mama',
+    filterTab: 'co_parents',
+    chapter: 4,
+    storyBeat: 'Harper — second co-parent household.',
+    chatSnippet: 'Harper is also my baby mama — Zoe is with her during the week.',
+    expectedPartner: 'Harper',
+    expectedType: 'baby_mama',
+    expectedStatus: 'active',
+    glossaryCue: 'baby mama',
+    lexicalSnippet: '…Harper is also my baby mama — Zoe…',
+    connectedCharacterIds: ['char-harper', 'char-priya'],
+    relationshipId: 'rel-013',
+  },
+  {
+    id: 'lore-daniel-baby-daddy',
+    category: 'co_parent',
+    label: 'Baby daddy',
+    filterTab: 'co_parents',
+    chapter: 4,
+    storyBeat: 'Daniel — baby daddy weekends.',
+    chatSnippet: 'Daniel is my baby daddy — he takes weekends with Leo and never misses a birthday.',
+    expectedPartner: 'Daniel',
+    expectedType: 'baby_daddy',
+    expectedStatus: 'active',
+    glossaryCue: 'baby daddy',
+    lexicalSnippet: '…Daniel is my baby daddy — weekends with Leo…',
+    connectedCharacterIds: ['char-daniel'],
+    relationshipId: 'rel-014',
+  },
+  {
+    id: 'lore-sage-co-parent',
+    category: 'co_parent',
+    label: 'Co-parent',
+    filterTab: 'co_parents',
+    chapter: 4,
+    storyBeat: 'Sage — gender-neutral co-parent.',
+    chatSnippet: 'Sage and I co-parent — we share school and health decisions without dating.',
+    expectedPartner: 'Sage',
+    expectedType: 'co_parent',
+    expectedStatus: 'active',
+    glossaryCue: 'co-parent',
+    lexicalSnippet: '…Sage and I co-parent — school and health decisions…',
+    connectedCharacterIds: ['char-sage'],
+    relationshipId: 'rel-015',
   },
   {
     id: 'lore-alex-on-break',

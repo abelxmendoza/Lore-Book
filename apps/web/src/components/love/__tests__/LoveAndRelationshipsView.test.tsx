@@ -196,6 +196,9 @@ describe('LoveAndRelationshipsView', () => {
       expect(screen.getByRole('tab', { name: /past/i })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: /situationships/i })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: /crushes/i })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /^married$/i })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /^divorced$/i })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /co-parents/i })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: /rankings/i })).toBeInTheDocument();
     });
     
@@ -205,6 +208,9 @@ describe('LoveAndRelationshipsView', () => {
     const pastTabs = screen.getAllByText(/past/i);
     const situationshipsTabs = screen.getAllByText(/situationships/i);
     const crushesTabs = screen.getAllByText(/crushes/i);
+    const marriedTabs = screen.getAllByText(/married/i);
+    const divorcedTabs = screen.getAllByText(/divorced/i);
+    const coParentsTabs = screen.getAllByText(/co-parents/i);
     const rankingsTabs = screen.getAllByText(/rankings/i);
     
     // Check that at least one tab exists for each filter
@@ -213,6 +219,9 @@ describe('LoveAndRelationshipsView', () => {
     expect(pastTabs.length).toBeGreaterThan(0);
     expect(situationshipsTabs.length).toBeGreaterThan(0);
     expect(crushesTabs.length).toBeGreaterThan(0);
+    expect(marriedTabs.length).toBeGreaterThan(0);
+    expect(divorcedTabs.length).toBeGreaterThan(0);
+    expect(coParentsTabs.length).toBeGreaterThan(0);
     expect(rankingsTabs.length).toBeGreaterThan(0);
   });
 

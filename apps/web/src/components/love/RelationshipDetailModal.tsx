@@ -1,7 +1,7 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
 import { useState, useEffect, useCallback } from 'react';
-import { X, Heart, Calendar, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, MessageSquare, BarChart3, List, Clock, Activity, RefreshCw, Sparkles, GitBranch, Trash2 } from 'lucide-react';
+import { X, Heart, Calendar, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, MessageSquare, BarChart3, List, Clock, Activity, RefreshCw, Sparkles, GitBranch, Trash2, Baby } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -21,8 +21,10 @@ import { RelationshipAnalytics } from './RelationshipAnalytics';
 import { TheirConnectionsPanel } from './TheirConnectionsPanel';
 import { RelationshipFlagsPanel } from './RelationshipFlagsPanel';
 import { RelationshipLifeImpactPanel } from './RelationshipLifeImpactPanel';
+import { KidsTogetherPanel, type KidTogether } from './KidsTogetherPanel';
 import { getMockRelationshipInfluence } from '../../mocks/romanticLifeImpact';
 import type { MockRelationshipInfluence } from '../../mocks/romanticLifeImpact';
+import { getMockKidsTogether } from '../../mocks/romanticRelationships';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { openCharacterBookModal } from '../../lib/openCharacterBookModal';
 import {
@@ -114,6 +116,7 @@ type DateEvent = {
 const RELATIONSHIP_TABS = [
   { value: 'overview', label: 'Overview', shortLabel: 'Overview', icon: Heart },
   { value: 'chat', label: 'Chat', shortLabel: 'Chat', icon: MessageSquare },
+  { value: 'kids', label: 'Kids Together', shortLabel: 'Kids', icon: Baby },
   { value: 'timeline', label: 'Timeline', shortLabel: 'Time', icon: Clock },
   { value: 'pros-cons', label: 'Pros & Cons', shortLabel: 'Pros', icon: List },
   { value: 'analytics', label: 'Analytics', shortLabel: 'Stats', icon: BarChart3 },
@@ -158,6 +161,9 @@ export const RelationshipDetailModal = ({
   const [influence, setInfluence] = useState<MockRelationshipInfluence | null>(null);
   const [influenceLoading, setInfluenceLoading] = useState(false);
   const [influenceLoaded, setInfluenceLoaded] = useState(false);
+  const [kids, setKids] = useState<KidTogether[]>([]);
+  const [kidsLoading, setKidsLoading] = useState(false);
+  const [kidsLoaded, setKidsLoaded] = useState(false);
   const [crudBusy, setCrudBusy] = useState(false);
   const [crudError, setCrudError] = useState<string | null>(null);
   const [deleteReason, setDeleteReason] = useState('wrong_person_or_not_real');
@@ -167,6 +173,8 @@ export const RelationshipDetailModal = ({
     loadData();
     setInfluence(null);
     setInfluenceLoaded(false);
+    setKids([]);
+    setKidsLoaded(false);
   }, [relationshipId, shouldUseMockData]);
 
   useEffect(() => {
@@ -237,6 +245,31 @@ export const RelationshipDetailModal = ({
   useEffect(() => {
     if (activeTab === 'life-impact') loadInfluence();
   }, [activeTab, loadInfluence]);
+
+  const loadKids = useCallback(async () => {
+    if (kidsLoaded) return;
+    setKidsLoading(true);
+    try {
+      if (shouldUseMockData) {
+        setKids(getMockKidsTogether(relationshipId));
+        setKidsLoaded(true);
+        return;
+      }
+      const data = await fetchJson<{ success: boolean; kids?: KidTogether[] }>(
+        `/api/conversation/romantic-relationships/${relationshipId}/kids`
+      ).catch(() => null);
+      setKids(data?.success ? (data.kids ?? []) : []);
+      setKidsLoaded(true);
+    } catch {
+      // non-fatal — Kids Together tab shows empty state
+    } finally {
+      setKidsLoading(false);
+    }
+  }, [relationshipId, kidsLoaded, shouldUseMockData]);
+
+  useEffect(() => {
+    if (activeTab === 'kids') loadKids();
+  }, [activeTab, loadKids]);
 
   const loadData = async () => {
     setLoading(true);
@@ -386,6 +419,11 @@ export const RelationshipDetailModal = ({
   };
 
   const formatRelationshipType = (type: string) => {
+    const normalized = type.toLowerCase();
+    if (normalized === 'baby_mama') return 'Baby mama';
+    if (normalized === 'baby_daddy') return 'Baby daddy';
+    if (normalized === 'co_parent') return 'Co-parent';
+    if (normalized === 'divorced') return 'Divorced';
     return type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
@@ -533,7 +571,7 @@ export const RelationshipDetailModal = ({
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden px-4 sm:px-6 pb-4 sm:pb-6">
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as RelationshipModalTab)} className="flex flex-col flex-1 min-h-0">
           <TabsList
-            className="hidden md:grid w-full max-w-full h-auto shrink-0 md:grid-cols-7 gap-0.5 p-1 bg-black/40 border border-border/50"
+            className="hidden md:grid w-full max-w-full h-auto shrink-0 md:grid-cols-8 gap-0.5 p-1 bg-black/40 border border-border/50"
             aria-label="Relationship sections"
           >
             {RELATIONSHIP_TABS.map(({ value, label, shortLabel, icon: Icon }) => (
@@ -832,6 +870,11 @@ export const RelationshipDetailModal = ({
                 </ul>
               </div>
             )}
+          </TabsContent>
+
+          {/* Kids Together Tab — offspring, step-kids, and other co-parents */}
+          <TabsContent value="kids" className={tabPanelClass}>
+            <KidsTogetherPanel kids={kids} loading={kidsLoading} partnerName={displayName} />
           </TabsContent>
 
           {/* Timeline Tab */}

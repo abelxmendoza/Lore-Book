@@ -163,6 +163,73 @@ describe('RelationshipCard', () => {
     expect(container.querySelector('[class*="text-fuchsia-300"]')).toBeInTheDocument();
   });
 
+  it('labels marriage, divorce, and co-parent types distinctly', () => {
+    const onClick = vi.fn();
+    const { rerender } = render(
+      <RelationshipCard
+        relationship={{ ...mockRelationship, id: 'rel-wife', person_name: 'Jamie', relationship_type: 'wife' }}
+        onClick={onClick}
+      />,
+    );
+    expect(screen.getByText(/wife/i)).toBeInTheDocument();
+
+    rerender(
+      <RelationshipCard
+        relationship={{
+          ...mockRelationship,
+          id: 'rel-div',
+          person_name: 'Avery',
+          relationship_type: 'divorced',
+          status: 'ended',
+          is_current: false,
+        }}
+        onClick={onClick}
+      />,
+    );
+    expect(screen.getByText(/divorced/i)).toBeInTheDocument();
+
+    rerender(
+      <RelationshipCard
+        relationship={{
+          ...mockRelationship,
+          id: 'rel-bm',
+          person_name: 'Priya',
+          relationship_type: 'baby_mama',
+          metadata: { has_kids_together: true },
+        }}
+        onClick={onClick}
+      />,
+    );
+    expect(screen.getByText(/baby mama/i)).toBeInTheDocument();
+    expect(screen.getByText(/kids together/i)).toBeInTheDocument();
+  });
+
+  it('gives co-parents a cyan badge and divorced a stone badge', () => {
+    const onClick = vi.fn();
+    const co = render(
+      <RelationshipCard
+        relationship={{ ...mockRelationship, id: 'rel-cp', relationship_type: 'co_parent' }}
+        onClick={onClick}
+      />,
+    );
+    expect(co.container.querySelector('[class*="text-cyan-200"]')).toBeInTheDocument();
+    co.unmount();
+
+    const divorced = render(
+      <RelationshipCard
+        relationship={{
+          ...mockRelationship,
+          id: 'rel-dv',
+          relationship_type: 'divorced',
+          status: 'ended',
+          is_current: false,
+        }}
+        onClick={onClick}
+      />,
+    );
+    expect(divorced.container.querySelector('[class*="text-stone-300"]')).toBeInTheDocument();
+  });
+
   it('gives ghosted, ended, and blocked each a distinct color instead of sharing one', () => {
     const onClick = vi.fn();
     const ghosted = render(

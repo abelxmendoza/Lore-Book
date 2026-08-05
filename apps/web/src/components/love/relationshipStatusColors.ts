@@ -25,6 +25,8 @@ export type RelationshipColorKey =
   | 'situationship'
   | 'intense'
   | 'active_default'
+  | 'co_parent'
+  | 'divorced'
   | 'on_break'
   | 'paused'
   | 'complicated'
@@ -51,6 +53,8 @@ const SITUATIONSHIP_TYPES = new Set([
   'situationship', 'hooking_up', 'fuck_buddy', 'friends_with_benefits', 'one_night_stand',
 ]);
 const INTENSE_TYPES = new Set(['infatuation', 'obsession', 'in_love', 'lust']);
+const CO_PARENT_TYPES = new Set(['co_parent', 'baby_mama', 'baby_daddy']);
+const DIVORCED_TYPES = new Set(['divorced', 'ex_wife', 'ex_husband']);
 
 const RELATIONSHIP_STATUS_COLORS: Record<RelationshipColorKey, RelationshipColorClasses> = {
   // Active, differentiated by what kind of active it is.
@@ -73,6 +77,14 @@ const RELATIONSHIP_STATUS_COLORS: Record<RelationshipColorKey, RelationshipColor
   active_default: {
     bg: 'bg-green-500/15', text: 'text-green-300', border: 'border-green-500/25',
     className: 'bg-green-500/15 text-green-300 border-green-500/25',
+  },
+  co_parent: {
+    bg: 'bg-cyan-500/15', text: 'text-cyan-200', border: 'border-cyan-500/25',
+    className: 'bg-cyan-500/15 text-cyan-200 border-cyan-500/25',
+  },
+  divorced: {
+    bg: 'bg-stone-500/20', text: 'text-stone-300', border: 'border-stone-500/30',
+    className: 'bg-stone-500/20 text-stone-300 border-stone-500/30',
   },
   // Currently paused, not ended.
   on_break: {
@@ -126,6 +138,11 @@ export function getRelationshipColorKey(relationship: RelationshipColorInput): R
   const status = (relationship.status ?? '').toLowerCase();
   const type = (relationship.relationship_type ?? '').toLowerCase();
 
+  // Divorce / ex-spouse roles keep a distinct note even when status is ended.
+  if (DIVORCED_TYPES.has(type) && (status === 'ended' || status === 'active' || !status)) {
+    return 'divorced';
+  }
+
   if (status !== 'active') {
     switch (status) {
       case 'on_break': return 'on_break';
@@ -141,6 +158,7 @@ export function getRelationshipColorKey(relationship: RelationshipColorInput): R
     }
   }
 
+  if (CO_PARENT_TYPES.has(type)) return 'co_parent';
   if (relationship.is_situationship || SITUATIONSHIP_TYPES.has(type)) return 'situationship';
   if (INTENSE_TYPES.has(type)) return 'intense';
   if (COMMITTED_TYPES.has(type)) return 'committed';

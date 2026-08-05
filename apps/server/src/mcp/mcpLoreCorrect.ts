@@ -17,7 +17,8 @@ export const ROMANTIC_TYPES = [
   'boyfriend', 'girlfriend', 'wife', 'husband', 'lover', 'crush', 'infatuation',
   'situationship', 'dating', 'talking', 'hooking_up', 'one_night_stand',
   'friends_with_benefits', 'ex_boyfriend', 'ex_girlfriend', 'ex_wife',
-  'ex_husband', 'ex_lover', 'complicated',
+  'ex_husband', 'ex_lover', 'divorced', 'co_parent', 'baby_mama', 'baby_daddy',
+  'complicated',
 ] as const;
 
 export const ROMANTIC_STATUSES = [

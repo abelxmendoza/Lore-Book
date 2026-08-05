@@ -134,6 +134,66 @@ const CUSTOM_ANALYTICS: Record<string, Pick<MockRelationshipAnalytics, 'insights
       'Any reopening needs a real talk about distance and timing, not a nostalgic text.',
     ],
   },
+  'rel-010': {
+    affectionTrend: 'stable',
+    healthTrend: 'improving',
+    insights: [
+      'Jamie shows up as marriage — household, kids, and long-horizon trust in the same entries.',
+    ],
+    recommendations: [
+      'Protect couple time even when parenting logistics take the calendar.',
+    ],
+  },
+  'rel-011': {
+    affectionTrend: 'decreasing',
+    healthTrend: 'stable',
+    insights: [
+      'Avery is the divorce chapter — paperwork finished, grief quieter than the marriage years.',
+    ],
+    recommendations: [
+      'Keep the amicable tone; don’t reopen romantic loops under holiday stress.',
+    ],
+  },
+  'rel-012': {
+    affectionTrend: 'stable',
+    healthTrend: 'stable',
+    insights: [
+      'Priya is co-parent first — school runs and shared custody, not dating energy.',
+    ],
+    recommendations: [
+      'Keep romantic dating separate from parenting logistics with Priya.',
+    ],
+  },
+  'rel-013': {
+    affectionTrend: 'stable',
+    healthTrend: 'stable',
+    insights: [
+      'Harper is a second co-parent household — multiple kids / multiple moms pattern.',
+    ],
+    recommendations: [
+      'Calendar clarity beats chemistry when two co-parenting rhythms overlap.',
+    ],
+  },
+  'rel-014': {
+    affectionTrend: 'stable',
+    healthTrend: 'stable',
+    insights: [
+      'Daniel reads as baby daddy — reliable for the kid, not a romantic track.',
+    ],
+    recommendations: [
+      'Keep expectations on parenting roles explicit so romance doesn’t get confused.',
+    ],
+  },
+  'rel-015': {
+    affectionTrend: 'stable',
+    healthTrend: 'improving',
+    insights: [
+      'Sage is the gender-neutral co-parent card — shared decisions without a dating label.',
+    ],
+    recommendations: [
+      'Use the co-parent label in chat when talking about school and health decisions.',
+    ],
+  },
 };
 
 const DEMO_PROFILES: Record<string, RomanticDemoProfile> = {
@@ -254,6 +314,54 @@ const DEMO_PROFILES: Record<string, RomanticDemoProfile> = {
     patterns: {
       drift: { driftType: 'reconnecting', driftStrength: 0.48, timeSinceLastMentionDays: 30 },
     },
+  },
+  'rel-010': {
+    headline: 'Married life — partnership, home, and a kid in the same story.',
+    showcaseTag: 'Married · Active',
+    primaryMetrics: ['affection', 'compatibility', 'health'],
+    overviewEmphasis: 'balanced',
+    showAttachmentDynamics: true,
+    analyticsVariant: 'story',
+  },
+  'rel-011': {
+    headline: 'Divorce closed cleanly — respect stayed, romance did not.',
+    showcaseTag: 'Divorced · Ended',
+    primaryMetrics: ['health', 'compatibility'],
+    overviewEmphasis: 'closure',
+    showAttachmentDynamics: false,
+    analyticsVariant: 'story',
+  },
+  'rel-012': {
+    headline: 'Baby mama #1 — co-parenting Noah is the bond now.',
+    showcaseTag: 'Co-parent · Kids together',
+    primaryMetrics: ['health', 'compatibility'],
+    overviewEmphasis: 'balanced',
+    showAttachmentDynamics: false,
+    analyticsVariant: 'story',
+  },
+  'rel-013': {
+    headline: 'Baby mama #2 — another household, same co-parent discipline.',
+    showcaseTag: 'Co-parent · Kids together',
+    primaryMetrics: ['health'],
+    overviewEmphasis: 'balanced',
+    showAttachmentDynamics: false,
+    analyticsVariant: 'story',
+  },
+  'rel-014': {
+    headline: 'Baby daddy — weekends and birthdays, not date nights.',
+    showcaseTag: 'Co-parent · Kids together',
+    primaryMetrics: ['health', 'compatibility'],
+    overviewEmphasis: 'balanced',
+    showAttachmentDynamics: false,
+    analyticsVariant: 'story',
+  },
+  'rel-015': {
+    headline: 'Co-parent — shared kids without a romantic label.',
+    showcaseTag: 'Co-parent · Kids together',
+    primaryMetrics: ['health', 'compatibility'],
+    overviewEmphasis: 'balanced',
+    showAttachmentDynamics: false,
+    analyticsVariant: 'story',
   },
 };
 

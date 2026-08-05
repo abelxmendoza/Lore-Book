@@ -20,6 +20,25 @@ describe('romanticIntelligence', () => {
     expect(hits[0].cues.length).toBeGreaterThan(0);
   });
 
+  it('parses marriage, divorce, and co-parent lexical cues', () => {
+    const wife = parseRomanticEpisode('Jamie is my wife — we have been married three years');
+    expect(wife[0]?.partnerName).toBe('Jamie');
+    expect(wife[0]?.relationshipType).toBe('wife');
+
+    const divorced = parseRomanticEpisode('Avery and I got divorced last year — paperwork is done');
+    expect(divorced.some((h) => h.partnerName === 'Avery' && h.relationshipType === 'divorced')).toBe(true);
+    expect(divorced.find((h) => h.partnerName === 'Avery')?.status).toBe('ended');
+
+    const babyMama = parseRomanticEpisode('Priya is my baby mama — we co-parent Noah');
+    expect(babyMama.some((h) => h.partnerName === 'Priya' && h.relationshipType === 'baby_mama')).toBe(true);
+
+    const babyDaddy = parseRomanticEpisode('Daniel is my baby daddy — he takes weekends with Leo');
+    expect(babyDaddy.some((h) => h.partnerName === 'Daniel' && h.relationshipType === 'baby_daddy')).toBe(true);
+
+    const coParent = parseRomanticEpisode('Sage and I co-parent — we share school decisions');
+    expect(coParent.some((h) => h.partnerName === 'Sage' && h.relationshipType === 'co_parent')).toBe(true);
+  });
+
   describe.each(
     ROMANTIC_LORE_TEST_CASES.filter((tc) => !tc.isSuggestion)
   )('lore fixture $id', (tc) => {

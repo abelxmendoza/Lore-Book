@@ -27,6 +27,7 @@ import { correctionResolutionService } from '../services/conversationCentered/co
 import { entityAttributeDetector } from '../services/conversationCentered/entityAttributeDetector';
 import { entityRelationshipDetector } from '../services/conversationCentered/entityRelationshipDetector';
 import { entityScopeService } from '../services/conversationCentered/entityScopeService';
+import { familyTreeService } from '../services/familyTreeService';
 import { eventAssemblyService } from '../services/conversationCentered/eventAssemblyService';
 import { eventCausalDetector } from '../services/conversationCentered/eventCausalDetector';
 // Note: eventExtractionService intentionally not imported here.
@@ -76,9 +77,10 @@ const romanticRelationshipPatchSchema = z.object({
   relationship_type: z.enum([
     'boyfriend', 'girlfriend', 'wife', 'husband', 'fiancé', 'fiancée',
     'lover', 'fuck_buddy', 'crush', 'obsession', 'infatuation', 'lust',
-    'ex_boyfriend', 'ex_girlfriend', 'ex_wife', 'ex_husband',
+    'ex_boyfriend', 'ex_girlfriend', 'ex_wife', 'ex_husband', 'ex_lover',
+    'divorced', 'co_parent', 'baby_mama', 'baby_daddy',
     'situationship', 'dating', 'talking', 'hooking_up', 'one_night_stand',
-    'complicated', 'on_break', 'friends_with_benefits', 'ex_lover', 'in_love',
+    'complicated', 'on_break', 'friends_with_benefits', 'in_love',
   ]).optional(),
   love_status: z.enum(['in_love', 'falling_in_love', 'loved', 'love_faded', 'never_loved', 'uncertain']).nullable().optional(),
   love_declared_at: z.string().datetime().nullable().optional(),
@@ -4248,6 +4250,44 @@ router.get(
         },
       },
     });
+  })
+);
+
+/**
+ * GET /api/conversation/romantic-relationships/:id/kids
+ *
+ * "Kids Together" tab — offspring shared with this partner, step-kids
+ * belonging to just one of them, and any other co-parent on that same kid
+ * (an ex, another baby mama/daddy) sourced from the user's family tree.
+ */
+router.get(
+  '/romantic-relationships/:id/kids',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { id: relationshipId } = req.params;
+
+    const { data: rel, error: relError } = await supabaseAdmin
+      .from('romantic_relationships')
+      .select('id, person_id, person_type, character_id, metadata')
+      .eq('id', relationshipId)
+      .eq('user_id', userId)
+      .single();
+
+    if (relError || !rel) {
+      return res.status(404).json({ success: false, error: 'Relationship not found' });
+    }
+
+    const linkedFromMeta =
+      typeof (rel.metadata as Record<string, unknown> | null)?.linked_character_id === 'string'
+        ? ((rel.metadata as Record<string, unknown>).linked_character_id as string)
+        : null;
+    const partnerCharacterId =
+      rel.character_id ?? linkedFromMeta ?? (rel.person_type === 'character' ? rel.person_id : null);
+
+    const kids = await familyTreeService.getKidsTogetherForRelationship(userId, partnerCharacterId);
+
+    return res.json({ success: true, kids });
   })
 );
 

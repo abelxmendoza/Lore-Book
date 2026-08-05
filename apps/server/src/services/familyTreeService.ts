@@ -457,6 +457,57 @@ class FamilyTreeService {
   }
 
   /**
+   * Kids shared between the account owner and a romantic partner, for the
+   * Dating & Romance "Kids Together" tab. A kid is "together" when both the
+   * self and the partner are parents; otherwise it's a step-kid (belongs to
+   * just one of them). Any additional parent on that same kid — an ex, another
+   * co-parent — surfaces as `coParents` so blended-family context stays visible.
+   */
+  async getKidsTogetherForRelationship(
+    userId: string,
+    partnerCharacterId: string | null,
+  ): Promise<
+    Array<{
+      id: string;
+      name: string;
+      relation: 'together' | 'step';
+      belongsTo: 'both' | 'self' | 'partner';
+      coParents: Array<{ id: string; name: string }>;
+    }>
+  > {
+    if (!partnerCharacterId) return [];
+    const tree = await this.getUserFamilyTree(userId);
+    if (!tree || !tree.self_id || tree.self_id === partnerCharacterId) return [];
+
+    const edges = collectAbsoluteParentChildEdges(tree);
+    if (edges.length === 0) return [];
+
+    const nameById = new Map(tree.members.map((m) => [m.id, m.name]));
+    const selfId = tree.self_id;
+    const childrenOf = (parentId: string) =>
+      new Set(edges.filter((e) => e.parentId === parentId).map((e) => e.childId));
+
+    const selfKids = childrenOf(selfId);
+    const partnerKids = childrenOf(partnerCharacterId);
+    const allKidIds = new Set<string>([...selfKids, ...partnerKids]);
+    if (allKidIds.size === 0) return [];
+
+    return [...allKidIds].map((childId) => {
+      const together = selfKids.has(childId) && partnerKids.has(childId);
+      const otherParentIds = edges
+        .filter((e) => e.childId === childId && e.parentId !== selfId && e.parentId !== partnerCharacterId)
+        .map((e) => e.parentId);
+      return {
+        id: childId,
+        name: nameById.get(childId) ?? 'Unknown',
+        relation: together ? ('together' as const) : ('step' as const),
+        belongsTo: together ? ('both' as const) : selfKids.has(childId) ? ('self' as const) : ('partner' as const),
+        coParents: [...new Set(otherParentIds)].map((id) => ({ id, name: nameById.get(id) ?? 'Unknown' })),
+      };
+    });
+  }
+
+  /**
    * Hierarchy fallback: family edges are often stored as a generic `related`
    * relationship, which collapses everyone to generation 0. Re-derive relation +
    * generation from kinship keywords — but ONLY when the name is TITLE-LEADING

@@ -84,6 +84,11 @@ interface RelationshipCardProps {
 }
 
 function formatRelationshipType(type: string) {
+  const normalized = type.toLowerCase();
+  if (normalized === 'baby_mama') return 'Baby mama';
+  if (normalized === 'baby_daddy') return 'Baby daddy';
+  if (normalized === 'co_parent') return 'Co-parent';
+  if (normalized === 'divorced') return 'Divorced';
   return type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
 }
 
@@ -211,6 +216,15 @@ export const RelationshipCard = ({
             >
               {badgeLabel}
             </Badge>
+            {relationship.metadata?.has_kids_together === true && (
+              <Badge
+                variant="outline"
+                className="max-w-full truncate text-[10px] font-medium px-1.5 py-0 bg-cyan-500/10 text-cyan-200 border-cyan-500/25"
+                data-testid="kids-together-badge"
+              >
+                Kids together
+              </Badge>
+            )}
           </div>
           <Heart
             className={cn(
