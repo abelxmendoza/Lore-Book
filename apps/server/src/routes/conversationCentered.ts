@@ -311,7 +311,13 @@ router.get(
     // without hydrating messages — a thread with messages must never be dedupe-dropped.
     const messageCounts = await loadThreadMessageCounts(userId, merged.map((t) => t.id));
 
-    const last = merged[merged.length - 1];
+    // Cursor must reflect the true keyset boundary of the paginated query (`threads`),
+    // never `merged` — entity-linked orphan rows are stitched in from outside the
+    // keyset order and are often much older than the real page boundary. Deriving the
+    // cursor from `merged` could jump it back to one of those orphans, causing the next
+    // "Load more" page to skip every thread newer than it (they silently vanish from
+    // the list) or re-fetch ones already shown (they appear to duplicate/reorder).
+    const last = threads[threads.length - 1];
     const nextCursor =
       hasMore && last
         ? Buffer.from(JSON.stringify({ updatedAt: last.updated_at, id: last.id }), 'utf8').toString('base64url')
