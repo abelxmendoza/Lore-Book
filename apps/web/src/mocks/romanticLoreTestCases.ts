@@ -69,7 +69,7 @@ export const ROMANTIC_LORE_CHAPTERS = [
 export const ROMANTIC_LORE_CHARACTERS: RomanticLoreCharacter[] = [
   { id: 'char-alex', name: 'Alex', role: 'Girlfriend', connection: 'Current partner — met after Taylor', relationshipId: 'rel-001' },
   { id: 'char-jordan', name: 'Jordan', role: 'Crush', connection: 'Art studio — Taylor\'s circle', relationshipId: 'rel-002' },
-  { id: 'char-sam', name: 'Sam', role: 'Situationship', connection: 'Same summer scene as Riley', relationshipId: 'rel-003' },
+  { id: 'char-sam', name: 'Sam', role: 'Dating & Romance', connection: 'Same summer scene as Riley', relationshipId: 'rel-003' },
   { id: 'char-taylor', name: 'Taylor', role: 'Ex-girlfriend', connection: 'Ended over life goals — introduced art world', relationshipId: 'rel-004' },
   { id: 'char-morgan', name: 'Morgan', role: 'Ex-lover', connection: 'Intense past — predates Taylor', relationshipId: 'rel-005' },
   { id: 'char-casey', name: 'Casey', role: 'Infatuation', connection: 'New energy at work', relationshipId: 'rel-006' },

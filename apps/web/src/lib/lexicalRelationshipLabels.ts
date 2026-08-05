@@ -100,12 +100,14 @@ export function lexicalBadgesFromSignals(signals: LexicalSignals | null | undefi
   }
 
   for (const r of signals.romantic_signals ?? []) {
+    // Situationship is relationship identity — emit once, not also via tags.
     if (r.isSituationship) push('rom:situationship', 'Situationship', 'romantic');
     if (r.status === 'ghosted') push('rom:ghosted', 'Ghosted', 'romantic');
     for (const tag of r.tags ?? []) {
+      if (tag === 'situationship' && r.isSituationship) continue;
       push(`rom:${tag}`, ROMANTIC_TAG_LABELS[tag] ?? tag.replace(/_/g, ' '), 'romantic');
     }
-    if (r.status && r.status !== 'active') {
+    if (r.status && r.status !== 'active' && r.status !== 'ghosted') {
       push(`rom:status:${r.status}`, ROMANTIC_STATUS_LABELS[r.status] ?? r.status, 'romantic');
     }
   }
@@ -128,14 +130,21 @@ export function lexicalBadgesFromRelationship(rel: {
   metadata?: Record<string, unknown> | null;
 }): LexicalBadge[] {
   const fromMeta = lexicalBadgesFromSignals(extractLexicalSignals(rel.metadata));
-  if (fromMeta.length > 0) return fromMeta;
+  if (fromMeta.length > 0) {
+    // Identity (type / situationship) belongs on the romance badge once —
+    // don't restate it from lexical tags.
+    return fromMeta.filter((badge) => {
+      const label = badge.label.toLowerCase().replace(/[-_]+/g, ' ').trim();
+      if (label === 'situationship') return false;
+      const type = (rel.relationship_type ?? '').toLowerCase().replace(/_/g, ' ').trim();
+      return !(type && label === type);
+    });
+  }
 
   const out: LexicalBadge[] = [];
-  if (rel.is_situationship) out.push({ key: 'situationship', label: 'Situationship', tone: 'romantic' });
+  // Situationship / relationship_type are shown by the composed romance badge —
+  // only surface non-identity status cues here.
   if (rel.status === 'ghosted') out.push({ key: 'ghosted', label: 'Ghosted', tone: 'romantic' });
-  if (rel.relationship_type === 'situationship') {
-    out.push({ key: 'situationship-type', label: 'Situationship', tone: 'romantic' });
-  }
   return out;
 }
 

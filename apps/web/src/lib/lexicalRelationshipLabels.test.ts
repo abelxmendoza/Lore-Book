@@ -20,4 +20,14 @@ describe('lexicalRelationshipLabels', () => {
     expect(badges.some((b) => b.label === 'Ghosted')).toBe(true);
     expect(badges.some((b) => b.label === 'Soft launch')).toBe(true);
   });
+
+  it('emits situationship only once when both flag and tag are set', () => {
+    const badges = lexicalBadgesFromSignals({
+      romantic_signals: [
+        { status: 'active', isSituationship: true, tags: ['situationship', 'soft_launch'] },
+      ],
+    });
+    expect(badges.filter((b) => b.label === 'Situationship')).toHaveLength(1);
+    expect(badges.some((b) => b.label === 'Soft launch')).toBe(true);
+  });
 });

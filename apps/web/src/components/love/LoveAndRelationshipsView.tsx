@@ -30,6 +30,7 @@ import {
 import { getMockCharacterSuggestionBookNames } from '../../mocks/characterSuggestions';
 import type { CharacterSuggestion } from '../../api/entitySuggestions';
 import { getRomanticDemoProfile } from '../../mocks/romanticDemoProfiles';
+import { composeRomanticRelationshipBadgeLabel } from '../../lib/romanticRelationshipLabel';
 import {
   getMockRomanticBookCharacterById,
   mergeRomanticDemoCharacters,
@@ -755,11 +756,7 @@ export const LoveAndRelationshipsView = () => {
     const teaser =
       demoProfile?.headline ??
       (typeof rel.metadata?.lexical_evidence === 'string' ? rel.metadata.lexical_evidence : null);
-    const badge =
-      demoProfile?.showcaseTag ??
-      [rel.relationship_type.replace(/_/g, ' '), rel.status.replace(/_/g, ' ')]
-        .filter(Boolean)
-        .join(' · ');
+    const badge = composeRomanticRelationshipBadgeLabel(rel);
     const metricKeys = (demoProfile?.primaryMetrics ?? (['compatibility', 'health'] as const)).slice(0, 2);
     const metricLine = metricKeys
       .map((key) => {
