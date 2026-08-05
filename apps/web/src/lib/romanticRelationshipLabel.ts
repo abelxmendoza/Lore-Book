@@ -159,12 +159,12 @@ export function resolveCharacterRomanceIdentity(input: {
       : null;
   const roleType = isRomanceIdentityType(input.role) ? input.role : null;
   const tagType = (input.tags ?? []).find((tag) => isRomanceIdentityType(tag)) ?? null;
-  const type = metaType || roleType || tagType;
-  if (!type && !/romantic|past_romantic/i.test(String(input.archetype ?? ''))) {
-    return null;
-  }
+  const metaIsRomance = isRomanceIdentityType(metaType) ? metaType : null;
+  const type = metaIsRomance || roleType || tagType;
+  // Do not invent a bond label from archetype alone ("romantic" ≠ situationship/dating).
+  if (!type) return null;
 
-  const inferredType = normalizeRomanceTypeKey(type) || 'dating';
+  const inferredType = normalizeRomanceTypeKey(type);
   const isSituationship =
     inferredType === 'situationship' ||
     (input.tags ?? []).some((tag) => normalizeSignalLabel(tag) === 'situationship');
