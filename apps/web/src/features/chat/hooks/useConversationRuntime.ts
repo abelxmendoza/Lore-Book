@@ -201,8 +201,17 @@ export const useConversationRuntime = () => {
           switchThread(threadIdParam);
           intendedThreadRef.current = threadIdParam;
           isHydratedRef.current = (getThread(threadIdParam)?.messages.length ?? 0) > 0;
+          return;
         }
-        return;
+        // The URL moved on to a DIFFERENT thread while a handler-driven
+        // selection (handleSelectThread) was still hydrating the old one —
+        // e.g. the user hit browser Back/Forward before that hydration
+        // resolved. The stale marker must not block hydrating what the URL
+        // actually points at now, or this effect no-ops forever and the
+        // late-resolving selection can snap the view back to the thread the
+        // user was trying to leave. Clear it and fall through to hydrate
+        // threadIdParam normally.
+        hydratedByHandlerRef.current = null;
       }
 
       const thread = getThread(threadIdParam);
@@ -512,7 +521,12 @@ export const useConversationRuntime = () => {
       let thread = getThread(id);
       if (!thread || thread.messages.length === 0) {
         const hydratedThread = await hydrateThreadMessages(id);
-        if (selectionRequestSeqRef.current !== requestSeq) {
+        // Bail if superseded by either another handleSelectThread call (seq)
+        // or by out-of-band navigation the URL effect already picked up
+        // (browser Back/Forward, a direct navigate() elsewhere) — otherwise
+        // this late resolution can snap the view back to the thread the
+        // user just navigated away from.
+        if (selectionRequestSeqRef.current !== requestSeq || intendedThreadRef.current !== id) {
           runtimeDiagnostics.record('hydration_skip', {
             threadId: id,
             meta: { reason: 'stale_thread_select' },
