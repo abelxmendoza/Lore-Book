@@ -189,7 +189,7 @@ export const LoveAndRelationshipsView = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRelationship, setSelectedRelationship] = useState<string | null>(null);
   const [relationshipModalInitialTab, setRelationshipModalInitialTab] = useState<
-    'overview' | 'chat' | 'timeline' | 'pros-cons' | 'analytics' | 'their-connections' | 'life-impact'
+    'overview' | 'chat' | 'kids' | 'timeline' | 'pros-cons' | 'analytics' | 'their-connections' | 'life-impact'
   >('overview');
   const [existingCharacterNames, setExistingCharacterNames] = useState<string[]>([]);
   const [existingCharacters, setExistingCharacters] = useState<RomanticInterestCharacterOption[]>([]);
@@ -294,6 +294,7 @@ export const LoveAndRelationshipsView = () => {
     const allowedTabs = new Set([
       'overview',
       'chat',
+      'kids',
       'timeline',
       'pros-cons',
       'analytics',
@@ -355,7 +356,7 @@ export const LoveAndRelationshipsView = () => {
     setSelectedCharacter(null);
     setCharacterModalInitialTab('info');
     window.setTimeout(() => {
-      setRelationshipModalInitialTab('timeline');
+      setRelationshipModalInitialTab('overview');
       setSelectedRelationship(relationshipId);
       setHighlightedRelationshipId(relationshipId);
     }, 0);

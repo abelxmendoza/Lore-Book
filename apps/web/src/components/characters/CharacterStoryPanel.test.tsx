@@ -176,8 +176,8 @@ describe('CharacterStoryPanel', () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(screen.getByTestId('open-dating-romance-timeline')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('open-dating-romance-timeline'));
+    await waitFor(() => expect(screen.getByTestId('open-dating-romance-overview')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('open-dating-romance-overview'));
     expect(onOpenDatingArc).toHaveBeenCalledTimes(1);
   });
 });

@@ -413,7 +413,7 @@ export function CharacterStoryPanel({
               <div className="min-w-0">
                 <h3 className="text-sm sm:text-base font-semibold text-white">Life chronology</h3>
                 <p className="text-xs sm:text-sm text-white/55 mt-0.5 leading-relaxed">
-                  Events and memories about {firstName} — separate from your dating intimacy arc with them.
+                  Events and memories about {firstName} — open Dating &amp; Romance Overview for the intimacy arc.
                 </p>
               </div>
             </div>
@@ -422,11 +422,11 @@ export function CharacterStoryPanel({
               variant="outline"
               size="sm"
               onClick={onOpenDatingArc}
-              data-testid="open-dating-romance-timeline"
+              data-testid="open-dating-romance-overview"
               className="w-full sm:w-auto shrink-0 border-pink-500/30 text-pink-200 hover:bg-pink-500/10 hover:text-pink-100"
             >
               <Link2 className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-              Dating arc with you
+              Dating &amp; Romance · Overview
             </Button>
           </CardContent>
         </Card>
