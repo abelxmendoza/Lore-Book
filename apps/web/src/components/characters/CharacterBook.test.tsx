@@ -236,6 +236,62 @@ describe('CharacterBook', () => {
     }, { timeout: 3000 });
   });
 
+  it('paginates the grid — page 2 shows different characters than page 1', async () => {
+    const user = userEvent.setup();
+    const mockCharacters = Array.from({ length: 25 }, (_, i) => {
+      const n = String(i + 1).padStart(2, '0');
+      return {
+        id: `char-${n}`,
+        name: `Character ${n}`,
+        role: 'Friend',
+        archetype: 'ally',
+        // 'major' isn't collapsed by default (unlike 'minor'/'background'),
+        // so every card actually renders instead of hiding behind a toggle.
+        importance_level: 'major',
+        summary: `Test summary ${n}`,
+        user_id: 'user-1',
+        alias: [],
+        pronouns: null,
+        status: 'active',
+        first_appearance: null,
+        tags: [],
+        metadata: {},
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    });
+
+    mockUseGetCharactersBookQuery.mockReturnValue({
+      data: { characters: mockCharacters, duplicate_groups: [], counts: {} },
+      isLoading: false,
+      isFetching: false,
+      refetch: vi.fn(),
+    });
+
+    render(<CharacterBook />);
+
+    // Page 1: first 18 render, the rest don't.
+    await waitFor(() => {
+      expect(screen.queryAllByText('Character 01').length).toBeGreaterThan(0);
+    });
+    expect(screen.queryAllByText('Character 18').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('Character 19').length).toBe(0);
+    expect(screen.queryAllByText('Character 25').length).toBe(0);
+
+    const nextButton = screen.getByTestId('character-book-page-next');
+    await user.click(nextButton);
+
+    // Page 2: the remaining 7 render, page 1's characters no longer do —
+    // this is the actual regression check: pagination controls used to be
+    // wired up but had no effect on what the grid rendered.
+    await waitFor(() => {
+      expect(screen.queryAllByText('Character 19').length).toBeGreaterThan(0);
+    });
+    expect(screen.queryAllByText('Character 25').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('Character 01').length).toBe(0);
+    expect(screen.queryAllByText('Character 18').length).toBe(0);
+  });
+
   it('does not erase sample characters when demo mode has an underlying signed-in user', async () => {
     impactDemoMode.current = true;
     impactDemoCharacters.current = [{

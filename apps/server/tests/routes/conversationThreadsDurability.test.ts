@@ -10,10 +10,11 @@ vi.mock('../../src/middleware/auth', () => ({
 }));
 
 const mockLoadThreadMessages = vi.fn();
+const mockGetLinkedSessionIds = vi.fn().mockResolvedValue([]);
 
 vi.mock('../../src/services/conversationCentered/threadContentService', () => ({
   loadThreadMessages: (...args: unknown[]) => mockLoadThreadMessages(...args),
-  getLinkedSessionIds: vi.fn().mockResolvedValue([]),
+  getLinkedSessionIds: (...args: unknown[]) => mockGetLinkedSessionIds(...args),
   isThreadProtected: vi.fn().mockResolvedValue(true),
   recoverOrphanSession: vi.fn().mockResolvedValue(null),
 }));
@@ -118,6 +119,74 @@ describe('Conversation threads API — message durability', () => {
     expect(res.body.threads).toHaveLength(1);
     expect(res.body.total).toBe(1);
     expect(typeof res.body.hasMore).toBe('boolean');
+  });
+
+  it('nextCursor reflects the true page boundary, not an injected entity-linked orphan', async () => {
+    // Regression test for a bug where an old thread pulled in only because a
+    // character links back to it (getLinkedSessionIds) could become the LAST
+    // item of the merged (page + orphans) array. The cursor was derived from
+    // that merged array, so "Load more" would jump to the orphan's ancient
+    // timestamp and skip every real thread newer than it — threads vanished
+    // from the sidebar on scroll. The cursor must come from the keyset page
+    // alone (`threads`), never from the orphan-augmented `merged` list.
+    const rowA = {
+      id: 'aaaaaaaa-0000-4000-8000-000000000001',
+      title: 'Newest thread',
+      updated_at: '2026-08-05T12:00:00.000Z',
+      metadata: {},
+    };
+    const rowB = {
+      id: 'bbbbbbbb-0000-4000-8000-000000000002',
+      title: 'Second thread',
+      updated_at: '2026-08-05T11:00:00.000Z',
+      metadata: {},
+    };
+    const orphan = {
+      id: 'cccccccc-0000-4000-8000-000000000003',
+      title: 'Ancient orphan thread linked from a character',
+      updated_at: '2020-01-01T00:00:00.000Z',
+      metadata: {},
+    };
+
+    mockGetLinkedSessionIds.mockResolvedValueOnce([orphan.id]);
+
+    const sessionsChain: Record<string, unknown> = {};
+    let usedIn = false;
+    sessionsChain.select = vi.fn().mockReturnValue(sessionsChain);
+    sessionsChain.eq = vi.fn().mockReturnValue(sessionsChain);
+    sessionsChain.order = vi.fn().mockReturnValue(sessionsChain);
+    sessionsChain.limit = vi.fn().mockReturnValue(sessionsChain);
+    sessionsChain.or = vi.fn().mockReturnValue(sessionsChain);
+    sessionsChain.in = vi.fn().mockImplementation(() => {
+      usedIn = true;
+      return sessionsChain;
+    });
+    sessionsChain.then = (onFulfilled: (v: unknown) => unknown) => {
+      if (usedIn) {
+        usedIn = false;
+        return Promise.resolve(onFulfilled({ data: [orphan], count: 1, error: null }));
+      }
+      // count query + keyset page query both land here — two rows for a
+      // limit=1 request so hasMore is true and rowB is the lookahead.
+      return Promise.resolve(onFulfilled({ data: [rowA, rowB], count: 2, error: null }));
+    };
+
+    const countChain: Record<string, unknown> = {};
+    countChain.select = vi.fn().mockReturnValue(countChain);
+    countChain.eq = vi.fn().mockReturnValue(countChain);
+    countChain.then = (onFulfilled: (v: unknown) => unknown) =>
+      Promise.resolve(onFulfilled({ count: 0, error: null }));
+
+    mockFrom.mockImplementation((table: string) =>
+      table === 'conversation_sessions' ? sessionsChain : countChain
+    );
+
+    const res = await request(app).get('/api/conversation/threads?limit=1').expect(200);
+
+    expect(res.body.hasMore).toBe(true);
+    expect(res.body.nextCursor).toBeTruthy();
+    const decoded = JSON.parse(Buffer.from(res.body.nextCursor, 'base64url').toString('utf8'));
+    expect(decoded).toEqual({ updatedAt: rowA.updated_at, id: rowA.id });
   });
 
   it('GET /threads/:id/messages handles loader errors gracefully', async () => {

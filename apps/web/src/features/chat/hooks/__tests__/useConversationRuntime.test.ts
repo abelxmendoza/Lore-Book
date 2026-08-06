@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import React from 'react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 
 vi.mock('../../../../lib/supabase', () => ({
   useAuth: vi.fn(),
@@ -120,6 +120,39 @@ function makeWrapper(initialPath = '/chat') {
         React.createElement(Route, { path: '/chat/:threadId', element: children })
       )
     );
+}
+
+/**
+ * Wrapper that also exposes react-router's navigate() to the test, so it can
+ * simulate navigation the hook did NOT initiate itself (browser Back/Forward,
+ * or any other direct navigate() call) — as opposed to handleSelectThread's
+ * own internal navigate(), which the hook already accounts for.
+ */
+function makeWrapperWithExternalNav(initialPath = '/chat') {
+  const navigateRef: { current: (path: string) => void } = { current: () => {} };
+  function CaptureNavigate({ children }: { children: React.ReactNode }) {
+    const navigate = useNavigate();
+    navigateRef.current = (path: string) => navigate(path);
+    return React.createElement(React.Fragment, null, children);
+  }
+  const Wrapper = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(
+      MemoryRouter,
+      { initialEntries: [initialPath] },
+      React.createElement(
+        Routes,
+        null,
+        React.createElement(Route, {
+          path: '/chat',
+          element: React.createElement(CaptureNavigate, null, children),
+        }),
+        React.createElement(Route, {
+          path: '/chat/:threadId',
+          element: React.createElement(CaptureNavigate, null, children),
+        })
+      )
+    );
+  return { Wrapper, navigateExternally: (path: string) => navigateRef.current(path) };
 }
 
 describe('useConversationRuntime', () => {
@@ -293,6 +326,74 @@ describe('useConversationRuntime', () => {
       'hydration_skip',
       expect.objectContaining({
         threadId: 'slow',
+        meta: { reason: 'stale_thread_select' },
+      })
+    );
+  });
+
+  it('does not snap back to a thread the user navigated away from mid-hydration (out-of-band navigation)', async () => {
+    // Regression test: handleSelectThread('target') starts hydrating (still on
+    // /chat/old — it doesn't navigate() until hydration resolves), then the URL
+    // moves to a THIRD thread via some path other than handleSelectThread
+    // (browser Back/Forward, a deep link, a mention-chip "open this thread"
+    // action that calls navigate() directly). The late-resolving hydration for
+    // 'target' must not override the thread the user is now actually on.
+    const otherMessage = makeMessage('user', 'other thread');
+    const targetMessage = makeMessage('user', 'target thread');
+    let resolveTarget: (value: ReturnType<typeof makeThread>) => void = () => {};
+    const targetHydration = new Promise<ReturnType<typeof makeThread>>((resolve) => {
+      resolveTarget = resolve;
+    });
+    const otherThread = makeThread('other', [otherMessage]);
+    const store = makeContextStore({
+      threads: [makeThread('old', [makeMessage('user', 'old thread')]), makeThread('target', []), otherThread],
+    });
+    store.hydrateThreadMessages.mockImplementation(async (id: string) => {
+      if (id === 'target') return targetHydration;
+      if (id === 'other') return otherThread;
+      return store.getThread(id) ?? null;
+    });
+    mockUseChatThreadContext.mockReturnValue(store);
+
+    const { Wrapper, navigateExternally } = makeWrapperWithExternalNav('/chat/old');
+    const { result } = renderHook(() => useConversationRuntime(), { wrapper: Wrapper });
+
+    await waitFor(() => {
+      expect(store.switchThread).toHaveBeenCalledWith('old');
+    });
+    store.switchThread.mockClear();
+    store.setActiveThreadId.mockClear();
+
+    act(() => {
+      void result.current.handleSelectThread('target');
+    });
+    await waitFor(() => {
+      expect(store.setActiveThreadId).toHaveBeenCalledWith('target');
+    });
+
+    // Out-of-band navigation to a third thread while 'target' is still
+    // hydrating — the URL never went through handleSelectThread('other').
+    act(() => {
+      navigateExternally('/chat/other');
+    });
+    await waitFor(() => {
+      expect(store.switchThread).toHaveBeenCalledWith('other');
+    });
+
+    store.switchThread.mockClear();
+    store.setActiveThreadId.mockClear();
+
+    await act(async () => {
+      resolveTarget(makeThread('target', [targetMessage]));
+      await targetHydration;
+    });
+
+    expect(store.switchThread).not.toHaveBeenCalledWith('target');
+    expect(store.setActiveThreadId).not.toHaveBeenCalledWith('target');
+    expect(runtimeDiagnostics.record).toHaveBeenCalledWith(
+      'hydration_skip',
+      expect.objectContaining({
+        threadId: 'target',
         meta: { reason: 'stale_thread_select' },
       })
     );

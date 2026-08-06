@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { BrowserRouter, MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
 import { Router } from './Router';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { GuestProvider } from '../contexts/GuestContext';
@@ -8,12 +8,20 @@ import { EntityModalProvider } from '../contexts/EntityModalContext';
 import { MockDataProvider } from '../contexts/MockDataContext';
 import { ReduxProvider } from '../store/ReduxProvider';
 
-function renderRouter(ui: React.ReactElement) {
-  // MockDataProvider is required by useRuntimeIdentity (used in the router tree).
+/**
+ * `ui` is the tree WITHOUT its own Router — MockDataProvider itself calls
+ * useLocation() (demo/admin route-leak fix), so the single MemoryRouter must
+ * wrap it from the outside. React Router forbids nesting two Router
+ * components, so each test passes its desired `initialEntries` here instead
+ * of constructing its own BrowserRouter/MemoryRouter.
+ */
+function renderRouter(ui: React.ReactElement, initialEntries: string[] = ['/']) {
   return render(
-    <ReduxProvider>
-      <MockDataProvider>{ui}</MockDataProvider>
-    </ReduxProvider>
+    <MemoryRouter initialEntries={initialEntries}>
+      <ReduxProvider>
+        <MockDataProvider>{ui}</MockDataProvider>
+      </ReduxProvider>
+    </MemoryRouter>
   );
 }
 
@@ -54,18 +62,18 @@ describe('Router Integration Tests - Black Screen Prevention', () => {
     vi.clearAllMocks();
   });
 
+  const routerChildren = (
+    <ErrorBoundary>
+      <GuestProvider>
+        <EntityModalProvider>
+          <Router />
+        </EntityModalProvider>
+      </GuestProvider>
+    </ErrorBoundary>
+  );
+
   it('should render Router without crashing', async () => {
-    const { container } = renderRouter(
-      <BrowserRouter>
-        <ErrorBoundary>
-          <GuestProvider>
-            <EntityModalProvider>
-              <Router />
-            </EntityModalProvider>
-          </GuestProvider>
-        </ErrorBoundary>
-      </BrowserRouter>
-    );
+    const { container } = renderRouter(routerChildren);
 
     await waitFor(() => {
       expect(container).toBeTruthy();
@@ -74,17 +82,7 @@ describe('Router Integration Tests - Black Screen Prevention', () => {
   });
 
   it('should handle root route (/)', async () => {
-    renderRouter(
-      <MemoryRouter initialEntries={['/']}>
-        <ErrorBoundary>
-          <GuestProvider>
-            <EntityModalProvider>
-              <Router />
-            </EntityModalProvider>
-          </GuestProvider>
-        </ErrorBoundary>
-      </MemoryRouter>
-    );
+    renderRouter(routerChildren, ['/']);
 
     await waitFor(() => {
       // / renders Landing, not App
@@ -94,17 +92,7 @@ describe('Router Integration Tests - Black Screen Prevention', () => {
   });
 
   it('should handle /home route', async () => {
-    renderRouter(
-      <MemoryRouter initialEntries={['/home']}>
-        <ErrorBoundary>
-          <GuestProvider>
-            <EntityModalProvider>
-              <Router />
-            </EntityModalProvider>
-          </GuestProvider>
-        </ErrorBoundary>
-      </MemoryRouter>
-    );
+    renderRouter(routerChildren, ['/home']);
 
     await waitFor(() => {
       expect(screen.queryByTestId('app')).toBeTruthy();
@@ -112,17 +100,7 @@ describe('Router Integration Tests - Black Screen Prevention', () => {
   });
 
   it('should handle /chat route', async () => {
-    renderRouter(
-      <MemoryRouter initialEntries={['/chat']}>
-        <ErrorBoundary>
-          <GuestProvider>
-            <EntityModalProvider>
-              <Router />
-            </EntityModalProvider>
-          </GuestProvider>
-        </ErrorBoundary>
-      </MemoryRouter>
-    );
+    renderRouter(routerChildren, ['/chat']);
 
     await waitFor(() => {
       expect(screen.queryByTestId('app')).toBeTruthy();
@@ -130,17 +108,7 @@ describe('Router Integration Tests - Black Screen Prevention', () => {
   });
 
   it('should handle /chat/:threadId route', async () => {
-    renderRouter(
-      <MemoryRouter initialEntries={['/chat/demo-thread-1']}>
-        <ErrorBoundary>
-          <GuestProvider>
-            <EntityModalProvider>
-              <Router />
-            </EntityModalProvider>
-          </GuestProvider>
-        </ErrorBoundary>
-      </MemoryRouter>
-    );
+    renderRouter(routerChildren, ['/chat/demo-thread-1']);
 
     await waitFor(() => {
       expect(screen.queryByTestId('app')).toBeTruthy();
@@ -148,17 +116,7 @@ describe('Router Integration Tests - Black Screen Prevention', () => {
   });
 
   it('should handle /timeline route', async () => {
-    renderRouter(
-      <MemoryRouter initialEntries={['/timeline']}>
-        <ErrorBoundary>
-          <GuestProvider>
-            <EntityModalProvider>
-              <Router />
-            </EntityModalProvider>
-          </GuestProvider>
-        </ErrorBoundary>
-      </MemoryRouter>
-    );
+    renderRouter(routerChildren, ['/timeline']);
 
     await waitFor(() => {
       const app = screen.queryByTestId('app');
@@ -167,17 +125,7 @@ describe('Router Integration Tests - Black Screen Prevention', () => {
   });
 
   it('should handle 404 routes gracefully', async () => {
-    const { container } = renderRouter(
-      <MemoryRouter initialEntries={['/non-existent-route']}>
-        <ErrorBoundary>
-          <GuestProvider>
-            <EntityModalProvider>
-              <Router />
-            </EntityModalProvider>
-          </GuestProvider>
-        </ErrorBoundary>
-      </MemoryRouter>
-    );
+    const { container } = renderRouter(routerChildren, ['/non-existent-route']);
 
     // Should render something, not crash
     await waitFor(() => {
@@ -187,17 +135,7 @@ describe('Router Integration Tests - Black Screen Prevention', () => {
 
   it('should not show black screen on route errors', async () => {
     // Test that ErrorBoundary catches errors
-    const { container } = renderRouter(
-      <MemoryRouter initialEntries={['/']}>
-        <ErrorBoundary>
-          <GuestProvider>
-            <EntityModalProvider>
-              <Router />
-            </EntityModalProvider>
-          </GuestProvider>
-        </ErrorBoundary>
-      </MemoryRouter>
-    );
+    const { container } = renderRouter(routerChildren, ['/']);
 
     // Should render something, not black screen
     await waitFor(() => {

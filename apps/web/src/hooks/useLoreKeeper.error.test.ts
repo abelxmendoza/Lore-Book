@@ -1,19 +1,25 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { MockDataProvider } from '../contexts/MockDataContext';
 import { LoreKeeperProvider } from '../contexts/LoreKeeperContext';
 import { ReduxProvider } from '../store/ReduxProvider';
 import { useLoreKeeper } from './useLoreKeeper';
 
+/** MockDataProvider uses useLocation() (demo/admin route-leak fix), so it needs a Router ancestor. */
 const wrapper = ({ children }: { children: React.ReactNode }) =>
   React.createElement(
-    ReduxProvider,
+    MemoryRouter,
     null,
     React.createElement(
-      MockDataProvider,
+      ReduxProvider,
       null,
-      React.createElement(LoreKeeperProvider, null, children)
+      React.createElement(
+        MockDataProvider,
+        null,
+        React.createElement(LoreKeeperProvider, null, children)
+      )
     )
   );
 

@@ -5,10 +5,6 @@ import { ChatFocusChipBar } from './ChatFocusChipBar';
 import type { ChatFocus } from '../../../types/chatFocus';
 import { emptyChatFocusSessionStats } from '../../../types/chatFocus';
 
-vi.mock('../../../contexts/MockDataContext', () => ({
-  useMockData: () => ({ runtimeDataMode: 'DEMO' }),
-}));
-
 const baseFocus: ChatFocus = {
   entityId: 'rel-001',
   entityName: 'Alex',
@@ -32,13 +28,14 @@ describe('ChatFocusChipBar', () => {
     vi.useRealTimers();
   });
 
-  it('renders compact focus chips with entity, source, demo, and stats', () => {
+  it('renders compact focus chips with entity, source, and stats — no demo chip', () => {
     render(<ChatFocusChipBar focus={baseFocus} onDismiss={() => undefined} />);
 
     expect(screen.getByTestId('chat-focus-chip-bar')).toBeInTheDocument();
     expect(screen.getByText(/Alex/)).toBeInTheDocument();
     expect(screen.getByText(/Dating & Romance/)).toBeInTheDocument();
-    expect(screen.getByText('Demo')).toBeInTheDocument();
+    // The focus chip bar never carries a "Demo" badge, in demo mode or otherwise.
+    expect(screen.queryByText('Demo')).not.toBeInTheDocument();
     expect(screen.getByText(/~94%/)).toBeInTheDocument();
     expect(screen.getByText(/\+4/)).toBeInTheDocument();
   });
