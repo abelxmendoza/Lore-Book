@@ -660,6 +660,26 @@ export class OrganizationService {
   }
 
   /**
+   * Lightweight ownership check for write paths (add/remove member, knowledge solidify).
+   * Avoids getOrganization's full member/story/analytics hydration — that work routinely
+   * exceeds the web client's 30s fetch timeout on large Groups & Organizations cards.
+   */
+  private async getOwnedOrganizationRef(
+    userId: string,
+    organizationId: string,
+  ): Promise<{ id: string; name: string } | null> {
+    const { data, error } = await supabaseAdmin
+      .from('organizations')
+      .select('id, name')
+      .eq('id', organizationId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data?.id) return null;
+    return { id: String(data.id), name: String(data.name ?? '') };
+  }
+
+  /**
    * Find an existing organization by name or alias (normalized comparison).
    */
   async findByName(userId: string, name: string): Promise<Organization | null> {
@@ -926,7 +946,9 @@ export class OrganizationService {
   async addMember(userId: string, organizationId: string, member: Omit<OrganizationMember, 'id' | 'organization_id'>): Promise<OrganizationMember> {
     this.invalidateOrganizations(userId);
     try {
-      const org = await this.getOrganization(userId, organizationId);
+      // Ownership only — full getOrganization hydrates members/stories/analytics and
+      // can exceed the client 30s timeout on large groups (Character modal Add).
+      const org = await this.getOwnedOrganizationRef(userId, organizationId);
       if (!org) {
         const err = new Error('Group not found. Save the group first, then link people.');
         (err as Error & { statusCode?: number }).statusCode = 404;
@@ -1229,7 +1251,7 @@ export class OrganizationService {
     link: { characterId: string; characterName: string; role?: string | null },
   ): Promise<void> {
     try {
-      const org = await this.getOrganization(userId, organizationId);
+      const org = await this.getOwnedOrganizationRef(userId, organizationId);
       const orgName = org?.name?.trim() || 'this group';
       const role = link.role?.trim();
       const { entityFactsService } = await import('./entityFactsService');
@@ -1351,7 +1373,7 @@ export class OrganizationService {
     link: { characterId: string; characterName: string },
   ): Promise<void> {
     try {
-      const org = await this.getOrganization(userId, organizationId);
+      const org = await this.getOwnedOrganizationRef(userId, organizationId);
       const orgName = org?.name?.trim();
       if (!orgName) return;
       const { entityFactsService } = await import('./entityFactsService');
