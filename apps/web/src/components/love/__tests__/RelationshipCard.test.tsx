@@ -171,7 +171,7 @@ describe('RelationshipCard', () => {
         onClick={onClick}
       />,
     );
-    expect(screen.getByText(/wife/i)).toBeInTheDocument();
+    expect(screen.getByText(/married/i)).toBeInTheDocument();
 
     rerender(
       <RelationshipCard
@@ -200,7 +200,7 @@ describe('RelationshipCard', () => {
         onClick={onClick}
       />,
     );
-    expect(screen.getByText(/baby mama/i)).toBeInTheDocument();
+    expect(screen.getByText(/co-parent/i)).toBeInTheDocument();
     expect(screen.getByText(/kids together/i)).toBeInTheDocument();
   });
 

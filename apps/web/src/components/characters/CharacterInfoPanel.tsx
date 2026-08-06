@@ -1815,11 +1815,18 @@ export function CharacterInfoPanel({
             <h3 className="text-sm font-bold text-white">Your relationship</h3>
           </div>
           <div className="mb-3 grid gap-3 sm:grid-cols-2">
+            {romanceIdentityLabel && (
+              <div className="sm:col-span-2 rounded-lg border border-rose-500/20 bg-black/30 px-3 py-2">
+                <p className="text-[10px] uppercase tracking-wide text-rose-200/70 mb-1">Bond</p>
+                <p className="text-sm text-white" data-testid="character-info-romance-bond">
+                  {romanceIdentityLabel}
+                </p>
+              </div>
+            )}
             <EditableField
               label="Relationship type"
               value={relationship.relationship_type}
               displayValue={
-                romanceIdentityLabel ??
                 relationshipTypeOptions.find((option) => option.value === relationship.relationship_type)?.label ??
                 humanizeType(relationship.relationship_type)
               }
