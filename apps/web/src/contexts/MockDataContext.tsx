@@ -5,8 +5,9 @@
  */
 
 import { createContext, useContext, useEffect, useRef, ReactNode, useCallback, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import { config } from '../config/env';
-import { isDemoRuntimeActive } from '../lib/demoRuntime';
+import { clearDemoSession, isDemoRuntimeActive } from '../lib/demoRuntime';
 import { useAuth } from '../lib/supabase';
 import {
   checkBackendHealth,
@@ -75,6 +76,7 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
   const dispatch = useAppDispatch();
   const store = useAppStore();
   const { user } = useAuth();
+  const location = useLocation();
 
   const useMockData = useAppSelector(selectEffectiveUseMockData);
   const rawUseMockData = useAppSelector((s) => s.runtime.useMockData);
@@ -156,14 +158,24 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Authenticated users leave mock/guest mode — unless they opened the public
     // /demo sandbox, which must stay fully isolated from their real account.
-    if (user && !isDemoRuntimeActive()) {
+    //
+    // isDemoRuntimeActive() is pathname-based OR a sessionStorage flag that is
+    // meant to survive in-demo navigation for GUESTS. But an already-signed-in
+    // user who visits /demo and then routes back into the real app via the
+    // app's own links (not the explicit "Exit demo" control, and without a
+    // fresh SIGNED_IN event) would otherwise keep that flag set — leaving
+    // their real account stuck rendering synthetic data. Re-run this on every
+    // route change, and once a logged-in user is off /demo, clear the flag.
+    const onDemoPath = location.pathname === '/demo' || location.pathname.startsWith('/demo/');
+    if (user && !onDemoPath) {
+      if (isDemoRuntimeActive()) clearDemoSession();
       dispatch(setUseMockData(false));
       dispatch(setIsGuest(false));
     }
-    if (user && isDemoRuntimeActive()) {
+    if (user && onDemoPath) {
       dispatch(setUseMockData(true));
     }
-  }, [user?.id, dispatch]);
+  }, [user?.id, location.pathname, dispatch]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && (!user || isDemoRuntimeActive())) {

@@ -81,12 +81,15 @@ const mockOrg = {
 };
 
 function wrap(ui: React.ReactElement, store = makeStore()) {
+  // BrowserRouter must wrap MockDataProvider (not the other way around) —
+  // MockDataProvider itself calls useLocation() (demo/admin route-leak fix)
+  // and needs a Router ancestor.
   return render(
-    <Provider store={store}>
-      <MockDataProvider>
-        <BrowserRouter>{ui}</BrowserRouter>
-      </MockDataProvider>
-    </Provider>
+    <BrowserRouter>
+      <Provider store={store}>
+        <MockDataProvider>{ui}</MockDataProvider>
+      </Provider>
+    </BrowserRouter>
   );
 }
 

@@ -202,7 +202,8 @@ export function resolveCharacterRomanceIdentity(input: {
       : null;
   const roleType = isRomanceIdentityType(input.role) ? input.role : null;
   const tagType = (input.tags ?? []).find((tag) => isRomanceIdentityType(tag)) ?? null;
-  const type = metaType || roleType || tagType;
+  const metaIsRomance = isRomanceIdentityType(metaType) ? metaType : null;
+  const type = metaIsRomance || roleType || tagType;
   // Do not invent a Dating bond from archetype alone — Dating & Romance owns that.
   if (!type) return null;
 

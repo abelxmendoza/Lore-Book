@@ -2684,18 +2684,34 @@ export const CharacterBook = () => {
   });
   const [relationships, setRelationships] = useState<Map<string, RomanticRelationship>>(new Map());
   
-  // Seed demo characters once per session; never overwrite in-memory demo edits on remount.
+  // Seed demo characters once per fixture version. Bump DEMO_CHARACTERS_SEED_VERSION
+  // when dummyCharacters presentation fields change so stale in-memory demo rows
+  // (e.g. old Situationship role spam) refresh without wiping unrelated books.
   useEffect(() => {
     const demoCharactersEnabled = isMockDataEnabled || isMockEnabled;
     if (hasAuthenticatedUser && !demoCharactersEnabled) {
       mockDataService.register.characters([]);
       return;
     }
+    const SEED_KEY = 'lk:demo-characters-seed-version';
+    const DEMO_CHARACTERS_SEED_VERSION = 'romance-identity-v3';
+    let seedVersion: string | null = null;
+    try {
+      seedVersion = sessionStorage.getItem(SEED_KEY);
+    } catch {
+      seedVersion = null;
+    }
     const current = mockDataService.get.characters();
-    const base = current.length > 0 ? current : dummyCharacters;
+    const needsFixtureRefresh = seedVersion !== DEMO_CHARACTERS_SEED_VERSION;
+    const base = needsFixtureRefresh || current.length === 0 ? dummyCharacters : current;
     const merged = mergeRomanticDemoCharacters(base);
-    if (current.length === 0 || merged.length !== current.length) {
+    if (needsFixtureRefresh || current.length === 0 || merged.length !== current.length) {
       mockDataService.register.characters(merged);
+      try {
+        sessionStorage.setItem(SEED_KEY, DEMO_CHARACTERS_SEED_VERSION);
+      } catch {
+        // private mode / quota — in-memory register still applies this session
+      }
     }
   }, [hasAuthenticatedUser, isMockDataEnabled, isMockEnabled]);
   const [loading, setLoading] = useState(false);
@@ -3234,11 +3250,24 @@ export const CharacterBook = () => {
     setCurrentPage(1);
   }, [searchTerm, activeCategory, importanceFilter, sortOrder]);
 
-  // Calculate pagination - always use grid pagination (multiple characters per page)
-  const totalPages = Math.ceil(filteredCharacters.length / ITEMS_PER_PAGE);
+  // Calculate pagination — paginate the same ordered list the grid actually
+  // renders (clipboardCharacters already matches sortOrder: standing/impact/role).
+  const totalPages = Math.ceil(clipboardCharacters.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
-  const paginatedCharacters = filteredCharacters.slice(startIndex, endIndex);
+  const paginatedCharacters = clipboardCharacters.slice(startIndex, endIndex);
+
+  // Current page's characters re-grouped by importance level, for the "By role" view —
+  // headers show the full group size, but only this page's members render underneath.
+  const pagedGroupedByImportance = useMemo(() => {
+    const groups: Record<string, Character[]> = {};
+    paginatedCharacters.forEach((char) => {
+      const level = isPublicFigure(char) ? 'public_figure' : char.importance_level || 'minor';
+      if (!groups[level]) groups[level] = [];
+      groups[level].push(char);
+    });
+    return groups;
+  }, [paginatedCharacters]);
 
   // Arrow key navigation
   useEffect(() => {
@@ -3317,168 +3346,9 @@ export const CharacterBook = () => {
       data-testid="character-book"
     >
       <MyFamilyModal isOpen={showMyFamily} onClose={() => setShowMyFamily(false)} />
-      <FocusedEntityChatLauncher
-        options={characterChatOptions}
-        copy={FOCUSED_ENTITY_CHAT_PRESETS.characters.copy}
-        theme={FOCUSED_ENTITY_CHAT_PRESETS.characters.theme}
-        icon={FOCUSED_ENTITY_CHAT_PRESETS.characters.icon}
-        busy={focusedChatBusy}
-        error={focusedChatError}
-        onContinue={openCharacterFocusedChat}
-      />
-      <BookQueryPanel
-        demoMode={isMockDataEnabled}
-        domains={['character']}
-        title="Ask People & Characters"
-        description="Search names, aliases, roles, relationship context, and records that need review."
-        placeholder='Try “Who are my creative collaborators?”'
-        compact
-        onSelectResult={(result) => {
-          const match = characters.find((character) => character.id === result.id);
-          if (match) openCharacterDetail(match);
-          else setSearchTerm(result.title);
-        }}
-      />
-      <DetectedCharacterSuggestions
-        demoMode={isMockDataEnabled}
-        existingBookEntries={
-          isMockDataEnabled
-            ? getMockCharacterSuggestionBookNames('general').map((name) => ({ name }))
-            : characters
-                .filter(c => c.status !== 'archived' && c.status !== 'pending_deletion' && c.status !== 'reclassified')
-                .map(c => ({ id: c.id, name: c.name, aliases: c.alias ?? [] }))
-        }
-        existingCharacterNames={
-          isMockDataEnabled
-            ? getMockCharacterSuggestionBookNames('general')
-            : characters
-                .filter(c => c.status !== 'archived' && c.status !== 'pending_deletion' && c.status !== 'reclassified')
-                .flatMap(c => [c.name, ...(c.alias ?? [])])
-        }
-        onRescanComplete={() => {
-          void loadCharacters();
-        }}
-        onCharacterAdded={(payload) => {
-          if (payload.matchedCharacterId) {
-            setSearchTerm('');
-            setActiveCategory('all');
-            setImportanceFilter('all');
-            setCurrentPage(1);
-          }
-          void loadCharacters();
-        }}
-      />
 
-      {rescanNotice && (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-          {rescanNotice}
-        </div>
-      )}
-      {rescanError && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-          {rescanError}
-        </div>
-      )}
-
-      <OntologyCompliancePanel book="characters" />
-
-      <CharacterAuditPanel
-        demoMode={isMockDataEnabled}
-        onChanged={() => {
-          void loadCharacters();
-          void loadRelationships();
-        }}
-      />
-
-      <CharacterMergePanel
-        characters={characters}
-        demoMode={isMockDataEnabled}
-        onConsolidated={(result) => {
-          if (result?.demoCharacters && isMockDataEnabled) {
-            setDemoCharacterOverride(result.demoCharacters.map(withDemoAnalytics));
-          } else {
-            void loadCharacters();
-            void loadRelationships();
-          }
-        }}
-        selectionMode={selectionMode}
-        onSelectionModeChange={setSelectionMode}
-        selectedForMerge={selectedForMerge}
-        onToggleSelected={toggleSelectedForMerge}
-        onClearSelection={() => setSelectedForMerge(new Set())}
-      />
-
-      {/* Narrative onboarding re-prompt — shows until the user builds their profile */}
-      <OnboardingReprompt />
-
-      {/* User Profile */}
-      <div className="space-y-3 sm:space-y-4">
-        <UserProfile characters={characters} />
-      </div>
-
-      {/* People On Your Mind Lately */}
-      {(() => {
-        const displayNameForMindChip = (character: Character) => {
-          const structuredName = [character.first_name, character.last_name]
-            .filter((part): part is string => Boolean(part?.trim()))
-            .join(' ')
-            .trim();
-          return structuredName || character.name;
-        };
-
-        const recent = [...characters]
-          .filter(c => !isSelfCharacter(c))
-          .filter(c => (c.analytics?.recency_score ?? 0) > 0)
-          .sort((a, b) => (b.analytics?.recency_score ?? 0) - (a.analytics?.recency_score ?? 0))
-          .slice(0, 6);
-        if (recent.length === 0) return null;
-        return (
-          <div>
-            <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-2.5">
-              People On Your Mind Lately
-            </p>
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-              {recent.map(c => {
-                const closeness = c.analytics?.closeness_score ?? 0;
-                const displayName = displayNameForMindChip(c);
-                const phase = (() => {
-                  const r = c.analytics?.recency_score ?? 0;
-                  if (closeness >= 70 && r >= 0.6) return { label: 'Core',    cls: 'text-purple-300', icon: <Flame className="h-2.5 w-2.5" /> };
-                  if (closeness >= 45 || r >= 0.4) return { label: 'Active',  cls: 'text-cyan-300',   icon: <Zap className="h-2.5 w-2.5" /> };
-                  if (closeness >= 20 || r >= 0.2) return { label: 'Fading',  cls: 'text-amber-300',  icon: <Wind className="h-2.5 w-2.5" /> };
-                  return                            { label: 'Dormant', cls: 'text-gray-400',   icon: <Moon className="h-2.5 w-2.5" /> };
-                })();
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setSelectedCharacter(c)}
-                    className="flex-shrink-0 flex flex-col items-center gap-1.5 p-3 rounded-xl border border-white/10 bg-white/4 hover:bg-white/8 hover:border-white/20 transition-all w-28 text-center"
-                    title={displayName}
-                  >
-                    <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0">
-                      <CharacterAvatar
-                        url={c.avatar_url}
-                        characterId={c.id}
-                        archetype={c.archetype}
-                        role={c.role}
-                        name={displayName}
-                        size={36}
-                      />
-                    </div>
-                    <span className="text-[10px] text-white/80 leading-tight line-clamp-2 w-full">{displayName}</span>
-                    <span className={`flex items-center gap-0.5 text-[9px] ${phase.cls}`}>
-                      {phase.icon}{phase.label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* Character Search Bar and Navigation Tabs */}
+      {/* Character Search Bar and Navigation Tabs — first so /demo/characters
+          opens on the book, not Ask/Detected chrome above the fold. */}
       <div className="space-y-3 sm:space-y-4">
         <SearchWithAutocomplete<Character>
           value={searchTerm}
@@ -4010,7 +3880,7 @@ export const CharacterBook = () => {
                       <span className="text-xs font-normal text-white/40">({charactersByStanding.length})</span>
                     </h4>
                     <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                      {charactersByStanding.map((character, index) => {
+                      {paginatedCharacters.map((character, index) => {
                         try {
                           const isUpdated = character.id && recentlyUpdatedIds.has(character.id);
                           return (
@@ -4044,7 +3914,7 @@ export const CharacterBook = () => {
                       <span className="text-xs font-normal text-white/40">({charactersByImpact.length})</span>
                     </h4>
                     <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                      {charactersByImpact.map((character, index) => {
+                      {paginatedCharacters.map((character, index) => {
                         try {
                           const isUpdated = character.id && recentlyUpdatedIds.has(character.id);
                           return (
@@ -4085,10 +3955,15 @@ export const CharacterBook = () => {
                     })
                     .map(([level, chars]) => {
                       const isCollapsed = collapsedSections[level] ?? (['minor', 'background'].includes(level));
-                      
-                      // Skip empty groups
+
+                      // Skip groups with no members at all under the current filters
                       if (chars.length === 0) return null;
-                      
+
+                      // Only this page's slice of the group actually renders below —
+                      // a group can be fully on another page, so hide it here too.
+                      const pageChars = pagedGroupedByImportance[level] ?? [];
+                      if (pageChars.length === 0) return null;
+
                       return (
                         <div key={level} className="space-y-2">
                           <button
@@ -4103,7 +3978,7 @@ export const CharacterBook = () => {
                           </button>
                           {!isCollapsed && (
                             <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                              {chars.map((character, index) => {
+                              {pageChars.map((character, index) => {
                                 try {
                                   const isUpdated = character.id && recentlyUpdatedIds.has(character.id);
                                   return (
@@ -4142,6 +4017,7 @@ export const CharacterBook = () => {
                   size="sm"
                   onClick={goToPrevious}
                   disabled={currentPage === 1}
+                  data-testid="character-book-page-previous"
                   className="text-white/50 hover:text-white hover:bg-purple-500/10 disabled:opacity-30 w-full sm:w-auto text-xs sm:text-sm"
                 >
                   <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
@@ -4188,6 +4064,7 @@ export const CharacterBook = () => {
                   size="sm"
                   onClick={goToNext}
                   disabled={currentPage === totalPages}
+                  data-testid="character-book-page-next"
                   className="text-white/50 hover:text-white hover:bg-purple-500/10 disabled:opacity-30 w-full sm:w-auto text-xs sm:text-sm"
                 >
                   Next
@@ -4202,6 +4079,167 @@ export const CharacterBook = () => {
           </div>
         </>
       )}
+
+      {/* People On Your Mind Lately */}
+      {(() => {
+        const displayNameForMindChip = (character: Character) => {
+          const structuredName = [character.first_name, character.last_name]
+            .filter((part): part is string => Boolean(part?.trim()))
+            .join(' ')
+            .trim();
+          return structuredName || character.name;
+        };
+
+        const recent = [...characters]
+          .filter(c => !isSelfCharacter(c))
+          .filter(c => (c.analytics?.recency_score ?? 0) > 0)
+          .sort((a, b) => (b.analytics?.recency_score ?? 0) - (a.analytics?.recency_score ?? 0))
+          .slice(0, 6);
+        if (recent.length === 0) return null;
+        return (
+          <div>
+            <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-2.5">
+              People On Your Mind Lately
+            </p>
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+              {recent.map(c => {
+                const closeness = c.analytics?.closeness_score ?? 0;
+                const displayName = displayNameForMindChip(c);
+                const phase = (() => {
+                  const r = c.analytics?.recency_score ?? 0;
+                  if (closeness >= 70 && r >= 0.6) return { label: 'Core',    cls: 'text-purple-300', icon: <Flame className="h-2.5 w-2.5" /> };
+                  if (closeness >= 45 || r >= 0.4) return { label: 'Active',  cls: 'text-cyan-300',   icon: <Zap className="h-2.5 w-2.5" /> };
+                  if (closeness >= 20 || r >= 0.2) return { label: 'Fading',  cls: 'text-amber-300',  icon: <Wind className="h-2.5 w-2.5" /> };
+                  return                            { label: 'Dormant', cls: 'text-gray-400',   icon: <Moon className="h-2.5 w-2.5" /> };
+                })();
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setSelectedCharacter(c)}
+                    className="flex-shrink-0 flex flex-col items-center gap-1.5 p-3 rounded-xl border border-white/10 bg-white/4 hover:bg-white/8 hover:border-white/20 transition-all w-28 text-center"
+                    title={displayName}
+                  >
+                    <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0">
+                      <CharacterAvatar
+                        url={c.avatar_url}
+                        characterId={c.id}
+                        archetype={c.archetype}
+                        role={c.role}
+                        name={displayName}
+                        size={36}
+                      />
+                    </div>
+                    <span className="text-[10px] text-white/80 leading-tight line-clamp-2 w-full">{displayName}</span>
+                    <span className={`flex items-center gap-0.5 text-[9px] ${phase.cls}`}>
+                      {phase.icon}{phase.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* User Profile */}
+      <div className="space-y-3 sm:space-y-4">
+        <UserProfile characters={characters} />
+      </div>
+
+      {/* Narrative onboarding re-prompt — shows until the user builds their profile */}
+      <OnboardingReprompt />
+
+      <FocusedEntityChatLauncher
+        options={characterChatOptions}
+        copy={FOCUSED_ENTITY_CHAT_PRESETS.characters.copy}
+        theme={FOCUSED_ENTITY_CHAT_PRESETS.characters.theme}
+        icon={FOCUSED_ENTITY_CHAT_PRESETS.characters.icon}
+        busy={focusedChatBusy}
+        error={focusedChatError}
+        onContinue={openCharacterFocusedChat}
+      />
+      <BookQueryPanel
+        demoMode={isMockDataEnabled}
+        domains={['character']}
+        title="Ask People & Characters"
+        description="Search names, aliases, roles, relationship context, and records that need review."
+        placeholder='Try “Who are my creative collaborators?”'
+        compact
+        onSelectResult={(result) => {
+          const match = characters.find((character) => character.id === result.id);
+          if (match) openCharacterDetail(match);
+          else setSearchTerm(result.title);
+        }}
+      />
+      <DetectedCharacterSuggestions
+        demoMode={isMockDataEnabled}
+        existingBookEntries={
+          isMockDataEnabled
+            ? getMockCharacterSuggestionBookNames('general').map((name) => ({ name }))
+            : characters
+                .filter(c => c.status !== 'archived' && c.status !== 'pending_deletion' && c.status !== 'reclassified')
+                .map(c => ({ id: c.id, name: c.name, aliases: c.alias ?? [] }))
+        }
+        existingCharacterNames={
+          isMockDataEnabled
+            ? getMockCharacterSuggestionBookNames('general')
+            : characters
+                .filter(c => c.status !== 'archived' && c.status !== 'pending_deletion' && c.status !== 'reclassified')
+                .flatMap(c => [c.name, ...(c.alias ?? [])])
+        }
+        onRescanComplete={() => {
+          void loadCharacters();
+        }}
+        onCharacterAdded={(payload) => {
+          if (payload.matchedCharacterId) {
+            setSearchTerm('');
+            setActiveCategory('all');
+            setImportanceFilter('all');
+            setCurrentPage(1);
+          }
+          void loadCharacters();
+        }}
+      />
+
+      {rescanNotice && (
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          {rescanNotice}
+        </div>
+      )}
+      {rescanError && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          {rescanError}
+        </div>
+      )}
+
+      <OntologyCompliancePanel book="characters" />
+
+      <CharacterAuditPanel
+        demoMode={isMockDataEnabled}
+        onChanged={() => {
+          void loadCharacters();
+          void loadRelationships();
+        }}
+      />
+
+      <CharacterMergePanel
+        characters={characters}
+        demoMode={isMockDataEnabled}
+        onConsolidated={(result) => {
+          if (result?.demoCharacters && isMockDataEnabled) {
+            setDemoCharacterOverride(result.demoCharacters.map(withDemoAnalytics));
+          } else {
+            void loadCharacters();
+            void loadRelationships();
+          }
+        }}
+        selectionMode={selectionMode}
+        onSelectionModeChange={setSelectionMode}
+        selectedForMerge={selectedForMerge}
+        onToggleSelected={toggleSelectedForMerge}
+        onClearSelection={() => setSelectedForMerge(new Set())}
+      />
 
       {mainCharacterModalOpen && (
         <MainCharacterDetailModal

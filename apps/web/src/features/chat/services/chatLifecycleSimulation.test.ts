@@ -78,23 +78,32 @@ function createMockAdapter(initialThreads: ChatThread[] = []): ChatLifecycleAdap
   };
 }
 
-describe('chatLifecycleSimulation', () => {
-  it('includes multi-turn party, romance, and conflict showcase journeys', () => {
-    const showcaseIds = ['party-story', 'romantic-interest', 'conflict-repair'];
+/** Every scenario meant to showcase LoreBook's chat capabilities end-to-end,
+ *  not the animation/mechanics QA scenarios (live-reply, thread-bump, etc.). */
+const SHOWCASE_IDS = [
+  'party-story',
+  'romantic-interest',
+  'conflict-repair',
+  'marriage-family',
+  'co-parenting',
+  'life-log-milestone',
+];
 
-    for (const id of showcaseIds) {
+describe('chatLifecycleSimulation', () => {
+  it('includes multi-turn showcase journeys with a reply for every user turn', () => {
+    for (const id of SHOWCASE_IDS) {
       const scenario = CHAT_LIFECYCLE_SCENARIOS.find((candidate) => candidate.id === id);
       expect(scenario, `${id} scenario`).toBeDefined();
-      expect(scenario?.steps.filter((step) => step.type === 'userMessage')).toHaveLength(3);
-      expect(scenario?.steps.filter((step) => step.type === 'assistantStream')).toHaveLength(3);
+      const userTurns = scenario!.steps.filter((step) => step.type === 'userMessage').length;
+      const assistantTurns = scenario!.steps.filter((step) => step.type === 'assistantStream').length;
+      expect(userTurns, `${id}: at least 2 user turns`).toBeGreaterThanOrEqual(2);
+      expect(assistantTurns, `${id}: one reply per user turn`).toBe(userTurns);
     }
   });
 
   it('uses synthetic showcase lore rather than founder-linked fixtures', () => {
     const serializedShowcases = JSON.stringify(
-      CHAT_LIFECYCLE_SCENARIOS.filter((scenario) =>
-        ['party-story', 'romantic-interest', 'conflict-repair'].includes(scenario.id)
-      )
+      CHAT_LIFECYCLE_SCENARIOS.filter((scenario) => SHOWCASE_IDS.includes(scenario.id))
     ).toLowerCase();
 
     // Keep exact protected terms in the central privacy script only; these
@@ -110,9 +119,7 @@ describe('chatLifecycleSimulation', () => {
   });
 
   it('gives every showcase journey the same core chatbot capabilities', () => {
-    const showcaseIds = ['party-story', 'romantic-interest', 'conflict-repair'];
-
-    for (const id of showcaseIds) {
+    for (const id of SHOWCASE_IDS) {
       const results = CHAT_LIFECYCLE_SCENARIOS
         .find((scenario) => scenario.id === id)!
         .steps.filter((step) => step.type === 'assistantStream')
@@ -129,7 +136,7 @@ describe('chatLifecycleSimulation', () => {
     }
 
     const specializedResults = CHAT_LIFECYCLE_SCENARIOS
-      .filter((scenario) => showcaseIds.includes(scenario.id))
+      .filter((scenario) => SHOWCASE_IDS.includes(scenario.id))
       .flatMap((scenario) => scenario.steps)
       .filter((step) => step.type === 'assistantStream')
       .map((step) => step.result ?? {});

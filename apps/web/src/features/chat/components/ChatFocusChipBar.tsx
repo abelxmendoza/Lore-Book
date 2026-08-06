@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Heart, MapPin, Briefcase, Users, Sparkles, X, TrendingUp } from 'lucide-react';
 
 import type { ChatFocus } from '../../../types/chatFocus';
-import { useMockData } from '../../../contexts/MockDataContext';
 import { chipColorForEntity } from '../../../lib/entityTypeColors';
 import { CompactEntityChip, CompactChipStrip } from './CompactEntityChip';
 
@@ -22,8 +21,6 @@ type Props = {
 };
 
 export function ChatFocusChipBar({ focus, onDismiss }: Props) {
-  const { runtimeDataMode } = useMockData();
-  const isDemo = runtimeDataMode === 'DEMO';
   const Icon = SURFACE_ICONS[focus.sourceSurface] ?? Sparkles;
   const stats = focus.sessionStats;
   const isLove = focus.sourceSurface === 'love';
@@ -94,12 +91,6 @@ export function ChatFocusChipBar({ focus, onDismiss }: Props) {
             <span className="text-white/35">·</span>
             <span className="truncate opacity-80">{focus.sourceLabel}</span>
           </CompactEntityChip>
-
-          {isDemo && (
-            <CompactEntityChip className="border-amber-500/35 bg-amber-500/10 text-amber-200/90 max-w-none">
-              Demo
-            </CompactEntityChip>
-          )}
 
           {projectedAffection != null && (
             <CompactEntityChip

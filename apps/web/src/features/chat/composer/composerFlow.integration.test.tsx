@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { Provider } from 'react-redux';
+import { MemoryRouter } from 'react-router-dom';
 
 import { makeStore } from '../../../store';
 import { MockDataProvider } from '../../../contexts/MockDataContext';
@@ -8,14 +9,18 @@ import { GuestProvider } from '../../../contexts/GuestContext';
 import { ChatComposer } from './ChatComposer';
 import { resetEntityIndexerCache } from '../../../hooks/useEntityIndexer';
 
-/** ChatComposer pulls runtime identity (mock + guest), so provide both. */
+/** ChatComposer pulls runtime identity (mock + guest), so provide both.
+ *  MockDataProvider uses useLocation() (demo/admin route-leak fix), so it
+ *  needs a Router ancestor too. */
 function renderComposer(ui: React.ReactElement) {
   return render(
-    <Provider store={makeStore()}>
-      <MockDataProvider>
-        <GuestProvider>{ui}</GuestProvider>
-      </MockDataProvider>
-    </Provider>
+    <MemoryRouter>
+      <Provider store={makeStore()}>
+        <MockDataProvider>
+          <GuestProvider>{ui}</GuestProvider>
+        </MockDataProvider>
+      </Provider>
+    </MemoryRouter>
   );
 }
 

@@ -1,5 +1,8 @@
+import type { ReactNode } from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { Provider } from 'react-redux';
 import {
   MockDataProvider,
   useMockData,
@@ -7,6 +10,14 @@ import {
   setGlobalMockDataEnabled,
 } from './MockDataContext';
 import { ReduxProvider } from '../store/ReduxProvider';
+import { makeStore } from '../store';
+import { setAuthSession } from '../store/slices/authSlice';
+import { DEMO_SESSION_KEY } from '../lib/demoRuntime';
+
+/** useLocation() (added for the demo/admin route-leak fix) requires a Router ancestor. */
+function withRouter(children: ReactNode, initialPath = '/') {
+  return <MemoryRouter initialEntries={[initialPath]}>{children}</MemoryRouter>;
+}
 
 vi.mock('../config/env', () => ({
   config: {
@@ -45,11 +56,13 @@ describe('MockDataContext', () => {
 
     it('returns context when inside MockDataProvider', () => {
       render(
-        <ReduxProvider>
-          <MockDataProvider>
-            <ReadsContext />
-          </MockDataProvider>
-        </ReduxProvider>
+        withRouter(
+          <ReduxProvider>
+            <MockDataProvider>
+              <ReadsContext />
+            </MockDataProvider>
+          </ReduxProvider>
+        )
       );
       expect(screen.getByTestId('value').textContent).toMatch(/true|false/);
     });
@@ -58,11 +71,13 @@ describe('MockDataContext', () => {
   describe('MockDataProvider', () => {
     it('renders children', () => {
       render(
-        <ReduxProvider>
-          <MockDataProvider>
-            <div data-testid="child">Child</div>
-          </MockDataProvider>
-        </ReduxProvider>
+        withRouter(
+          <ReduxProvider>
+            <MockDataProvider>
+              <div data-testid="child">Child</div>
+            </MockDataProvider>
+          </ReduxProvider>
+        )
       );
       expect(screen.getByTestId('child')).toHaveTextContent('Child');
     });
@@ -86,12 +101,14 @@ describe('MockDataContext', () => {
 
       try {
         render(
-          <ReduxProvider>
-            <MockDataProvider>
-              <ReadsBackendUnavailable />
-              <ReadsContext />
-            </MockDataProvider>
-          </ReduxProvider>
+          withRouter(
+            <ReduxProvider>
+              <MockDataProvider>
+                <ReadsBackendUnavailable />
+                <ReadsContext />
+              </MockDataProvider>
+            </ReduxProvider>
+          )
         );
 
         await waitFor(
@@ -132,11 +149,13 @@ describe('MockDataContext', () => {
 
       try {
         render(
-          <ReduxProvider>
-            <MockDataProvider>
-              <ReadsBackendUnavailable />
-            </MockDataProvider>
-          </ReduxProvider>
+          withRouter(
+            <ReduxProvider>
+              <MockDataProvider>
+                <ReadsBackendUnavailable />
+              </MockDataProvider>
+            </ReduxProvider>
+          )
         );
 
         await waitFor(
@@ -147,6 +166,39 @@ describe('MockDataContext', () => {
         );
       } finally {
         globalThis.fetch = originalFetch;
+      }
+    });
+
+    it('clears a lingering demo session and mock data once an authenticated user is off /demo', async () => {
+      // Simulates: an already-signed-in user opens the public /demo sandbox
+      // (allowed by design), then routes back into the real app via an
+      // internal link rather than the explicit "Exit demo" control. The
+      // sessionStorage demo flag would otherwise survive and leak mock data
+      // into their real account.
+      sessionStorage.setItem(DEMO_SESSION_KEY, 'true');
+
+      const testStore = makeStore();
+      const user = { id: 'admin-1', email: 'admin@example.com' } as never;
+      testStore.dispatch(setAuthSession({ user, session: { user } as never }));
+
+      try {
+        render(
+          withRouter(
+            <Provider store={testStore}>
+              <MockDataProvider>
+                <ReadsContext />
+              </MockDataProvider>
+            </Provider>,
+            '/characters'
+          )
+        );
+
+        await waitFor(() => {
+          expect(screen.getByTestId('value').textContent).toBe('false');
+        });
+        expect(sessionStorage.getItem(DEMO_SESSION_KEY)).toBeNull();
+      } finally {
+        sessionStorage.removeItem(DEMO_SESSION_KEY);
       }
     });
   });
