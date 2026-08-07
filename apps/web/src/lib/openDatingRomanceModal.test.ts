@@ -12,21 +12,21 @@ describe('openDatingRomanceModal', () => {
   });
 
   it('stores relationship id and tab then navigates to love', () => {
-    openDatingRomanceModal({ relationshipId: 'rel-001', tab: 'timeline' });
+    openDatingRomanceModal({ relationshipId: 'rel-001', tab: 'overview' });
     expect(sessionStorage.getItem('highlightRelationship')).toBe('rel-001');
-    expect(sessionStorage.getItem('relationshipModalTab')).toBe('timeline');
+    expect(sessionStorage.getItem('relationshipModalTab')).toBe('overview');
     expect(window.dispatchEvent).toHaveBeenCalled();
   });
 
   it('stores character id when relationship id is absent', () => {
-    openDatingRomanceModal({ characterId: 'char-001', tab: 'timeline' });
+    openDatingRomanceModal({ characterId: 'char-001', tab: 'overview' });
     expect(sessionStorage.getItem('highlightRelationship')).toBeNull();
     expect(sessionStorage.getItem('highlightRelationshipCharacterId')).toBe('char-001');
-    expect(sessionStorage.getItem('relationshipModalTab')).toBe('timeline');
+    expect(sessionStorage.getItem('relationshipModalTab')).toBe('overview');
   });
 
   it('no-ops without relationship or character id', () => {
-    openDatingRomanceModal({ tab: 'timeline' });
+    openDatingRomanceModal({ tab: 'overview' });
     expect(sessionStorage.getItem('highlightRelationship')).toBeNull();
     expect(window.dispatchEvent).not.toHaveBeenCalled();
   });

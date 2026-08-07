@@ -89,11 +89,15 @@ export const PerceptionEntryCard = ({
   const isUnverified = perception.status === 'unverified';
   const isConfirmed = perception.status === 'confirmed';
   const isDisproven = perception.status === 'disproven';
+  const needsReview =
+    Boolean(perception.review_reminder_at) &&
+    new Date(perception.review_reminder_at!) <= new Date() &&
+    !isRetracted;
 
   // Visual treatment: desaturated/muted for perceptions (80% opacity default)
   return (
     <Card
-      className={`min-w-0 transition-all duration-200 ${
+      className={`min-w-0 h-fit overflow-visible transition-all duration-200 ${
         onClick ? 'cursor-pointer hover:border-violet-500/50 hover:shadow-lg hover:shadow-violet-500/20 hover:-translate-y-1 active:scale-[0.99] touch-manipulation' : ''
       } ${
         isRetracted
@@ -116,21 +120,21 @@ export const PerceptionEntryCard = ({
       tabIndex={onClick ? 0 : undefined}
       aria-label={onClick ? `Open perception about ${perception.subject_alias || 'this person'}` : undefined}
     >
-      <CardContent className="space-y-2 p-2 sm:space-y-2.5 sm:p-4">
+      <CardContent className="space-y-2 overflow-visible p-2 sm:space-y-2.5 sm:p-4">
         {/* Subject + timestamp share a row — subject is the headline, everything
             else below is supporting detail, not more headline-weight chips. */}
         <div className="flex items-start justify-between gap-2">
           {showSubject && (perception.subject_alias || perception.subject_person_id) && (
-            <div className="flex min-w-0 items-center gap-1 text-[11px] sm:gap-1.5 sm:text-sm">
-              <User className="h-3 w-3 shrink-0 text-white/50 sm:h-3.5 sm:w-3.5" />
-              <span className="min-w-0 truncate font-medium text-white">
+            <div className="flex min-w-0 items-start gap-1 text-[11px] sm:gap-1.5 sm:text-sm">
+              <User className="mt-0.5 h-3 w-3 shrink-0 text-white/50 sm:h-3.5 sm:w-3.5" />
+              <span className="min-w-0 break-words font-medium text-white">
                 {perception.subject_alias || 'Unknown'}
               </span>
             </div>
           )}
           <div className="flex shrink-0 items-center gap-0.5 text-[8px] text-white/40 sm:gap-1 sm:text-xs">
             <Clock className="h-2.5 w-2.5 sm:h-3 sm:w-3" aria-hidden="true" />
-            <span className="max-w-16 truncate sm:max-w-none">{heardAt}</span>
+            <span className="whitespace-nowrap">{heardAt}</span>
           </div>
         </div>
 
@@ -138,7 +142,10 @@ export const PerceptionEntryCard = ({
             breakpoints so they wrap as pairs instead of one-per-line. The
             "who asserted this" badge is dropped here: every row in this book
             is hardcoded actorKind="user"/stance="user_belief" today, so it
-            never varies and only added a fourth redundant chip. */}
+            never varies and only added a fourth redundant chip. EpistemicStatusBadge
+            already renders a status-derived "Needs review" / "Retracted" label, so
+            only the review-reminder chip (independent of current status) is added
+            here. */}
         <div className="flex flex-wrap items-center gap-0.5 sm:gap-1" aria-label="Source, certainty, and review status">
           <Badge
             variant="outline"
@@ -154,25 +161,33 @@ export const PerceptionEntryCard = ({
             {certaintyLabel}
           </Badge>
           <EpistemicStatusBadge status={perception.status} compact />
+          {needsReview && (
+            <Badge
+              variant="outline"
+              className="border-amber-500/30 bg-amber-500/10 px-1 py-0 text-[9px] normal-case tracking-normal text-amber-300 sm:px-1.5 sm:text-[10px]"
+            >
+              Review due
+            </Badge>
+          )}
         </div>
 
-        {/* Content */}
-        <div className="line-clamp-4 text-[10px] font-medium leading-snug text-white/85 sm:line-clamp-none sm:text-sm sm:leading-relaxed">
+        {/* Content — full text, never clamped or ellipsized */}
+        <div className="break-words text-[10px] font-medium leading-snug text-white/85 sm:text-sm sm:leading-relaxed">
           {perception.content}
         </div>
 
-        {/* Impact on Me (Key Insight Lever) */}
+        {/* Impact on Me (Key Insight Lever) — always visible, never clamped */}
         {perception.impact_on_me && (
           <div className="border-t border-border/30 pt-1.5 sm:pt-2">
             <p className="text-[8px] font-semibold uppercase tracking-wide text-white/40 sm:text-xs sm:normal-case sm:tracking-normal">Impact on me</p>
-            <p className="mt-0.5 line-clamp-2 text-[9px] leading-snug text-white/65 sm:line-clamp-none sm:text-xs sm:italic">{perception.impact_on_me}</p>
+            <p className="mt-0.5 break-words text-[9px] leading-snug text-white/65 sm:text-xs sm:italic">{perception.impact_on_me}</p>
           </div>
         )}
 
         {(perception.source_detail || perception.related_memory_id || evolutionCount > 0) && (
           <div className="flex flex-wrap gap-x-2 gap-y-1 border-t border-border/20 pt-1.5 text-[8px] text-white/45 sm:text-[10px]">
             {perception.source_detail && (
-              <span className="min-w-0 basis-full truncate sm:basis-auto" title={perception.source_detail}>
+              <span className="min-w-0 basis-full break-words sm:basis-auto">
                 Source: {perception.source_detail}
               </span>
             )}
@@ -191,11 +206,11 @@ export const PerceptionEntryCard = ({
 
         {/* Evolution Notes (if any) */}
         {perception.evolution_notes && perception.evolution_notes.length > 0 && (
-          <div className="hidden border-t border-border/30 pt-2 sm:block">
-            <p className="text-xs text-white/50 font-medium mb-1">Belief Evolution:</p>
+          <div className="border-t border-border/30 pt-2">
+            <p className="mb-1 text-xs font-medium text-white/50">Belief Evolution:</p>
             <div className="space-y-1">
               {perception.evolution_notes.map((note, idx) => (
-                <p key={idx} className="text-xs text-white/60">{note}</p>
+                <p key={idx} className="break-words text-xs leading-relaxed text-white/60">{note}</p>
               ))}
             </div>
           </div>
@@ -203,9 +218,11 @@ export const PerceptionEntryCard = ({
 
         {/* Original Content (if different from current) */}
         {perception.original_content && perception.original_content !== perception.content && (
-          <div className="hidden border-t border-border/30 pt-2 sm:block">
-            <p className="text-xs text-white/50 font-medium mb-1">Original Belief:</p>
-            <p className="text-xs text-white/60 italic line-through opacity-70">{perception.original_content}</p>
+          <div className="border-t border-border/30 pt-2">
+            <p className="mb-1 text-xs font-medium text-white/50">Original Belief:</p>
+            <p className="break-words text-xs italic leading-relaxed text-white/60 line-through opacity-70">
+              {perception.original_content}
+            </p>
           </div>
         )}
 
@@ -215,7 +232,7 @@ export const PerceptionEntryCard = ({
             <p className="text-xs text-white/50 font-medium mb-1">
               {perception.status === 'retracted' ? 'Retraction:' : 'Resolution:'}
             </p>
-            <p className="line-clamp-2 text-[9px] italic text-white/70 sm:line-clamp-none sm:text-xs">{perception.resolution_note}</p>
+            <p className="break-words text-[9px] italic text-white/70 sm:text-xs">{perception.resolution_note}</p>
           </div>
         )}
 
@@ -223,7 +240,7 @@ export const PerceptionEntryCard = ({
         {isUnverified && !isRetracted && (
           <div className="flex items-start gap-1 border-t border-violet-500/20 pt-1.5 sm:items-center sm:gap-2 sm:pt-2">
             <AlertTriangle className="mt-px h-2.5 w-2.5 shrink-0 text-violet-400/70 sm:mt-0 sm:h-3.5 sm:w-3.5" aria-hidden="true" />
-            <span className="text-[8px] leading-tight text-violet-300/70 sm:text-xs">Belief at the time — not verified fact</span>
+            <span className="break-words text-[8px] leading-tight text-violet-300/70 sm:text-xs">Belief at the time — not verified fact</span>
           </div>
         )}
       </CardContent>

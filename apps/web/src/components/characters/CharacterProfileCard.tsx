@@ -14,6 +14,7 @@ import {
   composeRomanticRelationshipBadgeLabel,
   formatExclusivityLabel,
   isRomanceIdentityType,
+  normalizeRomanceTypeKey,
   resolveCharacterRomanceIdentity,
   ROMANCE_NOISE_TAGS,
 } from '../../lib/romanticRelationshipLabel';
@@ -160,6 +161,10 @@ type RomanticRelationship = {
   created_at: string;
   rank_among_all?: number;
   rank_among_active?: number;
+  metadata?: {
+    has_kids_together?: boolean;
+    [key: string]: unknown;
+  };
 };
 
 type CharacterProfileCardProps = {
@@ -528,16 +533,47 @@ export const CharacterProfileCard = ({
                 {displayName}
               </h3>
             </div>
-            {/* Bond identity: prefer Dating & Romance label once under the name.
-                Do not also print Role when it is just "Situationship" / girlfriend / etc. */}
+            {/* Bond identity: same composed badge + kids chip as Dating & Romance. */}
             {hasRomanceIdentity ? (
-              <p
-                className="text-[9px] sm:text-xs text-pink-200/90 mt-0.5 line-clamp-1 truncate"
-                title={romanceBadgeLabel}
-                data-testid="character-romance-identity"
-              >
-                {romanceBadgeLabel}
-              </p>
+              <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                <Badge
+                  variant="outline"
+                  className={`max-w-full truncate text-[9px] sm:text-[10px] font-medium px-1.5 py-0 ${
+                    getRelationshipStatusClasses(
+                      relationship ?? {
+                        relationship_type:
+                          (typeof character.metadata?.relationship_type === 'string'
+                            ? character.metadata.relationship_type
+                            : primaryRole) || 'dating',
+                        status: character.status || 'active',
+                        is_situationship:
+                          normalizeRomanceTypeKey(
+                            typeof character.metadata?.relationship_type === 'string'
+                              ? character.metadata.relationship_type
+                              : primaryRole,
+                          ) === 'situationship' ||
+                          (character.tags ?? []).some(
+                            (tag) => normalizeSignalLabel(tag) === 'situationship',
+                          ),
+                      },
+                    ).className
+                  }`}
+                  title={romanceBadgeLabel}
+                  data-testid="character-romance-identity"
+                >
+                  {romanceBadgeLabel}
+                </Badge>
+                {(relationship?.metadata?.has_kids_together === true ||
+                  character.metadata?.has_kids_together === true) && (
+                  <Badge
+                    variant="outline"
+                    className="max-w-full truncate text-[9px] sm:text-[10px] font-medium px-1.5 py-0 bg-cyan-500/10 text-cyan-200 border-cyan-500/25"
+                    data-testid="kids-together-badge"
+                  >
+                    Kids together
+                  </Badge>
+                )}
+              </div>
             ) : character.role && !hideRoleForRomance ? (
               <p className="text-[9px] sm:text-xs text-white/70 mt-0.5 line-clamp-1 truncate" title={character.role}>
                 {primaryRole}

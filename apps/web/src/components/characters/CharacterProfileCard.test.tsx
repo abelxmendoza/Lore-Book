@@ -413,4 +413,46 @@ describe('CharacterProfileCard', () => {
     const situationshipMentions = (container.textContent?.match(/Situationship/g) ?? []).length;
     expect(situationshipMentions).toBe(1);
   });
+
+  it('shows Married bond and Kids together like Dating & Romance', () => {
+    render(
+      <CharacterProfileCard
+        character={{
+          ...baseCharacter,
+          id: 'char-jamie-spouse',
+          name: 'Jamie',
+          role: '',
+          archetype: 'romantic',
+          metadata: { relationship_type: 'wife', has_kids_together: true },
+        }}
+        relationship={{
+          id: 'rel-010',
+          person_id: 'char-jamie-spouse',
+          person_type: 'character',
+          person_name: 'Jamie',
+          relationship_type: 'wife',
+          status: 'active',
+          is_current: true,
+          affection_score: 0.94,
+          emotional_intensity: 0.8,
+          compatibility_score: 0.91,
+          relationship_health: 0.88,
+          is_situationship: false,
+          exclusivity_status: 'exclusive',
+          strengths: [],
+          weaknesses: [],
+          pros: [],
+          cons: [],
+          red_flags: [],
+          green_flags: [],
+          created_at: new Date().toISOString(),
+          metadata: { has_kids_together: true },
+        }}
+        attributes={[]}
+      />,
+    );
+
+    expect(screen.getByTestId('character-romance-identity')).toHaveTextContent('Married · Active');
+    expect(screen.getByTestId('kids-together-badge')).toHaveTextContent('Kids together');
+  });
 });

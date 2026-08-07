@@ -659,16 +659,24 @@ export class OrganizationService {
     }
   }
 
-  /** Cheap existence/ownership check — skips getOrganization()'s full aggregate + analytics fetch. */
-  private async organizationExists(userId: string, organizationId: string): Promise<boolean> {
+  /**
+   * Lightweight ownership check for write paths (add/remove member, knowledge solidify).
+   * Avoids getOrganization's full member/story/analytics hydration — that work routinely
+   * exceeds the web client's 30s fetch timeout on large Groups & Organizations cards.
+   */
+  private async getOwnedOrganizationRef(
+    userId: string,
+    organizationId: string,
+  ): Promise<{ id: string; name: string } | null> {
     const { data, error } = await supabaseAdmin
       .from('organizations')
-      .select('id')
+      .select('id, name')
       .eq('id', organizationId)
       .eq('user_id', userId)
       .maybeSingle();
     if (error) throw error;
-    return Boolean(data);
+    if (!data?.id) return null;
+    return { id: String(data.id), name: String(data.name ?? '') };
   }
 
   /**
@@ -938,13 +946,10 @@ export class OrganizationService {
   async addMember(userId: string, organizationId: string, member: Omit<OrganizationMember, 'id' | 'organization_id'>): Promise<OrganizationMember> {
     this.invalidateOrganizations(userId);
     try {
-      // Existence check only — the caller never reads `org` beyond this guard,
-      // so avoid getOrganization()'s full aggregate fetch (members/stories/
-      // events/locations + a 90-day analytics scan across conversations and
-      // journal entries). That fetch is expensive enough on an active group to
-      // make a simple "add this member" request time out client-side.
-      const exists = await this.organizationExists(userId, organizationId);
-      if (!exists) {
+      // Ownership only — full getOrganization hydrates members/stories/analytics and
+      // can exceed the client 30s timeout on large groups (Character modal Add).
+      const org = await this.getOwnedOrganizationRef(userId, organizationId);
+      if (!org) {
         const err = new Error('Group not found. Save the group first, then link people.');
         (err as Error & { statusCode?: number }).statusCode = 404;
         throw err;
@@ -1246,7 +1251,7 @@ export class OrganizationService {
     link: { characterId: string; characterName: string; role?: string | null },
   ): Promise<void> {
     try {
-      const org = await this.getOrganization(userId, organizationId);
+      const org = await this.getOwnedOrganizationRef(userId, organizationId);
       const orgName = org?.name?.trim() || 'this group';
       const role = link.role?.trim();
       const { entityFactsService } = await import('./entityFactsService');
@@ -1368,7 +1373,7 @@ export class OrganizationService {
     link: { characterId: string; characterName: string },
   ): Promise<void> {
     try {
-      const org = await this.getOrganization(userId, organizationId);
+      const org = await this.getOwnedOrganizationRef(userId, organizationId);
       const orgName = org?.name?.trim();
       if (!orgName) return;
       const { entityFactsService } = await import('./entityFactsService');

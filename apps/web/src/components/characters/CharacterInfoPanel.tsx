@@ -7,6 +7,7 @@ import {
   Clock,
   Heart,
   Info,
+  Link2,
   MapPin,
   Smile,
   Sparkles,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
 import { UnknownField } from '../ui/UnknownField';
 import { toFieldSource } from '../common/FieldSourceBadge';
 import { EditableField, type EditableFieldOption } from '../common/EditableField';
@@ -466,6 +468,8 @@ export type CharacterInfoPanelProps = {
   onFocusFieldHandled?: () => void;
   /** Hide "Relationship to you" on the self / main character modal. */
   isSelfCharacter?: boolean;
+  /** Open Dating & Romance on the Overview tab for this bond. */
+  onOpenDatingArc?: () => void;
 };
 
 function StatCell({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
@@ -559,6 +563,7 @@ export function CharacterInfoPanel({
   focusField = null,
   onFocusFieldHandled,
   isSelfCharacter = false,
+  onOpenDatingArc,
 }: CharacterInfoPanelProps) {
   const [updateCharacter] = useUpdateCharacterMutation();
   const [relationshipToYouBusy, setRelationshipToYouBusy] = useState(false);
@@ -1810,16 +1815,38 @@ export function CharacterInfoPanel({
       {/* ── 3. Your relationship (romantic / close) ──────────────────── */}
       {relationship && (
         <section className="rounded-2xl border border-rose-500/25 bg-rose-950/20 p-4" data-testid="your-relationship-section">
-          <div className="flex items-center gap-2 mb-3">
-            <Heart className="h-4 w-4 text-rose-400" />
-            <h3 className="text-sm font-bold text-white">Your relationship</h3>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <Heart className="h-4 w-4 text-rose-400 shrink-0" />
+              <h3 className="text-sm font-bold text-white">Your relationship</h3>
+            </div>
+            {onOpenDatingArc && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onOpenDatingArc}
+                data-testid="open-dating-romance-overview"
+                className="w-full sm:w-auto shrink-0 border-pink-500/30 text-pink-200 hover:bg-pink-500/10 hover:text-pink-100"
+              >
+                <Link2 className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                Dating &amp; Romance · Overview
+              </Button>
+            )}
           </div>
           <div className="mb-3 grid gap-3 sm:grid-cols-2">
+            {romanceIdentityLabel && (
+              <div className="sm:col-span-2 rounded-lg border border-rose-500/20 bg-black/30 px-3 py-2">
+                <p className="text-[10px] uppercase tracking-wide text-rose-200/70 mb-1">Bond</p>
+                <p className="text-sm text-white" data-testid="character-info-romance-bond">
+                  {romanceIdentityLabel}
+                </p>
+              </div>
+            )}
             <EditableField
               label="Relationship type"
               value={relationship.relationship_type}
               displayValue={
-                romanceIdentityLabel ??
                 relationshipTypeOptions.find((option) => option.value === relationship.relationship_type)?.label ??
                 humanizeType(relationship.relationship_type)
               }

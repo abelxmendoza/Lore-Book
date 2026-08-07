@@ -1,123 +1,139 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
- * addMember() must not pay for getOrganization()'s full aggregate fetch
- * (members/stories/events/locations + a 90-day analytics scan) just to check
- * that the group exists — that's the root cause of "adding people to groups"
- * timing out on an active/older group. It should do a cheap existence check
- * instead, and getOrganization() itself should never be invoked from this path.
+ * addMember used to call full getOrganization (members + stories + analytics +
+ * name-only linking) just to verify ownership. That hydration regularly blew
+ * past the web client's 30s timeout when adding someone from the Character modal.
  */
 
-type OrgRow = { id: string; user_id: string; name: string };
-type MemberRow = {
-  id: string;
-  organization_id: string;
-  user_id: string;
-  character_id: string | null;
-  character_name: string;
-  role?: string;
-  status?: string;
-};
-type CharacterRow = { id: string; user_id: string; name: string };
+const { fromMock, tableData, selectCalls } = vi.hoisted(() => {
+  const tableData: Record<string, Array<Record<string, unknown>>> = {
+    organizations: [{ id: 'org-1', user_id: 'u1', name: 'Vanguard Robotics' }],
+    characters: [{ id: 'char-1', user_id: 'u1', name: 'Marcus' }],
+    organization_members: [],
+  };
+  const selectCalls: string[] = [];
 
-const state = vi.hoisted(() => ({
-  organizations: [] as OrgRow[],
-  members: [] as MemberRow[],
-  characters: [] as CharacterRow[],
-  nextMemberId: 1,
-}));
+  const fromMock = vi.fn((table: string) => {
+    const filters: Array<(r: Record<string, unknown>) => boolean> = [];
+    let selectedCols = '*';
+    let pendingUpdate: Record<string, unknown> | null = null;
+    let pendingInsert: Record<string, unknown> | null = null;
+    let isSingle = false;
+    let isMaybeSingle = false;
 
-vi.mock('../../src/services/supabaseClient', () => ({
-  supabaseAdmin: {
-    from: (table: string) => {
-      const filters: Array<(r: Record<string, unknown>) => boolean> = [];
-      let insertPayload: Record<string, unknown> | null = null;
+    const applyFilters = () => (tableData[table] ?? []).filter((r) => filters.every((f) => f(r)));
 
-      const rowsFor = (): Record<string, unknown>[] => {
-        if (table === 'organizations') return state.organizations as unknown as Record<string, unknown>[];
-        if (table === 'organization_members') return state.members as unknown as Record<string, unknown>[];
-        if (table === 'characters') return state.characters as unknown as Record<string, unknown>[];
-        return [];
-      };
-      const filtered = () => rowsFor().filter((r) => filters.every((f) => f(r)));
+    const finish = () => {
+      if (pendingInsert) {
+        const row = { id: `m-${Date.now()}`, ...pendingInsert };
+        tableData[table] = [...(tableData[table] ?? []), row];
+        pendingInsert = null;
+        return { data: row, error: null };
+      }
+      if (pendingUpdate) {
+        const matched = applyFilters();
+        const target = matched[0];
+        if (target) Object.assign(target, pendingUpdate);
+        pendingUpdate = null;
+        return { data: target ?? null, error: null };
+      }
+      const matched = applyFilters();
+      if (isSingle || isMaybeSingle) {
+        return { data: matched[0] ?? null, error: matched[0] ? null : (isSingle ? { message: 'not found' } : null) };
+      }
+      return { data: matched, error: null };
+    };
 
-      const q: Record<string, any> = {
-        select: () => q,
-        eq: (col: string, val: unknown) => {
-          filters.push((r) => r[col] === val);
-          return q;
-        },
-        is: (col: string, val: unknown) => {
-          filters.push((r) => (val === null ? r[col] == null : r[col] === val));
-          return q;
-        },
-        ilike: (col: string, val: string) => {
-          filters.push((r) => String(r[col] ?? '').toLowerCase() === String(val).toLowerCase());
-          return q;
-        },
-        insert: (payload: Record<string, unknown>) => {
-          insertPayload = payload;
-          return q;
-        },
-        maybeSingle: async () => ({ data: filtered()[0] ?? null, error: null }),
-        single: async () => {
-          if (insertPayload) {
-            const row = { id: `m${state.nextMemberId++}`, ...insertPayload } as MemberRow;
-            state.members.push(row);
-            return { data: row, error: null };
-          }
-          return { data: filtered()[0] ?? null, error: null };
-        },
-      };
-      return q;
-    },
-  },
-}));
+    const q: Record<string, unknown> = {
+      select: (cols?: string) => {
+        selectedCols = cols ?? '*';
+        selectCalls.push(`${table}:${selectedCols}`);
+        return q;
+      },
+      insert: (row: Record<string, unknown>) => {
+        pendingInsert = row;
+        return q;
+      },
+      update: (row: Record<string, unknown>) => {
+        pendingUpdate = row;
+        return q;
+      },
+      eq: (col: string, val: unknown) => {
+        filters.push((r) => r[col] === val);
+        return q;
+      },
+      is: (col: string, val: unknown) => {
+        filters.push((r) => r[col] === val);
+        return q;
+      },
+      ilike: (col: string, val: unknown) => {
+        filters.push((r) => String(r[col] ?? '').toLowerCase() === String(val).toLowerCase());
+        return q;
+      },
+      maybeSingle: () => {
+        isMaybeSingle = true;
+        return Promise.resolve(finish());
+      },
+      single: () => {
+        isSingle = true;
+        return Promise.resolve(finish());
+      },
+      then: (resolve: (v: { data: unknown; error: null }) => unknown) => resolve(finish()),
+    };
+    return q;
+  });
 
+  return { fromMock, tableData, selectCalls };
+});
+
+vi.mock('../../src/services/supabaseClient', () => ({ supabaseAdmin: { from: fromMock } }));
 vi.mock('../../src/logger', () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}));
+vi.mock('../../src/services/groupAnalyticsService', () => ({
+  groupAnalyticsService: { calculateAnalytics: vi.fn() },
 }));
 
 import { organizationService } from '../../src/services/organizationService';
 
-describe('organizationService.addMember — existence check cost', () => {
+describe('organizationService.addMember', () => {
   beforeEach(() => {
-    state.organizations = [{ id: 'org-1', user_id: 'user-1', name: 'Popular E-Girls' }];
-    state.members = [];
-    state.characters = [{ id: 'char-1', user_id: 'user-1', name: 'Mothdoll' }];
-    state.nextMemberId = 1;
+    tableData.organization_members = [];
+    selectCalls.length = 0;
+    fromMock.mockClear();
     vi.spyOn(organizationService as any, 'solidifyMembershipKnowledge').mockResolvedValue(undefined);
   });
 
-  it('links an existing Character Book person without ever calling the full getOrganization aggregate', async () => {
-    const getOrgSpy = vi.spyOn(organizationService, 'getOrganization');
+  it('verifies org ownership with a lightweight id/name select (not full hydration)', async () => {
+    const getOrganizationSpy = vi.spyOn(organizationService, 'getOrganization');
 
-    const member = await organizationService.addMember('user-1', 'org-1', {
+    const member = await organizationService.addMember('u1', 'org-1', {
       character_id: 'char-1',
-      character_name: 'Mothdoll',
-      role: 'Member',
+      character_name: 'Marcus',
+      role: 'member',
       status: 'active',
     });
 
+    expect(getOrganizationSpy).not.toHaveBeenCalled();
+    expect(selectCalls.some((c) => c.startsWith('organizations:id, name'))).toBe(true);
     expect(member.character_id).toBe('char-1');
-    expect(member.character_name).toBe('Mothdoll');
-    expect(getOrgSpy).not.toHaveBeenCalled();
+    expect(member.character_name).toBe('Marcus');
+    expect(tableData.organization_members).toHaveLength(1);
 
-    getOrgSpy.mockRestore();
+    getOrganizationSpy.mockRestore();
   });
 
-  it('still 404s when the group does not exist, without invoking getOrganization', async () => {
-    const getOrgSpy = vi.spyOn(organizationService, 'getOrganization');
-
+  it('returns 404-shaped error when the group is missing', async () => {
     await expect(
-      organizationService.addMember('user-1', 'org-missing', {
+      organizationService.addMember('u1', 'missing-org', {
         character_id: 'char-1',
-        character_name: 'Mothdoll',
+        character_name: 'Marcus',
         status: 'active',
       }),
-    ).rejects.toThrow(/Group not found/);
-    expect(getOrgSpy).not.toHaveBeenCalled();
-
-    getOrgSpy.mockRestore();
+    ).rejects.toMatchObject({
+      message: expect.stringMatching(/Group not found/i),
+      statusCode: 404,
+    });
   });
 });

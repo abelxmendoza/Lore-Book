@@ -44,16 +44,42 @@ describe('romanticRelationshipLabel', () => {
     expect(isRedundantRomanceIdentityLabel('Soft launch', 'situationship')).toBe(false);
   });
 
-  it('resolves romance identity from character fields when no romance row is linked', () => {
+  it('composes Married / Divorced / Co-parent labels like Dating & Romance', () => {
     expect(
-      resolveCharacterRomanceIdentity({
-        role: 'Situationship',
-        archetype: 'romantic',
-        tags: ['romantic', 'situationship', 'active'],
-        metadata: { relationship_type: 'situationship' },
+      composeRomanticRelationshipBadgeLabel({
+        relationship_type: 'wife',
         status: 'active',
       }),
-    ).toBe('Situationship · Not exclusive');
+    ).toBe('Married · Active');
+    expect(
+      composeRomanticRelationshipBadgeLabel({
+        relationship_type: 'divorced',
+        status: 'ended',
+      }),
+    ).toBe('Divorced · Ended');
+    expect(
+      composeRomanticRelationshipBadgeLabel({
+        relationship_type: 'baby_mama',
+        status: 'active',
+      }),
+    ).toBe('Co-parent');
+    expect(
+      composeRomanticRelationshipBadgeLabel({
+        id: 'rel-010',
+        relationship_type: 'wife',
+        status: 'active',
+      }),
+    ).toBe('Married · Active');
+  });
+
+  it('does not invent a dating bond from romantic archetype alone', () => {
+    expect(
+      resolveCharacterRomanceIdentity({
+        archetype: 'romantic',
+        tags: ['romantic'],
+        status: 'active',
+      }),
+    ).toBeNull();
   });
 });
 
