@@ -33,7 +33,8 @@ export type SelfModelConcept =
   | 'limitations'
   | 'retrieval'
   | 'user_is_narrator'
-  | 'extraction_pipeline';
+  | 'extraction_pipeline'
+  | 'content_tracking_explanation';
 
 export type MetaQueryStrength = 'strong' | 'soft';
 
@@ -122,6 +123,11 @@ export const FALLBACK_SELF_MODEL: Record<SelfModelConcept, SelfModelFact> = {
     description:
       'People, places, and groups you mention are extracted automatically — you do not need to create cards manually. Extraction runs after chat, not through the assistant reply.',
   },
+  content_tracking_explanation: {
+    concept: 'content_tracking_explanation',
+    description:
+      'Timeline and Swimlanes reflect only what has already been extracted and saved from past turns. Describing how something "would" appear does not create a new record — that only happens through the background extraction pipeline. When asked how this conversation is being tracked, reference only items already shown in context as recorded; frame anything else as a proposed layout, not confirmed as saved.',
+  },
 };
 
 /** All product-facing concepts — keep in sync with system_knowledge product seed migration. */
@@ -208,6 +214,12 @@ const META_QUERY_RULES: Array<{
   {
     concepts: ['surfaces', 'limitations'],
     pattern: /\b(composer|entity chip|character book|memory review).*(broken|bug|issue|not working|confus)/i,
+    strength: 'soft',
+  },
+  {
+    concepts: ['content_tracking_explanation', 'extraction_pipeline'],
+    pattern:
+      /\bhow (are|were|does|do|would|will|is) (you|this|it|these) .{0,25}\b(track\w*|log\w*|record\w*|organiz\w*|put\w*|categoriz\w*)\b|\bhow (would|will|does|do) (this|it) (go|show up|appear|look) (on|in) (the )?(timeline|swimlanes?)\b|\bput(ting)? this on the timeline\b/i,
     strength: 'soft',
   },
 ];
