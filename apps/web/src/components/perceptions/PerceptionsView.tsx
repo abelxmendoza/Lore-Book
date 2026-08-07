@@ -980,7 +980,7 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
                 </div>
 
                 {/* Perceptions Grid */}
-                <div className="mb-4 grid min-h-0 flex-1 grid-cols-3 content-start gap-2 overflow-y-auto sm:mb-6 sm:grid-cols-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="mb-4 grid min-h-0 flex-1 grid-cols-1 content-start gap-3 overflow-y-auto sm:mb-6 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
                   {paginatedPerceptions.map((perception, index) => (
                     <PerceptionEntryCard
                       key={perception.id || `perception-${index}`}
