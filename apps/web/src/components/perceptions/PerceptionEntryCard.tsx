@@ -104,7 +104,7 @@ export const PerceptionEntryCard = ({
   // Visual treatment: desaturated/muted for perceptions (80% opacity default)
   return (
     <Card
-      className={`min-w-0 h-fit overflow-visible transition-all duration-200 ${
+      className={`h-fit w-full min-w-0 max-w-full overflow-visible transition-all duration-200 ${
         onClick ? 'cursor-pointer hover:border-violet-500/50 hover:shadow-lg hover:shadow-violet-500/20 hover:-translate-y-1 active:scale-[0.99] touch-manipulation' : ''
       } ${
         isRetracted
@@ -119,10 +119,10 @@ export const PerceptionEntryCard = ({
       }`}
       onClick={() => onClick?.(perception)}
     >
-      <CardContent className="space-y-2 overflow-visible p-3 sm:space-y-3 sm:p-4">
-        {/* Header with source and confidence */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 sm:gap-2">
+      <CardContent className="space-y-2 overflow-visible p-2.5 sm:space-y-3 sm:p-4">
+        {/* Header with source and confidence — stack on narrow 2-col mobile cards */}
+        <div className="flex flex-col gap-1.5">
+          <div className="flex min-w-0 flex-wrap items-center gap-1">
             <Badge
               variant="outline"
               className={`${getSourceColor(perception.source)} flex items-center gap-1 px-1.5 py-0.5 text-[10px] sm:px-2 sm:text-xs`}
@@ -153,8 +153,8 @@ export const PerceptionEntryCard = ({
             ) : null}
             <span>{getResolutionIcon(perception.status)}</span>
           </div>
-          <div className="flex shrink-0 items-center gap-1 text-[10px] text-white/40 sm:text-xs">
-            <Clock className="h-3 w-3" />
+          <div className="flex items-center gap-1 text-[10px] text-white/40 sm:text-xs">
+            <Clock className="h-3 w-3 shrink-0" />
             <span className="whitespace-nowrap">
               {formatDistanceToNow(new Date(perception.timestamp_heard), { addSuffix: true })}
             </span>
