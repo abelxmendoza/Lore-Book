@@ -20,10 +20,16 @@ const AGENT_MIGRATION_PATH = join(
   '../../../../supabase/migrations_legacy_20260806/20260618100000_lore_agents.sql'
 );
 
+const CONTENT_TRACKING_MIGRATION_PATH = join(
+  __dirname,
+  '../../../../supabase/migrations/20260807093500_system_knowledge_content_tracking_explanation.sql'
+);
+
 describe('system_knowledge product seed migration', () => {
   const sql = [
     readFileSync(MIGRATION_PATH, 'utf8'),
     readFileSync(CREATOR_MIGRATION_PATH, 'utf8'),
+    readFileSync(CONTENT_TRACKING_MIGRATION_PATH, 'utf8'),
   ].join('\n');
 
   it('migration file exists and is idempotent', () => {
