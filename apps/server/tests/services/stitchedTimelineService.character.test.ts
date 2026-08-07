@@ -78,3 +78,33 @@ describe('stitchedTimelineService — character_id scoping', () => {
     expect(result.items).toEqual([]);
   });
 });
+
+describe('stitchedTimelineService — limit', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(chronologyService.getChronologicalOrder).mockResolvedValue([
+      { id: 'moment-1', journal_entry_id: 'je-1', content: 'A private journal note', start_time: '2024-05-01T00:00:00.000Z', source_type: 'manual', tags: [], time_confidence: 0.8 },
+    ] as any);
+    (supabaseAdmin as any).from = vi.fn((table: string) => {
+      if (table === 'timeline_events') return makeChain(TIMELINE_EVENTS);
+      if (table === 'resolved_events') return makeChain(RESOLVED_EVENTS);
+      if (table === 'user_chronology_order') return makeChain([]);
+      return makeChain([]);
+    });
+  });
+
+  it('omitting limit preserves the full unbounded item set (existing caller behavior unaffected)', async () => {
+    const result = await stitchedTimelineService.getStitchedTimeline('user-1', {});
+    expect(result.items.length).toBe(4);
+  });
+
+  it('caps items after sorting/clustering when limit is passed', async () => {
+    const result = await stitchedTimelineService.getStitchedTimeline('user-1', { limit: 2 });
+    expect(result.items.length).toBe(2);
+  });
+
+  it('a limit larger than the result set is a no-op', async () => {
+    const result = await stitchedTimelineService.getStitchedTimeline('user-1', { limit: 100 });
+    expect(result.items.length).toBe(4);
+  });
+});

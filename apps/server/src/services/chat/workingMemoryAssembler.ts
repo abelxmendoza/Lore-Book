@@ -1,9 +1,9 @@
 import { normalizeNameKey } from '../../utils/nameNormalization';
 import type { TemporalWindow } from '../../utils/temporalAnchorResolver';
 import { classifyEntity, type EntityClass, type RootType } from '../entities/entityClassifier';
+import { stitchedTimelineService } from '../chronologyV2/stitchedTimelineService';
 import { truthStateWeight } from '../provenance/epistemicWeights';
 import { supabaseAdmin } from '../supabaseClient';
-import { formatTemporalLabel } from '../temporal/formatTemporalLabel';
 import {
   classifyTemporalQuery,
   occurredInWindow,
@@ -391,15 +391,6 @@ function isTemporalIntent(intent: WorkingMemoryIntent): boolean {
     'TEMPORAL_COMPARISON_QUERY',
     'TIMELINE_QUERY',
   ].includes(intent);
-}
-
-function eventSearchOrClause(target: string): string {
-  const tokens = target.match(/\b[a-z]{4,}/gi) ?? [];
-  if (tokens.length === 0) return `event_title.ilike.%${target.slice(0, 24)}%`;
-  return tokens
-    .slice(0, 4)
-    .flatMap((token) => [`event_title.ilike.%${token}%`, `event_summary.ilike.%${token}%`])
-    .join(',');
 }
 
 function extractQuestionTarget(question: string): string | null {
@@ -1330,7 +1321,8 @@ async function loadTextualCandidates(
   target: string | null,
   intent: WorkingMemoryIntent,
   threadId?: string,
-  temporalWindow?: TemporalWindow | null
+  temporalWindow?: TemporalWindow | null,
+  characterId?: string | null
 ): Promise<Candidate[]> {
   const like = `%${target ?? ''}%`;
   const wantsTarget = Boolean(target);
@@ -1345,7 +1337,7 @@ async function loadTextualCandidates(
     return q.gte(column, isoRange.gte).lte(column, isoRange.lte);
   };
 
-  const [entries, chats, timeline, eventTargetHits, projects, biography, resolvedEvents] = await Promise.all([
+  const [entries, chats, projects, biography, stitchedTimeline] = await Promise.all([
     scope.traced(
       'journal_entries',
       temporal ? 'journal entries in temporal window' : 'recent journal entries',
@@ -1387,36 +1379,6 @@ async function loadTextualCandidates(
               .order('created_at', { ascending: false })
               .limit(6)
         ),
-    scope.traced(
-      'character_timeline_events',
-      temporal ? 'timeline events in window' : 'recent timeline events',
-      `timeline_events:recent:${intent}`,
-      () => {
-        let q = supabaseAdmin
-          .from('character_timeline_events')
-          .select('id, event_title, event_type, event_date, event_summary, confidence, metadata')
-          .eq('user_id', userId);
-        q = applyDateRange(q, 'event_date');
-        return q
-          .order('event_date', { ascending: false })
-          .limit(temporal || intent === 'LIFE_REVIEW' || intent === 'EVENT_QUERY' ? 12 : 4);
-      }
-    ),
-    intent === 'EVENT_QUERY' && target
-      ? scope.traced(
-          'character_timeline_events',
-          'target-matched timeline events',
-          `timeline_events:target:${normalizeNameKey(target)}`,
-          () =>
-            supabaseAdmin
-              .from('character_timeline_events')
-              .select('id, event_title, event_type, event_date, event_summary, confidence, metadata')
-              .eq('user_id', userId)
-              .or(eventSearchOrClause(target))
-              .order('event_date', { ascending: false })
-              .limit(6)
-        )
-      : Promise.resolve([] as any[]),
     fetchProjectsForTextual(scope, userId),
     temporal
       ? Promise.resolve([] as any[])
@@ -1432,31 +1394,24 @@ async function loadTextualCandidates(
           .order('recorded_at', { ascending: false })
           .limit(intent === 'IDENTITY_QUERY' || intent === 'LIFE_REVIEW' ? 4 : 2)
     ),
-    // Event coverage fix: resolved_events is the recovery-populated event store
-    // (the WMA previously read only character_timeline_events, which is sparser).
-    // Read both and dedupe so EVENT_QUERY/LIFE_REVIEW actually return events.
+    // Canonical timeline projector: same dedup (clusterDuplicateEvents) and
+    // eligibility gating (evaluateTimelineEligibility) the Timeline/Swimlanes
+    // UI page relies on, instead of chat running its own separate ad-hoc
+    // character_timeline_events + resolved_events queries with a flat
+    // id/text dedup and no eligibility gating.
     scope.traced(
-      'resolved_events',
-      'resolved events (recovery store)',
-      `resolved_events:${intent}:${normalizeNameKey(target ?? '')}`,
-      () => {
-        const base = supabaseAdmin
-          .from('resolved_events')
-          .select('id, title, summary, type, start_time, temporal_precision, temporal_status, confidence, tags, people, locations, metadata')
-          .eq('user_id', userId);
-        let scoped = wantsTarget && intent === 'EVENT_QUERY'
-          ? base.or(
-              (target!.match(/\b[a-z]{4,}/gi) ?? [target!])
-                .slice(0, 4)
-                .flatMap((tk) => [`title.ilike.%${escapeIlike(tk)}%`, `summary.ilike.%${escapeIlike(tk)}%`])
-                .join(',') || `title.ilike.%${escapeIlike(target!.slice(0, 24))}%`
-            )
-          : base;
-        scoped = applyDateRange(scoped, 'start_time');
-        return scoped
-          .order('start_time', { ascending: false, nullsFirst: false })
-          .limit(temporal || intent === 'LIFE_REVIEW' || intent === 'EVENT_QUERY' || intent === 'RELATIONSHIP_QUERY' ? 12 : 5);
-      }
+      'stitched_timeline',
+      temporal ? 'stitched timeline in window' : 'recent stitched timeline',
+      `stitched_timeline:${intent}:${characterId ?? normalizeNameKey(target ?? '')}`,
+      () =>
+        stitchedTimelineService
+          .getStitchedTimeline(userId, {
+            start_time: isoRange?.gte,
+            end_time: isoRange?.lte,
+            character_id: characterId ?? undefined,
+            limit: temporal || intent === 'LIFE_REVIEW' || intent === 'EVENT_QUERY' || intent === 'RELATIONSHIP_QUERY' ? 12 : 6,
+          })
+          .then((data) => ({ data, error: undefined }))
     ),
   ]);
 
@@ -1530,48 +1485,41 @@ async function loadTextualCandidates(
     });
   }
 
-  const seenEventIds = new Set<string>();
-  for (const event of [...(timeline ?? []), ...(eventTargetHits ?? [])] as any[]) {
-    if (seenEventIds.has(event.id)) continue;
-    seenEventIds.add(event.id);
-    const text = `${event.event_title ?? ''} ${event.event_summary ?? ''}`;
-    if (temporalWindow && !occurredInWindow(event.event_date, temporalWindow)) continue;
-    if (wantsTarget && !includeByIntent(text) && !['LIFE_REVIEW', 'EVENT_QUERY'].includes(intent)) continue;
+  // Single canonical source for character_timeline_events + resolved_events
+  // (see stitched_timeline query above) — already deduped and eligibility-gated
+  // by projectCanonicalTimeline, so no separate seenIds/occurredInWindow pass
+  // is needed here the way the old two-table merge required.
+  for (const item of stitchedTimeline?.items ?? []) {
+    const text = `${item.title ?? ''} ${item.body ?? ''}`;
+    const matchesTarget = includeByIntent(text);
+    // Scoped retrieval (character_id/date range) already narrowed this set;
+    // only fall back to a text-match penalty when neither scope applied.
+    const isScoped = Boolean(characterId) || Boolean(temporalWindow);
+    if (!isScoped && wantsTarget && !matchesTarget && !['LIFE_REVIEW', 'EVENT_QUERY'].includes(intent)) continue;
     out.push({
-      id: `timeline:${event.id}`,
-      type: intent === 'EVENT_QUERY' || intent === 'RELATIONSHIP_QUERY' ? 'event' : 'timeline',
-      title: event.event_title ?? event.event_type ?? 'Timeline event',
-      content: String(event.event_summary ?? event.event_title ?? ''),
-      source: 'character_timeline_events',
-      date: event.event_date,
-      confidence: Number(event.confidence ?? 0.7),
-      relevance: includeByIntent(text) ? (intent === 'EVENT_QUERY' ? 0.98 : 0.8) : 0.55,
-      importance: 0.65,
-      significance: Number((event.metadata as Record<string, unknown>)?.significance_score ?? 55) / 100,
-      relationshipDistance: 0.5,
-      reasons: includeByIntent(text) ? ['timeline text matches target'] : ['recent timeline'],
-    });
-  }
-
-  for (const event of (resolvedEvents ?? []) as any[]) {
-    const text = `${event.title ?? ''} ${event.summary ?? ''}`;
-    if (temporalWindow && !occurredInWindow(event.start_time, temporalWindow)) continue;
-    if (wantsTarget && !includeByIntent(text) && !['LIFE_REVIEW', 'EVENT_QUERY'].includes(intent)) continue;
-    out.push({
-      id: `resolved_event:${event.id}`,
+      id: `stitched_timeline:${item.id}`,
       type: intent === 'PERSON_QUERY' || intent === 'RELATIONSHIP_QUERY' ? 'timeline' : 'event',
-      title: String(event.title ?? event.type ?? 'Event'),
-      content: String(event.summary ?? event.title ?? ''),
-      source: 'resolved_events',
-      date: event.start_time,
-      dateLabel: formatTemporalLabel(event),
-      confidence: Number(event.confidence ?? 0.75),
-      relevance: includeByIntent(text) ? (intent === 'EVENT_QUERY' ? 0.97 : 0.78) : 0.6,
-      importance: 0.68,
-      significance: Number((event.metadata as Record<string, unknown>)?.significance_score ?? 60) / 100,
+      title: item.title || 'Timeline event',
+      content: item.body || item.title || '',
+      source: 'stitched_timeline',
+      date: item.sortTime,
+      confidence: Number(item.confidence ?? 0.75),
+      relevance: isScoped ? 0.9 : matchesTarget ? (intent === 'EVENT_QUERY' ? 0.97 : 0.8) : 0.55,
+      importance: 0.65,
+      significance: 0.6,
       relationshipDistance: 0.5,
-      reasons: includeByIntent(text) ? ['resolved event matches target'] : ['recent resolved event'],
-      metadata: { people: event.people, locations: event.locations, tags: event.tags },
+      reasons: isScoped
+        ? ['scoped canonical timeline match']
+        : matchesTarget
+        ? ['timeline text matches target']
+        : ['recent canonical timeline'],
+      metadata: {
+        sourceKind: item.sourceKind,
+        sourceIds: item.sourceIds,
+        tags: item.tags,
+        mergedCount: item.mergedCount,
+        mergedTitles: item.mergedTitles,
+      },
     });
   }
 
@@ -2351,7 +2299,7 @@ export async function assembleWorkingMemory(
         intent,
         temporalResolved.window
       ),
-      loadTextualCandidates(scope, input.userId, target, intent, input.threadId ?? undefined, temporalResolved.window),
+      loadTextualCandidates(scope, input.userId, target, intent, input.threadId ?? undefined, temporalResolved.window, personEntityId),
       !temporalQuery
         ? loadNarrativeAnchorCandidates(scope, input.userId, primaryEntity, intent)
         : Promise.resolve([] as Candidate[]),

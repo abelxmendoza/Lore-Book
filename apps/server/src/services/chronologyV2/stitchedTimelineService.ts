@@ -351,6 +351,13 @@ export class StitchedTimelineService {
        * could silently fall back to fabricated mock results.
        */
       character_id?: string;
+      /**
+       * Cap the final item count after sorting/clustering (applied last, so a
+       * cap never discards dedup accuracy). Undefined = unbounded, matching
+       * every existing caller's behavior; callers issuing this per request
+       * (e.g. a chat turn) should pass an explicit cap to keep it cheap.
+       */
+      limit?: number;
     } = {}
   ): Promise<StitchedTimelineResult> {
     const scopeType: ChronologyScopeType =
@@ -780,13 +787,14 @@ export class StitchedTimelineService {
         mergedTitles: items.find((i) => i.id === p.id)?.mergedTitles,
       });
       const sorted = sortItems(projected.canonical.map(toStitched));
+      const capped = opts.limit != null ? sorted.slice(0, opts.limit) : sorted;
       const unresolved = sortItems(projected.unresolved.map(toStitched));
       return {
         scope_type: scopeType,
         scope_id: scopeId,
         scope_label: scopeLabel,
-        items: sorted,
-        has_user_order: sorted.some((i) => i.userSortIndex != null),
+        items: capped,
+        has_user_order: capped.some((i) => i.userSortIndex != null),
         unresolved_items: unresolved,
         evidence_hidden_count: projected.evidenceHidden,
         excluded_count: projected.excluded.length,
@@ -797,13 +805,14 @@ export class StitchedTimelineService {
     }
 
     const sorted = sortItems(items);
-    const hasUserOrder = sorted.some((i) => i.userSortIndex != null);
+    const capped = opts.limit != null ? sorted.slice(0, opts.limit) : sorted;
+    const hasUserOrder = capped.some((i) => i.userSortIndex != null);
 
     return {
       scope_type: scopeType,
       scope_id: scopeId,
       scope_label: scopeLabel,
-      items: sorted,
+      items: capped,
       has_user_order: hasUserOrder,
       ...(chapterBackground.length ? { background: sortItems(chapterBackground) } : {}),
       ...(chapter ? { chapter } : {}),
