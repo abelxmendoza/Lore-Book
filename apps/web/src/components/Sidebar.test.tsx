@@ -101,10 +101,10 @@ describe('Sidebar', () => {
     expect(screen.getAllByText('Your story starts here').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('renders section labels: Focus on…, Gossip & claims, Explore your story', () => {
+  it('renders section labels: Focus on…, Beliefs & evidence, Explore your story', () => {
     render(<Sidebar {...defaultProps} />);
     expect(screen.getAllByText('Focus on…').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('Gossip & claims').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Beliefs & evidence').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Explore your story').length).toBeGreaterThanOrEqual(1);
   });
 

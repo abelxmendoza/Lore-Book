@@ -26,10 +26,10 @@ const ROLE_DOT: Record<RosterEntry['role'], string> = {
   mentioned: 'bg-white/30',
 };
 
-const SELF_LABELS = new Set(['you', 'also you', 'me', 'myself', 'self', 'the user', 'user']);
-
 function isSelfRosterEntry(entry: RosterEntry): boolean {
-  return SELF_LABELS.has(entry.name.trim().toLowerCase());
+  return /^(?:also\s+)?(?:you|me|myself|self|the user|user)(?:\s*\((?:also|self|user|narrator)\))?$/i.test(
+    entry.name.trim(),
+  );
 }
 
 function inferActorType(entry: RosterEntry): RosterActorType {

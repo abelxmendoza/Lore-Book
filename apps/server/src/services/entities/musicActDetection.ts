@@ -31,7 +31,17 @@ export type MusicActSignal =
   | 'set_by'
   | 'performed';
 
-export type MusicActResult = { isMusicAct: boolean; signal?: MusicActSignal };
+/**
+ * 'strong' signals explicitly name a band/group ("the band", "band called X").
+ * 'weak' signals only say the name performs music — true for a solo artist
+ * just as often as for a group, so callers should not treat 'weak' alone as
+ * proof of an organization (see entityClassifier.ts's use of this field).
+ */
+export type MusicActStrength = 'strong' | 'weak';
+
+const WEAK_SIGNALS = new Set<MusicActSignal>(['performed', 'opening_for', 'set_by']);
+
+export type MusicActResult = { isMusicAct: boolean; signal?: MusicActSignal; strength?: MusicActStrength };
 
 /**
  * True when the surrounding context presents `name` as a band / musical act.
@@ -55,7 +65,7 @@ export function looksLikeMusicAct(name: string | null | undefined, context?: str
   ];
 
   for (const [re, signal] of patterns) {
-    if (re.test(context)) return { isMusicAct: true, signal };
+    if (re.test(context)) return { isMusicAct: true, signal, strength: WEAK_SIGNALS.has(signal) ? 'weak' : 'strong' };
   }
   return { isMusicAct: false };
 }

@@ -243,6 +243,9 @@ export const LocationBook = () => {
     const resultIds = bookQueryResult
       ? new Set(bookQueryResult.results.map((result) => result.locationId))
       : null;
+    // Book queries (e.g. "places inside Novara HQ") intentionally search across
+    // ALL locations, including nested/child ones — so results legitimately fall
+    // outside the top-level-only default browse population.
     let locs = resultIds
       ? locations.filter((location) => resultIds.has(location.id))
       : locations.filter(isTopLevelPlace);
@@ -516,7 +519,11 @@ export const LocationBook = () => {
         <div className="min-w-0">
           <h2 className="text-lg sm:text-xl font-bold text-white truncate">Places</h2>
           <p className="text-[11px] sm:text-xs text-white/40 mt-0.5">
-            {filteredLocations.length} of {topLevelLocations.length} places
+            {/* Book queries search across ALL locations (including nested/child
+                places), not just the default top-level browse set — the "of Y"
+                denominator must match whichever population filteredLocations was
+                actually drawn from, or a query result count can exceed it. */}
+            {filteredLocations.length} of {bookQueryResult ? locations.length : topLevelLocations.length} places
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">

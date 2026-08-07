@@ -58,6 +58,13 @@ describe('collectThreadEntities', () => {
     expect(entities.map((e) => e.name)).toEqual(['Maya']);
   });
 
+  it('omits stale app-surface rows misclassified as events', () => {
+    const loreBook = { id: 'e-bad', name: 'Lorebook', type: 'event' as const };
+    const interview = { id: 'e-good', name: 'Rivian Interview', type: 'event' as const };
+    const entities = collectThreadEntities([assistant('a1', [loreBook, interview])]);
+    expect(entities.map((e) => e.name)).toEqual(['Rivian Interview']);
+  });
+
   it('recentMessageWindow drops stale early-thread entities (e.g. Ink after topic change)', () => {
     const ink = { id: 'c-ink', name: 'Ink', type: 'character' as const };
     const jesse = { id: 'c-jesse', name: 'Jesse', type: 'character' as const };

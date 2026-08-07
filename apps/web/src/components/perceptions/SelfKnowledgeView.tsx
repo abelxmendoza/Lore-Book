@@ -1,59 +1,50 @@
+import { Brain, CalendarDays, ChevronDown, FileSearch, Filter, Info, Loader2, Sparkles } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
-import { Brain, Filter, Loader2, Info, ChevronDown } from 'lucide-react';
-import { Badge } from '../ui/badge';
-import { Button } from '../ui/button';
-import { knowledgeApi, KNOWLEDGE_TYPE_LABELS, KNOWLEDGE_TYPE_COLORS } from '../../api/knowledge';
-import type { KnowledgeClaim } from '../../api/knowledge';
-import { EvidenceInspectorModal } from './EvidenceInspectorModal';
+
+import {
+  knowledgeApi,
+  KNOWLEDGE_TYPE_LABELS,
+  KNOWLEDGE_TYPE_COLORS,
+  type KnowledgeClaim,
+} from '../../api/knowledge';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { filterMockSelfKnowledgeClaims, mockSelfKnowledgeClaims } from '../../mocks/selfKnowledgeClaims';
+import { AssertionAuthorBadge } from '../epistemic/AssertionAuthorBadge';
+import { EpistemicStatusBadge } from '../epistemic/EpistemicStatusBadge';
+import { EvidenceBalance } from '../epistemic/EvidenceBalance';
+import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
 
-const STATUS_OPTIONS = ['ACTIVE', 'DORMANT', 'HISTORICAL', 'SUPERSEDED', 'ALL'] as const;
+import { EvidenceInspectorModal } from './EvidenceInspectorModal';
+
+
+const STATUS_OPTIONS = ['ALL', 'PENDING', 'ACTIVE', 'DORMANT', 'HISTORICAL', 'SUPERSEDED'] as const;
 
 const statusLabel = (s: typeof STATUS_OPTIONS[number]) =>
   s === 'ALL' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase();
 
-const statusBadgeClass = (status: string) => {
-  const map: Record<string, string> = {
-    ACTIVE: 'bg-green-500/20 text-green-300 border-green-500/30',
-    DORMANT: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',
-    HISTORICAL: 'bg-white/10 text-white/50 border-white/20',
-    SUPERSEDED: 'bg-red-500/20 text-red-300 border-red-500/30',
-    PENDING: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  };
-  return map[status] ?? 'bg-white/10 text-white/50 border-white/20';
-};
+const formatDate = (value: string) => new Date(value).toLocaleDateString(undefined, {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+});
 
-const ConfidenceRing = ({ value }: { value: number }) => {
-  const pct = Math.round(value * 100);
-  const color = pct >= 70 ? '#22c55e' : pct >= 45 ? '#eab308' : '#ef4444';
-  const r = 14;
-  const circ = 2 * Math.PI * r;
-  const dash = (pct / 100) * circ;
-  return (
-    <div className="relative h-10 w-10 flex-shrink-0 flex items-center justify-center">
-      <svg width="40" height="40" viewBox="0 0 40 40" className="-rotate-90">
-        <circle cx="20" cy="20" r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3" />
-        <circle
-          cx="20" cy="20" r={r} fill="none"
-          stroke={color} strokeWidth="3"
-          strokeDasharray={`${dash} ${circ - dash}`}
-          strokeLinecap="round"
-        />
-      </svg>
-      <span className="absolute text-[9px] font-bold text-white/80">{pct}</span>
-    </div>
-  );
+const certaintyClass = (confidence: number) => {
+  if (confidence >= 0.7) return 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200';
+  if (confidence >= 0.45) return 'border-amber-400/30 bg-amber-400/10 text-amber-200';
+  return 'border-rose-400/30 bg-rose-400/10 text-rose-200';
 };
 
 export const SelfKnowledgeView = () => {
   const useMock = useShouldUseMockData();
   const [claims, setClaims] = useState<KnowledgeClaim[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<'ACTIVE' | 'DORMANT' | 'HISTORICAL' | 'SUPERSEDED' | 'ALL'>('ACTIVE');
+  const [statusFilter, setStatusFilter] = useState<'PENDING' | 'ACTIVE' | 'DORMANT' | 'HISTORICAL' | 'SUPERSEDED' | 'ALL'>('ALL');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [selectedClaimId, setSelectedClaimId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -62,7 +53,7 @@ export const SelfKnowledgeView = () => {
       setLoading(false);
       return;
     }
-    knowledgeApi.getClaims({ status: statusFilter === 'ALL' ? 'ALL' : statusFilter, include_evidence: false })
+    knowledgeApi.getClaims({ status: statusFilter === 'ALL' ? 'ALL' : statusFilter, include_evidence: true })
       .then(res => { if (res.success) setClaims(res.claims); })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -87,16 +78,36 @@ export const SelfKnowledgeView = () => {
     return groups;
   }, [filtered]);
 
+  const refreshPatterns = async () => {
+    setRefreshing(true);
+    setRefreshMessage(null);
+    try {
+      const result = await knowledgeApi.refreshClaims();
+      const refreshed = await knowledgeApi.getClaims({ status: 'ALL', include_evidence: true });
+      if (refreshed.success) setClaims(refreshed.claims);
+      setStatusFilter('ALL');
+      setRefreshMessage(result.created > 0
+        ? `LoreBook found ${result.created} new supported pattern${result.created === 1 ? '' : 's'}.`
+        : result.evaluated > 0
+          ? 'The scan is complete. Existing candidates did not yet have enough spread or supporting evidence to become claims.'
+          : 'No repeated story patterns have reached the evidence threshold yet.');
+    } catch {
+      setRefreshMessage('LoreBook could not scan your story right now. Your existing memories were not changed.');
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return (
     <div className="space-y-4 min-w-0">
       {/* Header */}
       <div>
         <h3 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
           <Brain className="h-4 w-4 sm:h-5 sm:w-5 text-indigo-400 flex-shrink-0" />
-          <span className="min-w-0">What LoreBook Knows About You</span>
+          <span className="min-w-0">Patterns LoreBook Has Noticed</span>
         </h3>
         <p className="text-xs sm:text-sm text-white/60 mt-1 leading-relaxed">
-          Patterns, values, and behavioral tendencies crystallized from your journal entries
+          Evidence-linked patterns and tendencies that remain open to review and correction
         </p>
       </div>
 
@@ -111,7 +122,7 @@ export const SelfKnowledgeView = () => {
 
       {/* Filters */}
       <div className="space-y-3">
-        <div className="space-y-2">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-white/50 flex-shrink-0" />
             <span className="text-xs sm:text-sm text-white/70">Status</span>
@@ -171,12 +182,28 @@ export const SelfKnowledgeView = () => {
           <Loader2 className="h-8 w-8 text-indigo-400 animate-spin" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-16 text-white/40">
-          <Brain className="h-12 w-12 mx-auto mb-4 opacity-30" />
-          <p className="text-lg font-medium mb-2">No knowledge claims yet</p>
-          <p className="text-sm">
-            Keep journaling — LoreBook crystallizes behavioral patterns as you build your story.
+        <div className="rounded-xl border border-dashed border-indigo-400/25 bg-indigo-500/[0.05] px-4 py-10 text-center text-white/50 sm:px-8 sm:py-14">
+          <Brain className="mx-auto mb-4 h-11 w-11 text-indigo-300/40" />
+          <p className="mb-2 text-base font-medium text-white/80 sm:text-lg">No supported patterns are ready yet</p>
+          <p className="mx-auto max-w-xl text-xs leading-relaxed sm:text-sm">
+            This section only shows patterns backed by repeated evidence over time. A pattern is not created from one message, a recent burst, or an unsupported AI guess.
           </p>
+          {!useMock && (
+            <Button
+              type="button"
+              onClick={refreshPatterns}
+              disabled={refreshing}
+              className="mt-5 min-h-10 bg-indigo-500/20 text-indigo-100 hover:bg-indigo-500/30"
+            >
+              {refreshing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+              {refreshing ? 'Scanning your story…' : 'Scan existing story for patterns'}
+            </Button>
+          )}
+          {refreshMessage && (
+            <p className="mx-auto mt-3 max-w-lg text-[11px] leading-relaxed text-indigo-200/70 sm:text-xs" role="status">
+              {refreshMessage}
+            </p>
+          )}
         </div>
       ) : typeFilter !== 'all' ? (
         // Flat list when filtered to one type
@@ -202,7 +229,7 @@ export const SelfKnowledgeView = () => {
                 </Badge>
                 <span className="text-xs text-white/30">{typeClaims.length} claim{typeClaims.length !== 1 ? 's' : ''}</span>
               </div>
-              <div className="space-y-2">
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                 {typeClaims.map(claim => (
                   <ClaimCard
                     key={claim.id}
@@ -237,53 +264,100 @@ const ClaimCard = ({
   onInspect: () => void;
 }) => {
   const pct = Math.round(claim.confidence * 100);
-  const evidenceCount = (claim.evidence_links ?? []).length;
+  const evidence = claim.evidence_links;
+  const supportingCount = evidence?.filter(link => link.evidence_weight >= 0).length ?? 0;
+  const challengingCount = evidence?.filter(link => link.evidence_weight < 0).length ?? 0;
+  const evidenceCount = evidence?.length;
+  const evidencePreview = evidence?.find(link => link.evidence_weight >= 0)?.evidence_summary
+    ?? evidence?.[0]?.evidence_summary;
+  const typeLabel = KNOWLEDGE_TYPE_LABELS[claim.knowledge_type] ?? claim.knowledge_type;
 
   return (
-    <div
-      className="rounded-xl border border-white/10 bg-white/5 hover:bg-white/8 transition-colors cursor-pointer overflow-hidden touch-manipulation"
-      onClick={onToggle}
-    >
-      <div className="flex items-start gap-2.5 sm:gap-3 p-3 sm:p-3.5">
-        <ConfidenceRing value={claim.confidence} />
-        <div className="flex-1 min-w-0">
-          <p className="text-[13px] sm:text-sm text-white/90 leading-snug">{claim.human_readable_claim}</p>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5">
-            <Badge variant="outline" className={`text-[10px] py-0 ${statusBadgeClass(claim.status)}`}>
-              {claim.status}
+    <div className="group overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-white/[0.07] to-white/[0.03] transition-colors hover:border-indigo-400/30 hover:bg-white/[0.08]">
+      <button
+        type="button"
+        className="block w-full p-3 text-left touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400 sm:p-4"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        aria-label={`${expanded ? 'Collapse' : 'Expand'} claim: ${claim.human_readable_claim}`}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-1">
+            <Badge
+              variant="outline"
+              className={`max-w-full truncate px-1.5 py-0 text-[9px] normal-case tracking-normal sm:px-2 sm:text-[10px] ${KNOWLEDGE_TYPE_COLORS[claim.knowledge_type] ?? 'border-white/20 text-white/60'}`}
+            >
+              {typeLabel}
             </Badge>
-            <span className="text-[10px] text-white/30">
-              Reinforced {new Date(claim.last_reinforced_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-            </span>
+            <AssertionAuthorBadge
+              actorKind="lorebook"
+              stance={claim.status === 'PENDING' ? 'system_hypothesis' : 'established_knowledge'}
+              compact
+            />
+            <EpistemicStatusBadge status={claim.status} compact />
           </div>
+          <ChevronDown className={`mt-0.5 h-4 w-4 shrink-0 text-white/35 transition-transform group-hover:text-indigo-300 ${expanded ? 'rotate-180' : ''}`} aria-hidden="true" />
         </div>
-        <ChevronDown className={`h-4 w-4 text-white/30 flex-shrink-0 mt-0.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-      </div>
+
+        <p className="mt-2 text-[13px] font-medium leading-snug text-white/90 sm:text-[15px] sm:leading-relaxed">
+          {claim.human_readable_claim}
+        </p>
+
+        {evidencePreview && (
+          <div className="mt-2 rounded-lg border border-white/[0.07] bg-black/20 px-2.5 py-2">
+            <p className="flex items-center gap-1 text-[9px] font-medium uppercase tracking-wide text-white/40 sm:text-[10px]">
+              <Sparkles className="h-3 w-3 text-indigo-300" aria-hidden="true" /> Why it appears
+            </p>
+            <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-white/60 sm:text-xs">{evidencePreview}</p>
+          </div>
+        )}
+
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] text-white/45 sm:text-[10px]">
+          <span className={`rounded-full border px-1.5 py-0.5 font-medium ${certaintyClass(claim.confidence)}`}>
+            {pct}% certain
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <FileSearch className="h-3 w-3" aria-hidden="true" />
+            {evidenceCount === undefined
+              ? 'Evidence available'
+              : `${evidenceCount} evidence source${evidenceCount === 1 ? '' : 's'}`}
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <CalendarDays className="h-3 w-3" aria-hidden="true" />
+            Reinforced {formatDate(claim.last_reinforced_at)}
+          </span>
+        </div>
+      </button>
 
       {expanded && (
-        <div className="border-t border-white/10 px-3 sm:px-3.5 pb-3 pt-2 space-y-2" onClick={e => e.stopPropagation()}>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-            <div className="p-2 rounded bg-white/5">
-              <p className="text-white/40 mb-0.5">Certainty</p>
-              <p className="text-white font-semibold">{pct}%</p>
+        <div className="space-y-3 border-t border-white/10 px-3 pb-3 pt-3 sm:px-4 sm:pb-4" onClick={e => e.stopPropagation()}>
+          <div className="grid grid-cols-2 gap-2 text-[10px] sm:grid-cols-3 sm:text-xs">
+            <div className="rounded-lg bg-white/5 p-2.5">
+              <p className="mb-0.5 text-white/40">First noticed</p>
+              <p className="font-medium text-white/85">{formatDate(claim.first_evidenced_at)}</p>
             </div>
-            <div className="p-2 rounded bg-white/5">
-              <p className="text-white/40 mb-0.5">Evidence</p>
-              <p className="text-white font-semibold">{evidenceCount > 0 ? evidenceCount : '—'}</p>
+            <div className="rounded-lg bg-white/5 p-2.5">
+              <p className="mb-0.5 text-white/40">Evidence</p>
+              <p className="font-medium text-white/85">{evidenceCount === undefined ? 'Open inspector' : evidenceCount}</p>
             </div>
-            <div className="col-span-2 sm:col-span-1 p-2 rounded bg-white/5">
-              <p className="text-white/40 mb-0.5">Type</p>
-              <p className="text-white font-semibold truncate">{KNOWLEDGE_TYPE_LABELS[claim.knowledge_type] ?? claim.knowledge_type}</p>
+            <div className="col-span-2 rounded-lg bg-white/5 p-2.5 sm:col-span-1">
+              <p className="mb-0.5 text-white/40">Detection</p>
+              <p className="truncate font-medium capitalize text-white/85">{claim.trigger_type.replaceAll('_', ' ')}</p>
             </div>
           </div>
+          <EvidenceBalance
+            supporting={supportingCount}
+            challenging={challengingCount}
+            unknown={evidence === undefined}
+          />
           <Button
             variant="outline"
             size="sm"
             onClick={onInspect}
-            className="w-full min-h-10 text-xs border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/10"
+            className="min-h-10 w-full border-indigo-500/30 text-xs text-indigo-300 hover:bg-indigo-500/10"
           >
             <Brain className="h-3 w-3 mr-1" />
-            Inspect Evidence
+            Why does LoreBook show this?
           </Button>
         </div>
       )}

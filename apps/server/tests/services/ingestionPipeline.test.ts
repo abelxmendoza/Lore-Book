@@ -369,6 +369,74 @@ describe('ConversationIngestionPipeline', () => {
       expect(spy.mock.calls[0][2]).toBe('AI');
     });
 
+    it('threads an optional runId through to ingestMessage (for async event-assembly failure visibility)', async () => {
+      setRoute('chat_messages', () => ({
+        data: { id: 'chat-1', role: 'user', content: 'I have to distance myself.', metadata: {} },
+        error: null,
+      }));
+      setRoute('conversation_messages', () => ({ data: null, error: null }));
+      setRoute('conversation_sessions', ({ terminal }) =>
+        terminal === 'then'
+          ? { data: [{ id: 'session-1' }], error: null }
+          : { data: { id: 'session-1' }, error: null },
+      );
+
+      const spy = vi
+        .spyOn(conversationIngestionPipeline, 'ingestMessage')
+        .mockResolvedValue({
+          messageId: 'conv-msg-3',
+          utteranceIds: [],
+          unitIds: [],
+          resolvedEntityIds: [],
+          resolvedLocationIds: [],
+          promotedEntities: [],
+        });
+
+      await conversationIngestionPipeline.ingestFromChatMessage(
+        'user-1',
+        'chat-1',
+        'session-1',
+        undefined,
+        false,
+        'run-abc-123',
+      );
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      // runId must reach ingestMessage as the final positional argument so
+      // eventAssemblyService failures deep inside ingestMessageCore can be
+      // recorded against this pipeline_runs row.
+      expect(spy.mock.calls[0][8]).toBe('run-abc-123');
+    });
+
+    it('omits runId cleanly when the caller has no pipeline_runs row (e.g. conversationalOrchestrationService)', async () => {
+      setRoute('chat_messages', () => ({
+        data: { id: 'chat-1', role: 'user', content: 'no run id here', metadata: {} },
+        error: null,
+      }));
+      setRoute('conversation_messages', () => ({ data: null, error: null }));
+      setRoute('conversation_sessions', ({ terminal }) =>
+        terminal === 'then'
+          ? { data: [{ id: 'session-1' }], error: null }
+          : { data: { id: 'session-1' }, error: null },
+      );
+
+      const spy = vi
+        .spyOn(conversationIngestionPipeline, 'ingestMessage')
+        .mockResolvedValue({
+          messageId: 'conv-msg-4',
+          utteranceIds: [],
+          unitIds: [],
+          resolvedEntityIds: [],
+          resolvedLocationIds: [],
+          promotedEntities: [],
+        });
+
+      await conversationIngestionPipeline.ingestFromChatMessage('user-1', 'chat-1', 'session-1');
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy.mock.calls[0][8]).toBeUndefined();
+    });
+
     it('rethrows when ingestMessage fails so the durable worker can retry', async () => {
       setRoute('chat_messages', () => ({
         data: { id: 'chat-1', role: 'user', content: 'boom', metadata: {} },

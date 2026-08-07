@@ -2,10 +2,41 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { analyzeCrossRelationshipPatterns } from '../services/knowledgeCrystallization/crossRelationshipAnalyzer';
+import { evaluatePatternThreshold } from '../services/knowledgeCrystallization/crystallizationService';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
+
+type EligiblePatternCandidate = {
+  id: string;
+  continuity_strength: number;
+  occurrence_count: number;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+};
+
+async function evaluateInBatches(
+  candidates: EligiblePatternCandidate[],
+  userId: string,
+  batchSize = 5,
+): Promise<number> {
+  let failures = 0;
+  for (let index = 0; index < candidates.length; index += batchSize) {
+    const batch = candidates.slice(index, index + batchSize);
+    const results = await Promise.allSettled(batch.map(candidate => evaluatePatternThreshold({
+      userId,
+      eventCandidateId: candidate.id,
+      continuityStrength: candidate.continuity_strength,
+      occurrenceCount: candidate.occurrence_count,
+      firstSeenAt: candidate.first_seen_at,
+      lastSeenAt: candidate.last_seen_at,
+    })));
+    failures += results.filter(result => result.status === 'rejected').length;
+  }
+  return failures;
+}
 
 // ─── GET /api/knowledge/claims ────────────────────────────────────────────────
 //
@@ -63,7 +94,7 @@ router.get(
     }
 
     // Attach evidence links if requested
-    let evidenceByKnowledgeId: Record<string, unknown[]> = {};
+    const evidenceByKnowledgeId: Record<string, unknown[]> = {};
     if (includeEvidence) {
       const knowledgeIds = claims.map(c => c.id);
       const { data: links } = await supabaseAdmin
@@ -88,6 +119,69 @@ router.get(
 
     return res.json({ success: true, claims: result, total: result.length });
   })
+);
+
+// ─── POST /api/knowledge/claims/refresh ─────────────────────────────────────
+//
+// Re-evaluates already-supported patterns that may have crossed the evidence
+// threshold before the crystallization hook existed or while a background hook
+// was unavailable. This does not lower evidence thresholds: the service still
+// requires 4+ occurrences, >= 0.80 continuity, and a 30-day evidence span.
+
+router.post(
+  '/claims/refresh',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+
+    const [{ count: beforeCount }, candidateResult] = await Promise.all([
+      supabaseAdmin
+        .from('crystallized_knowledge')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId),
+      supabaseAdmin
+        .from('event_candidates')
+        .select('id, continuity_strength, occurrence_count, first_seen_at, last_seen_at')
+        .eq('user_id', userId)
+        .gte('continuity_strength', 0.80)
+        .gte('occurrence_count', 4)
+        .order('last_seen_at', { ascending: false })
+        .limit(100),
+    ]);
+
+    if (candidateResult.error) {
+      return res.status(500).json({
+        success: false,
+        error: 'Could not scan your existing story patterns.',
+      });
+    }
+
+    const candidates = (candidateResult.data ?? []) as EligiblePatternCandidate[];
+    const failures = await evaluateInBatches(candidates, userId);
+    await analyzeCrossRelationshipPatterns(userId);
+
+    const { count: afterCount, error: countError } = await supabaseAdmin
+      .from('crystallized_knowledge')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId);
+
+    if (countError) {
+      return res.status(500).json({
+        success: false,
+        error: 'The scan finished, but LoreBook could not reload the results.',
+      });
+    }
+
+    const before = beforeCount ?? 0;
+    const after = afterCount ?? before;
+    return res.json({
+      success: true,
+      evaluated: candidates.length,
+      failed: failures,
+      created: Math.max(0, after - before),
+      total: after,
+    });
+  }),
 );
 
 // ─── GET /api/knowledge/claims/:id ───────────────────────────────────────────

@@ -273,11 +273,11 @@ const SidebarContent = ({
             )}
           </button>
 
-          {/* 3. Gossip & claims */}
-          <p className="mt-4 mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40 px-1">Gossip & claims</p>
+          {/* 3. Beliefs & evidence */}
+          <p className="mt-4 mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40 px-1">Beliefs &amp; evidence</p>
           <button
             onClick={() => handleSurfaceChange('perceptions')}
-            aria-label="Open gossip and claims"
+            aria-label="Open perceptions and claims"
             aria-current={activeSurface === 'perceptions' ? 'page' : undefined}
             className={cn(
               "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
@@ -287,7 +287,7 @@ const SidebarContent = ({
             )}
           >
             <Eye className="h-4 w-4 text-primary" aria-hidden="true" />
-            Perceptions
+            Perceptions &amp; Claims
           </button>
 
           {/* 4. Explore your story */}

@@ -2,6 +2,7 @@
  * Classify autobiographical sentences before narrative promotion.
  *
  * EVENT   → candidate for Moment (and maybe Event)
+ * DECISION/REFLECTION → also candidates for Moment (internal, not external, happenings)
  * FACT/STATE/PROFILE/BACKGROUND → not events
  * GOAL/OPINION/EMOTION → not events
  * IGNORE  → greetings, tests, noise
@@ -9,6 +10,8 @@
 
 export type SentenceKind =
   | 'EVENT'
+  | 'DECISION'
+  | 'REFLECTION'
   | 'FACT'
   | 'STATE'
   | 'GOAL'
@@ -48,6 +51,14 @@ const BACKGROUND =
   /\b(?:usually|generally|typically|in general|for years|growing up|back when)\b/i;
 const FACT_STATIC =
   /^(?:i (?:can|know how to|have (?:a|an)|own)|can build|making \w+)\b/i;
+
+// Resolved-choice cues — the decision is made, not merely wanted/hoped for
+// (that stays GOAL). Excludes "I want/hope/plan to" deliberately.
+const DECISION =
+  /\b(?:i(?:'?ve| have)? decided to|i(?:'?ve| have)? chosen to|i(?:'?m| am) (?:cutting off|ending things with|done with|walking away from)|i have to (?:end|cut off|distance myself|leave|quit|walk away)|i need to (?:end|cut off|distance myself|leave|quit))\b/i;
+// Realization/hindsight cues — looking back with new understanding.
+const REFLECTION =
+  /\b(?:i(?:'?ve)? realized|i now (?:see|understand|realize)|in hindsight|looking back(?: on it)?|i should(?:n't| not)? have|i shouldn't have)\b/i;
 
 const PERSONAL_EVENT =
   /\b(?:i|we)\s+(?:(?:briefly|recently|finally|just|today|yesterday)\s+)?(?:went|visited|saw|attended|worked|built|created|finished|completed|started|began|ended|left|joined|quit|moved|traveled|arrived|stayed|met|dated|broke up|hooked up|blocked|unblocked|hired|interviewed|onboard(?:ed|ing)|received|missed|skipped|ran|jogged|drove)\b/i;
@@ -102,11 +113,21 @@ export function classifySentence(input: string): SentenceClassification {
     return { kind: 'EVENT', confidence: 0.9, reason: 'personal_happening' };
   }
 
+  // Internal (not external) happenings: a resolved choice or a realization.
+  // Known gap: idiomatic phrasing like "I made her part of this chapter of
+  // my life" won't match these cues — don't over-fit to one example sentence.
+  if (DECISION.test(text)) {
+    return { kind: 'DECISION', confidence: 0.85, reason: 'resolved_choice' };
+  }
+  if (REFLECTION.test(text)) {
+    return { kind: 'REFLECTION', confidence: 0.8, reason: 'realization_hindsight' };
+  }
+
   // Default: low-confidence fact — do not promote.
   return { kind: 'FACT', confidence: 0.55, reason: 'unclassified_non_event' };
 }
 
-/** Only EVENT sentences may become Moments / Events. */
+/** EVENT, DECISION, and REFLECTION sentences may become Moments / Events. */
 export function mayBecomeMoment(kind: SentenceKind): boolean {
-  return kind === 'EVENT';
+  return kind === 'EVENT' || kind === 'DECISION' || kind === 'REFLECTION';
 }

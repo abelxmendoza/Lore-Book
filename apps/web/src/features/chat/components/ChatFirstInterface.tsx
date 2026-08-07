@@ -823,8 +823,14 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       ]);
       if (summaryResult.status === 'fulfilled') {
         const summary = summaryResult.value.summary;
-        const people = scrubPeopleLabels(summary.people ?? []);
-        const places = scrubPlacesLabels(summary.places ?? []);
+        const people = scrubPeopleLabels([
+          ...(summary.people ?? []),
+          ...threadEntities.filter((entity) => entity.type === 'character').map((entity) => entity.name),
+        ]);
+        const places = scrubPlacesLabels([
+          ...(summary.places ?? []),
+          ...threadEntities.filter((entity) => entity.type === 'location').map((entity) => entity.name),
+        ]);
         threadSurface = {
           ...threadSurface,
           people,
@@ -1175,6 +1181,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           messageCount={messages.length}
           isMobile={isMobile}
           onRecallInChat={user ? handleRecallPrompt : undefined}
+          confirmedEntities={threadEntities}
         />
 
         {/* Actors — resolved identities only; recent mentions stay evidence */}

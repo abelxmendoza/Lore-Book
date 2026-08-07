@@ -659,6 +659,18 @@ export class OrganizationService {
     }
   }
 
+  /** Cheap existence/ownership check — skips getOrganization()'s full aggregate + analytics fetch. */
+  private async organizationExists(userId: string, organizationId: string): Promise<boolean> {
+    const { data, error } = await supabaseAdmin
+      .from('organizations')
+      .select('id')
+      .eq('id', organizationId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) throw error;
+    return Boolean(data);
+  }
+
   /**
    * Find an existing organization by name or alias (normalized comparison).
    */
@@ -926,8 +938,13 @@ export class OrganizationService {
   async addMember(userId: string, organizationId: string, member: Omit<OrganizationMember, 'id' | 'organization_id'>): Promise<OrganizationMember> {
     this.invalidateOrganizations(userId);
     try {
-      const org = await this.getOrganization(userId, organizationId);
-      if (!org) {
+      // Existence check only — the caller never reads `org` beyond this guard,
+      // so avoid getOrganization()'s full aggregate fetch (members/stories/
+      // events/locations + a 90-day analytics scan across conversations and
+      // journal entries). That fetch is expensive enough on an active group to
+      // make a simple "add this member" request time out client-side.
+      const exists = await this.organizationExists(userId, organizationId);
+      if (!exists) {
         const err = new Error('Group not found. Save the group first, then link people.');
         (err as Error & { statusCode?: number }).statusCode = 404;
         throw err;

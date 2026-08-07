@@ -11,7 +11,7 @@ export type MentionLifecycleStatus =
   | 'GROUP'
   | 'IGNORE';
 
-const SELF = /^(?:you|also you|me|myself|self|the user|user)$/i;
+const SELF = /^(?:also\s+)?(?:you|me|myself|self|the user|user)(?:\s*\((?:also|self|user|narrator)\))?$/i;
 /** Sentence adverbs / function words that look like proper names when capitalized. */
 const DISCOURSE_MARKERS = new Set([
   'also',

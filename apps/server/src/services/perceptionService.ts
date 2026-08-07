@@ -2,6 +2,13 @@ import { v4 as uuid } from 'uuid';
 
 import { logger } from '../logger';
 
+import {
+  createKnowledgeAssertion,
+  isDualWriteEnabled,
+  linkAssertionRevision,
+  listAssertionsForSource,
+  perceptionToKernelAssertion,
+} from './knowledgeKernel';
 import { supabaseAdmin } from './supabaseClient';
 
 // HARD RULE: These types enforce perception vs memory separation
@@ -164,7 +171,14 @@ class PerceptionService {
         throw error;
       }
 
-      return data as PerceptionEntry;
+      const created = data as PerceptionEntry;
+
+      if (isDualWriteEnabled()) {
+        void createKnowledgeAssertion(userId, perceptionToKernelAssertion(created))
+          .catch((err) => logger.warn({ err, entryId: created.id }, 'knowledgeKernel dual-write (create) failed'));
+      }
+
+      return created;
     } catch (error) {
       logger.error({ error, input }, 'Failed to create perception entry');
       throw error;
@@ -327,7 +341,19 @@ class PerceptionService {
         throw error;
       }
 
-      return data as PerceptionEntry;
+      const updated = data as PerceptionEntry;
+
+      if (isDualWriteEnabled()) {
+        void (async () => {
+          const prior = (await listAssertionsForSource(userId, 'perception_entries', entryId))[0] ?? null;
+          const newAssertion = await createKnowledgeAssertion(userId, perceptionToKernelAssertion(updated));
+          if (prior && newAssertion) {
+            await linkAssertionRevision(userId, prior.id, newAssertion.id, 'supersedes');
+          }
+        })().catch((err) => logger.warn({ err, entryId }, 'knowledgeKernel dual-write (update) failed'));
+      }
+
+      return updated;
     } catch (error) {
       logger.error({ error, entryId, input }, 'Failed to update perception entry');
       throw error;

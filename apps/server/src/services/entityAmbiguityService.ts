@@ -6,13 +6,15 @@
 // Never pollute memory or force ontology on the user
 // =====================================================
 
-import { logger } from '../logger';
+import { isInvalidPersonName } from '@lorebook/api-contracts';
+
 import { AI_THRESHOLDS } from '../config/aiThresholds';
+import { logger } from '../logger';
 import type { UserIntent } from '../types/conversationalOrchestration';
+import { dedupeCandidatesById, collapseSameNameCandidates } from '../utils/disambiguationUtils';
 import { jaroWinkler } from '../utils/jaroWinkler';
 
 import { entityResolutionService, type EntityCandidate } from './entityResolutionService';
-import { dedupeCandidatesById, collapseSameNameCandidates } from '../utils/disambiguationUtils';
 
 // -----------------------------
 // TYPES
@@ -104,7 +106,7 @@ export class EntityAmbiguityService {
         'Codex', 'Cursor', 'Claude', 'LoreBook', 'Lorekeeper',
       ];
 
-      if (!skipWords.includes(text) && text.length > 2) {
+      if (!skipWords.includes(text) && text.length > 2 && !isInvalidPersonName(text).invalid) {
         mentions.push({
           text,
           start_index: match.index,
@@ -335,4 +337,3 @@ export class EntityAmbiguityService {
 }
 
 export const entityAmbiguityService = new EntityAmbiguityService();
-

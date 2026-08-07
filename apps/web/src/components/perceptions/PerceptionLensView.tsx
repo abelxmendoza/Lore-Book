@@ -282,7 +282,7 @@ export const PerceptionLensView = () => {
         {/* Group By */}
         <div>
           <label className="text-xs text-white/70 mb-1 block">Group By</label>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
               variant={groupBy === 'subject' ? 'default' : 'outline'}

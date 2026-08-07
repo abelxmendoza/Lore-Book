@@ -166,7 +166,12 @@ const ANONYMOUS_PREFIX_RE =
 
 export function isSelfActorLabel(name: string | null | undefined): boolean {
   if (name == null || !String(name).trim()) return false;
-  return SELF_LABELS.has(normalizePersonNameKey(String(name)));
+  const key = normalizePersonNameKey(String(name));
+  if (SELF_LABELS.has(key)) return true;
+  // Older extraction runs sometimes inverted an appositive into labels such as
+  // "You (Also)". Parenthetical discourse/self markers still refer to the
+  // narrator and must never become Cast members.
+  return /^(?:also\s+)?(?:you|me|myself|self|the user|user)(?:\s*\((?:also|self|user|narrator)\))?$/.test(key);
 }
 
 /**

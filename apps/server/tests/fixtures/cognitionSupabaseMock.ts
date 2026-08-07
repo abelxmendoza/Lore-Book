@@ -20,6 +20,7 @@ export function chainableQuery(result: QueryResult = { data: null, error: null }
     'contains',
     'order',
     'limit',
+    'range',
     'single',
     'maybeSingle',
   ];

@@ -1,6 +1,6 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 vi.mock('../../lib/requestCache', () => ({
   cachedFetchJson: vi.fn(),
@@ -12,6 +12,7 @@ vi.mock('../../lib/api', () => ({
 }));
 
 import { cachedFetchJson } from '../../lib/requestCache';
+
 import { CharacterKnowledgeBase } from './CharacterKnowledgeBase';
 
 const mockCachedFetch = cachedFetchJson as ReturnType<typeof vi.fn>;
@@ -102,5 +103,12 @@ describe('CharacterKnowledgeBase self Lore tab wiring', () => {
 
     // Timeline pill should reflect real KB count, not seeded 0
     expect(screen.getAllByText('7').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', {
+      name: 'Why LoreBook suggests this pattern about Alex',
+    }));
+    expect(screen.getByText('Why LoreBook shows this')).toBeTruthy();
+    expect(screen.getByText('LoreBook suggests')).toBeTruthy();
+    expect(screen.getAllByText('Recurring builder pattern').length).toBeGreaterThan(1);
   });
 });

@@ -6,6 +6,7 @@
  * A mention is evidence; only RESOLVED identities belong on Cast.
  */
 import { logger } from '../../logger';
+import { isAppSurfacePersonName } from '../../utils/personNameValidation';
 import {
   isPollutingPersonLabel,
   isPollutingPlaceLabel,
@@ -200,6 +201,7 @@ export async function resolveMessageEntitiesForDisplay(
   // No alias column on resolved_events (unlike characters), so title-only matching.
   for (const ev of events) {
     if (!ev.title || !messageContainsName(message, ev.title)) continue;
+    if (isAppSurfacePersonName(ev.title)) continue;
     if (classified.some((c) => c.type === 'event' && c.id === ev.id)) continue;
     classified.push({
       id: ev.id,

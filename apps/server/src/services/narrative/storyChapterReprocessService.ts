@@ -40,19 +40,47 @@ async function loadScenes(userId: string): Promise<ChapterSceneInput[]> {
     .order('time_start', { ascending: true })
     .limit(500);
   if (error) throw error;
-  return (data ?? []).map((row) => ({
-    id: row.id as string,
-    title: (row.title as string) ?? '',
-    summary: (row.summary as string) ?? '',
-    timeStart: (row.time_start as string) ?? null,
-    timeEnd: (row.time_end as string) ?? null,
-    location: (row.location as string) ?? null,
-    participants: (row.participants as string[]) ?? [],
-    primaryGoal: (row.primary_goal as string) ?? null,
-    dominantEmotion: (row.dominant_emotion as string) ?? null,
-    significanceScore: Number(row.significance_score ?? 0),
-    promotedEventId: (row.promoted_event_id as string) ?? null,
-  }));
+
+  // Batch-join narrative_milestones so a rebuild sees the same milestone
+  // linkage live ingestion already computed — otherwise reprocessed chapters
+  // would silently lose milestone_ids/top_milestone_score.
+  const promotedEventIds = Array.from(
+    new Set((data ?? []).map((row) => row.promoted_event_id as string | null).filter((id): id is string => Boolean(id))),
+  );
+  const milestonesByEventId = new Map<string, { eligible: boolean; final_score: number }>();
+  if (promotedEventIds.length > 0) {
+    const { data: milestoneRows } = await supabaseAdmin
+      .from('narrative_milestones')
+      .select('event_id, eligible, final_score')
+      .eq('user_id', userId)
+      .in('event_id', promotedEventIds);
+    for (const row of milestoneRows ?? []) {
+      milestonesByEventId.set(row.event_id as string, {
+        eligible: Boolean(row.eligible),
+        final_score: Number(row.final_score ?? 0),
+      });
+    }
+  }
+
+  return (data ?? []).map((row) => {
+    const promotedEventId = (row.promoted_event_id as string) ?? null;
+    const milestone = promotedEventId ? milestonesByEventId.get(promotedEventId) : undefined;
+    return {
+      id: row.id as string,
+      title: (row.title as string) ?? '',
+      summary: (row.summary as string) ?? '',
+      timeStart: (row.time_start as string) ?? null,
+      timeEnd: (row.time_end as string) ?? null,
+      location: (row.location as string) ?? null,
+      participants: (row.participants as string[]) ?? [],
+      primaryGoal: (row.primary_goal as string) ?? null,
+      dominantEmotion: (row.dominant_emotion as string) ?? null,
+      significanceScore: Number(row.significance_score ?? 0),
+      promotedEventId,
+      isMilestone: Boolean(milestone?.eligible),
+      milestoneScore: milestone ? Math.round(milestone.final_score) : 0,
+    };
+  });
 }
 
 export async function reprocessStoryChaptersForUser(

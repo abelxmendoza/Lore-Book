@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { loreAssetUrl } from '../../../api/loreAssets';
+import { isInvalidPersonName } from '../../../lib/api-contracts/ingestion/semanticGuards';
 import {
   EntityClarificationChip,
   type EntityAmbiguity,
@@ -119,10 +120,22 @@ export function CreationOutcomePanel({
   const visible = useMemo(
     () =>
       outcomes.filter(
-        (o) => o.action !== 'reject' && !resolvedMentions.has(o.mention.toLowerCase())
+        (o) => {
+          if (o.action === 'reject' || resolvedMentions.has(o.mention.toLowerCase())) return false;
+          const isPersonOutcome =
+            o.entityType === 'character' ||
+            (o.entityType === undefined && ['create', 'merge', 'defer'].includes(o.action));
+          return !isPersonOutcome || !isInvalidPersonName(o.mention).invalid;
+        }
       ),
     [outcomes, resolvedMentions]
   );
+
+  const visibleSummary = useMemo(() => {
+    const nonRejectedCount = outcomes.filter(outcome => outcome.action !== 'reject').length;
+    if (visible.length === nonRejectedCount) return summary;
+    return visible.map(describeOutcome).join('; ');
+  }, [outcomes, summary, visible]);
 
   const deferWithCandidates = visible.filter(
     (o) => o.action === 'defer' && (o.candidates?.length ?? 0) > 0
@@ -139,7 +152,7 @@ export function CreationOutcomePanel({
 
   return (
     <div className="mt-2 space-y-2" data-testid="creation-outcome-panel">
-      {summary && <p className="text-xs text-zinc-400/80">{summary}</p>}
+      {visibleSummary && <p className="text-xs text-zinc-400/80">{visibleSummary}</p>}
 
       {chipOutcomes.length > 0 && (
         <div className="flex flex-wrap gap-1.5">

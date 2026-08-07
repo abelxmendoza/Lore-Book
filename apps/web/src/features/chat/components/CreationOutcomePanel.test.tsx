@@ -112,4 +112,30 @@ describe('CreationOutcomePanel', () => {
 
     expect(container.firstChild).toBeNull();
   });
+
+  it('scrubs historical junk person candidates from chips and stored summaries', () => {
+    render(
+      <MemoryRouter>
+        <CreationOutcomePanel
+          messageId="msg-123"
+          summary="person candidate Like awaits ingestion confirmation; person candidate Annie awaits ingestion confirmation; person candidate Tomorrow Im awaits ingestion confirmation; person candidate Fridays awaits ingestion confirmation"
+          outcomes={[
+            { mention: 'Like', action: 'create', entityType: 'character' },
+            { mention: 'Annie', action: 'create', entityType: 'character' },
+            { mention: 'Tomorrow Im', action: 'create', entityType: 'character' },
+            { mention: 'Fridays', action: 'create', entityType: 'character' },
+            { mention: 'Fitness', action: 'create', entityType: 'character' },
+            { mention: 'Police', action: 'create', entityType: 'character' },
+          ]}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getAllByText(/Person candidate: Annie/i)).toHaveLength(2);
+    expect(screen.queryByText(/Person candidate: Like/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Tomorrow Im/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Fridays/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Fitness/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Police/i)).not.toBeInTheDocument();
+  });
 });

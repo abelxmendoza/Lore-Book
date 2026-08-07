@@ -114,6 +114,8 @@ export class NarrativeStoryChapterService {
           fingerprint,
           ownership: chapter.ownership,
           contributions: chapter.contributions,
+          milestone_ids: chapter.milestoneIds,
+          top_milestone_score: chapter.topMilestoneScore,
         },
       };
 

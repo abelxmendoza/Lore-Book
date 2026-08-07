@@ -14,6 +14,9 @@
  * via canonical/glossaryLexicon.ts — no parallel hardcoded sets.
  */
 import {
+  evaluateTitleOnlyPersonGuard,
+} from '../lexical/intelligence/titleOnlyEntityGuard';
+import {
   type EntityClass,
   type StorageType,
   type LegacyOmegaEntityType,
@@ -36,9 +39,7 @@ import {
   SUPPLEMENTAL_GROUP_CLASSIFICATIONS,
   SUPPLEMENTAL_LOCATION_CLASSIFICATIONS,
 } from '../ontology/classificationDefaults';
-import {
-  evaluateTitleOnlyPersonGuard,
-} from '../lexical/intelligence/titleOnlyEntityGuard';
+
 import { looksLikeMusicAct } from './musicActDetection';
 
 export type { EntityClass, StorageType, LegacyOmegaEntityType, RootType };
@@ -69,6 +70,7 @@ const COMPANIES = new Set([
   'lyft', 'openai', 'anthropic', 'nvidia', 'tesla', 'walmart', 'target', 'costco',
   'starbucks', 'mcdonalds', 'chipotle', 'doordash', 'grubhub', 'instacart',
   'home depot', 'best buy', 'samsung', 'sony', 'intel', 'spacex', 'boeing',
+  'rivian',
 ]);
 
 const PLACES = new Set([
@@ -130,6 +132,17 @@ function petContextEvidence(name: string, context?: string): boolean {
   return false;
 }
 
+// A "weak" music-act signal (bare "performed"/"opening for"/"set by") only says
+// the name performs music — a solo artist reads identically to a band. Only
+// treat it as an organization when the context ALSO carries independent
+// multi-member language; otherwise it's positive evidence of a PERSON (likely
+// a public figure), letting the character pipeline's public-figure detection
+// (entityFactsService) tell solo act from group instead of guessing here.
+const GROUP_LANGUAGE_RE = /\b(band|group|duo|trio|quartet|collective|crew|squad|members|bandmates|they|their|them)\b/i;
+function hasGroupLanguage(context?: string | null): boolean {
+  return !!context && GROUP_LANGUAGE_RE.test(context);
+}
+
 export function classifyEntity(name: string, context?: string): Classification {
   const raw = name.trim();
   if (!raw || raw.length < 2) return result('UNKNOWN', 0, 'empty/too-short');
@@ -156,6 +169,14 @@ export function classifyEntity(name: string, context?: string): Classification {
 
     const organizationContext = new RegExp(`(?:work|worked|working)\\s+(?:at|for)\\s+${escaped}\\b`, 'i');
     if (organizationContext.test(context)) return result('ORGANIZATION', 0.9, 'employment organization context');
+
+    const interviewOrganizationContext = new RegExp(
+      `(?:interview|phone screen|job application|job offer)[^.!?]{0,80}\\b(?:at|for|with)\\s+${escaped}\\b`,
+      'i',
+    );
+    if (interviewOrganizationContext.test(context)) {
+      return result('ORGANIZATION', 0.92, 'interview/employment organization context');
+    }
 
     // Romantic / interpersonal person cues (consensual adult language is ordinary evidence).
     // Checked before release cues so a bare person name is not swallowed by a versioned model label
@@ -238,7 +259,14 @@ export function classifyEntity(name: string, context?: string): Classification {
   // act with a person-like name isn't promoted to a Character.
   const musicAct = looksLikeMusicAct(raw, context);
   if (musicAct.isMusicAct) {
-    return result('ORGANIZATION', 0.85, `music act / band (context: ${musicAct.signal})`, 'band');
+    if (musicAct.strength === 'strong' || hasGroupLanguage(context)) {
+      return result('ORGANIZATION', 0.85, `music act / band (context: ${musicAct.signal})`, 'band');
+    }
+    // Weak signal, no group language — e.g. "Kali Uchis performed last night"
+    // is just as consistent with a solo artist as a band. Default to PERSON
+    // so the public-figure pipeline gets a chance to classify her correctly,
+    // instead of forcing every performer into an organization record.
+    return result('PERSON', 0.7, `solo performer context (${musicAct.signal})`, 'artist');
   }
 
   const titleGuard = evaluateTitleOnlyPersonGuard(raw);

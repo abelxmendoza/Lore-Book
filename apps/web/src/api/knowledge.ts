@@ -66,6 +66,12 @@ export const knowledgeApi = {
       `/api/knowledge/claims/${id}`
     ),
 
+  refreshClaims: () =>
+    fetchJson<{ success: boolean; evaluated: number; failed: number; created: number; total: number; error?: string }>(
+      '/api/knowledge/claims/refresh',
+      { method: 'POST' },
+    ),
+
   getSummary: () =>
     fetchJson<{ success: boolean; summary: KnowledgeSummary }>('/api/knowledge/summary'),
 };

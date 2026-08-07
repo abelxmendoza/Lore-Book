@@ -207,9 +207,14 @@ type ProvenanceRelation =
 
 ### Current status
 
-The `ProvenanceEdge` type and `makeProvenanceEdge()` factory are defined and exported. The `cognition_mutations` table has a `provenance_edge_id` column for structural links. However, the persistence layer for provenance edges (a `provenance_edges` table and its write paths) is not yet fully implemented. The type contract is in place; the storage is the next step.
+The `provenance_edges` table and `provenanceEdgeService` now persist and traverse
+artifact lineage. The Knowledge Kernel builds on that existing causal graph with
+first-class assertions, typed evidence relations, revision links, and auditable
+derivation runs. See [KNOWLEDGE_KERNEL.md](KNOWLEDGE_KERNEL.md).
 
-> **This is the most significant gap in the provenance system.** Without persisted edges, the system can audit *what changed* but not *why* — the causal chain from raw input to durable memory is not traversable. Implementing `provenance_edges` persistence should be the first priority of the next infrastructure phase. See [ASSESSMENT.md](ASSESSMENT.md).
+Legacy ingestion paths do not all emit complete provenance yet. Coverage should
+therefore be measured per pipeline before a consumer assumes that missing edges
+mean missing evidence.
 
 ---
 
@@ -249,7 +254,9 @@ Inline `ReviseModal` allows the user to change truth states directly from this p
 
 1. **The audit log is the system's conscience.** `cognition_mutations` is the single source of truth for what the system *did* to a user's memory. It should be treated as sacred infrastructure — never dropped, never modified, monitored for write failures.
 
-2. **The provenance edge store is missing.** The type contract exists but the persistence layer does not. Until edges are persisted, the system has point-in-time snapshots but no causal graph. This is a meaningful gap in the "governed autobiography" promise.
+2. **Provenance coverage is incomplete.** Storage and traversal exist, but legacy
+   pipelines do not all emit equivalent edge sets. Missing lineage must remain
+   distinguishable from absence of supporting evidence.
 
 3. **The WhatAIKnows page is a foundation, not a product.** The current implementation shows raw truth states and mutation types that are meaningful to an architect but opaque to a user. The next UX iteration should translate epistemic status into human language: "We remember this as certain," "This memory is contested," "We learned this from something you said, but you haven't confirmed it."
 

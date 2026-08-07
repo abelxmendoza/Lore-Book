@@ -4,6 +4,7 @@
 // =====================================================
 
 import { logger } from '../../logger';
+import { retryWithExponentialBackoff } from '../../lib/openaiRetry';
 import { config } from '../../config';
 import { isIndividualPersonName } from '../../utils/personNameValidation';
 import { detectAIUncertainty } from '../../utils/aiUncertainty';
@@ -12,6 +13,7 @@ import { memoryFeedbackBus, type MemoryFeedbackEvent } from '../memoryFeedbackBu
 import { normalizationService } from './normalizationService';
 import { semanticExtractionService } from './semanticExtractionService';
 import { eventAssemblyService } from './eventAssemblyService';
+import { pipelineRunService } from '../ingestion/pipelineRunService';
 import { multiEventSplittingService } from './multiEventSplittingService';
 import { correctionResolutionService } from './correctionResolutionService';
 import { entryEnrichmentService } from '../entryEnrichmentService';
@@ -115,7 +117,12 @@ export class ConversationIngestionPipeline {
     chatMessageId: string,
     sessionId: string,
     conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
-    force?: boolean
+    force?: boolean,
+    // Optional: only the queue worker has a pipeline_runs row to record
+    // async event-assembly failures against (see ingestMessageCore's use of
+    // this). Callers without one (e.g. conversationalOrchestrationService)
+    // simply omit it — failures there stay logger-only, as before.
+    runId?: string
   ): Promise<{ entityResolutionFailed?: boolean }> {
     const pipelineStart = Date.now();
     try {
@@ -206,7 +213,8 @@ export class ConversationIngestionPipeline {
         conversationHistory,
         eventContext,
         undefined,
-        { chatMessageId, sourceCreatedAt: chatMessage.created_at }
+        { chatMessageId, sourceCreatedAt: chatMessage.created_at },
+        runId
       );
 
       // Link conversation message back to chat message via metadata
@@ -662,7 +670,8 @@ export class ConversationIngestionPipeline {
       type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP';
       id: string;
     },
-    ingestOptions?: { chatMessageId?: string; sourceCreatedAt?: string }
+    ingestOptions?: { chatMessageId?: string; sourceCreatedAt?: string },
+    runId?: string
   ): Promise<{
     messageId: string;
     utteranceIds: string[];
@@ -708,7 +717,8 @@ export class ConversationIngestionPipeline {
         conversationHistory,
         eventContext,
         entityContext,
-        ingestOptions
+        ingestOptions,
+        runId
       );
     } catch (err) {
       logger.error({ error: err, userId, threadId }, 'Failed to ingest message');
@@ -1215,7 +1225,8 @@ export class ConversationIngestionPipeline {
     conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
     eventContext?: string,
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string },
-    ingestOptions?: { chatMessageId?: string; sourceCreatedAt?: string }
+    ingestOptions?: { chatMessageId?: string; sourceCreatedAt?: string },
+    runId?: string
   ): Promise<{
     messageId: string;
     utteranceIds: string[];
@@ -1409,10 +1420,28 @@ export class ConversationIngestionPipeline {
           // Mirror the gate inside extractEntities so the meter can attribute the
           // skip to this message (same deterministic function — no divergence).
           const entityGateOpen = evaluateEntityCandidates(fullNormalizedText).hasCandidates;
-          const candidateEntities = (await omegaMemoryService.extractEntities(fullNormalizedText)).filter(
-            (e) => !isLoreBookProductName(e.name)
+          // Nothing has written yet at this point, so one bounded retry on a
+          // transient failure (LLM rate limit, momentary DB blip) is safe and
+          // cheap — without it, a single hiccup here becomes a hard
+          // entity_resolution_failed dead end for the whole message with no
+          // recovery, which is what previously left users like "can you
+          // summarize what happened" stuck on "something went wrong."
+          const { candidateEntities, resolved } = await retryWithExponentialBackoff(
+            async () => {
+              const entities = (await omegaMemoryService.extractEntities(fullNormalizedText)).filter(
+                (e) => !isLoreBookProductName(e.name)
+              );
+              return { candidateEntities: entities, resolved: await omegaMemoryService.resolveEntities(userId, entities) };
+            },
+            {
+              maxAttempts: 2,
+              baseDelayMs: 400,
+              shouldRetry: (err, attempt) => {
+                logger.warn({ err, messageId, attempt }, 'Entity extraction/resolution failed, retrying once before giving up');
+                return true;
+              },
+            },
           );
-          const resolved = await omegaMemoryService.resolveEntities(userId, candidateEntities);
           costMeter.record('entity_extraction', {
             eligible: entityGateOpen,
             invoked: entityGateOpen,
@@ -1567,7 +1596,49 @@ export class ConversationIngestionPipeline {
         }
       } catch (error) {
         _entityResolutionFailed = true;
-        logger.warn({ error }, 'Failed to resolve entities for enrichment, continuing without');
+        logger.warn({ error }, 'Failed to resolve entities for enrichment, using deterministic book matches');
+        // LLM extraction can time out even though the message names characters
+        // and places already present in the user's books. Preserve those exact,
+        // tenant-scoped matches as a degraded floor so thread People/Places,
+        // semantic conversion, and event assembly do not all become empty from
+        // one provider failure. This does not create or guess new entities.
+        try {
+          const { resolveMessageEntitiesForDisplay } = await import(
+            '../chat/messageEntityDisplayService'
+          );
+          const fallback = (await resolveMessageEntitiesForDisplay(userId, rawText)).filter(
+            (entity) => entity.type !== 'event',
+          );
+          const typeMap = {
+            character: 'PERSON',
+            location: 'LOCATION',
+            organization: 'ORG',
+          } as const;
+          _messageResolvedEntities = fallback.map((entity) => ({
+            id: entity.id,
+            type: typeMap[entity.type as keyof typeof typeMap],
+            name: entity.name,
+          }));
+          for (const entity of _messageResolvedEntities) {
+            resolvedEntities.push({ id: entity.id, type: entity.type });
+            if (entity.type === 'LOCATION') {
+              if (!_resolvedLocationIds.includes(entity.id)) _resolvedLocationIds.push(entity.id);
+              _threadMetaTurn.places.push(entity.name);
+            } else {
+              if (!_resolvedEntityIds.includes(entity.id)) _resolvedEntityIds.push(entity.id);
+              if (entity.type === 'PERSON') _threadMetaTurn.people.push(entity.name);
+            }
+          }
+          logger.info(
+            { userId, messageId, fallbackMatches: fallback.length },
+            'Recovered known entities from deterministic book matches after extraction failure',
+          );
+        } catch (fallbackError) {
+          logger.warn(
+            { error: fallbackError, userId, messageId },
+            'Deterministic entity fallback also failed; continuing without enrichment',
+          );
+        }
       }
       stageTimer.mark('entity_resolution');
 
@@ -2048,6 +2119,18 @@ export class ConversationIngestionPipeline {
               .reconcileEvent(eventContext, userId)
               .catch(err => {
                 logger.warn({ error: err, eventId: eventContext, userId }, 'Event reconciliation failed (non-blocking)');
+                if (runId) {
+                  // duration_ms 0: this settles asynchronously, well after the
+                  // pipeline_run's own timing window has closed — the point of
+                  // this step is visibility (success/error), not timing.
+                  void pipelineRunService.recordStep(runId, {
+                    step: 'event_assembly',
+                    success: false,
+                    error: 'event_assembly_failed',
+                    duration_ms: 0,
+                    metadata: { userId, threadId, phase: 'reconcile' },
+                  });
+                }
               });
           }
 
@@ -2472,6 +2555,15 @@ export class ConversationIngestionPipeline {
           })
           .catch(err => {
             logger.warn({ error: err, userId, threadId }, 'Event assembly failed (non-blocking)');
+            if (runId) {
+              void pipelineRunService.recordStep(runId, {
+                step: 'event_assembly',
+                success: false,
+                error: 'event_assembly_failed',
+                duration_ms: 0,
+                metadata: { userId, threadId, phase: 'assemble' },
+              });
+            }
           });
       }
 

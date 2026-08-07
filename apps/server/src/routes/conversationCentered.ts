@@ -4275,7 +4275,7 @@ router.get(
 
     const { data: rel, error: relError } = await supabaseAdmin
       .from('romantic_relationships')
-      .select('id, person_id, person_type, character_id, metadata')
+      .select('id, person_id, person_type, character_id, relationship_type, metadata')
       .eq('id', relationshipId)
       .eq('user_id', userId)
       .single();
@@ -4291,7 +4291,11 @@ router.get(
     const partnerCharacterId =
       rel.character_id ?? linkedFromMeta ?? (rel.person_type === 'character' ? rel.person_id : null);
 
-    const kids = await familyTreeService.getKidsTogetherForRelationship(userId, partnerCharacterId);
+    const kids = await familyTreeService.getKidsTogetherForRelationship(
+      userId,
+      partnerCharacterId,
+      rel.relationship_type as string | null,
+    );
 
     return res.json({ success: true, kids });
   })

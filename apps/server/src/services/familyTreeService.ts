@@ -459,13 +459,24 @@ class FamilyTreeService {
   /**
    * Kids shared between the account owner and a romantic partner, for the
    * Dating & Romance "Kids Together" tab. A kid is "together" when both the
-   * self and the partner are parents; otherwise it's a step-kid (belongs to
-   * just one of them). Any additional parent on that same kid — an ex, another
-   * co-parent — surfaces as `coParents` so blended-family context stays visible.
+   * self and the partner are independently recorded as parents — that's
+   * directly observed in the family tree, so it's always shown regardless of
+   * relationship type. Any additional parent on that same kid — an ex,
+   * another co-parent — surfaces as `coParents`.
+   *
+   * A kid who belongs to only ONE of them (self's kid from a prior relationship,
+   * or the partner's) is only labeled a "step-kid" when `relationshipType`
+   * signals real commitment (married/engaged/partner-level, or a relationship
+   * type that IS a co-parenting label). The family tree has no per-partner
+   * "is this specific person a step-parent to this specific kid" edge, so
+   * without that gate every one of self's kids would show up as a step-kid
+   * for every partner ever added — including a brand-new crush or a casual
+   * situationship who has never even met them.
    */
   async getKidsTogetherForRelationship(
     userId: string,
     partnerCharacterId: string | null,
+    relationshipType?: string | null,
   ): Promise<
     Array<{
       id: string;
@@ -492,19 +503,23 @@ class FamilyTreeService {
     const allKidIds = new Set<string>([...selfKids, ...partnerKids]);
     if (allKidIds.size === 0) return [];
 
-    return [...allKidIds].map((childId) => {
-      const together = selfKids.has(childId) && partnerKids.has(childId);
-      const otherParentIds = edges
-        .filter((e) => e.childId === childId && e.parentId !== selfId && e.parentId !== partnerCharacterId)
-        .map((e) => e.parentId);
-      return {
-        id: childId,
-        name: nameById.get(childId) ?? 'Unknown',
-        relation: together ? ('together' as const) : ('step' as const),
-        belongsTo: together ? ('both' as const) : selfKids.has(childId) ? ('self' as const) : ('partner' as const),
-        coParents: [...new Set(otherParentIds)].map((id) => ({ id, name: nameById.get(id) ?? 'Unknown' })),
-      };
-    });
+    const canInferStepKids = isCommittedOrCoParentRelationshipType(relationshipType);
+
+    return [...allKidIds]
+      .filter((childId) => (selfKids.has(childId) && partnerKids.has(childId)) || canInferStepKids)
+      .map((childId) => {
+        const together = selfKids.has(childId) && partnerKids.has(childId);
+        const otherParentIds = edges
+          .filter((e) => e.childId === childId && e.parentId !== selfId && e.parentId !== partnerCharacterId)
+          .map((e) => e.parentId);
+        return {
+          id: childId,
+          name: nameById.get(childId) ?? 'Unknown',
+          relation: together ? ('together' as const) : ('step' as const),
+          belongsTo: together ? ('both' as const) : selfKids.has(childId) ? ('self' as const) : ('partner' as const),
+          coParents: [...new Set(otherParentIds)].map((id) => ({ id, name: nameById.get(id) ?? 'Unknown' })),
+        };
+      });
   }
 
   /**
@@ -1980,6 +1995,28 @@ export function collectAbsoluteParentChildEdges(
     }
   }
   return edges;
+}
+
+/**
+ * Romantic relationship types serious/committed enough — or already a
+ * co-parenting label by definition — to infer that one partner's kid from
+ * elsewhere counts as the other's step-kid. Everything else (dating, crush,
+ * situationship, talking stage, etc.) only gets kids that are directly
+ * observed as shared (both independently recorded as parents in the tree).
+ */
+function isCommittedOrCoParentRelationshipType(relationshipType?: string | null): boolean {
+  const key = String(relationshipType ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  if (!key) return false;
+  const committedOrCoParent = new Set([
+    'married', 'wife', 'husband', 'spouse',
+    'engaged', 'fiance', 'fiancee', 'fiancé', 'fiancée',
+    'partner', 'life_partner', 'domestic_partner',
+    'baby_mama', 'baby_daddy', 'co_parent', 'coparent',
+  ]);
+  return committedOrCoParent.has(key);
 }
 
 function kinshipSiblingHint(member: FamilyMemberDTO): boolean {

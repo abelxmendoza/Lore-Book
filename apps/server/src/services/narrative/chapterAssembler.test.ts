@@ -27,6 +27,8 @@ function scene(
     significanceScore: opts.significanceScore ?? 55,
     promotedEventId: opts.promotedEventId ?? null,
     themes: opts.themes,
+    isMilestone: opts.isMilestone,
+    milestoneScore: opts.milestoneScore,
   };
 }
 
@@ -232,6 +234,35 @@ describe('assembleChaptersFromScenes', () => {
     expect(chapters).toHaveLength(2);
     expect(chapters.every((c) => c.narrative.subject === 'rina')).toBe(true);
   });
+
+  it('collects milestoneIds/topMilestoneScore from milestone-eligible scenes only', () => {
+    const chapters = assembleChaptersFromScenes([
+      scene('a', 'Date night with Rina', {
+        timeStart: '2026-01-01T20:00:00.000Z',
+        participants: ['rina'],
+        promotedEventId: 'evt-a',
+        isMilestone: true,
+        milestoneScore: 72,
+      }),
+      scene('b', 'Anniversary date night with Rina', {
+        timeStart: '2026-01-02T20:00:00.000Z',
+        participants: ['rina'],
+        promotedEventId: 'evt-b',
+        isMilestone: false,
+        milestoneScore: 40,
+      }),
+    ]);
+    const chapter = chapters.find((c) => c.narrative.subject === 'rina')!;
+    expect(chapter.milestoneIds).toEqual(['evt-a']);
+    expect(chapter.topMilestoneScore).toBe(72);
+  });
+
+  it('has empty milestoneIds and zero topMilestoneScore when no scene is a milestone', () => {
+    const chapters = assembleChaptersFromScenes(mixedWeek());
+    const rina = chapters.find((c) => c.narrative.subject === 'rina')!;
+    expect(rina.milestoneIds).toEqual([]);
+    expect(rina.topMilestoneScore).toBe(0);
+  });
 });
 
 describe('shouldMergeScenes', () => {
@@ -274,5 +305,44 @@ describe('chapterSignificance', () => {
     expect(chapters).toHaveLength(1);
     expect(chapters[0].ownership.domain).toBe('romance');
     expect(mayPersistChapter(chapters[0]).allow).toBe(true);
+  });
+
+  it('persists a milestone-anchored single-scene chapter via the milestoneIds OR-clause', () => {
+    const chapters = assembleChaptersFromScenes([
+      scene('s1', 'Afternoon with Devon', {
+        participants: ['devon'],
+        significanceScore: 20,
+        promotedEventId: 'evt-1',
+        isMilestone: true,
+        milestoneScore: 65,
+      }),
+    ]);
+    expect(chapters).toHaveLength(1);
+    const decision = mayPersistChapter(chapters[0]);
+    expect(decision.allow).toBe(true);
+    expect(decision.breakdown.milestoneBonus).toBe(14);
+  });
+
+  it('scores a two-milestone chapter with the two-tier milestoneBonus', () => {
+    const chapters = assembleChaptersFromScenes([
+      scene('a', 'Date night with Rina', {
+        timeStart: '2026-01-01T20:00:00.000Z',
+        participants: ['rina'],
+        promotedEventId: 'evt-a',
+        isMilestone: true,
+        milestoneScore: 70,
+      }),
+      scene('b', 'Rina blocked me on Instagram', {
+        timeStart: '2026-01-02T20:00:00.000Z',
+        participants: ['rina'],
+        summary: 'Then she blocked me on Instagram after weeks of no contact.',
+        promotedEventId: 'evt-b',
+        isMilestone: true,
+        milestoneScore: 85,
+      }),
+    ]);
+    const rina = chapters.find((c) => c.narrative.subject === 'rina')!;
+    const decision = mayPersistChapter(rina);
+    expect(decision.breakdown.milestoneBonus).toBe(24);
   });
 });

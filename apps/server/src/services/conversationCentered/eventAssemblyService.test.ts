@@ -1,5 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
 
+const h = vi.hoisted(() => ({
+  upsertMoment: vi.fn(),
+  markMomentPromoted: vi.fn().mockResolvedValue(undefined),
+  linkMomentGraph: vi.fn().mockResolvedValue(undefined),
+  upsertScene: vi.fn(),
+  markScenePromoted: vi.fn().mockResolvedValue(undefined),
+  assessAndPersistMilestone: vi.fn().mockResolvedValue(null),
+  upsertChapter: vi.fn().mockResolvedValue(null),
+}));
+
 vi.mock('../supabaseClient', () => ({ supabaseAdmin: { from: vi.fn() } }));
 vi.mock('../../logger', () => ({ logger: { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() } }));
 vi.mock('../beliefRealityReconciliationService', () => ({ beliefRealityReconciliationService: {} }));
@@ -7,7 +17,24 @@ vi.mock('../confidenceTrackingService', () => ({ confidenceTrackingService: {} }
 vi.mock('../knowledgeTypeEngineService', () => ({ knowledgeTypeEngineService: {} }));
 vi.mock('../metaControlService', () => ({ metaControlService: {} }));
 vi.mock('../omegaMemoryService', () => ({ omegaMemoryService: {} }));
+vi.mock('../narrative/narrativeMomentService', () => ({
+  narrativeMomentService: { upsertMoment: h.upsertMoment, markPromoted: h.markMomentPromoted },
+}));
+vi.mock('../narrative/narrativeSceneService', () => ({
+  narrativeSceneService: {
+    linkMomentGraph: h.linkMomentGraph,
+    upsertScene: h.upsertScene,
+    markPromoted: h.markScenePromoted,
+  },
+}));
+vi.mock('../narrative/milestoneClassifier', () => ({
+  assessAndPersistMilestone: h.assessAndPersistMilestone,
+}));
+vi.mock('../narrative/narrativeStoryChapterService', () => ({
+  narrativeStoryChapterService: { upsertChapter: h.upsertChapter },
+}));
 
+import { supabaseAdmin } from '../supabaseClient';
 import { EventAssemblyService } from './eventAssemblyService';
 
 const extractTitle = (units: Array<{ content: string }>) =>
@@ -44,5 +71,115 @@ describe('EventAssemblyService.extractEventTitle', () => {
     ['I hooked up with Ashley after the party.', 'Night with Ashley'],
   ])('recognizes a known life-event shape without using a raw sentence title', (content, expected) => {
     expect(extractTitle([{ content }])).toBe(expected);
+  });
+});
+
+describe('EventAssemblyService.assembleEvents — milestone wiring', () => {
+  const userId = 'user-1';
+  const now = new Date().toISOString();
+
+  function mockExtractedUnitsQuery(units: unknown[]) {
+    (supabaseAdmin.from as any).mockImplementation((table: string) => {
+      if (table !== 'extracted_units') {
+        return { select: () => ({ eq: () => ({ eq: () => ({ gte: () => Promise.resolve({ data: [], error: null }) }) }) }) };
+      }
+      const builder: Record<string, any> = {
+        select: () => builder,
+        eq: () => builder,
+        gte: () => builder,
+        order: () => builder,
+        limit: () => Promise.resolve({ data: units, error: null }),
+      };
+      return builder;
+    });
+  }
+
+  const content = 'I went to Costco with Grandma Rose and decided to end things with the band for good.';
+
+  function setup() {
+    h.upsertMoment.mockResolvedValue({
+      id: 'moment-1',
+      summary: content,
+      occurred_at: now,
+      participants: ['Grandma Rose'],
+      location: 'Costco',
+      significance_score: 90,
+      emotions: [],
+    });
+    h.upsertScene.mockResolvedValue({ id: 'scene-1', title: 'Costco trip with Grandma Rose', summary: content });
+    h.assessAndPersistMilestone.mockClear();
+    h.upsertChapter.mockClear();
+
+    mockExtractedUnitsQuery([
+      {
+        id: 'unit-1',
+        user_id: userId,
+        type: 'EXPERIENCE',
+        content,
+        entity_ids: [],
+        confidence: 0.9,
+        created_at: now,
+        metadata: {},
+      },
+    ]);
+  }
+
+  it('assesses a milestone for an event promoted from a Scene', async () => {
+    setup();
+    const service = new EventAssemblyService();
+    vi.spyOn(service as any, 'createOrUpdateEvent').mockResolvedValue({ event_id: 'evt-1' });
+
+    await service.assembleEvents(userId, 'thread-1');
+
+    expect(h.assessAndPersistMilestone).toHaveBeenCalledWith(userId, 'evt-1');
+  });
+
+  it('does not assess a milestone when no event is promoted (rejected)', async () => {
+    setup();
+    const service = new EventAssemblyService();
+    vi.spyOn(service as any, 'createOrUpdateEvent').mockResolvedValue({ rejected: true });
+
+    await service.assembleEvents(userId, 'thread-1');
+
+    expect(h.assessAndPersistMilestone).not.toHaveBeenCalled();
+  });
+
+  it('does not let a milestone-assessment failure fail the surrounding assembly', async () => {
+    setup();
+    h.assessAndPersistMilestone.mockRejectedValueOnce(new Error('milestone boom'));
+    const service = new EventAssemblyService();
+    vi.spyOn(service as any, 'createOrUpdateEvent').mockResolvedValue({ event_id: 'evt-2' });
+
+    const results = await service.assembleEvents(userId, 'thread-1');
+
+    expect(results.length).toBeGreaterThan(0);
+  });
+
+  it('lands isMilestone/milestoneScore on the chapter built from an eligible milestone event', async () => {
+    setup();
+    h.assessAndPersistMilestone.mockResolvedValue({ eligible: true, finalScore: 82.4 });
+    const service = new EventAssemblyService();
+    vi.spyOn(service as any, 'createOrUpdateEvent').mockResolvedValue({ event_id: 'evt-3' });
+
+    await service.assembleEvents(userId, 'thread-1');
+
+    expect(h.upsertChapter).toHaveBeenCalled();
+    const { chapter } = h.upsertChapter.mock.calls[0][0];
+    expect(chapter.milestoneIds).toEqual(['evt-3']);
+    expect(chapter.topMilestoneScore).toBe(82);
+  });
+
+  it('leaves the chapter milestone-blind when the event is not milestone-eligible', async () => {
+    setup();
+    h.assessAndPersistMilestone.mockResolvedValue({ eligible: false, finalScore: 40 });
+    const service = new EventAssemblyService();
+    vi.spyOn(service as any, 'createOrUpdateEvent').mockResolvedValue({ event_id: 'evt-4' });
+
+    await service.assembleEvents(userId, 'thread-1');
+
+    expect(h.upsertChapter).toHaveBeenCalled();
+    const { chapter } = h.upsertChapter.mock.calls[0][0];
+    expect(chapter.milestoneIds).toEqual([]);
+    expect(chapter.topMilestoneScore).toBe(0);
   });
 });

@@ -31,6 +31,21 @@ export type CollectThreadEntitiesOptions = {
   max?: number;
 };
 
+const APP_SURFACE_EVENT_LABELS = new Set([
+  'lorebook',
+  'character book',
+  'characters book',
+  'people book',
+  'organization book',
+  'organizations book',
+  'location book',
+  'locations book',
+]);
+
+function isPollutingThreadEntity(entity: Pick<ThreadEntity, 'name' | 'type'>): boolean {
+  return entity.type === 'event' && APP_SURFACE_EVENT_LABELS.has(entity.name.trim().toLowerCase());
+}
+
 /** Aggregate confirmed entities surfaced across a thread's messages (most-mentioned first). */
 export function collectThreadEntities(
   messages: Message[],
@@ -47,6 +62,7 @@ export function collectThreadEntities(
   slice.forEach((m, offset) => {
     const i = start + offset;
     for (const e of m.mentionedEntities ?? []) {
+      if (isPollutingThreadEntity(e)) continue;
       // Building-on strip: only RESOLVED identities (Cast-worthy).
       if (!isBuildingOnWorthy(e.name, e.lifecycleStatus)) continue;
       const lifecycleStatus = resolveMentionLifecycleStatus(e.name, e.lifecycleStatus);

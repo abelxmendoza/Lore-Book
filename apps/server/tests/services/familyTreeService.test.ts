@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   isSyntheticNodeId,
   isFamilyExcluded,
@@ -13,6 +13,7 @@ import {
   resolveFamilyEdgeDirection,
   alignMarriedInSidesWithSpouse,
   sortFamilyMembersForDisplay,
+  familyTreeService,
   type FamilyMemberDTO,
   type FamilyTreeDTO,
 } from '../../src/services/familyTreeService';
@@ -524,5 +525,60 @@ describe('familyTreeService — sortFamilyMembersForDisplay', () => {
     sortFamilyMembersForDisplay(members);
 
     expect(members[0].id).toBe('you');
+  });
+});
+
+describe('familyTreeService — getKidsTogetherForRelationship (step-kid inference gate)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * Mia is a "together" kid — both self and the partner are independently
+   * recorded as her parents (relation:'child' from self's side via the
+   * self-relative edge rule, parent_id pointing at the partner via the
+   * structural edge rule). Eli is self's kid from elsewhere — only self is
+   * connected to him; the partner has no recorded connection at all.
+   */
+  function fakeTree(): FamilyTreeDTO {
+    return {
+      self_id: 'you',
+      branches: [],
+      members: [
+        member({ id: 'you', name: 'You', is_self: true, relation: 'related', generation: 0 }),
+        member({ id: 'mia', name: 'Mia', relation: 'child', generation: 1, parent_id: 'partner-1' }),
+        member({ id: 'eli', name: 'Eli', relation: 'child', generation: 1, parent_id: 'you' }),
+      ],
+    };
+  }
+
+  it('always includes a directly-observed shared kid ("together"), regardless of relationship type', async () => {
+    vi.spyOn(familyTreeService, 'getUserFamilyTree').mockResolvedValue(fakeTree());
+
+    const kids = await familyTreeService.getKidsTogetherForRelationship('user-1', 'partner-1', 'dating');
+
+    expect(kids.map((k) => k.id)).toEqual(['mia']);
+    expect(kids[0]).toMatchObject({ relation: 'together', belongsTo: 'both' });
+  });
+
+  it('hides a self-only kid as a step-kid for a casual relationship type (regression: every kid used to show up for every partner)', async () => {
+    vi.spyOn(familyTreeService, 'getUserFamilyTree').mockResolvedValue(fakeTree());
+
+    const dating = await familyTreeService.getKidsTogetherForRelationship('user-1', 'partner-1', 'dating');
+    expect(dating.some((k) => k.id === 'eli')).toBe(false);
+
+    const noType = await familyTreeService.getKidsTogetherForRelationship('user-1', 'partner-1', null);
+    expect(noType.some((k) => k.id === 'eli')).toBe(false);
+  });
+
+  it('shows a self-only kid as a step-kid once the relationship is committed or a co-parent label', async () => {
+    vi.spyOn(familyTreeService, 'getUserFamilyTree').mockResolvedValue(fakeTree());
+
+    const married = await familyTreeService.getKidsTogetherForRelationship('user-1', 'partner-1', 'married');
+    const eli = married.find((k) => k.id === 'eli');
+    expect(eli).toMatchObject({ relation: 'step', belongsTo: 'self' });
+
+    const coParent = await familyTreeService.getKidsTogetherForRelationship('user-1', 'partner-1', 'baby_mama');
+    expect(coParent.some((k) => k.id === 'eli')).toBe(true);
   });
 });
