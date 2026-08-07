@@ -121,7 +121,7 @@
     "picomatch": "^4.0.4",
     "flatted": "^3.4.2",
     "underscore": "^1.13.8",
-    "js-yaml": "^4.3.0",
+    "js-yaml": "^4.3.1",
     "fast-uri": "^3.1.4"
   }
 }
