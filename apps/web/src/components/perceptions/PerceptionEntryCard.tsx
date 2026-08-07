@@ -104,7 +104,7 @@ export const PerceptionEntryCard = ({
   // Visual treatment: desaturated/muted for perceptions (80% opacity default)
   return (
     <Card
-      className={`min-w-0 h-fit overflow-visible transition-all duration-200 ${
+      className={`h-fit w-full min-w-0 max-w-full overflow-visible transition-all duration-200 ${
         onClick ? 'cursor-pointer hover:border-violet-500/50 hover:shadow-lg hover:shadow-violet-500/20 hover:-translate-y-1 active:scale-[0.99] touch-manipulation' : ''
       } ${
         isRetracted

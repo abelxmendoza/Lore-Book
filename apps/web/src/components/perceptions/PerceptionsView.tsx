@@ -979,8 +979,8 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
                   </div>
                 </div>
 
-                {/* Perceptions Grid */}
-                <div className="mb-4 grid min-h-0 flex-1 grid-cols-2 content-start gap-2 overflow-y-auto sm:mb-6 sm:gap-4 lg:grid-cols-3">
+                {/* Perceptions Grid — always two columns on mobile; three on large */}
+                <div className="mb-4 grid min-h-0 flex-1 auto-rows-min grid-cols-2 content-start gap-2 overflow-y-auto [grid-template-columns:repeat(2,minmax(0,1fr))] sm:mb-6 sm:gap-3 lg:gap-4 lg:[grid-template-columns:repeat(3,minmax(0,1fr))]">
                   {paginatedPerceptions.map((perception, index) => (
                     <PerceptionEntryCard
                       key={perception.id || `perception-${index}`}
