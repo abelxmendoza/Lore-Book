@@ -7,17 +7,17 @@ import { PRODUCT_SELF_MODEL_CONCEPTS } from '../../src/services/chat/lorebookSel
 
 const MIGRATION_PATH = join(
   __dirname,
-  '../../../../supabase/migrations/20260618200000_system_knowledge_product_seed.sql'
+  '../../../../supabase/migrations_legacy_20260806/20260618200000_system_knowledge_product_seed.sql'
 );
 
 const CREATOR_MIGRATION_PATH = join(
   __dirname,
-  '../../../../supabase/migrations/20260711200000_system_knowledge_creator_capabilities.sql'
+  '../../../../supabase/migrations_legacy_20260806/20260711200000_system_knowledge_creator_capabilities.sql'
 );
 
 const AGENT_MIGRATION_PATH = join(
   __dirname,
-  '../../../../supabase/migrations/20260618100000_lore_agents.sql'
+  '../../../../supabase/migrations_legacy_20260806/20260618100000_lore_agents.sql'
 );
 
 describe('system_knowledge product seed migration', () => {

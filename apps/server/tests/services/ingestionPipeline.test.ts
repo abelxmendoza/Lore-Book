@@ -164,6 +164,7 @@ describe('ConversationIngestionPipeline', () => {
           unitIds: [],
           resolvedEntityIds: [],
           resolvedLocationIds: [],
+          promotedEntities: [],
         });
 
       await conversationIngestionPipeline.ingestFromChatMessage(
@@ -189,6 +190,7 @@ describe('ConversationIngestionPipeline', () => {
           unitIds: [],
           resolvedEntityIds: [],
           resolvedLocationIds: [],
+          promotedEntities: [],
         });
 
       await conversationIngestionPipeline.ingestFromChatMessage(
@@ -218,6 +220,7 @@ describe('ConversationIngestionPipeline', () => {
           unitIds: [],
           resolvedEntityIds: [],
           resolvedLocationIds: [],
+          promotedEntities: [],
         });
 
       await conversationIngestionPipeline.ingestFromChatMessage(
@@ -251,6 +254,7 @@ describe('ConversationIngestionPipeline', () => {
           unitIds: ['u1'],
           resolvedEntityIds: [],
           resolvedLocationIds: [],
+          promotedEntities: [],
         });
 
       await conversationIngestionPipeline.ingestFromChatMessage(
@@ -270,7 +274,8 @@ describe('ConversationIngestionPipeline', () => {
         undefined,
         undefined,
         undefined,
-        { chatMessageId: 'chat-1' },
+        { chatMessageId: 'chat-1', sourceCreatedAt: undefined },
+        undefined,
       );
       expect(scheduleInference).toHaveBeenCalledWith('user-1', 'chat_message');
       expect(scheduleEpisode).toHaveBeenCalledWith('user-1', 'session-1');
@@ -309,6 +314,7 @@ describe('ConversationIngestionPipeline', () => {
           unitIds: ['unit-event-1'],
           resolvedEntityIds: [],
           resolvedLocationIds: [],
+          promotedEntities: [],
         });
 
       await conversationIngestionPipeline.ingestFromChatMessage(
@@ -325,7 +331,8 @@ describe('ConversationIngestionPipeline', () => {
         undefined,
         'event-existing-1',
         undefined,
-        { chatMessageId: 'chat-event-1' },
+        { chatMessageId: 'chat-event-1', sourceCreatedAt: undefined },
+        undefined,
       );
     });
 
@@ -354,6 +361,7 @@ describe('ConversationIngestionPipeline', () => {
           unitIds: [],
           resolvedEntityIds: [],
           resolvedLocationIds: [],
+          promotedEntities: [],
         });
 
       await conversationIngestionPipeline.ingestFromChatMessage(

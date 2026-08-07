@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 const repoRoot = resolve(__dirname, '../../../..');
 const supabaseMigrationPath = resolve(
   repoRoot,
-  'supabase/migrations/20260618090000_engine_dependencies.sql'
+  'supabase/migrations_legacy_20260806/20260618090000_engine_dependencies.sql'
 );
 const legacyMigrationPath = resolve(repoRoot, 'migrations/20260618_engine_dependencies.sql');
 
