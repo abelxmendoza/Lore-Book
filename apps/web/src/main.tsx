@@ -1,7 +1,9 @@
 // Global error handlers — must be first, before any imports, to catch early errors
 const isExtensionErrorSource = (filename?: string): boolean => {
   if (!filename) return false;
-  return /(?:chrome-extension|moz-extension|safari-extension|contentscript|content\.js|Worlds\.js|installHook\.js)/i.test(filename);
+  return /(?:chrome-extension|moz-extension|safari-extension|contentscript|content\.js|Worlds\.js|installHook\.js|staticNS\.js|SyncMessage\.js|DocumentFreezer\.js|DocRewriter\.js|inpage\.js)/i.test(
+    filename,
+  );
 };
 
 const isExtensionRejection = (reason: unknown): boolean => {
@@ -14,25 +16,50 @@ const isExtensionRejection = (reason: unknown): boolean => {
   return isExtensionErrorSource(text);
 };
 
+const isViteReactPreambleError = (message: string): boolean =>
+  /@vitejs\/plugin-react can't detect preamble/i.test(message);
+
+const renderBootFailure = (title: string, detail: string, extraHtml = '') => {
+  const root = document.getElementById('root');
+  if (!root || root.hasChildNodes()) return;
+  root.innerHTML = `
+      <div style="padding:20px;color:white;text-align:center;background:black;min-height:100vh;font-family:monospace;">
+        <h1 style="color:#ef4444;">${title}</h1>
+        <p style="color:#fbbf24;">${detail}</p>
+        ${extraHtml}
+        <p style="margin-top:20px;color:#64748b;font-size:12px;">Open DevTools (F12) for more details</p>
+      </div>
+    `;
+};
+
 window.addEventListener('error', (event) => {
   if (isExtensionErrorSource(event.filename)) return;
+
+  const message = String(event.message || event.error?.message || 'Unknown error');
+  if (isViteReactPreambleError(message)) {
+    // NoScript / script blockers can delay Vite's module preamble inject.
+    // index.html also stubs $RefreshReg$/$RefreshSig$ as a classic script.
+    console.warn(
+      '[LoreBook] Vite React Refresh preamble missing — usually a browser extension (NoScript). Try Incognito with extensions disabled.',
+      event.error ?? event.message,
+    );
+    renderBootFailure(
+      'Dev boot blocked',
+      message,
+      '<p style="margin-top:16px;color:#94a3b8;max-width:640px;margin-left:auto;margin-right:auto;">Browser extensions (NoScript / script blockers) often cause this in local Vite. Open Incognito with extensions disabled, or allow localhost in NoScript, then hard-refresh.</p>',
+    );
+    return;
+  }
 
   console.error('[LoreBook] Uncaught error', event.error ?? event.message, {
     filename: event.filename,
     lineno: event.lineno,
   });
-  // Show fallback UI if React hasn't mounted yet
-  const root = document.getElementById('root');
-  if (root && !root.hasChildNodes()) {
-    root.innerHTML = `
-      <div style="padding:20px;color:white;text-align:center;background:black;min-height:100vh;font-family:monospace;">
-        <h1 style="color:#ef4444;">Application Error</h1>
-        <p style="color:#fbbf24;">${event.message || 'Unknown error'}</p>
-        <pre style="text-align:left;background:rgba(255,0,0,0.2);padding:15px;border-radius:4px;overflow:auto;max-width:800px;margin:0 auto;color:#fca5a5;">${event.error?.stack || event.message || 'No stack trace'}</pre>
-        <p style="margin-top:20px;color:#64748b;font-size:12px;">Open DevTools (F12) for more details</p>
-      </div>
-    `;
-  }
+  renderBootFailure(
+    'Application Error',
+    message,
+    `<pre style="text-align:left;background:rgba(255,0,0,0.2);padding:15px;border-radius:4px;overflow:auto;max-width:800px;margin:16px auto 0;color:#fca5a5;">${event.error?.stack || message}</pre>`,
+  );
 });
 
 window.addEventListener('unhandledrejection', (event) => {
@@ -92,6 +119,7 @@ setTimeout(() => {
       <div style="padding:20px;color:white;text-align:center;background:black;min-height:100vh;font-family:monospace;">
         <h1 style="color:#ef4444;">Render Timeout</h1>
         <p style="color:#fbbf24;">React did not render after 3 seconds.</p>
+        <p style="margin-top:16px;color:#94a3b8;max-width:640px;margin-left:auto;margin-right:auto;">If the console shows NoScript / Worlds / MetaMask / vite preamble errors, open Incognito with extensions disabled and hard-refresh localhost.</p>
         <p style="margin-top:16px;color:#94a3b8;">Open DevTools (F12) and check the Console for errors.</p>
       </div>
     `;
