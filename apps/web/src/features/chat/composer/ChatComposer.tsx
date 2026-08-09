@@ -568,6 +568,22 @@ export const ChatComposer = ({
 
           <div className="journal-composer-toolbar">
             <div className="journal-composer-toolbar__tools">
+              {input.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInput('');
+                    textareaRef.current?.focus();
+                  }}
+                  disabled={loading || disabled}
+                  className="journal-composer-tool"
+                  aria-label="Clear message"
+                  title="Clear message"
+                  data-testid="composer-clear"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
               <input
                 ref={imageInputRef}
                 type="file"

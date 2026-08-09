@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
-import { Send, Loader2, Command } from 'lucide-react';
+import { Send, Loader2, Command, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
 import { Card } from '../ui/card';
@@ -110,6 +110,12 @@ export const ChatComposer = ({
     textareaRef.current?.focus();
   };
 
+  const handleClear = () => {
+    onInputChange('');
+    setShowCommandSuggestions(false);
+    textareaRef.current?.focus();
+  };
+
   const showHints = input.trim().length > 10;
   const moodColor = moodEngine.mood.color;
 
@@ -180,11 +186,22 @@ export const ChatComposer = ({
               onKeyDown={handleKeyDown}
             />
             {showHints && moodEngine.mood.score !== 0 && (
-              <div 
+              <div
                 className="absolute right-2 top-2 w-2 h-2 rounded-full opacity-60"
                 style={{ backgroundColor: moodColor }}
                 title={moodEngine.mood.label}
               />
+            )}
+            {input.length > 0 && !loading && !disabled && (
+              <button
+                type="button"
+                onClick={handleClear}
+                aria-label="Clear message"
+                title="Clear message"
+                className="absolute right-2 bottom-2 rounded-full p-1 text-white/40 hover:text-white/80 hover:bg-white/10 transition-colors"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             )}
           </div>
           <Button 
