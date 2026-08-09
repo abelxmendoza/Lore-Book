@@ -418,6 +418,34 @@ export type MentionedEntityChip = {
   identityConfidence?: number;
 };
 
+const TIMELINE_UPDATE_ICON: Record<MentionedEntityChip['type'], string> = {
+  character: '👤',
+  location: '📍',
+  organization: '🏢',
+  event: '📅',
+};
+
+const TIMELINE_UPDATE_LABEL: Record<MentionedEntityChip['type'], string> = {
+  character: 'Person',
+  location: 'Place',
+  organization: 'Organization',
+  event: 'Event',
+};
+
+/**
+ * Surfaces which entities this turn actually touched (mention_count/omega_entities
+ * bookkeeping already happens via ingestMessageWithContext regardless of this label —
+ * this just reflects that real linkage back to the user, top 3 by confidence).
+ * Low-confidence passing mentions are excluded so this doesn't fire on every name-drop.
+ */
+export function buildTimelineUpdateLabels(entities: MentionedEntityChip[]): string[] {
+  return [...entities]
+    .filter((e) => e.mentionStatus === 'confirmed' || (e.confidence ?? 0) >= 0.8)
+    .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))
+    .slice(0, 3)
+    .map((e) => `${TIMELINE_UPDATE_ICON[e.type]} Linked ${e.name} (${TIMELINE_UPDATE_LABEL[e.type]})`);
+}
+
 class OmegaChatService {
   private personaRL: ChatPersonaRL;
 
@@ -1941,27 +1969,40 @@ When updating relationship analytics or emotional signals from this thread, weig
           }
         );
 
-        // Assistant persistence handled by chat.ts persistAssistant.
-        // Chat-facing questions never render dump-shaped handler output.
-        if (
-          responseScope.isChatFacingMode(scopePlan.responseMode) &&
-          typeof handlerResponse.content === 'string'
-        ) {
-          handlerResponse.content = scopeGuard(handlerResponse.content);
+        // A handler that hit an internal error (response_mode ending in
+        // _FAILED — e.g. BOOK_QUERY_FAILED) has nothing useful to say; drop
+        // through to the normal conversational pipeline instead of handing
+        // the user a dead-end "the query system could not complete" reply.
+        // A handler that ran fine and legitimately found zero matches (e.g.
+        // FAMILY_QUERY with no matching relatives) is NOT a failure — that's
+        // still returned as-is below.
+        if (!handlerResponse.response_mode?.endsWith('_FAILED')) {
+          // Assistant persistence handled by chat.ts persistAssistant.
+          // Chat-facing questions never render dump-shaped handler output.
+          if (
+            responseScope.isChatFacingMode(scopePlan.responseMode) &&
+            typeof handlerResponse.content === 'string'
+          ) {
+            handlerResponse.content = scopeGuard(handlerResponse.content);
+          }
+          // Persist enough of this turn's resolved shape that a later "try
+          // again" can replay it via retryContinuity.loadLastResolvedTurnState
+          // instead of being reclassified from scratch as a generic message.
+          const resolvedTurnState = {
+            mode: routing.mode,
+            scopeIntent: scopePlan.intent,
+            scopeSource: scopePlan.scopeSource,
+            entities: scopePlan.primaryEntities,
+            threadId: sessionId,
+            responseMode: handlerResponse.response_mode,
+            originalMessageText: (retryOriginalMessageText ?? message).slice(0, 500),
+          };
+          return formatModeResponse(handlerResponse, routing.mode, { ...modeExtras(), resolvedTurnState });
         }
-        // Persist enough of this turn's resolved shape that a later "try
-        // again" can replay it via retryContinuity.loadLastResolvedTurnState
-        // instead of being reclassified from scratch as a generic message.
-        const resolvedTurnState = {
-          mode: routing.mode,
-          scopeIntent: scopePlan.intent,
-          scopeSource: scopePlan.scopeSource,
-          entities: scopePlan.primaryEntities,
-          threadId: sessionId,
-          responseMode: handlerResponse.response_mode,
-          originalMessageText: (retryOriginalMessageText ?? message).slice(0, 500),
-        };
-        return formatModeResponse(handlerResponse, routing.mode, { ...modeExtras(), resolvedTurnState });
+        logger.warn(
+          { userId, mode: routing.mode, responseMode: handlerResponse.response_mode },
+          'Mode handler reported failure, falling back to normal chat',
+        );
       }
     } catch (error) {
       logger.warn({ error, userId, message }, 'Mode routing failed, falling back to normal chat');
@@ -2747,7 +2788,8 @@ When updating relationship analytics or emotional signals from this thread, weig
     incMetric('assistant_generation_success');
 
     // User message already persisted at stream start (entryId)
-    const timelineUpdates: string[] = [];
+    // Populated below once mentionedEntities is resolved from the user's message.
+    let timelineUpdates: string[] = [];
 
     if (entryId && !isTrivialMessage(message)) {
       epiphanySessionManager.feedEntry(userId, {
@@ -2829,6 +2871,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         identityConfidence,
       }),
     );
+    timelineUpdates = buildTimelineUpdateLabels(mentionedEntities);
 
     // The reply text doesn't exist yet at this point in a streaming turn — the
     // caller (SSE stream consumer) invokes this once it has the full assistant
@@ -3713,7 +3756,8 @@ When updating relationship analytics or emotional signals from this thread, weig
     // Note: This is a placeholder - in production, you'd query omega_claims
     // based on entities mentioned in sources or the response content
     const memories: MemoryClaim[] = [];
-    const timelineUpdates: string[] = [];
+    // Populated below once mentionedEntities is resolved from message + answer.
+    let timelineUpdates: string[] = [];
 
     // Post-chat side effects (user message + pipeline already handled by persistUserMessageEarly)
     if (!isTrivialMessage(message) && entryId) {
@@ -3767,6 +3811,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         identityConfidence,
       }),
     );
+    timelineUpdates = buildTimelineUpdateLabels(mentionedEntities);
 
     // Detect unnamed characters and generate nicknames (fire and forget)
     const { characterNicknameService } = await import('./characterNicknameService');

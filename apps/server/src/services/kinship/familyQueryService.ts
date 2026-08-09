@@ -43,6 +43,16 @@ function normalize(value: unknown): string {
 
 const unique = <T,>(items: T[]): T[] => [...new Set(items)];
 
+/**
+ * Whole-word/phrase match, not substring — plain .includes() let "ben" match
+ * inside "Ruben" and pull an unrelated family member into results.
+ */
+function containsWholeTerm(haystack: string, term: string): boolean {
+  if (!term) return false;
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|\\s)${escaped}(?:$|\\s)`).test(haystack);
+}
+
 export function deriveFamilyQueryHints(query: string): FamilyQueryHints {
   const normalized = normalize(query);
   const words = normalized.split(/\s+/).filter(Boolean);
@@ -148,7 +158,7 @@ export function compileFamilyQuery(
         member.relation, member.relation_label, ...memberHouseholds,
       ].filter(Boolean).join(' '));
       for (const term of [...hints.personTerms, ...hints.textTerms]) {
-        if (searchable.includes(normalize(term))) { score += 10; reasons.push(`Name or family detail matches ${term}`); }
+        if (containsWholeTerm(searchable, normalize(term))) { score += 10; reasons.push(`Name or family detail matches ${term}`); }
       }
       if (relations.includes(member.relation)) reasons.push(`Relationship: ${member.relation_label}`);
       if (member.side && sides.includes(member.side as typeof sides[number])) reasons.push(`Branch: ${member.side}`);

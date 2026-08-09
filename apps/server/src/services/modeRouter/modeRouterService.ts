@@ -836,9 +836,22 @@ Respond with JSON:
   }
 }
 
+/**
+ * Whether the message is actually posing a question/information request, not
+ * just incidentally containing a query-verb word inside a narrative sentence
+ * (e.g. "the show on Hulu" contains "show" but isn't asking to show anything).
+ * The *QueryRequest classifiers below gate on this so a journal entry that
+ * happens to mention "family"/"places"/"skills" isn't misrouted into a
+ * structured Book query instead of normal conversational chat.
+ */
+function looksLikeQueryPhrasing(text: string): boolean {
+  if (text.includes('?')) return true;
+  return /^(?:who|what|which|where|when|how|why|show me|find|list|tell me|give me|do i|do you|does|did|am i|is|are|was|were|can you|could you|will|would|rank|compare)\b/i.test(text);
+}
+
 export function isOrganizationQueryRequest(message: string): boolean {
   const text = message.trim();
-  if (!text) return false;
+  if (!text || !looksLikeQueryPhrasing(text)) return false;
   const hasGroupSubject =
     /\b(?:groups?|organizations?|bands?|crews?|clubs?|communities|companies|teams?)\b/i.test(text);
   if (!hasGroupSubject) return false;
@@ -850,7 +863,8 @@ export function isOrganizationQueryRequest(message: string): boolean {
 
 export function isFamilyQueryRequest(message: string): boolean {
   const text = message.trim();
-  if (!text || !/\b(?:family|family tree|relatives?|related|moms?|mothers?|dads?|fathers?|parents?|siblings?|sisters?|brothers?|grandparents?|grandmas?|grandpas?|aunts?|uncles?|cousins?|households?)\b/i.test(text)) {
+  if (!text || !looksLikeQueryPhrasing(text)) return false;
+  if (!/\b(?:family|family tree|relatives?|related|moms?|mothers?|dads?|fathers?|parents?|siblings?|sisters?|brothers?|grandparents?|grandmas?|grandpas?|aunts?|uncles?|cousins?|households?)\b/i.test(text)) {
     return false;
   }
   return /\b(?:who|which|what|show|find|list|how many|how is)\b/i.test(text)
@@ -859,7 +873,8 @@ export function isFamilyQueryRequest(message: string): boolean {
 
 export function isLocationQueryRequest(message: string): boolean {
   const text = message.trim();
-  if (!text || !/\b(?:places?|locations?|venues?|cities|neighborhoods?|restaurants?|bars?|clubs?|parks?)\b/i.test(text)) {
+  if (!text || !looksLikeQueryPhrasing(text)) return false;
+  if (!/\b(?:places?|locations?|venues?|cities|neighborhoods?|restaurants?|bars?|clubs?|parks?)\b/i.test(text)) {
     return false;
   }
   return (
@@ -870,10 +885,8 @@ export function isLocationQueryRequest(message: string): boolean {
 
 export function isRomanceQueryRequest(message: string): boolean {
   const text = message.trim();
-  if (
-    !text ||
-    !/\b(?:dating|romance|romantic|relationships?|exes?|crushes?|situationships?|boyfriends?|girlfriends?|partners?|lovers?|no contact|ghosted|blocked)\b/i.test(text)
-  ) {
+  if (!text || !looksLikeQueryPhrasing(text)) return false;
+  if (!/\b(?:dating|romance|romantic|relationships?|exes?|crushes?|situationships?|boyfriends?|girlfriends?|partners?|lovers?|no contact|ghosted|blocked)\b/i.test(text)) {
     return false;
   }
   return (
@@ -884,7 +897,8 @@ export function isRomanceQueryRequest(message: string): boolean {
 
 export function isProjectQueryRequest(message: string): boolean {
   const text = message.trim();
-  if (!text || !/\b(?:projects?|builds?|initiatives?|workstreams?)\b/i.test(text)) {
+  if (!text || !looksLikeQueryPhrasing(text)) return false;
+  if (!/\b(?:projects?|builds?|initiatives?|workstreams?)\b/i.test(text)) {
     return false;
   }
   return (
@@ -895,7 +909,8 @@ export function isProjectQueryRequest(message: string): boolean {
 
 export function isSkillQueryRequest(message: string): boolean {
   const text = message.trim();
-  if (!text || !/\b(?:skills?|capabilities|proficiencies)\b/i.test(text)) {
+  if (!text || !looksLikeQueryPhrasing(text)) return false;
+  if (!/\b(?:skills?|capabilities|proficiencies)\b/i.test(text)) {
     return false;
   }
   return (
@@ -906,7 +921,8 @@ export function isSkillQueryRequest(message: string): boolean {
 
 export function isQuestQueryRequest(message: string): boolean {
   const text = message.trim();
-  if (!text || !/\b(?:quests?|quest log|missions?)\b/i.test(text)) return false;
+  if (!text || !looksLikeQueryPhrasing(text)) return false;
+  if (!/\b(?:quests?|quest log|missions?)\b/i.test(text)) return false;
   return (
     /\b(?:which|what|show|find|list|how many|rank|compare)\b/i.test(text) &&
     /\b(?:my|active|current|working on|in progress|paused|completed|finished|abandoned|blocked|stuck|due|deadline|priority|important|progress|main|side|daily|recent|review)\b/i.test(text)

@@ -206,26 +206,48 @@ function escapeRegExp(value: string): string {
  * Apposition beats bag-of-words: provenance like `the "Self Made" show` names
  * the domain right next to the phrase, so it wins over other domain keywords
  * that merely appear elsewhere in the same story ("…that the band X threw").
+ *
+ * Two passes: strict adjacency (0 words between name and marker) covers the
+ * full marker list, including short common words like "night"/"party" that
+ * are only safe to trust right next to the name. A second, wider-gap pass
+ * (a few words allowed) catches titles like "Malcolm in the Middle the
+ * show" — a character's name doubling as part of a title — but is
+ * restricted to markers distinctive enough not to collide with ordinary
+ * phrasing at a distance ("...with Sarah last night" must never match).
  */
-function nameAdjacentDomain(
+const NAME_MARKER_GAP = `(?:\\s+[^\\s.!?]+){0,6}`;
+
+export function nameAdjacentDomain(
   name: string,
   provenanceText: string,
 ): ArbitrationDomain | null {
   const esc = escapeRegExp(name.trim());
   if (!esc) return null;
   const quotes = `["'\\u201C\\u201D\\u2018\\u2019]*`;
-  const eventAfter = new RegExp(
+
+  const eventAdjacent = new RegExp(
     `${esc}${quotes}\\s+(show|event|festival|concert|party|night|prom)\\b`,
     'i',
   );
-  if (eventAfter.test(provenanceText)) return 'event';
+  if (eventAdjacent.test(provenanceText)) return 'event';
   const bandNear = new RegExp(
     `(band|group|act)\\s+${quotes}${esc}|${esc}${quotes}\\s+(band|played|performed)\\b`,
     'i',
   );
   if (bandNear.test(provenanceText)) return 'band';
-  const mediaAfter = new RegExp(`${esc}${quotes}\\s+(anime|manga|series|movie|film|fan)\\b`, 'i');
-  if (mediaAfter.test(provenanceText)) return 'media';
+  const mediaAdjacent = new RegExp(`${esc}${quotes}\\s+(anime|manga|series|movie|film|fan)\\b`, 'i');
+  if (mediaAdjacent.test(provenanceText)) return 'media';
+
+  const eventNear = new RegExp(
+    `${esc}${quotes}${NAME_MARKER_GAP}\\s+(show|festival|concert|expo|showcase)\\b`,
+    'i',
+  );
+  if (eventNear.test(provenanceText)) return 'event';
+  const mediaNear = new RegExp(
+    `${esc}${quotes}${NAME_MARKER_GAP}\\s+(anime|manga|series|movie|film)\\b`,
+    'i',
+  );
+  if (mediaNear.test(provenanceText)) return 'media';
   return null;
 }
 

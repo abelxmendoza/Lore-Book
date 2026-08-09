@@ -57,6 +57,7 @@ describe('entityFactsService confirmation evidence dedupe', () => {
         in: vi.fn().mockReturnThis(),
         order: vi.fn().mockReturnThis(),
         limit: vi.fn().mockReturnThis(),
+        range: vi.fn().mockReturnThis(),
         insert: vi.fn().mockReturnThis(),
         update: vi.fn((patch: Record<string, unknown>) => {
           updates.push(patch);

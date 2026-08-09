@@ -196,15 +196,12 @@ class EntityFactsService {
 
     if (extracted.length === 0) return;
 
-    const { data: existingRows } = await supabaseAdmin
-      .from('entity_facts')
-      .select('id, fact, category, confidence, mention_count, status, previous_value, first_seen_at, last_confirmed_at, updated_at, metadata')
-      .eq('user_id', userId)
-      .eq('entity_id', entityId)
-      .eq('entity_type', entityType)
-      .in('status', ['active', 'updated', 'corrected']);
-
-    const existing = (existingRows ?? []) as EntityFact[];
+    const existing = await this.fetchExistingFactsForMatch(
+      userId,
+      entityId,
+      entityType,
+      extracted.map((f) => f.category),
+    );
 
     const stableFacts: ExtractedFact[] = [];
     const opinions: ExtractedFact[] = [];
@@ -294,15 +291,12 @@ class EntityFactsService {
 
     if (extracted.length === 0) return;
 
-    const { data: existingRows } = await supabaseAdmin
-      .from('entity_facts')
-      .select('id, fact, category, confidence, mention_count, status, previous_value, first_seen_at, last_confirmed_at, updated_at, metadata')
-      .eq('user_id', userId)
-      .eq('entity_id', characterId)
-      .eq('entity_type', 'character')
-      .in('status', ['active', 'updated', 'corrected']);
-
-    const existing = (existingRows ?? []) as EntityFact[];
+    const existing = await this.fetchExistingFactsForMatch(
+      userId,
+      characterId,
+      'character',
+      extracted.map((f) => f.category),
+    );
 
     const { classifyFactStability } = await import('./entities/opinionVsFactClassifier');
 
@@ -735,6 +729,50 @@ Respond JSON: {"archetype": "...", "relationship_type": "family|romantic|mentor|
     }
   }
 
+  /**
+   * Fetch active facts for dedup matching, scoped to the categories actually
+   * present in this batch (findBestMatchingFact never compares across
+   * categories, so this is both correct and far smaller than the full set on
+   * a well-established entity) and paged past Supabase/PostgREST's default
+   * row cap. An earlier version fetched everything in a single unbounded
+   * query — past ~1000 active facts that silently truncates, so upsertFact
+   * would stop seeing older matches and spawn duplicate rows forever
+   * (confirmed: a real profile's fact table grew to ~3800 rows this way,
+   * with the same fact re-inserted dozens of times once past the cap).
+   */
+  private async fetchExistingFactsForMatch(
+    userId: string,
+    entityId: string,
+    entityType: EntityType,
+    categories: string[],
+  ): Promise<EntityFact[]> {
+    const uniqueCategories = [...new Set(categories)];
+    const all: EntityFact[] = [];
+    const PAGE = 1000;
+    for (let offset = 0; ; offset += PAGE) {
+      let query = supabaseAdmin
+        .from('entity_facts')
+        .select('id, fact, category, confidence, mention_count, status, previous_value, first_seen_at, last_confirmed_at, updated_at, metadata')
+        .eq('user_id', userId)
+        .eq('entity_id', entityId)
+        .eq('entity_type', entityType)
+        .in('status', ['active', 'updated', 'corrected'])
+        .range(offset, offset + PAGE - 1);
+      if (uniqueCategories.length > 0) {
+        query = query.in('category', uniqueCategories);
+      }
+      const { data, error } = await query;
+      if (error) {
+        logger.warn({ err: error, userId, entityId, entityType }, 'Failed to page existing facts for dedup match');
+        break;
+      }
+      const rows = (data ?? []) as EntityFact[];
+      all.push(...rows);
+      if (rows.length < PAGE) break;
+    }
+    return all;
+  }
+
   private async upsertFact(
     userId: string,
     entityId: string,
@@ -918,7 +956,7 @@ Respond JSON: {"archetype": "...", "relationship_type": "family|romantic|mentor|
     const trimmed = fact.trim();
     if (!trimmed || !entityId) return;
 
-    const existing = await this.getEntityFacts(userId, entityId, entityType, false, { dedupe: false });
+    const existing = await this.fetchExistingFactsForMatch(userId, entityId, entityType, [category]);
     await this.upsertFact(
       userId,
       entityId,
