@@ -846,7 +846,7 @@ Respond with JSON:
  */
 function looksLikeQueryPhrasing(text: string): boolean {
   if (text.includes('?')) return true;
-  return /^(?:who|what|which|where|when|how|why|show me|find|list|tell me|give me|do i|do you|does|did|am i|is|are|was|were|can you|could you|will|would|rank|compare)\b/i.test(text);
+  return /^(?:who|what|which|where|when|how|why|show|find|list|tell|give|display|pull up|do i|do you|does|did|am i|is|are|was|were|can you|could you|will|would|rank|compare)\b/i.test(text);
 }
 
 export function isOrganizationQueryRequest(message: string): boolean {
