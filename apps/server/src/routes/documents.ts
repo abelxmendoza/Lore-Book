@@ -310,9 +310,16 @@ router.post('/upload', requireAuth, upload.single('file'), async (req: Authentic
       success: true,
       userFileId: result.userFileId,
       detectedAsResume: Boolean(structured),
-      message: feedback?.chatFeedback
-        ? `Recognized as a resume — saved to your library and career timeline.`
-        : `Document processed successfully. Created ${result.momentsCreated ?? 0} entries, ${result.charactersCreated ?? 0} characters, and ${result.sectionsCreated ?? 0} memoir sections.`,
+      message: [
+        feedback?.chatFeedback
+          ? `Recognized as a resume — saved to your library and career timeline.`
+          : `Document processed successfully. Created ${result.momentsCreated ?? 0} entries, ${result.charactersCreated ?? 0} characters, and ${result.sectionsCreated ?? 0} memoir sections.`,
+        (result.itemsReconciled ?? 0) > 0
+          ? `${result.itemsReconciled} job/education entr${result.itemsReconciled === 1 ? 'y' : 'ies'} already in your timeline from another resume — reinforced, not duplicated.`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' '),
       entriesCreated: result.momentsCreated ?? 0,
       charactersCreated: result.charactersCreated ?? 0,
       sectionsCreated: result.sectionsCreated ?? 0,
@@ -322,6 +329,7 @@ router.post('/upload', requireAuth, upload.single('file'), async (req: Authentic
       skillsCreated: result.skillsCreated ?? 0,
       organizationsCreated: result.organizationsCreated ?? 0,
       eventsCreated: result.eventsCreated ?? 0,
+      itemsReconciled: result.itemsReconciled ?? 0,
       roleConflicts: result.roleConflicts ?? [],
       chatFeedback: feedback?.chatFeedback ?? null,
       careerTimeline: feedback?.careerTimeline ?? [],

@@ -99,6 +99,7 @@ class ResumeLorePopulationService {
       roleConflicts: [],
       entryIds: [],
       eventIds: [],
+      itemsReconciled: 0,
     };
 
     const meta = PROVENANCE(context.sourceFileId, context.resumeDocumentId);
@@ -253,7 +254,12 @@ class ResumeLorePopulationService {
 
     for (const item of items) {
       if (item.kind === 'job') {
-        const { entryId, eventId } = await this.createJobLore(userId, item.job, meta, selfId);
+        const { entryId, eventId, reconciled } = await this.createJobLore(userId, item.job, meta, selfId);
+        if (reconciled) {
+          result.itemsReconciled++;
+          if (eventId) result.eventIds.push(eventId);
+          continue;
+        }
         if (entryId) {
           result.entryIds.push(entryId);
           result.journalEntries++;
@@ -263,7 +269,12 @@ class ResumeLorePopulationService {
           result.timelineEvents++;
         }
       } else if (item.kind === 'education') {
-        const { entryId, eventId } = await this.createEducationEntry(userId, item.edu, meta, selfId);
+        const { entryId, eventId, reconciled } = await this.createEducationEntry(userId, item.edu, meta, selfId);
+        if (reconciled) {
+          result.itemsReconciled++;
+          if (eventId) result.eventIds.push(eventId);
+          continue;
+        }
         if (entryId) {
           result.entryIds.push(entryId);
           result.journalEntries++;
@@ -395,14 +406,77 @@ class ResumeLorePopulationService {
     }
   }
 
+  /**
+   * Different resumes describe the same job differently (a robotics-focused
+   * resume and a failure-analysis-focused resume both list the same Vanguard
+   * Robotics role) — match on company + start date so a second, third, or
+   * fourth resume reinforces the existing timeline entry instead of piling
+   * up duplicates. No start date means no reliable anchor to match on, so
+   * those always create fresh (matches prior behavior).
+   */
+  private async findExistingEvent(
+    userId: string,
+    type: 'career' | 'education',
+    companyOrInstitution: string,
+    start: string | null
+  ): Promise<string | null> {
+    if (!start) return null;
+    const { data, error } = await supabaseAdmin
+      .from('resolved_events')
+      .select('id, metadata')
+      .eq('user_id', userId)
+      .eq('type', type)
+      .eq('start_time', start);
+    if (error || !data?.length) return null;
+
+    const targetKey = normalizeNameKey(companyOrInstitution);
+    const match = data.find((row) => {
+      const md = row.metadata as { employment?: { company?: string }; education?: { institution?: string } } | null;
+      const name = type === 'career' ? md?.employment?.company : md?.education?.institution;
+      return name ? normalizeNameKey(name) === targetKey : false;
+    });
+    return match?.id ?? null;
+  }
+
+  /** Records that another resume also confirms this event, without duplicating it. */
+  private async reinforceExistingEvent(eventId: string, sourceFileId: string): Promise<void> {
+    const { data } = await supabaseAdmin
+      .from('resolved_events')
+      .select('metadata, confidence')
+      .eq('id', eventId)
+      .maybeSingle();
+    if (!data) return;
+    const metadata = (data.metadata as Record<string, unknown>) ?? {};
+    const priorSources = Array.isArray(metadata.confirming_source_file_ids)
+      ? (metadata.confirming_source_file_ids as string[])
+      : [];
+    if (priorSources.includes(sourceFileId)) return; // same file re-processed, not a new confirmation
+    await supabaseAdmin
+      .from('resolved_events')
+      .update({
+        metadata: { ...metadata, confirming_source_file_ids: [...priorSources, sourceFileId] },
+        // Corroboration across independent resumes is itself evidence — nudge
+        // confidence up slightly, capped well short of 1.0.
+        confidence: Math.min(0.97, (typeof data.confidence === 'number' ? data.confidence : 0.85) + 0.03),
+      })
+      .eq('id', eventId);
+  }
+
   private async createJobLore(
     userId: string,
     job: ResumeEmployment,
     meta: Record<string, unknown>,
     selfId: string | null
-  ): Promise<{ entryId: string | null; eventId: string | null }> {
+  ): Promise<{ entryId: string | null; eventId: string | null; reconciled: boolean }> {
     const start = normalizeResumeDate(job.startDate);
     const end = job.isCurrent ? null : normalizeResumeDate(job.endDate);
+
+    const existingEventId = await this.findExistingEvent(userId, 'career', job.company, start);
+    if (existingEventId) {
+      await this.reinforceExistingEvent(existingEventId, String(meta.source_file_id ?? ''));
+      return { entryId: null, eventId: existingEventId, reconciled: true };
+    }
+
     const dateLabel = [start, end ?? (job.isCurrent ? 'Present' : null)].filter(Boolean).join(' – ');
 
     const content = [
@@ -446,7 +520,7 @@ class ResumeLorePopulationService {
       }
     }
 
-    return { entryId: entry.id, eventId };
+    return { entryId: entry.id, eventId, reconciled: false };
   }
 
   private async createEducationEntry(
@@ -454,9 +528,16 @@ class ResumeLorePopulationService {
     edu: ResumeEducation,
     meta: Record<string, unknown>,
     selfId: string | null
-  ): Promise<{ entryId: string; eventId: string | null }> {
+  ): Promise<{ entryId: string | null; eventId: string | null; reconciled: boolean }> {
     const start = normalizeResumeDate(edu.startDate);
     const end = normalizeResumeDate(edu.endDate);
+
+    const existingEventId = await this.findExistingEvent(userId, 'education', edu.institution ?? '', start ?? end);
+    if (existingEventId) {
+      await this.reinforceExistingEvent(existingEventId, String(meta.source_file_id ?? ''));
+      return { entryId: null, eventId: existingEventId, reconciled: true };
+    }
+
     const date = end ?? start ?? new Date().toISOString();
     const parts = [
       edu.degree,
@@ -495,7 +576,7 @@ class ResumeLorePopulationService {
       }
     }
 
-    return { entryId: entry.id, eventId };
+    return { entryId: entry.id, eventId, reconciled: false };
   }
 
   private async createProjectEntry(

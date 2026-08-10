@@ -53,6 +53,8 @@ export type UnifiedIngestResult = {
   organizationsCreated?: number;
   eventsCreated?: number;
   projectsSuggested?: number;
+  /** Jobs/education already known from a prior resume — reinforced, not duplicated. */
+  itemsReconciled?: number;
   roleConflicts?: ResumeImportConflict[];
   entryIds?: string[];
   structured?: Record<string, unknown>;

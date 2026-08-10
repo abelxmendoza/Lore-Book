@@ -96,4 +96,6 @@ export type ResumeLorePopulationResult = {
   roleConflicts: ResumeRoleConflict[];
   entryIds: string[];
   eventIds: string[];
+  /** Jobs/education already known from a prior resume — reinforced, not duplicated. */
+  itemsReconciled: number;
 };

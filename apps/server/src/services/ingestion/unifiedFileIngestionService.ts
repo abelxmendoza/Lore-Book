@@ -245,6 +245,7 @@ export class UnifiedFileIngestionService {
       organizationsCreated: lore.organizations,
       eventsCreated: lore.timelineEvents,
       projectsSuggested: lore.projectsSuggested,
+      itemsReconciled: lore.itemsReconciled,
       roleConflicts: lore.roleConflicts,
       structured,
     };

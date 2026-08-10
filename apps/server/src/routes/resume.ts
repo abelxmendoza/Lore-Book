@@ -104,6 +104,7 @@ router.post('/upload', requireAuth, upload.single('resume'), async (req: Authent
       eventsCreated: result.eventsCreated ?? 0,
       momentsCreated: result.momentsCreated ?? 0,
       projectsSuggested: result.projectsSuggested ?? 0,
+      itemsReconciled: result.itemsReconciled ?? 0,
       roleConflicts: result.roleConflicts ?? [],
       chatFeedback: feedback?.chatFeedback ?? null,
       careerTimeline: feedback?.careerTimeline ?? [],
@@ -114,6 +115,9 @@ router.post('/upload', requireAuth, upload.single('resume'), async (req: Authent
         feedback?.chatFeedback
           ? `Resume saved to your library and memory.`
           : `Resume processed. ${result.claimsCreated ?? 0} claims, ${result.momentsCreated ?? 0} timeline entries, ${result.skillsCreated ?? 0} skills added to your lore.`,
+        (result.itemsReconciled ?? 0) > 0
+          ? `${result.itemsReconciled} job/education entr${result.itemsReconciled === 1 ? 'y' : 'ies'} already in your timeline from another resume — reinforced, not duplicated.`
+          : null,
         (result.roleConflicts?.length ?? 0) > 0
           ? `${result.roleConflicts!.length} current-role conflict(s) need review — your existing current role was kept.`
           : null,
