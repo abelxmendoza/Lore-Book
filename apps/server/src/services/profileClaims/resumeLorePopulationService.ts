@@ -258,6 +258,10 @@ class ResumeLorePopulationService {
         if (reconciled) {
           result.itemsReconciled++;
           if (eventId) result.eventIds.push(eventId);
+          if (entryId) {
+            result.entryIds.push(entryId);
+            result.journalEntries++;
+          }
           continue;
         }
         if (entryId) {
@@ -438,28 +442,58 @@ class ResumeLorePopulationService {
     return match?.id ?? null;
   }
 
-  /** Records that another resume also confirms this event, without duplicating it. */
-  private async reinforceExistingEvent(eventId: string, sourceFileId: string): Promise<void> {
+  /**
+   * Records that another resume also confirms this event — and, since
+   * resumes are usually tailored per application, preserves that resume's
+   * specific framing (title emphasis, which bullet points it led with)
+   * instead of discarding it. The first-seen title/summary stays canonical;
+   * every distinct variant accumulates in metadata so nothing tailored gets
+   * silently lost just because the underlying job was already known.
+   */
+  private async reinforceExistingEvent(
+    eventId: string,
+    variant: { sourceFileId: string; fileName: string; title?: string; description?: string; location?: string }
+  ): Promise<{ isNewVariant: boolean }> {
     const { data } = await supabaseAdmin
       .from('resolved_events')
       .select('metadata, confidence')
       .eq('id', eventId)
       .maybeSingle();
-    if (!data) return;
+    if (!data) return { isNewVariant: false };
     const metadata = (data.metadata as Record<string, unknown>) ?? {};
     const priorSources = Array.isArray(metadata.confirming_source_file_ids)
       ? (metadata.confirming_source_file_ids as string[])
       : [];
-    if (priorSources.includes(sourceFileId)) return; // same file re-processed, not a new confirmation
+    if (priorSources.includes(variant.sourceFileId)) return { isNewVariant: false }; // same file re-processed
+
+    const priorVariants = Array.isArray(metadata.resume_variants)
+      ? (metadata.resume_variants as Array<Record<string, unknown>>)
+      : [];
+
     await supabaseAdmin
       .from('resolved_events')
       .update({
-        metadata: { ...metadata, confirming_source_file_ids: [...priorSources, sourceFileId] },
+        metadata: {
+          ...metadata,
+          confirming_source_file_ids: [...priorSources, variant.sourceFileId],
+          resume_variants: [
+            ...priorVariants,
+            {
+              source_file_id: variant.sourceFileId,
+              file_name: variant.fileName,
+              title: variant.title,
+              description: variant.description,
+              location: variant.location,
+              confirmed_at: new Date().toISOString(),
+            },
+          ],
+        },
         // Corroboration across independent resumes is itself evidence — nudge
         // confidence up slightly, capped well short of 1.0.
         confidence: Math.min(0.97, (typeof data.confidence === 'number' ? data.confidence : 0.85) + 0.03),
       })
       .eq('id', eventId);
+    return { isNewVariant: true };
   }
 
   private async createJobLore(
@@ -473,8 +507,31 @@ class ResumeLorePopulationService {
 
     const existingEventId = await this.findExistingEvent(userId, 'career', job.company, start);
     if (existingEventId) {
-      await this.reinforceExistingEvent(existingEventId, String(meta.source_file_id ?? ''));
-      return { entryId: null, eventId: existingEventId, reconciled: true };
+      const sourceFileId = String(meta.source_file_id ?? '');
+      const { isNewVariant } = await this.reinforceExistingEvent(existingEventId, {
+        sourceFileId,
+        fileName: String(meta.file_name ?? job.company),
+        title: job.title,
+        description: job.description,
+        location: job.location,
+      });
+      // A tailored resume adds real, searchable detail even when the job
+      // itself isn't new — worth its own small memory entry, just not
+      // another "started at X" timeline event.
+      let entryId: string | null = null;
+      if (isNewVariant && job.description) {
+        const entry = await memoryService.saveEntry({
+          userId,
+          content: `Additional detail on your ${job.title} role at ${job.company} (from a different resume): ${job.description}`,
+          date: start ?? new Date().toISOString(),
+          tags: ['resume', 'career', 'employment', 'variant', job.company.toLowerCase().replace(/\s+/g, '-')],
+          source: 'document_upload',
+          summary: `${job.company} — additional resume detail`,
+          metadata: { ...meta, section: 'employment_variant', employment: job, related_event_id: existingEventId },
+        });
+        entryId = entry.id;
+      }
+      return { entryId, eventId: existingEventId, reconciled: true };
     }
 
     const dateLabel = [start, end ?? (job.isCurrent ? 'Present' : null)].filter(Boolean).join(' – ');
@@ -534,7 +591,12 @@ class ResumeLorePopulationService {
 
     const existingEventId = await this.findExistingEvent(userId, 'education', edu.institution ?? '', start ?? end);
     if (existingEventId) {
-      await this.reinforceExistingEvent(existingEventId, String(meta.source_file_id ?? ''));
+      await this.reinforceExistingEvent(existingEventId, {
+        sourceFileId: String(meta.source_file_id ?? ''),
+        fileName: String(meta.file_name ?? edu.institution ?? ''),
+        title: edu.degree,
+        description: edu.field,
+      });
       return { entryId: null, eventId: existingEventId, reconciled: true };
     }
 

@@ -87,11 +87,20 @@ describe('resumeLorePopulationService — multi-resume reconciliation', () => {
     vi.mocked(memoryService.saveEntry).mockImplementation(async () => ({ id: `entry-${++n}` }) as any);
   });
 
-  const resumeWithVanguardJob = (companyName = 'Vanguard Robotics'): ParsedResume => ({
+  const resumeWithVanguardJob = (
+    companyName = 'Vanguard Robotics',
+    overrides: Partial<ParsedResume['employment'][number]> = {}
+  ): ParsedResume => ({
     contact: {},
     summary: '',
     employment: [
-      { company: companyName, title: 'Robotics Deployment Technician', startDate: '2025-01-01', endDate: '2025-12-01' },
+      {
+        company: companyName,
+        title: 'Robotics Deployment Technician',
+        startDate: '2025-01-01',
+        endDate: '2025-12-01',
+        ...overrides,
+      },
     ],
     education: [],
     skills: [],
@@ -141,6 +150,48 @@ describe('resumeLorePopulationService — multi-resume reconciliation', () => {
     expect(events[0].metadata.confirming_source_file_ids).toContain('file-2');
     // Corroboration nudges confidence up from the original 0.88.
     expect(events[0].confidence).toBeGreaterThan(0.88);
+  });
+
+  it('preserves a tailored resume\'s distinct framing of the same job as a supplementary entry', async () => {
+    const events = installResolvedEventsStore();
+
+    await resumeLorePopulationService.populate(
+      'user-1',
+      resumeWithVanguardJob('Vanguard Robotics', {
+        title: 'Robotics Deployment Technician',
+        description: 'Focused on field deployment and hardware bring-up.',
+      }),
+      { sourceFileId: 'file-1', resumeDocumentId: 'doc-1', fileName: 'resume-a.pdf' }
+    );
+    expect(events).toHaveLength(1);
+
+    // A second, differently-tailored resume for the exact same job — same
+    // company + start date, but different emphasis (failure analysis instead
+    // of field deployment). The job itself should still reconcile to the
+    // same event, but the distinct framing should be preserved, not dropped.
+    const result2 = await resumeLorePopulationService.populate(
+      'user-1',
+      resumeWithVanguardJob('Vanguard Robotics', {
+        title: 'Failure Analysis Technician',
+        description: 'Focused on root-cause failure analysis and prototype validation.',
+      }),
+      { sourceFileId: 'file-2', resumeDocumentId: 'doc-2', fileName: 'resume-b.pdf' }
+    );
+
+    expect(events).toHaveLength(1); // still one timeline event
+    expect(result2.itemsReconciled).toBe(1);
+    expect(result2.timelineEvents).toBe(0);
+    // The tailored detail was preserved as a supplementary journal entry, not discarded.
+    expect(result2.journalEntries).toBe(1);
+    expect(result2.entryIds).toHaveLength(1);
+
+    const variants = events[0].metadata.resume_variants;
+    expect(variants).toHaveLength(1);
+    expect(variants[0]).toMatchObject({
+      source_file_id: 'file-2',
+      title: 'Failure Analysis Technician',
+      description: 'Focused on root-cause failure analysis and prototype validation.',
+    });
   });
 
   it('does not reconcile jobs at different companies even with the same start date', async () => {
