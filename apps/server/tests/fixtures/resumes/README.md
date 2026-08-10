@@ -1,12 +1,19 @@
 # Reference resume fixtures
 
-Golden reference PDFs (Abel Mendoza) used to validate resume parsing and career lore population:
+Fully fictional golden reference resumes (Jordan Vega, no real person) used
+to validate resume parsing and career lore population — structured the same
+way real resumes are (overlapping jobs, employment gaps, projects,
+certifications, education) without containing anyone's real identity.
 
 | File | Role target |
 |------|-------------|
-| `AbelMendoza_RoboticsEngineer_Resume2026-1.pdf` | Robotics & embedded systems |
-| `AbelMendoza_Amazon_FailureAnalysisTechnician_Resume.pdf` | Amazon FAT / failure analysis |
+| `fictional-robotics-2026.pdf` / `.txt` | Robotics & embedded systems |
+| `fictional-amazon-fat.txt` | Failure analysis / electronics test |
 
-Text extracts (`abel-robotics-2026.txt`, `abel-amazon-fat.txt`) power deterministic heuristic parser tests without calling OpenAI.
+Text extracts power deterministic heuristic parser tests without calling
+OpenAI. The PDF is a minimal hand-built file (no PDF library dependency)
+containing the same fictional text, used only to exercise PDF text
+extraction.
 
-Source originals: `~/Documents/Resumes/`
+Do not add real resumes, real names, or real employer names to this
+directory — see the founder-privacy check in the root pre-commit hook.

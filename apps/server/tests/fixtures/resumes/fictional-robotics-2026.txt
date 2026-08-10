@@ -1,6 +1,6 @@
-Abel Mendoza
+Jordan Vega
 Robotics & Embedded Systems Engineer
-Anaheim, CA
+Rivermont, CA
 test.candidate@example.com | (562) 322-2299
 linkedin.com/in/test-candidate | example.dev | github.com/test-candidate
 Professional Summary
@@ -8,8 +8,7 @@ Robotics and embedded systems engineer with hands-on experience deploying, repai
 autonomous robotic and industrial hardware systems in real-world environments. Skilled in ROS2, embedded Linux,
 hardware validation, sensor fusion, industrial communications, and full-stack system integration across software, elec-
 tronics, networking, and control layers. Proven ability to diagnose failures and restore systems under live operational
-pressure. Targeting aerospace, defense, robotics, and embedded autonomy roles. U.S. citizen eligible for ITAR/EAR
-work.
+pressure. Targeting aerospace, defense, robotics, and embedded autonomy roles.
 Technical Skills
 Autonomy & Robotics: ROS2 Humble, PX4 Autopilot (SITL), MAVLink, MAVSDK, SLAM, Kalman filtering, ob-
 stacle avoidance
@@ -23,7 +22,7 @@ Programming: Python, C++, Go, TypeScript, JavaScript, Bash
 Tools: Git, VS Code, FastAPI, Next.js, React, CycloneDDS, MPLAB ICD3, Quartus
 Professional Experience
 Electronics Test & Validation Technician Apr 2026 – Present
-RLH Industries, Inc. — Orange, CA
+Meridian Test Labs, Inc. — Fairfield, CA
 • Performed validation, calibration, and troubleshooting of fiber optic communication modules, verifying electrical →
 optical → electrical signal integrity across telecom and industrial communication systems
 • Measured voltage, current, resistance, and continuity using multimeters, programmable electronic loads, and bench
@@ -37,7 +36,7 @@ ior, and fault conditions
 • Performed firmware flashing, embedded hardware bring-up, and web interface deployment for industrial Ethernet relay
 and I/O systems using MPLAB ICD3, PIC32 microcontrollers, MPFS2, USB Blaster, and Quartus
 • Conducted board-level troubleshooting and failure isolation using continuity testing, embedded network diagnostics,
-and known-good reference hardware (“golden boards”)
+and known-good reference hardware ("golden boards")
 • Assisted with FPGA programming, board-level validation, and integration testing for industrial communication and
 supervisory control systems
 Robotics Deployment Technician Jan 2025 – Dec 2025
@@ -50,17 +49,17 @@ on-site technical owner
 
 • Performed repairs across mechanical, electrical, and control systems during live robotic operation
 • Diagnosed and resolved failures across hardware, perception, and control systems under real-time constraints
-• Replaced and calibrated Robotiq grippers on UFactory robotic arms and validated performance under production load
+• Replaced and calibrated robotic grippers on industrial robotic arms and validated performance under production load
 • Calibrated vision systems using ArUco markers and supported live iteration with engineering teams
 • Acted as liaison between operators, staff, and engineers during system failures and recovery
 Field Robotics Agent Mar 2025 – May 2025
-Serve Robotics — Los Angeles, CA
+Fieldstone Robotics — Los Angeles, CA
 • Supported deployment and expansion of autonomous delivery robots across multiple LA regions
 • Diagnosed navigation, sensor, and connectivity issues during real-world operation and validated fixes under time
 pressure
 • Collaborated with engineering teams to surface edge cases and improve system reliability
 Technical Projects
-Omega-1 — Distributed Autonomous Robotics Platform
+Atlas Drive — Distributed Autonomous Robotics Platform
 Raspberry Pi 4B | Jetson Orin Nano | ROS2 | FastAPI | Next.js
 • Architected a distributed robotics system across multiple machines enabling real-time control, perception, and moni-
 toring over a VPN-secured network
@@ -80,15 +79,12 @@ Jetson Orin Nano | ROS2
 • Built RGB-D perception pipeline with depth streaming, IMU integration, and obstacle detection
 • Developed diagnostics to validate sensor data, frame rates, and runtime system performance
 Education
-California State University, Fullerton May 2024
+Meridian State University May 2024
 Bachelor of Science — Computer Science
-Rio Hondo Community College
+Cascade Community College
 Electrical and Electronics Coursework
 Additional
 FAA Part 107 Certified
-U.S. Citizen — ITAR/EAR Eligible
 Comfortable with field operations, hardware deployment, and physically demanding environments
-Languages: English (native), Spanish (conversational)
 
 -- 2 of 2 --
-

@@ -1,6 +1,6 @@
-Abel Mendoza
+Jordan Vega
 Failure Analysis Technician | Electronics Test and Validation | Hardware Troubleshooting
-Anaheim, CA
+Rivermont, CA
 [test.candidate@example.com](mailto:test.candidate@example.com) | (562) 322-2299
 linkedin.com/in/test-candidate
 Professional Summary
@@ -23,7 +23,7 @@ Programming: Python, C++, Bash, JavaScript
 Documentation: Technical Reports, Validation Records, Test Procedures, Engineering Documentation
 Professional Experience
 Electronics Test and Validation Technician Apr 2026 – May 2026
-RLH Industries, Orange, CA
+Meridian Test Labs, Fairfield, CA
 • Performed root cause investigation, troubleshooting, and validation testing on industrial electronic assemblies including
 DC-DC power converters, relay systems, and fiber optic communication hardware
 • Performed component-level PCB rework, replacing and re-soldering resistors, capacitors, and other electronic compo-
@@ -51,13 +51,13 @@ operating in production environments
 
 • Documented operational issues and troubleshooting procedures to support maintenance and future deployments
 Field Robotics Agent Mar 2025 – May 2025
-Serve Robotics, Los Angeles, CA
+Fieldstone Robotics, Los Angeles, CA
 • Investigated hardware, sensor, navigation, and connectivity failures affecting autonomous delivery robots in live field
 operations
 • Performed systematic troubleshooting and verification testing to restore operational status
 • Escalated technical findings to engineering teams and contributed data supporting reliability improvements
 Technical Projects
-Omega-1 Autonomous Robotics Platform
+Atlas Drive Autonomous Robotics Platform
 Raspberry Pi 4B | Python | Embedded Linux
 • Integrated motor controllers, sensors, power systems, and embedded hardware into a custom autonomous robotics
 platform
@@ -67,15 +67,12 @@ stability
 subsystems
 • Developed diagnostic tools to monitor system health and validate hardware performance
 Education
-California State University, Fullerton May 2024
+Meridian State University May 2024
 Bachelor of Science in Computer Science
-Rio Hondo College
+Cascade Community College
 Electrical and Electronics Coursework
 Additional
-U.S. Citizen - ITAR/EAR Eligible
 FAA Part 107 Certified
-Languages: English (Native), Spanish (Conversational)
 Comfortable working in laboratory, manufacturing, production, and field environments
 
 -- 2 of 2 --
-

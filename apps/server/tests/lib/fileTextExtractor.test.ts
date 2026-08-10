@@ -46,15 +46,12 @@ describe('extractTextFromBuffer', () => {
     await expect(extractTextFromBuffer(Buffer.from('x'), 'doc')).rejects.toThrow(/not supported/);
   });
 
-  it('extracts text from Abel robotics reference PDF', async () => {
-    const pdfPath = join(__dirname, '../fixtures/resumes/AbelMendoza_RoboticsEngineer_Resume2026-1.pdf');
+  it('extracts text from fictional robotics reference PDF', async () => {
+    const pdfPath = join(__dirname, '../fixtures/resumes/fictional-robotics-2026.pdf');
     const buffer = readFileSync(pdfPath);
     const text = await extractTextFromBuffer(buffer, 'pdf');
-    expect(text).toContain('Abel Mendoza');
-    expect(text).toContain('RLH Industries');
-    // NOTE: this PDF fixture is a binary export of a real resume and still contains
-    // the original employer name in its bytes; we assert on a neutral, non-lore token
-    // instead so the extraction check does not depend on (or reintroduce) founder lore.
+    expect(text).toContain('Jordan Vega');
+    expect(text).toContain('Meridian Test Labs');
     expect(text).toContain('Robotics');
   });
 });

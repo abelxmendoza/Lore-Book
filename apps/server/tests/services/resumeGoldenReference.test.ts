@@ -13,9 +13,9 @@ function loadFixture(name: string): string {
   return readFileSync(join(FIXTURES, name), 'utf-8');
 }
 
-describe('Abel Mendoza reference resumes (golden)', () => {
-  const roboticsText = loadFixture('abel-robotics-2026.txt');
-  const amazonText = loadFixture('abel-amazon-fat.txt');
+describe('fictional reference resumes (golden)', () => {
+  const roboticsText = loadFixture('fictional-robotics-2026.txt');
+  const amazonText = loadFixture('fictional-amazon-fat.txt');
 
   it('parses month-year dates from resume format', () => {
     expect(parseMonthYearToken('Apr 2026')).toBe('2026-04-01');
@@ -26,20 +26,20 @@ describe('Abel Mendoza reference resumes (golden)', () => {
   it('extracts contact and employment from robotics resume', () => {
     const parsed = parseResumeHeuristics(roboticsText);
 
-    expect(parsed.contact.fullName).toBe('Abel Mendoza');
+    expect(parsed.contact.fullName).toBe('Jordan Vega');
     expect(parsed.contact.email).toBe('test.candidate@example.com');
     expect(parsed.contact.phone).toContain('562');
     expect(parsed.contact.linkedin).toContain('linkedin.com/in/test-candidate');
 
     const companies = parsed.employment.map((j) => j.company);
-    expect(companies).toContain('RLH Industries, Inc.');
+    expect(companies).toContain('Meridian Test Labs, Inc.');
     expect(companies).toContain('Vanguard Robotics');
-    expect(companies).toContain('Serve Robotics');
+    expect(companies).toContain('Fieldstone Robotics');
 
-    const rlh = parsed.employment.find((j) => j.company.includes('RLH'));
-    expect(rlh?.title).toMatch(/Electronics Test/i);
-    expect(rlh?.isCurrent).toBe(true);
-    expect(rlh?.startDate).toBe('2026-04-01');
+    const primary = parsed.employment.find((j) => j.company.includes('Meridian'));
+    expect(primary?.title).toMatch(/Electronics Test/i);
+    expect(primary?.isCurrent).toBe(true);
+    expect(primary?.startDate).toBe('2026-04-01');
 
     const vanguard = parsed.employment.find((j) => j.company.includes('Vanguard'));
     expect(vanguard?.startDate).toBe('2025-01-01');
@@ -54,10 +54,10 @@ describe('Abel Mendoza reference resumes (golden)', () => {
     expect(parsed.skills.some((s) => /Python/i.test(s))).toBe(true);
 
     const names = parsed.projects.map((p) => p.name);
-    expect(names.some((n) => /Omega-1/i.test(n))).toBe(true);
+    expect(names.some((n) => /Atlas Drive/i.test(n))).toBe(true);
 
     expect(parsed.certifications.some((c) => /FAA Part 107/i.test(c.name))).toBe(true);
-    expect(parsed.education.some((e) => /Fullerton/i.test(e.institution))).toBe(true);
+    expect(parsed.education.some((e) => /Meridian State/i.test(e.institution))).toBe(true);
   });
 
   it('extracts Amazon FAT resume employment', () => {
@@ -65,7 +65,7 @@ describe('Abel Mendoza reference resumes (golden)', () => {
 
     expect(parsed.contact.email).toBe('test.candidate@example.com');
     expect(parsed.employment.length).toBeGreaterThanOrEqual(3);
-    expect(parsed.employment[0].company).toMatch(/RLH/i);
+    expect(parsed.employment[0].company).toMatch(/Meridian/i);
     expect(parsed.summary).toMatch(/failure|troubleshooting|root cause/i);
   });
 
@@ -73,18 +73,18 @@ describe('Abel Mendoza reference resumes (golden)', () => {
     const structured = parseResumeHeuristics(roboticsText);
     const claims = resumeParsingService.claimsFromStructured(structured);
 
-    expect(claims.some((c) => c.claim_type === 'role' && c.claim_text.includes('RLH'))).toBe(true);
+    expect(claims.some((c) => c.claim_type === 'role' && c.claim_text.includes('Meridian'))).toBe(true);
     expect(claims.some((c) => c.claim_type === 'skill')).toBe(true);
     expect(claims.some((c) => c.claim_type === 'certification')).toBe(true);
   });
 
-  it('detects no large gaps between Abel jobs (overlapping Serve field role)', () => {
+  it('detects no large gaps between jobs (overlapping field role)', () => {
     const structured = parseResumeHeuristics(roboticsText);
     structured.employmentGaps = detectEmploymentGaps(structured.employment);
-    // Vanguard Jan 2025 - Dec 2025 and Serve Mar-May 2025 overlap — no 2+ month gap between RLH and Vanguard
-    const betweenRlhAndVanguard = structured.employmentGaps.filter((g) =>
-      g.label.includes('RLH') && g.label.includes('Vanguard')
+    // Vanguard Jan 2025 - Dec 2025 and Fieldstone Mar-May 2025 overlap — no 2+ month gap between Meridian and Vanguard
+    const betweenPrimaryAndVanguard = structured.employmentGaps.filter((g) =>
+      g.label.includes('Meridian') && g.label.includes('Vanguard')
     );
-    expect(betweenRlhAndVanguard.length).toBe(0);
+    expect(betweenPrimaryAndVanguard.length).toBe(0);
   });
 });
