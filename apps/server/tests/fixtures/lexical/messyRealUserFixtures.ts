@@ -2,7 +2,7 @@ import type { LexicalFixtureSpec } from '../../../src/services/lexical/intellige
 
 export const WORKPLACE_SOCIAL_CONFLICT_MARTIAL_ARTS_ID = 'workplace_social_conflict_martial_arts';
 export const WORKPLACE_SOCIAL_CONFLICT_MARTIAL_ARTS_TEXT =
-  "Mike from my old job at Vanguard was talking crazy at the show last night and Charlie almost swung on him. " +
+  "Derek from my old job at Vanguard was talking crazy at the show last night and Nate almost swung on him. " +
   "I stayed calm because I've been training Muay Thai and boxing but I still felt heated.";
 
 export const FAMILY_IDENTITY_COLLISION_ID = 'family_identity_collision';
@@ -11,7 +11,7 @@ export const FAMILY_IDENTITY_COLLISION_TEXT =
 
 export const SCHOOL_GROUP_LUNCH_SOCIAL_ID = 'school_group_lunch_social';
 export const SCHOOL_GROUP_LUNCH_SOCIAL_TEXT =
-  "Jenny from anime club wasn't at lunch yesterday so I sat with the robotics kids near the gym.";
+  "Priya from anime club wasn't at lunch yesterday so I sat with the robotics kids near the gym.";
 
 export const TRAVEL_LANGUAGE_PREFERENCE_ID = 'travel_language_preference';
 export const TRAVEL_LANGUAGE_PREFERENCE_TEXT =
@@ -19,14 +19,14 @@ export const TRAVEL_LANGUAGE_PREFERENCE_TEXT =
 
 export const MUSIC_SCENE_LOST_FRIEND_ID = 'music_scene_lost_friend';
 export const MUSIC_SCENE_LOST_FRIEND_TEXT =
-  "Oscar Trujio used to be my best friend from the LA ska scene but I haven't seen him since before covid.";
+  "Marco Delgado used to be my best friend from the LA ska scene but I haven't seen him since before covid.";
 
 export const MESSY_REAL_USER_FIXTURES: LexicalFixtureSpec[] = [
   {
     id: WORKPLACE_SOCIAL_CONFLICT_MARTIAL_ARTS_ID,
     text: WORKPLACE_SOCIAL_CONFLICT_MARTIAL_ARTS_TEXT,
     expected: [
-      { label: 'Mike', match: /^Mike$/, type: 'PERSON', minConfidence: 0.75 },
+      { label: 'Derek', match: /^Derek$/, type: 'PERSON', minConfidence: 0.75 },
       {
         label: 'Vanguard',
         match: /^Vanguard$/,
@@ -45,7 +45,7 @@ export const MESSY_REAL_USER_FIXTURES: LexicalFixtureSpec[] = [
       },
       { label: 'show', match: /^show$/i, type: 'EVENT', minConfidence: 0.7 },
       { label: 'last night', match: /last night/i, type: 'TIME_PERIOD', minConfidence: 0.8 },
-      { label: 'Charlie', match: /^Charlie$/, type: 'PERSON', minConfidence: 0.75 },
+      { label: 'Nate', match: /^Nate$/, type: 'PERSON', minConfidence: 0.75 },
       {
         label: 'swung on him',
         match: /swung on him/i,
@@ -65,7 +65,7 @@ export const MESSY_REAL_USER_FIXTURES: LexicalFixtureSpec[] = [
         minConfidence: 0.75,
       },
     ],
-    forbiddenPatterns: [/^manager$/i, /^assault$/i, /^Mike from$/i],
+    forbiddenPatterns: [/^manager$/i, /^assault$/i, /^Derek from$/i],
     minRulesFired: ['past_employment_old_job', 'conflict_threat_review_first'],
   },
   {
@@ -107,7 +107,7 @@ export const MESSY_REAL_USER_FIXTURES: LexicalFixtureSpec[] = [
     id: SCHOOL_GROUP_LUNCH_SOCIAL_ID,
     text: SCHOOL_GROUP_LUNCH_SOCIAL_TEXT,
     expected: [
-      { label: 'Jenny', match: /^Jenny$/, type: 'PERSON', minConfidence: 0.8 },
+      { label: 'Priya', match: /^Priya$/, type: 'PERSON', minConfidence: 0.8 },
       {
         label: 'anime club',
         match: /anime club/i,
@@ -180,7 +180,7 @@ export const MESSY_REAL_USER_FIXTURES: LexicalFixtureSpec[] = [
     id: MUSIC_SCENE_LOST_FRIEND_ID,
     text: MUSIC_SCENE_LOST_FRIEND_TEXT,
     expected: [
-      { label: 'Oscar Trujio', match: /^Oscar Trujio$/, type: 'PERSON', minConfidence: 0.85 },
+      { label: 'Marco Delgado', match: /^Marco Delgado$/, type: 'PERSON', minConfidence: 0.85 },
       {
         label: 'best friend',
         match: /best friend/i,

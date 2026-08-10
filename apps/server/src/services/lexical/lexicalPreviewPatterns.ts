@@ -89,7 +89,7 @@ export const PREVIEW_PATTERNS: PreviewPattern[] = [
   L({ id: 'time_lunch', literal: 'lunch', type: 'TIME_PERIOD', subtype: 'SCHOOL_DAY_TIME', colorKey: 'time', confidenceBase: 0.82, priority: 13, contextRules: ['school_day_lunch'] }),
   L({ id: 'time_yesterday', literal: 'yesterday', type: 'TIME_PERIOD', subtype: 'RELATIVE_DATE', colorKey: 'time', confidenceBase: 0.9, priority: 12 }),
   L({ id: 'school_team_sports', regex: /\b(?:football|soccer|basketball|baseball|track|swim|debate|chess)\s+team\b/gi, type: 'GROUP', subtype: 'SCHOOL_TEAM', colorKey: 'group', confidenceBase: 0.8, priority: 11, contextRules: ['school_team_sport'] }),
-  L({ id: 'person_jenny', literal: 'Jenny', type: 'PERSON', subtype: 'FULL_NAME', colorKey: 'person', confidenceBase: 0.86, caseSensitive: true, priority: 26 }),
+  L({ id: 'person_priya', literal: 'Priya', type: 'PERSON', subtype: 'FULL_NAME', colorKey: 'person', confidenceBase: 0.86, caseSensitive: true, priority: 26 }),
   L({ id: 'school_club_anime', literal: 'anime club', type: 'SCHOOL_CLUB', subtype: 'SCHOOL_CLUB', colorKey: 'group', confidenceBase: 0.88, requiresReview: true, priority: 25, contextRules: ['school_club_from_phrase'] }),
   L({ id: 'group_robotics_kids', literal: 'robotics kids', type: 'FRIEND_GROUP', subtype: 'SCHOOL_GROUP', colorKey: 'group', confidenceBase: 0.84, requiresReview: true, priority: 24, contextRules: ['school_group_robotics_kids'] }),
   L({ id: 'place_gym', literal: 'gym', type: 'PLACE', subtype: 'SCHOOL_PLACE', colorKey: 'place', confidenceBase: 0.8, requiresReview: true, priority: 23, contextRules: ['school_place_gym'] }),
@@ -119,8 +119,8 @@ export const PREVIEW_PATTERNS: PreviewPattern[] = [
   // ── Identity / relationship ────────────────────────────────────────────────
   L({ id: 'relationship_estranged_dad', literal: "estranged dad", type: 'RELATIONSHIP', subtype: 'FATHER', colorKey: 'relationship', confidenceBase: 0.9, requiresReview: true, priority: 27, contextRules: ['relationship_estranged_father'] }),
   L({ id: 'event_identity_collision', literal: 'mixing us up', type: 'EVENT', subtype: 'IDENTITY_COLLISION_EVENT', colorKey: 'event', confidenceBase: 0.88, requiresReview: true, priority: 26, contextRules: ['identity_collision_event'] }),
-  L({ id: 'person_mike', literal: 'Mike', type: 'PERSON', subtype: 'FULL_NAME', colorKey: 'person', confidenceBase: 0.84, caseSensitive: true, priority: 25 }),
-  L({ id: 'person_charlie', literal: 'Charlie', type: 'PERSON', subtype: 'FULL_NAME', colorKey: 'person', confidenceBase: 0.84, caseSensitive: true, priority: 25 }),
+  L({ id: 'person_derek', literal: 'Derek', type: 'PERSON', subtype: 'FULL_NAME', colorKey: 'person', confidenceBase: 0.84, caseSensitive: true, priority: 25 }),
+  L({ id: 'person_nate', literal: 'Nate', type: 'PERSON', subtype: 'FULL_NAME', colorKey: 'person', confidenceBase: 0.84, caseSensitive: true, priority: 25 }),
 ].sort((a, b) => b.priority - a.priority);
 
 for (const pattern of PREVIEW_PATTERNS) {
