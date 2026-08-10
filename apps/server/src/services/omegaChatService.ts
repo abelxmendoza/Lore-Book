@@ -1741,7 +1741,13 @@ When updating relationship analytics or emotional signals from this thread, weig
     // "Who matters most to me?", "what era am I in?", "what changed?" need
     // reasoning over the narrative graph. Without this gate they fall through
     // to generic chat and get an empathy deflection instead of an answer.
-    if (!workingMemoryPrimary && responseScope.isChatFacingMode(scopePlan.responseMode)) try {
+    //
+    // This was previously also gated on `!workingMemoryPrimary`, which
+    // defaults true and is unset in production — the gate has never actually
+    // run there. These are reasoning questions, not a retrieval-path choice;
+    // `isChatFacingMode` is the guard that actually matters (it already
+    // excludes debug/audit/inspector requests below).
+    if (responseScope.isChatFacingMode(scopePlan.responseMode)) try {
       const { detectCognitionQuestion, answerNarrativeCognition } = await import('./narrative/narrativeReasoner');
       const cognitionKind = detectCognitionQuestion(message);
       if (cognitionKind) {

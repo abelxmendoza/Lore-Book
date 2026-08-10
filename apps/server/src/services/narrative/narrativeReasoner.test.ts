@@ -49,6 +49,25 @@ describe('detectCognitionQuestion — what_changed phrasing', () => {
   });
 });
 
+describe('detectCognitionQuestion — all 8 cognition kinds still route (post-gate-fix regression)', () => {
+  // The gate fix in omegaChatService.ts (removing the `!workingMemoryPrimary`
+  // condition) makes ALL of these reachable in production for the first time,
+  // not just what_changed. One representative phrasing per kind, confirming
+  // none of the existing regexes were accidentally touched.
+  it.each([
+    ['who matters most to me', 'who_matters'],
+    ["who's becoming more important in my life", 'rising_people'],
+    ['what era am I in', 'current_era'],
+    ['what arcs am I in right now', 'active_arcs'],
+    ['what changed recently', 'what_changed'],
+    ['what has my attention lately', 'attention'],
+    ["what's my life about right now", 'life_summary'],
+    ['what am I struggling with', 'struggles'],
+  ] as const)('%s -> %s', (text, expectedKind) => {
+    expect(detectCognitionQuestion(text)).toBe(expectedKind);
+  });
+});
+
 describe('detectRecentChanges — goals and priorities', () => {
   it('surfaces a completed goal within the change window', () => {
     const cctx = emptyContext({
