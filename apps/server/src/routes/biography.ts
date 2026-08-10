@@ -25,6 +25,7 @@ import type { EntitySearchType } from '../services/search/entitySearchTypes';
 import { chatEditBiographySection, updateBiographySection } from '../services/biographySectionService';
 import { mainLifestoryService } from '../services/mainLifestoryService';
 import { getLivingBiographyCard, getBiographyChanges } from '../services/livingBiographyService';
+import { getIdentitySnapshot } from '../services/identitySnapshot';
 import { recompileCoreLorebook } from '../services/biographyGeneration/recompileCoreLorebook';
 import { omegaChatService } from '../services/omegaChatService';
 import {
@@ -1071,11 +1072,42 @@ router.get('/lorebook-recommendations', requireAuth, async (req: AuthenticatedRe
  */
 router.get('/living', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const card = await getLivingBiographyCard(req.user!.id);
-    res.json({ success: true, card });
+    const [cardResult, identitySnapshotResult] = await Promise.allSettled([
+      getLivingBiographyCard(req.user!.id),
+      getIdentitySnapshot(req.user!.id),
+    ]);
+    if (cardResult.status === 'rejected') throw cardResult.reason;
+    const card = cardResult.value;
+    const identitySnapshot = identitySnapshotResult.status === 'fulfilled'
+      ? identitySnapshotResult.value
+      : null;
+    if (identitySnapshotResult.status === 'rejected') {
+      logger.warn(
+        { error: identitySnapshotResult.reason, userId: req.user!.id },
+        'Living biography serving without Identity Snapshot',
+      );
+    }
+    res.json({ success: true, card, identitySnapshot });
   } catch (error) {
     logger.warn({ error, userId: req.user!.id }, 'Living biography card unavailable');
     res.json({ success: false, card: null, error: 'Living biography not available yet' });
+  }
+});
+
+/**
+ * GET /api/biography/identity-snapshot
+ *
+ * Presentation-independent, versioned identity projection. This is a
+ * read-through compiler until the migration ledger is safe enough to
+ * materialize snapshots in a dedicated table.
+ */
+router.get('/identity-snapshot', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const snapshot = await getIdentitySnapshot(req.user!.id);
+    res.json({ success: true, snapshot });
+  } catch (error) {
+    logger.warn({ error, userId: req.user!.id }, 'Identity snapshot unavailable');
+    res.status(503).json({ success: false, snapshot: null, error: 'Identity snapshot not available yet' });
   }
 });
 

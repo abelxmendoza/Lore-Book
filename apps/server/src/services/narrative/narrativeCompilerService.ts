@@ -3,6 +3,7 @@
  * Output: NarrativeIR consumed by all story surfaces.
  */
 import { synthesizeLifeArcs, type EnrichedLifeArc } from '../continuityRuntime/arcs/lifeArcSynthesisService';
+import { projectService } from '../projectService';
 import { supabaseAdmin } from '../supabaseClient';
 import { compileChapter } from './chapterCompilerService';
 import { detectScenes } from './sceneDetectionService';
@@ -85,12 +86,12 @@ async function loadGoals(userId: string): Promise<NarrativeGoal[]> {
 }
 
 async function loadProjects(userId: string): Promise<NarrativeProject[]> {
-  const { data } = await supabaseAdmin
-    .from('organizations')
-    .select('id, name, type')
-    .eq('user_id', userId)
-    .limit(30);
-  return (data ?? []).map((p) => ({ id: p.id, name: p.name, type: p.type ?? 'project' }));
+  const projects = await projectService.listProjects(userId);
+  return projects.slice(0, 30).map((project) => ({
+    id: project.id,
+    name: project.name,
+    type: project.type ?? 'project',
+  }));
 }
 
 async function loadRelationships(userId: string): Promise<NarrativeRelationship[]> {

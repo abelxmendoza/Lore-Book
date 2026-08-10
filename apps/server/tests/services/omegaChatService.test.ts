@@ -19,11 +19,17 @@ vi.mock('../../src/services/locationService');
 vi.mock('../../src/services/ragPacketCacheService');
 // supabaseClient not mocked: test env uses dbAdapter → SupabaseMock (chainable, no DB)
 // OpenAI must be a constructor (new OpenAI()); use function not arrow/vi.fn
-const { openaiCreateFn } = vi.hoisted(() => ({ openaiCreateFn: vi.fn() }));
+const { openaiCreateFn, executeExplicitRecallFn } = vi.hoisted(() => ({
+  openaiCreateFn: vi.fn(),
+  executeExplicitRecallFn: vi.fn(),
+}));
 vi.mock('openai', () => ({
   default: function OpenAI() {
     return { chat: { completions: { create: openaiCreateFn } } };
   },
+}));
+vi.mock('../../src/services/chat/explicitRecallService', () => ({
+  executeExplicitRecall: executeExplicitRecallFn,
 }));
 
 describe('OmegaChatService', () => {
@@ -31,6 +37,12 @@ describe('OmegaChatService', () => {
     vi.clearAllMocks();
     openaiCreateFn.mockResolvedValue({
       choices: [{ message: { content: 'Test response' } }],
+    });
+    executeExplicitRecallFn.mockResolvedValue({
+      content: 'What I know about you: a grounded biography.',
+      response_mode: 'RECALL',
+      confidence: 0.9,
+      metadata: { recall_intent: 'biography' },
     });
     // Array reads resolve empty; single-row reads/inserts (e.g. the message
     // save's insert().select('id').single()) resolve to a row with an id so the
@@ -150,6 +162,32 @@ describe('OmegaChatService', () => {
       expect(result.stream).toBeDefined();
       expect(result.metadata).toBeDefined();
     });
+
+    it('uses deterministic biography recall even when Working Memory is primary', async () => {
+      const previousWorkingMemoryPrimary = process.env.WORKING_MEMORY_PRIMARY;
+      process.env.WORKING_MEMORY_PRIMARY = 'true';
+
+      try {
+        const result = await omegaChatService.chatStream(
+          'user-123',
+          'What do you remember about me?',
+        );
+
+        expect(executeExplicitRecallFn).toHaveBeenCalledWith(
+          'user-123',
+          'What do you remember about me?',
+          [],
+          { threadId: undefined },
+        );
+        expect(result.content).toContain('grounded biography');
+        expect(ragPacketCacheService.getCachedPacket).not.toHaveBeenCalled();
+      } finally {
+        if (previousWorkingMemoryPrimary === undefined) {
+          delete process.env.WORKING_MEMORY_PRIMARY;
+        } else {
+          process.env.WORKING_MEMORY_PRIMARY = previousWorkingMemoryPrimary;
+        }
+      }
+    });
   });
 });
-

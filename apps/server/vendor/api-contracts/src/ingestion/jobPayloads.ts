@@ -147,7 +147,7 @@ export const eventEligibilityReasonSchema = z.enum([
 export const eventCandidatePayloadSchema = z
   .object({
     title: z.string().min(1).max(300),
-    occurredAt: z.string().min(1),
+    occurredAt: z.string().min(1).nullable(),
     recordedAt: z.string().min(1),
     temporalPrecision: temporalPrecisionSchema,
     temporalSource: temporalSourceSchema,
@@ -166,7 +166,7 @@ export const eventCandidatePayloadSchema = z
         path: ['eligibilityReason'],
       });
     }
-    if (val.occurredAt === val.recordedAt && val.temporalSource === 'system_default') {
+    if (val.occurredAt && val.occurredAt === val.recordedAt && val.temporalSource === 'system_default') {
       // still allowed, but precision must not pretend exactness without source
       if (val.temporalPrecision === 'exact') {
         ctx.addIssue({

@@ -61,7 +61,7 @@ const REFLECTION =
   /\b(?:i(?:'?ve)? realized|i now (?:see|understand|realize)|in hindsight|looking back(?: on it)?|i should(?:n't| not)? have|i shouldn't have)\b/i;
 
 const PERSONAL_EVENT =
-  /\b(?:i|we)\s+(?:(?:briefly|recently|finally|just|today|yesterday)\s+)?(?:went|visited|saw|attended|worked|built|created|finished|completed|started|began|ended|left|joined|quit|moved|traveled|arrived|stayed|met|dated|broke up|hooked up|blocked|unblocked|hired|interviewed|onboard(?:ed|ing)|received|missed|skipped|ran|jogged|drove)\b/i;
+  /\b(?:i|we)\s+(?:(?:briefly|recently|finally|just|today|yesterday)\s+)?(?:(?:was|were|got|have been|had been)\s+)?(?:went|visited|saw|attended|worked|built|created|finished|completed|started|began|ended|left|joined|quit|moved|traveled|arrived|stayed|met|dated|broke up|hooked up|blocked|unblocked|hired|interviewed|onboard(?:ed|ing)|received|missed|skipped|ran|jogged|drove|detained|arrested|taken into custody)\b/i;
 const RELATIONSHIP_EVENT =
   /\b(?:blocked me|unblocked me|broke up|got together|hooked up|argued|fought|reconnected|fell out)\b/i;
 const THIRD_PARTY_EVENT =

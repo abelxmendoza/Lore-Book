@@ -22,6 +22,7 @@ test('active migration chain starts from the production schema baseline', () => 
     '20260807040100_narrative_moments_kind_expand.sql',
     '20260807040200_knowledge_kernel_foundation.sql',
     '20260807040300_optimize_assertion_evidence_rls.sql',
+    '20260807093500_system_knowledge_content_tracking_explanation.sql',
   ]);
 });
 

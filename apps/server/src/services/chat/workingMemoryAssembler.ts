@@ -1,7 +1,12 @@
 import { normalizeNameKey } from '../../utils/nameNormalization';
 import type { TemporalWindow } from '../../utils/temporalAnchorResolver';
-import { classifyEntity, type EntityClass, type RootType } from '../entities/entityClassifier';
 import { stitchedTimelineService } from '../chronologyV2/stitchedTimelineService';
+import {
+  buildContextAssemblyPlan,
+  evaluateContextCandidate,
+  type ContextAssemblyPlan,
+} from '../contextAssembly';
+import { classifyEntity, type EntityClass, type RootType } from '../entities/entityClassifier';
 import { truthStateWeight } from '../provenance/epistemicWeights';
 import { supabaseAdmin } from '../supabaseClient';
 import {
@@ -21,6 +26,7 @@ export type WorkingMemoryIntent =
   | 'PERSON_QUERY'
   | 'PLACE_QUERY'
   | 'PROJECT_QUERY'
+  | 'CAREER_QUERY'
   | 'GOAL_QUERY'
   | 'SKILL_QUERY'
   | 'COMMUNITY_QUERY'
@@ -84,6 +90,17 @@ export type WorkingMemoryItem = {
 
 export type WorkingMemoryAssembly = {
   intent: WorkingMemoryIntent;
+  /** Virtual Blueprint 14 context boundary used before ranking. */
+  contextPlan: ContextAssemblyPlan;
+  contextDiagnostics: {
+    candidatesConsidered: number;
+    accepted: number;
+    prunedForDrift: number;
+    coverageEstimate: number;
+    confidenceEstimate: number;
+    completenessEstimate: number;
+    newestEvidenceAt: string | null;
+  };
   /** Whether intent came from deterministic self/identity fast path or rule/model classifier. */
   intentSource?: 'deterministic_fast_path' | 'model_or_rule_classifier';
   /** Set when intent is about the authenticated user (not a third party). */
@@ -320,6 +337,7 @@ const INTENT_RULES: Array<{ intent: WorkingMemoryIntent; pattern: RegExp }> = [
   { intent: 'ARC_QUERY', pattern: /\b(what stor(?:y|ies) am i living|life arcs?|major arcs?|what arcs?|dominant arcs?|narrative threads?|what story am i living|what is my story|tell me about my .* arc|my .* arc)\b/i },
   { intent: 'GOAL_QUERY', pattern: /\b(my goals?|what are my (?:current )?goals?|what.*\bgoals?\b|what.*(?:working toward|working towards)|what have i abandoned|abandoned goals?|what am i trying to do with my life|trying to do with my life|what is changing|aspirations?|what do i want to (?:achieve|accomplish|do)|my objectives?|what am i aiming (?:for|at)|my (?:dreams|ambitions)|am i (?:on track|making progress) (?:on|toward|with) my|current goals?|my priorities|what matters most|what should i focus on)\b/i },
   { intent: 'SKILL_QUERY', pattern: /\b(my skills?|what skills|what skills do i have|skills (?:define|describe) me|what (?:can i do|am i good at)|what am i (?:learning|practicing|building)|my abilities|how good am i at|am i (?:improving|getting better) at|am i leveling|my proficienc)\b/i },
+  { intent: 'CAREER_QUERY', pattern: /\b(my career|career timeline|career history|work history|jobs? (?:have i|did i|i have|i had)|employment history|professional journey|where have i worked|companies i (?:worked|work) (?:at|for)|my employers?)\b/i },
   { intent: 'PROJECT_QUERY', pattern: /\b(projects? am i (?:working on|building)|what projects|my projects|how is .* progressing|progress on|status of|how's .* going|projects?\b|lorebook)\b/i },
   { intent: 'COMMUNITY_QUERY', pattern: /\b(my communities|communities am i|social circles?|groups am i part of|what communities|communities matter|my crew|my circles?|organizations i belong|clubs am i in|who are my .* people)\b/i },
   { intent: 'EVENT_QUERY', pattern: /\b(what happened at .*(graduation|party|wedding|funeral|birthday)|what happened during|what happened last|what did i do last|last summer|last year|last month|last week|tell me about .*graduation|what did i do with|event)\b/i },
@@ -474,7 +492,7 @@ function scoreCandidate(candidate: Candidate): WorkingMemoryItem {
   };
 }
 
-function distribute(items: WorkingMemoryItem[]): Omit<WorkingMemoryAssembly, 'intent' | 'entities' | 'confidence' | 'budget' | 'rejected' | 'factsCoveredEntityIds'> {
+function distribute(items: WorkingMemoryItem[]): Omit<WorkingMemoryAssembly, 'intent' | 'contextPlan' | 'contextDiagnostics' | 'entities' | 'confidence' | 'budget' | 'rejected' | 'factsCoveredEntityIds'> {
   return {
     episodes: items.filter((item) => item.type === 'episode'),
     events: items.filter((item) => item.type === 'event'),
@@ -582,7 +600,7 @@ export function buildWorkingMemoryPacket(assembly: WorkingMemoryAssembly): Worki
 
   const text = [
     `**WORKING MEMORY PACKET**`,
-    `intent=${assembly.intent} | confidence=${assembly.confidence.toFixed(2)} | selected=${assembly.budget.selected}/${assembly.budget.maxItems} | rejected=${assembly.budget.rejected}`,
+    `intent=${assembly.intent} | context=${assembly.contextPlan.primary} | secondary=${assembly.contextPlan.secondary.join(',') || 'none'} | excluded=${assembly.contextPlan.excluded.join(',') || 'none'} | confidence=${assembly.confidence.toFixed(2)} | selected=${assembly.budget.selected}/${assembly.budget.maxItems} | rejected=${assembly.budget.rejected}`,
     '',
     section('People', people),
     section('Places', places),
@@ -1348,7 +1366,9 @@ async function loadTextualCandidates(
           .select('id, content, summary, date, tags, source, metadata')
           .eq('user_id', userId);
         q = applyDateRange(q, 'date');
-        return q.order('date', { ascending: false }).limit(temporal ? 12 : intent === 'LIFE_REVIEW' ? 8 : 6);
+        return q.order('date', { ascending: false }).limit(
+          temporal ? 12 : intent === 'CAREER_QUERY' ? 20 : intent === 'LIFE_REVIEW' ? 8 : 6,
+        );
       }
     ),
     threadId
@@ -1409,7 +1429,7 @@ async function loadTextualCandidates(
             start_time: isoRange?.gte,
             end_time: isoRange?.lte,
             character_id: characterId ?? undefined,
-            limit: temporal || intent === 'LIFE_REVIEW' || intent === 'EVENT_QUERY' || intent === 'RELATIONSHIP_QUERY' ? 12 : 6,
+            limit: temporal || intent === 'CAREER_QUERY' || intent === 'LIFE_REVIEW' || intent === 'EVENT_QUERY' || intent === 'RELATIONSHIP_QUERY' ? 20 : 6,
           })
           .then((data) => ({ data, error: undefined }))
     ),
@@ -1526,7 +1546,7 @@ async function loadTextualCandidates(
   for (const project of projects) {
     const name = String(project.name ?? project.title ?? '');
     const text = `${name} ${project.description ?? ''} ${project.status ?? ''}`;
-    if (intent !== 'PROJECT_QUERY' && intent !== 'LIFE_REVIEW' && intent !== 'IDENTITY_QUERY' && (wantsTarget ? !includeByIntent(text) : true)) continue;
+    if (intent !== 'PROJECT_QUERY' && intent !== 'CAREER_QUERY' && intent !== 'LIFE_REVIEW' && intent !== 'IDENTITY_QUERY' && (wantsTarget ? !includeByIntent(text) : true)) continue;
     out.push({
       id: `project:${project.id}`,
       type: 'project',
@@ -1571,7 +1591,7 @@ async function loadSkillCandidates(
   target: string | null,
   intent: WorkingMemoryIntent
 ): Promise<Candidate[]> {
-  if (intent !== 'SKILL_QUERY' && intent !== 'LIFE_REVIEW' && intent !== 'IDENTITY_QUERY' && !target) {
+  if (intent !== 'SKILL_QUERY' && intent !== 'CAREER_QUERY' && intent !== 'LIFE_REVIEW' && intent !== 'IDENTITY_QUERY' && !target) {
     return [];
   }
   const rows = await scope.traced(
@@ -1593,7 +1613,7 @@ async function loadSkillCandidates(
     const name = String(row.skill_name ?? '');
     if (!name) continue;
     const matches = targetKey ? normalizeNameKey(name).includes(targetKey) || targetKey.includes(normalizeNameKey(name)) : false;
-    if (intent !== 'SKILL_QUERY' && intent !== 'LIFE_REVIEW' && intent !== 'IDENTITY_QUERY' && !matches) continue;
+    if (intent !== 'SKILL_QUERY' && intent !== 'CAREER_QUERY' && intent !== 'LIFE_REVIEW' && intent !== 'IDENTITY_QUERY' && !matches) continue;
     const level = Number(row.current_level ?? 1);
     const practice = Number(row.practice_count ?? 0);
     const category = String(row.skill_category ?? 'other');
@@ -1609,7 +1629,7 @@ async function loadSkillCandidates(
       source: 'skills',
       date: row.last_practiced_at ?? null,
       confidence: Number(row.confidence_score ?? 0.7),
-      relevance: matches ? 0.95 : intent === 'SKILL_QUERY' ? 0.9 : 0.55,
+      relevance: matches ? 0.95 : intent === 'SKILL_QUERY' ? 0.9 : intent === 'CAREER_QUERY' && isProfessional ? 0.84 : 0.55,
       importance: clamp01(level / 10 + practice / 50),
       significance: clamp01(0.4 + practice / 40),
       relationshipDistance: 0.5,
@@ -1853,7 +1873,7 @@ async function loadProjectCandidates(
   target: string | null,
   intent: WorkingMemoryIntent
 ): Promise<Candidate[]> {
-  if (intent !== 'PROJECT_QUERY' && intent !== 'LIFE_REVIEW' && intent !== 'IDENTITY_QUERY' && !target) {
+  if (intent !== 'PROJECT_QUERY' && intent !== 'CAREER_QUERY' && intent !== 'LIFE_REVIEW' && intent !== 'IDENTITY_QUERY' && !target) {
     return [];
   }
   const rows = await scope.traced(
@@ -2231,6 +2251,7 @@ export async function assembleWorkingMemory(
   const temporalResolved: ResolvedTemporalQuery = classifyTemporalQuery(input.question);
   const classified = classifyIntentWithSource(input.question);
   const intent = classified.intent;
+  const contextPlan = buildContextAssemblyPlan({ question: input.question, intent });
   // Self/identity questions never treat a third-party name as the retrieval subject.
   const target =
     classified.subject === 'current_user' ? null : extractQuestionTarget(input.question);
@@ -2340,7 +2361,33 @@ export async function assembleWorkingMemory(
     if (contentKey) seenContent.add(contentKey);
     return true;
   });
-  const { selected, rejected } = selectBudget(deduped, maxItems, intent, target);
+  const contextAccepted: Candidate[] = [];
+  const contextRejected: Array<WorkingMemoryItem & { rejectedReason: string }> = [];
+  for (const candidate of deduped) {
+    const verdict = evaluateContextCandidate(candidate, contextPlan, { target });
+    const annotated: Candidate = {
+      ...candidate,
+      metadata: {
+        ...(candidate.metadata ?? {}),
+        contexts: verdict.memberships,
+        context_match: verdict.matchedContexts,
+        context_drift_score: verdict.driftScore,
+      },
+      reasons: [...(candidate.reasons ?? []), verdict.reason],
+    };
+    if (verdict.accepted) contextAccepted.push(annotated);
+    else contextRejected.push({ ...scoreCandidate(annotated), rejectedReason: verdict.reason });
+  }
+  const budgetSelection = selectBudget(contextAccepted, maxItems, intent, target);
+  const selected = budgetSelection.selected;
+  const rejected = [...contextRejected, ...budgetSelection.rejected];
+  const contextConfidence = selected.length
+    ? selected.reduce((sum, item) => sum + item.confidence, 0) / selected.length
+    : 0;
+  const newestEvidenceTime = selected.reduce((newest, item) => {
+    const timestamp = item.date ? new Date(item.date).getTime() : Number.NaN;
+    return Number.isFinite(timestamp) ? Math.max(newest, timestamp) : newest;
+  }, 0);
   const rankingMs = Date.now() - rankingStarted;
   const distributed = distribute(selected);
 
@@ -2351,6 +2398,16 @@ export async function assembleWorkingMemory(
 
   return {
     intent,
+    contextPlan,
+    contextDiagnostics: {
+      candidatesConsidered: deduped.length,
+      accepted: contextAccepted.length,
+      prunedForDrift: contextRejected.length,
+      coverageEstimate: Number((contextAccepted.length / Math.max(1, deduped.length)).toFixed(2)),
+      confidenceEstimate: Number(contextConfidence.toFixed(2)),
+      completenessEstimate: Number(Math.min(1, selected.length / 5).toFixed(2)),
+      newestEvidenceAt: newestEvidenceTime > 0 ? new Date(newestEvidenceTime).toISOString() : null,
+    },
     intentSource: classified.intentSource,
     ...(classified.subject ? { subject: classified.subject } : {}),
     entities,

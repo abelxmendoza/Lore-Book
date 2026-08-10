@@ -29,7 +29,7 @@ export class MemoryContextBuilder {
 
     const identityText = ctx.identity && Object.keys(ctx.identity).length > 0
       ? JSON.stringify(ctx.identity, null, 2)
-      : 'No identity profile yet.';
+      : 'Identity Snapshot was not attached to this legacy prompt context. This does not mean LoreBook has no stored memory.';
 
     const valuesText = ctx.values && Object.keys(ctx.values).length > 0
       ? JSON.stringify(ctx.values, null, 2)
@@ -141,4 +141,3 @@ Respond in the user's preferred tone:
     `;
   }
 }
-

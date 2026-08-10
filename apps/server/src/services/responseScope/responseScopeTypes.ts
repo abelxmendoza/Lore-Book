@@ -7,6 +7,8 @@
  * never render in normal chat.
  */
 
+import type { ContextAssemblyPlan } from '../contextAssembly';
+
 export type ResponseMode =
   | 'chat'
   | 'focused_recall'
@@ -70,6 +72,7 @@ export type ActiveConversationContext = {
 
 export type ResponseScopePlan = {
   intent: ScopeIntent;
+  contextPlan: ContextAssemblyPlan;
   responseMode: ResponseMode;
   scopeSource: ScopeSource;
 

@@ -26,6 +26,21 @@ vi.mock('../../../src/services/supabaseClient', () => ({
   supabaseAdmin: { from: (...args: unknown[]) => fromMock(...args) },
 }));
 
+const { getIdentitySnapshotMock, composeIdentityRecallMock, getNarrativeIdentityRecallMock } = vi.hoisted(() => ({
+  getIdentitySnapshotMock: vi.fn(),
+  composeIdentityRecallMock: vi.fn(),
+  getNarrativeIdentityRecallMock: vi.fn(),
+}));
+
+vi.mock('../../../src/services/identitySnapshot', () => ({
+  getIdentitySnapshot: getIdentitySnapshotMock,
+  composeIdentityRecall: composeIdentityRecallMock,
+}));
+
+vi.mock('../../../src/services/livingBiographyService', () => ({
+  getNarrativeIdentityRecall: getNarrativeIdentityRecallMock,
+}));
+
 import { routeRecallQuery } from '../../../src/services/chat/recallQueryRouter';
 import { formatCharacterRosterForChat } from '../../../src/services/chat/foundationRecallDataService';
 
@@ -43,6 +58,26 @@ const RELATIONSHIPS = [
 describe('Sprint AF — foundation recall', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getIdentitySnapshotMock.mockResolvedValue({
+      id: 'identity-test',
+      algorithmVersion: 'identity-snapshot-v1',
+      stale: false,
+      confidence: 0.84,
+      coverage: [{ domain: 'career', score: 88, band: 'strong' }],
+      provenance: { evidenceCount: 12 },
+    });
+    composeIdentityRecallMock.mockReturnValue([
+        '## Core identity',
+        'Marcus — a robotics engineer and product builder.',
+        '',
+        '## Current chapter',
+        'Career Rebuilding and Building Chapter.',
+      ].join('\n'));
+    getNarrativeIdentityRecallMock.mockResolvedValue({
+      content: '## Who you are\nA concise grounded fallback.',
+      card: { hasEnoughData: true },
+      provenance: { sourceEntryCount: 3 },
+    });
     tableResults = {
       characters: { data: CHARACTERS, error: null },
       locations: { data: [], error: null },
@@ -175,6 +210,20 @@ describe('Sprint AF — foundation recall', () => {
 describe('routeRecallQuery — character list intent (Sprint H fix)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getIdentitySnapshotMock.mockResolvedValue({
+      id: 'identity-test',
+      algorithmVersion: 'identity-snapshot-v1',
+      stale: false,
+      confidence: 0.84,
+      coverage: [{ domain: 'career', score: 88, band: 'strong' }],
+      provenance: { evidenceCount: 12 },
+    });
+    composeIdentityRecallMock.mockReturnValue('## Core identity\nMarcus — a robotics engineer and product builder.');
+    getNarrativeIdentityRecallMock.mockResolvedValue({
+      content: '## Who you are\nA concise grounded fallback.',
+      card: { hasEnoughData: true },
+      provenance: { sourceEntryCount: 3 },
+    });
     tableResults = {
       locations: { data: [], error: null },
       organizations: { data: [], error: null },
@@ -219,71 +268,35 @@ describe('routeRecallQuery — character list intent (Sprint H fix)', () => {
     const result = await routeRecallQuery('user-1', "Recall everything you've learned about me");
     expect(result.intent).toBe('biography');
     expect(result.foundationPrimary).toBe(true);
-    expect(result.contextBlock).toContain('Some narrative.');
+    expect(result.contextBlock).toContain('Core identity');
+    expect(result.metadata).toMatchObject({
+      narrative_recall_version: 3,
+      identity_snapshot_id: 'identity-test',
+      identity_snapshot_version: 'identity-snapshot-v1',
+    });
   });
 
-  it('builds identity recall from core identity through chronological life chapters before recent context', async () => {
-    tableResults = {
-      ...tableResults,
-      narrative_accounts: {
-        data: {
-          narrative_text: 'Abel recently started working at Ring.',
-          metadata: {
-            facts: {
-              identity: {
-                name: 'Abel',
-                hometown: 'Whittier',
-                education: 'CSUF Computer Science graduate',
-                career: 'Robotics and software engineering',
-              },
-            },
-            themes: [{ theme: 'Career & work' }],
-          },
-        },
-        error: null,
-      },
-      biographies: {
-        data: {
-          title: 'My Full Life Story',
-          subtitle: 'A life shaped by building, fighting, and reinvention.',
-          biography_data: {
-            chapters: [
-              {
-                title: 'The Ring Era',
-                text: 'Years later, I joined Ring and entered a new technical chapter.',
-                timeSpan: { start: '2026-06-01', end: '2026-07-01' },
-              },
-              {
-                title: 'Early Foundations',
-                text: 'I grew up in Whittier before restaurant work and college reshaped my direction.',
-                timeSpan: { start: '2000-01-01', end: '2018-01-01' },
-              },
-              {
-                title: 'Robotics Takes Hold',
-                text: 'Solar work and technical study led into robotics projects.',
-                timeSpan: { start: '2019-01-01', end: '2025-12-31' },
-              },
-            ],
-          },
-        },
-        error: null,
-      },
-    };
-
+  it('returns the concise shared identity projection instead of the full stored biography', async () => {
     const result = await routeRecallQuery('user-1', 'Who am I?');
 
-    expect(result.contextBlock).toContain('## CORE IDENTITY');
-    expect(result.contextBlock).toContain('Hometown: Whittier');
-    expect(result.contextBlock).toContain('## LIFE STORY — CHRONOLOGICAL');
-    expect(result.contextBlock.indexOf('Early Foundations')).toBeLessThan(
-      result.contextBlock.indexOf('Robotics Takes Hold'),
-    );
-    expect(result.contextBlock.indexOf('Robotics Takes Hold')).toBeLessThan(
-      result.contextBlock.indexOf('The Ring Era'),
-    );
-    expect(result.contextBlock.indexOf('The Ring Era')).toBeLessThan(
-      result.contextBlock.indexOf('## CURRENT CHAPTER'),
-    );
-    expect(result.contextBlock).not.toContain('People in your story');
+    expect(result.contextBlock).toContain('## Core identity');
+    expect(result.contextBlock).toContain('robotics engineer');
+    expect(result.contextBlock).not.toContain('LIFE STORY — CHRONOLOGICAL');
+    expect(result.contextBlock).not.toMatch(/active|pending|dismissed|superseded/i);
+    expect(getIdentitySnapshotMock).toHaveBeenCalledWith('user-1');
+    expect(composeIdentityRecallMock).toHaveBeenCalled();
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it('degrades to the concise Living Biography projection instead of breaking chat', async () => {
+    getIdentitySnapshotMock.mockRejectedValueOnce(new Error('projection unavailable'));
+
+    const result = await routeRecallQuery('user-1', 'What do you remember about me?');
+
+    expect(result.contextBlock).toContain('concise grounded fallback');
+    expect(result.metadata).toMatchObject({
+      narrative_recall_version: 2,
+      identity_snapshot_degraded: true,
+    });
   });
 });

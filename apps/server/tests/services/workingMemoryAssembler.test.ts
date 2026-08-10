@@ -630,6 +630,18 @@ describe('Working Memory Assembler', () => {
     expect(result.episodes.some((item) => /LifeLedger/i.test(item.content))).toBe(true);
   });
 
+  it('classifies career recall as a bounded career context', async () => {
+    const result = await assembleWorkingMemory({ userId: 'user-1', question: 'What jobs have I had?' });
+
+    expect(result.intent).toBe('CAREER_QUERY');
+    expect(result.contextPlan.primary).toBe('career');
+    expect(result.contextPlan.excluded).toContain('relationships');
+    expect(result.contextDiagnostics.candidatesConsidered).toBeGreaterThan(0);
+    expect(result.contextDiagnostics.coverageEstimate).toBeGreaterThanOrEqual(0);
+    expect(result.contextDiagnostics.completenessEstimate).toBeLessThanOrEqual(1);
+    expect(result.rejected.some((item) => item.rejectedReason.startsWith('context_') || item.rejectedReason.startsWith('outside_context:'))).toBe(true);
+  });
+
   it('keeps Amazon as an organization, not a person', async () => {
     const result = await assembleWorkingMemory({ userId: 'user-1', question: 'What do you know about Amazon?' });
 

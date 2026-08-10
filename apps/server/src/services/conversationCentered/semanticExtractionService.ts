@@ -8,6 +8,47 @@ import { logger } from '../../logger';
 import type { ExtractedUnitType, ExtractionResult } from '../../types/conversationCentered';
 import { completeFor } from '../llm';
 
+const UNIT_PRIORITY: Record<ExtractedUnitType, number> = {
+  CORRECTION: 0,
+  EXPERIENCE: 1,
+  DECISION: 2,
+  FEELING: 3,
+  THOUGHT: 4,
+  PERCEPTION: 5,
+  CLAIM: 6,
+};
+
+/**
+ * Keep one semantic object per independently useful meaning. Older rules used
+ * broad tokens such as "I", "is", and "focused" to emit THOUGHT, CLAIM,
+ * DECISION, and FEELING for the same sentence. That multiplied storage without
+ * adding knowledge. Explicit linguistic cues now govern the reflective types,
+ * and one utterance is capped at three complementary units.
+ */
+export function consolidateSemanticUnits(result: ExtractionResult, text: string): ExtractionResult {
+  const explicitFeeling = /\b(?:i\s+(?:feel|felt)|i(?:'m| am)\s+(?:happy|sad|angry|anxious|worried|scared|proud|ashamed|embarrassed|frustrated|relieved|stressed|overwhelmed|lonely|hopeful|depressed|excited))\b/i.test(text);
+  const explicitThought = /\b(?:i\s+(?:think|thought|believe|realized?|understand|wonder|guess|suppose|noticed?|reflect)|in hindsight|looking back)\b/i.test(text);
+  const explicitDecision = /\b(?:i\s+(?:decided|chose|choose|plan|intend|commit)|i(?:'ll| will)|i(?:'m| am)\s+going to|right now i(?:'m| am)\s+(?:mainly\s+)?focused on|current priorities? (?:are|is))\b/i.test(text);
+  const explicitPerception = /\b(?:i heard|i was told|someone said|they said|apparently|allegedly|reportedly|supposedly|i suspect|not sure|uncertain)\b/i.test(text);
+  const explicitClaim = /\b(?:actually|definitely|certainly|fact is|the truth is|according to|is not|isn't|are not|aren't|no longer|hasn't|haven't)\b/i.test(text);
+
+  const byType = new Map<ExtractedUnitType, ExtractionResult['units'][number]>();
+  for (const unit of result.units) {
+    if (unit.type === 'FEELING' && !explicitFeeling) continue;
+    if (unit.type === 'THOUGHT' && !explicitThought) continue;
+    if (unit.type === 'DECISION' && !explicitDecision) continue;
+    if (unit.type === 'PERCEPTION' && !explicitPerception) continue;
+    if (unit.type === 'CLAIM' && !explicitClaim && result.units.some((other) => other.type !== 'CLAIM')) continue;
+    const previous = byType.get(unit.type);
+    if (!previous || unit.confidence > previous.confidence) byType.set(unit.type, unit);
+  }
+
+  const units = [...byType.values()]
+    .sort((a, b) => UNIT_PRIORITY[a.type] - UNIT_PRIORITY[b.type] || b.confidence - a.confidence)
+    .slice(0, 3);
+  return { ...result, units: units.length ? units : result.units.slice(0, 1) };
+}
+
 
 /**
  * Extracts semantic units from normalized text
@@ -39,7 +80,10 @@ export class SemanticExtractionService {
       }
 
       // Otherwise, use LLM for complex cases
-      return await this.llmExtraction(normalizedText, conversationHistory, isAIMessage);
+      return consolidateSemanticUnits(
+        await this.llmExtraction(normalizedText, conversationHistory, isAIMessage),
+        normalizedText,
+      );
     } catch (error) {
       logger.error({ error, text: normalizedText }, 'Failed to extract semantic units');
       // Fallback to rule-based
@@ -208,7 +252,11 @@ export class SemanticExtractionService {
       });
     }
 
-    return { units };
+    if (/\b(?:i|we)\s+(?:was|were|got|have been|had been)?\s*(?:detained|arrested|taken into custody)\b/i.test(text) && !units.some((unit) => unit.type === 'EXPERIENCE')) {
+      units.push({ type: 'EXPERIENCE', content: text, confidence: 0.92 });
+    }
+
+    return consolidateSemanticUnits({ units }, text);
   }
 
   /**
@@ -341,4 +389,3 @@ Be precise. Split multiple events when appropriate. Preserve Spanish terms. Extr
 }
 
 export const semanticExtractionService = new SemanticExtractionService();
-

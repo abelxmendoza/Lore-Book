@@ -13,9 +13,12 @@ export type TemporalPrecision =
   | 'exact'
   | 'time_of_day'
   | 'date'
+  | 'week'
   | 'month'
   | 'season'
+  | 'quarter'
   | 'year'
+  | 'approximate'
   | 'unknown';
 
 export type TemporalSource =
@@ -149,7 +152,17 @@ export function classifyTemporalExpression(expression: string | null | undefined
   if (RELATIVE_RE.test(text)) {
     return {
       source: 'relative_expression',
-      precision: /night|tonight|morning|evening|afternoon/i.test(text) ? 'time_of_day' : 'date',
+      precision: /last week|weeks? ago/i.test(text)
+        ? 'week'
+        : /last month|months? ago/i.test(text)
+          ? 'month'
+          : /last year|years? ago/i.test(text)
+            ? 'year'
+            : /recently|other day|other night/i.test(text)
+              ? 'approximate'
+              : /night|tonight|morning|evening|afternoon/i.test(text)
+                ? 'time_of_day'
+                : 'date',
     };
   }
   if (hasMonth) return { source: 'user_stated', precision: 'month' };

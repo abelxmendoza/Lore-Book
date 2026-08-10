@@ -453,7 +453,12 @@ export const TimelineStitchedView = ({
             onClose={() => setSelected(null)}
             title="Event details"
           >
-            <TimelineInlineDate iso={selected.sortTime} size="lg" />
+            <TimelineInlineDate
+              iso={selected.sortTime}
+              size="lg"
+              precision={selected.timePrecision}
+              confidence={selected.timeConfidence}
+            />
             <p className="text-sm font-medium text-white mt-3">{selected.title}</p>
             {selected.body && (
               <p className="text-sm text-white/60 mt-2 leading-relaxed">{selected.body}</p>
@@ -461,7 +466,12 @@ export const TimelineStitchedView = ({
           </MobileBottomSheet>
         ) : (
           <div className="flex-shrink-0 border-t border-white/10 px-4 sm:px-6 py-3 bg-black/90 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-            <TimelineInlineDate iso={selected.sortTime} size="lg" />
+            <TimelineInlineDate
+              iso={selected.sortTime}
+              size="lg"
+              precision={selected.timePrecision}
+              confidence={selected.timeConfidence}
+            />
             <p className="text-sm text-white/70 mt-2">{selected.title}</p>
             {selected.body && (
               <p className="text-xs text-white/50 mt-1 line-clamp-3">{selected.body}</p>

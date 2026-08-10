@@ -173,6 +173,25 @@ describe('stageContractGate regressions (real failure fixtures)', () => {
       });
       expect(r.accepted).toBe(true);
     });
+
+    it('keeps unknown occurrence null instead of copying recordedAt', () => {
+      const r = validateEventBeforePersist({
+        title: 'Started a new creative practice',
+        occurredAt: null,
+        recordedAt: '2026-08-09T12:00:00.000Z',
+        temporalPrecision: 'unknown',
+        temporalSource: 'unknown',
+        eligibilityEligible: true,
+        eligibilityReason: 'personal_event',
+        evidenceIds: ['unit-unknown-time'],
+        publishableTitle: true,
+      });
+      expect(r.accepted).toBe(true);
+      if (r.accepted && 'occurredAt' in r.value) {
+        expect(r.value.occurredAt).toBeNull();
+        expect(r.value.recordedAt).toBe('2026-08-09T12:00:00.000Z');
+      }
+    });
   });
 
   describe('memory_proposal / correction', () => {

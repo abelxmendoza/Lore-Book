@@ -81,6 +81,13 @@ export type CompiledSubjectTimelineEvent = {
   time_precision: string;
   time_confidence: number;
   occurrence_status?: StitchedTimelineItem['occurrenceStatus'];
+  occurred_at: string | null;
+  mentioned_at: string | null;
+  recorded_at: string | null;
+  known_from: string | null;
+  valid_from: string | null;
+  valid_until: string | null;
+  temporal_provenance: NonNullable<StitchedTimelineItem['temporal']>['provenance'];
   phase: SubjectTimelinePhase;
   subjectRelation: SubjectRelation;
   relevance: number;
@@ -141,7 +148,7 @@ const STOP_WORDS = new Set([
 ]);
 
 const WORK_CUES =
-  /\b(work|worked|working|job|role|career|hire|hired|interview|recruit|offer|onboard|training|team|manager|coworker|contract|shift|lab|ticket|project|task|terminated|fired|quit|resigned)\b/i;
+  /\b(work|worked|working|job|role|career|hire|hired|started|joined|employment|employer|interview|recruit|offer|onboard|training|team|manager|coworker|contract|shift|lab|ticket|project|task|promotion|promoted|terminated|fired|laid off|quit|resigned|graduated|degree|certification)\b/i;
 const PRELUDE_CUES =
   /\b(interview|recruit|application|applied|offer|background check|identity verification|preparing|before starting|onboard)\b/i;
 const BEGINNING_CUES =
@@ -374,7 +381,26 @@ function relationFor(
     return { relation: 'DIRECT_EVENT', relevance: 1, reason: `Occurred on ${intent.exactDate}` };
   }
 
+  // A generic domain timeline ("my career timeline") has no entity to anchor
+  // it, so domain evidence is mandatory. This prevents retrieval vocabulary
+  // such as "my" or "timeline" from admitting unrelated personal events.
+  if (!subject && intent.mode === 'EMPLOYMENT_TIMELINE') {
+    if (!workRelated) return null;
+    return {
+      relation: phase === 'transition' ? 'TRANSITION' : 'DIRECT_WORK_ACTIVITY',
+      relevance: phase === 'transition' ? 0.96 : 0.9,
+      reason: 'Canonical career-domain event',
+    };
+  }
+
   if (direct) {
+    if (intent.mode === 'EMPLOYMENT_TIMELINE' && !workRelated) {
+      return {
+        relation: 'INCIDENTAL_MENTION',
+        relevance: 0.35,
+        reason: 'Linked to the employer but not a career event',
+      };
+    }
     if (phase === 'transition') {
       return { relation: 'TRANSITION', relevance: 0.99, reason: 'Directly linked transition for this subject' };
     }
@@ -448,6 +474,13 @@ function compileEvent(
     time_precision: item.timePrecision ?? 'approximate',
     time_confidence: item.timeConfidence ?? item.confidence ?? 0.5,
     occurrence_status: item.occurrenceStatus,
+    occurred_at: item.temporal?.occurred.start ?? item.occurredAt ?? item.sortTime,
+    mentioned_at: item.temporal?.mentionedAt ?? item.mentionedAt ?? null,
+    recorded_at: item.temporal?.recordedAt ?? item.recordedAt ?? null,
+    known_from: item.temporal?.knownFrom ?? item.knownFrom ?? null,
+    valid_from: item.temporal?.validFrom ?? item.validFrom ?? null,
+    valid_until: item.temporal?.validUntil ?? item.validUntil ?? null,
+    temporal_provenance: item.temporal?.provenance ?? [],
     phase,
     subjectRelation: scored.relation,
     relevance: Math.round(scored.relevance * 100) / 100,

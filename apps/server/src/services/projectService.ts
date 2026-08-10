@@ -37,6 +37,7 @@ export type ProjectUpdate = Partial<{
   summary: string | null;
   tags: string[];
   importance_score: number;
+  metadata: Record<string, unknown>;
 }>;
 
 class ProjectService {

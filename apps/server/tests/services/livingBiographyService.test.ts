@@ -9,6 +9,7 @@ function makeChain(result: TableResult) {
   const chain: any = {
     select: () => chain,
     eq: () => chain,
+    contains: () => chain,
     or: () => chain,
     in: () => chain,
     not: () => chain,
@@ -46,6 +47,8 @@ vi.mock('../../src/services/biographyFoundationService', async () => {
 
 import {
   getLivingBiographyCard,
+  getNarrativeIdentityRecall,
+  formatNarrativeIdentityRecall,
   deriveCurrentChapter,
   shouldRefreshBiography,
   getBiographyChanges,
@@ -214,6 +217,72 @@ describe('getLivingBiographyCard', () => {
   });
 });
 
+describe('Narrative Recall v2 identity projection', () => {
+  it('compresses identity into ranked, readable sections without persistence metadata', () => {
+    const bio = makeBio({
+      facts: {
+        ...makeBio().facts,
+        identity: {
+          name: 'Marcus Reed',
+          location: 'Portland',
+          education: 'Computer Science graduate',
+          employment: 'robotics engineer',
+          sourceEntryIds: [],
+        },
+      },
+    });
+    const card = {
+      name: 'Marcus Reed',
+      currentChapter: { label: 'Career Rebuilding and Building Chapter', evidence: ['Prepare for interviews'] },
+      topThemes: ['robotics', 'building MemoVault', 'creative work'],
+      keyPeople: [
+        { name: 'Jamie Park', relationship: 'friend', status: 'active' },
+        { name: 'Morgan Reed', relationship: 'family', status: 'active' },
+        { name: 'Taylor Quinn', relationship: 'professional mentor', status: 'active' },
+      ],
+      currentFocus: ['Prepare for robotics interviews', 'Ship MemoVault beta'],
+      recentDevelopments: ['Completed a technical prototype'],
+      lastUpdated: bio.generatedAt,
+      hasEnoughData: true,
+    };
+
+    const content = formatNarrativeIdentityRecall(card, bio);
+
+    expect(content).toContain('## Core identity');
+    expect(content).toContain('## Current chapter');
+    expect(content).toContain('Friends: Jamie Park');
+    expect(content).toContain('Family: Morgan Reed');
+    expect(content).toContain('Professional: Taylor Quinn');
+    expect(content).not.toMatch(/pending|dismissed|superseded|source_memory_ids/i);
+    expect(content.split(/\s+/).length).toBeLessThan(140);
+  });
+
+  it('returns content and explainability from one biography read model', async () => {
+    const bio = makeBio({
+      facts: {
+        ...makeBio().facts,
+        identity: { ...makeBio().facts.identity, name: 'Marcus Reed' },
+      },
+    });
+    getBiography.mockResolvedValue(bio);
+    tableResults.journal_entries = { data: [], error: null, count: 0 };
+    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.quests = { data: [], error: null };
+
+    const recall = await getNarrativeIdentityRecall('user-1');
+
+    expect(getBiography).toHaveBeenCalledTimes(1);
+    expect(recall.content).toContain('Marcus Reed');
+    expect(recall.card.hasEnoughData).toBe(true);
+    expect(recall.provenance).toEqual({
+      sourceEntryCount: 42,
+      timelineEventCount: 2,
+      relationshipCount: 3,
+      generatedAt: bio.generatedAt,
+    });
+  });
+});
+
 // ── Life chapter detection ────────────────────────────────────────────────────
 
 describe('deriveCurrentChapter', () => {
@@ -256,6 +325,23 @@ describe('deriveCurrentChapter', () => {
     const bio = makeBio({ periods: [], themes: [] });
 
     expect(deriveCurrentChapter(bio)).toBeNull();
+  });
+
+  it('lets multiple live focus signals outrank a stale historical chapter', () => {
+    const bio = makeBio({
+      periods: [
+        { label: 'Last year', startDate: '2025-01-01', endDate: '2025-12-31', eventCount: 8, dominantTheme: 'family' },
+      ],
+    });
+
+    const chapter = deriveCurrentChapter(bio, [
+      'Prepare for a robotics interview',
+      'Ship the MemoVault beta',
+      'Finish recording a new song',
+    ]);
+
+    expect(chapter?.label).toBe('Career Rebuilding, Building, and Creative Work Chapter');
+    expect(chapter?.evidence).toHaveLength(3);
   });
 });
 

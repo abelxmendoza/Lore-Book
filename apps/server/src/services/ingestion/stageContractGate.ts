@@ -230,7 +230,7 @@ export function validateEventBeforePersist(input: {
 
   const payload = {
     title: input.title,
-    occurredAt: input.occurredAt ?? input.recordedAt,
+    occurredAt: input.occurredAt,
     recordedAt: input.recordedAt,
     temporalPrecision: (input.temporalPrecision as EventCandidatePayload['temporalPrecision']) ?? 'unknown',
     temporalSource: (input.temporalSource as EventCandidatePayload['temporalSource']) ?? 'message_timestamp',

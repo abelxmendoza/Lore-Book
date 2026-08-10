@@ -95,6 +95,61 @@ describe('LivingBiographyCard', () => {
     });
   });
 
+  it('renders Identity Snapshot threads, goals, and evidence coverage when available', async () => {
+    mockFetchCard.mockResolvedValue({
+      card: FULL_CARD,
+      identitySnapshot: {
+        id: 'identity-demo',
+        generatedAt: '2026-08-08T00:00:00.000Z',
+        algorithmVersion: 'identity-snapshot-v1',
+        stale: false,
+        confidence: 0.88,
+        currentChapter: {
+          title: 'Engineering Rebuild and Creative Launch',
+          summary: 'Building while creating.',
+          confidence: 0.9,
+        },
+        threads: [
+          {
+            id: 'thread-career',
+            domain: 'career',
+            name: 'Technical and Career Work',
+            summary: 'A durable technical through-line.',
+            salience: 'dominant',
+            stability: 'stable',
+            momentum: 'growing',
+            trajectory: 'transforming',
+            strength: 91,
+            confidence: 0.9,
+            lastReinforced: '2026-08-07',
+          },
+        ],
+        coverage: [
+          {
+            domain: 'career',
+            score: 86,
+            band: 'strong',
+            evidenceCount: 8,
+            sourceDiversity: 3,
+            lastReinforced: '2026-08-07',
+          },
+        ],
+        goals: [{ id: 'goal-1', title: 'Ship MemoVault beta', status: 'active' }],
+        recentChanges: [],
+        tensions: [],
+      },
+    });
+    wrap(<LivingBiographyCard />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Engineering Rebuild and Creative Launch')).toBeInTheDocument();
+      expect(screen.getByText('Technical and Career Work')).toBeInTheDocument();
+      expect(screen.getByText('growing · 91%')).toBeInTheDocument();
+      expect(screen.getByText('Ship MemoVault beta')).toBeInTheDocument();
+      expect(screen.getByText(/Identity evidence coverage.*86%/)).toBeInTheDocument();
+    });
+  });
+
   it('renders key people as clickable buttons', async () => {
     mockFetchCard.mockResolvedValue({ card: FULL_CARD });
     wrap(<LivingBiographyCard />);

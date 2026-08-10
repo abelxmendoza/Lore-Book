@@ -28,7 +28,7 @@ export function ceilingForTemporal(
   if (src === 'user_corrected') return TEMPORAL_CONFIDENCE_CEILINGS.USER_CORRECTED;
   if (src === 'recording_fallback') return TEMPORAL_CONFIDENCE_CEILINGS.RECORDING_FALLBACK;
   if (prec === 'year') return TEMPORAL_CONFIDENCE_CEILINGS.YEAR_ONLY;
-  if (prec === 'month' || prec === 'season') return TEMPORAL_CONFIDENCE_CEILINGS.MONTH_ONLY;
+  if (prec === 'month' || prec === 'season' || prec === 'quarter') return TEMPORAL_CONFIDENCE_CEILINGS.MONTH_ONLY;
   if (prec === 'unknown') return TEMPORAL_CONFIDENCE_CEILINGS.UNKNOWN;
   if (src === 'relative_expression') return TEMPORAL_CONFIDENCE_CEILINGS.RELATIVE_WITH_MESSAGE_ANCHOR;
   if (src === 'context_inferred') return TEMPORAL_CONFIDENCE_CEILINGS.CONTEXT_INFERRED_RANGE;
@@ -52,7 +52,7 @@ export function applyTemporalConfidenceCeiling(evidence: TemporalEvidence): Temp
 
   // Year/month/fallback must never be labeled exact
   if (
-    (evidence.source === 'recording_fallback' || precision === 'year' || precision === 'month') &&
+    (evidence.source === 'recording_fallback' || precision === 'year' || precision === 'month' || precision === 'quarter') &&
     evidence.precision === 'exact'
   ) {
     precision = evidence.source === 'recording_fallback' ? 'unknown' : precision;

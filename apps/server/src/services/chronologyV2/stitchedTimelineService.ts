@@ -14,6 +14,7 @@ import {
   type CohesionCandidate,
 } from './narrativeCohesion';
 import { projectCanonicalTimeline } from '../chronologyAuthority/canonicalTimelineProjector';
+import type { CanonicalTemporalModel } from '../temporal/canonicalTemporalModel';
 
 export type StitchedItemKind = 'moment' | 'event';
 export type ChronologyScopeType = 'global' | 'life_arc';
@@ -53,6 +54,14 @@ export type StitchedTimelineItem = {
   projectionRole?: 'canonical' | 'evidence' | 'unresolved' | 'excluded';
   canonicalEventType?: string;
   speechAct?: string;
+  occurredAt?: string | null;
+  mentionedAt?: string | null;
+  recordedAt?: string | null;
+  knownFrom?: string | null;
+  validFrom?: string | null;
+  validUntil?: string | null;
+  /** Independent temporal coordinates; sortTime remains a compatibility field. */
+  temporal?: CanonicalTemporalModel;
 };
 
 export type NarrativeChapterData = {
@@ -414,7 +423,7 @@ export class StitchedTimelineService {
       (async () => {
         let query = supabaseAdmin
           .from('timeline_events')
-          .select('id, title, description, event_date, occurred_at, confidence, source_type')
+          .select('id, title, description, event_date, occurred_at, confidence, source_type, created_at')
           .eq('user_id', userId);
         if (startTime) query = query.gte('event_date', startTime);
         if (endTime) query = query.lte('event_date', endTime);
@@ -423,7 +432,7 @@ export class StitchedTimelineService {
       (async () => {
         let query = supabaseAdmin
           .from('resolved_events')
-          .select('id, title, summary, start_time, confidence, metadata, people, locations, activities, tags, temporal_precision, temporal_source, temporal_status, temporal_confidence')
+          .select('id, title, summary, start_time, confidence, metadata, people, locations, activities, tags, temporal_precision, temporal_source, temporal_status, temporal_confidence, temporal_expression, created_at')
           .eq('user_id', userId);
         if (startTime) query = query.gte('start_time', `${startTime}T00:00:00.000Z`);
         if (endTime) query = query.lte('start_time', `${endTime}T23:59:59.999Z`);
@@ -574,6 +583,13 @@ export class StitchedTimelineService {
           sourceType: m.source_type ?? 'manual',
           tags: m.tags ?? [],
           confidence: m.time_confidence,
+          timePrecision: m.time_precision,
+          timeConfidence: m.time_confidence,
+          temporalSource: m.temporal_source,
+          occurredAt: m.temporal_source === 'recording_fallback' ? null : m.start_time,
+          mentionedAt: m.mentioned_at,
+          recordedAt: m.recorded_at,
+          knownFrom: m.recorded_at,
         });
         candidatesByKey.set(key, {
           key,
@@ -617,6 +633,9 @@ export class StitchedTimelineService {
           timePrecision: (e.temporal_precision as string) ?? 'unknown',
           timeConfidence: Number(e.temporal_confidence ?? 0.2),
           temporalSource: (e.temporal_source as string) ?? 'recording_fallback',
+          occurredAt: null,
+          recordedAt: (e.created_at as string | null) ?? null,
+          knownFrom: (e.created_at as string | null) ?? null,
           occurrenceStatus: 'unresolved',
           projectionRole: 'unresolved',
         });
@@ -648,7 +667,10 @@ export class StitchedTimelineService {
           temporal_precision?: string;
           temporal_source?: string;
           temporal_confidence?: number;
+          temporal_expression?: string | null;
+          created_at?: string | null;
         };
+        const temporalMeta = (meta.temporal ?? {}) as Record<string, unknown>;
         const confidence = Math.max(
           ...cluster.members.map((m) => {
             const r = m.row as { temporal_confidence?: number; confidence?: number };
@@ -674,6 +696,12 @@ export class StitchedTimelineService {
           timePrecision: row.temporal_precision ?? 'date',
           timeConfidence: row.temporal_confidence ?? confidence,
           temporalSource: row.temporal_source ?? 'context_inferred',
+          occurredAt: cluster.time,
+          mentionedAt: (temporalMeta.mentioned_at as string | undefined) ?? null,
+          recordedAt: row.created_at ?? null,
+          knownFrom: (temporalMeta.known_from as string | undefined) ?? row.created_at ?? null,
+          validFrom: (temporalMeta.valid_from as string | undefined) ?? null,
+          validUntil: (temporalMeta.valid_until as string | undefined) ?? null,
           userPresence: (meta.user_presence as StitchedTimelineItem['userPresence']) ?? 'unknown',
           ...(cluster.members.length > 1
             ? { mergedCount: cluster.members.length, mergedTitles: cluster.mergedTitles }
@@ -692,7 +720,8 @@ export class StitchedTimelineService {
 
       for (const e of characterId ? [] : eventRows ?? []) {
         if (seenEventIds.has(e.id)) continue;
-        const sortTime = e.event_date ?? e.occurred_at ?? new Date().toISOString();
+        const occurredAt = e.occurred_at ?? e.event_date ?? null;
+        const sortTime = occurredAt ?? e.created_at ?? new Date(0).toISOString();
         const key = `event:${e.id}`;
         items.push({
           id: key,
@@ -706,6 +735,12 @@ export class StitchedTimelineService {
           sourceIds: [e.id],
           sourceType: e.source_type ?? 'timeline_event',
           confidence: e.confidence ?? 1,
+          occurredAt,
+          recordedAt: e.created_at ?? null,
+          knownFrom: e.created_at ?? null,
+          temporalSource: occurredAt ? 'user_stated' : 'recording_fallback',
+          timePrecision: occurredAt ? 'date' : 'unknown',
+          timeConfidence: occurredAt ? e.confidence ?? 0.8 : 0,
         });
         candidatesByKey.set(key, {
           key,
@@ -759,6 +794,12 @@ export class StitchedTimelineService {
           timePrecision: item.timePrecision,
           timeConfidence: item.timeConfidence,
           temporalSource: item.temporalSource,
+          occurredAt: item.occurredAt,
+          mentionedAt: item.mentionedAt,
+          recordedAt: item.recordedAt,
+          knownFrom: item.knownFrom,
+          validFrom: item.validFrom,
+          validUntil: item.validUntil,
         })),
       );
       const toStitched = (p: (typeof projected.canonical)[number]): StitchedTimelineItem => ({
@@ -781,6 +822,13 @@ export class StitchedTimelineService {
         projectionRole: p.projectionRole,
         canonicalEventType: p.canonicalEventType,
         speechAct: p.speechAct,
+        occurredAt: p.temporal.occurred.start,
+        mentionedAt: p.temporal.mentionedAt,
+        recordedAt: p.temporal.recordedAt,
+        knownFrom: p.temporal.knownFrom,
+        validFrom: p.temporal.validFrom,
+        validUntil: p.temporal.validUntil,
+        temporal: p.temporal,
         userPresence: items.find((i) => i.id === p.id)?.userPresence,
         temporalRole: items.find((i) => i.id === p.id)?.temporalRole,
         mergedCount: items.find((i) => i.id === p.id)?.mergedCount,

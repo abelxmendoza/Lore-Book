@@ -541,6 +541,7 @@ class IngestionQueue {
                   status: mq.status,
                   created: mq.created,
                   reused: mq.reused,
+                  ...mq.quality,
                 },
               });
             }

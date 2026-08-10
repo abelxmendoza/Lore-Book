@@ -83,6 +83,7 @@ export async function executeExplicitRecall(
         recall_intent: routed.intent,
         entity_name: routed.entityName,
         foundation_primary: true,
+        ...routed.metadata,
       },
     };
   }

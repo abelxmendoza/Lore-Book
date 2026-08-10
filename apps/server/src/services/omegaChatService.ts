@@ -15,6 +15,7 @@ import { messageReferencesMention } from '../utils/disambiguationUtils';
 import { classifyPostgresError, StorageBlockedError } from '../utils/postgresError';
 import { isClosedScopeQuery, isFocusEntityRelevant } from '@lorebook/api-contracts';
 import { buildClientSourcesWithRejected, type RejectedEvidenceItem } from './chat/clientSourcesBuilder';
+import { BIOGRAPHY_RE } from './chat/recallIntentPatterns';
 
 import {
   isBeliefChallengeAllowed,
@@ -2048,14 +2049,18 @@ When updating relationship analytics or emotional signals from this thread, weig
     }
 
     // ---- RECALL GATE: Foundation lore before journal vector search ----
-    if (!workingMemoryPrimary) try {
+    // Explicit identity questions already have a deterministic, longitudinal
+    // biography projection. Keep that fast path available when Working Memory
+    // is primary; otherwise a simple "What do you remember about me?" fans out
+    // across every memory domain before it can answer.
+    if (!workingMemoryPrimary || BIOGRAPHY_RE.test(effectiveMessage)) try {
       const { matchesFoundationRecallQuery } = await import('./chat/recallIntentPatterns');
-      if (matchesFoundationRecallQuery(message)) {
+      if (matchesFoundationRecallQuery(effectiveMessage)) {
         const { executeExplicitRecall } = await import('./chat/explicitRecallService');
         const { formatModeResponse } = await import('./modeRouter/responseFormatter');
         const foundation = await executeExplicitRecall(
           userId,
-          message,
+          effectiveMessage,
           conversationHistory.map((m) => ({ role: m.role, content: m.content })),
           { threadId: threadId ?? currentContext?.threadId }
         );

@@ -50,7 +50,13 @@ function moveItem<T>(list: T[], from: number, to: number): T[] {
 export function buildTimelineClipboardText(items: StitchedTimelineItem[]): string {
   return items
     .map((item) => {
-      const date = item.sortTime.slice(0, 10);
+      const date = item.occurrenceStatus === 'unresolved'
+        ? 'Occurrence date unknown'
+        : item.timePrecision === 'year'
+          ? item.sortTime.slice(0, 4)
+          : item.timePrecision === 'month' || item.timePrecision === 'season'
+            ? item.sortTime.slice(0, 7)
+            : item.sortTime.slice(0, 10);
       const kind = item.kind === 'event' ? 'Event' : 'Moment';
       const contribution = item.contribution ?? item.cohesion;
       const contributionLabel = contribution != null ? ` [chapter contribution ${contribution}]` : '';
@@ -189,7 +195,13 @@ export const TimelineReorderableList = ({
           return (
             <li key={item.id} className="list-none">
               {showDateHeader && (
-                <TimelineDateHeader dateKey={dateKey} sticky={false} className="mx-0 mb-2 rounded-xl overflow-hidden" />
+                <TimelineDateHeader
+                  dateKey={dateKey}
+                  sticky={false}
+                  className="mx-0 mb-2 rounded-xl overflow-hidden"
+                  precision={item.timePrecision}
+                  confidence={item.timeConfidence}
+                />
               )}
               <div
                 draggable={canDrag}
@@ -208,7 +220,12 @@ export const TimelineReorderableList = ({
                     reorderMode ? 'select-none cursor-grab' : 'select-text'
                   }`}
                 >
-                  <TimelineInlineDate iso={item.sortTime} size="md" />
+                  <TimelineInlineDate
+                    iso={item.sortTime}
+                    size="md"
+                    precision={item.timePrecision}
+                    confidence={item.timeConfidence}
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap mb-1.5">
                       <span

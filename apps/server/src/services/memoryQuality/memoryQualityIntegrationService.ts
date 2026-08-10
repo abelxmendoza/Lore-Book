@@ -44,7 +44,24 @@ export type MemoryQualityRunResult = {
   created: number;
   reused: number;
   payload: MemoryQualityPayload | null;
+  quality: {
+    candidatesConsidered: number;
+    artifactsSelected: number;
+    duplicatesRemoved: number;
+    lowConfidenceFiltered: number;
+    capFiltered: number;
+    noiseRatio: number;
+  };
   error?: string;
+};
+
+const EMPTY_QUALITY: MemoryQualityRunResult['quality'] = {
+  candidatesConsidered: 0,
+  artifactsSelected: 0,
+  duplicatesRemoved: 0,
+  lowConfidenceFiltered: 0,
+  capFiltered: 0,
+  noiseRatio: 0,
 };
 
 const MIN_CONFIDENCE = 0.55;
@@ -107,7 +124,7 @@ export async function runMemoryQualityForMessage(
   opts?: { sourceEventId?: string | null; jobId?: string },
 ): Promise<MemoryQualityRunResult> {
   if (!text.trim() || text.trim().length < 8) {
-    return { status: 'SKIPPED', artifactIds: [], created: 0, reused: 0, payload: null };
+    return { status: 'SKIPPED', artifactIds: [], created: 0, reused: 0, payload: null, quality: EMPTY_QUALITY };
   }
 
   try {
@@ -120,7 +137,7 @@ export async function runMemoryQualityForMessage(
 
     if (!hasSignal) {
       await projectMetadata(userId, sourceMessageId, bundle, []);
-      return { status: 'SKIPPED', artifactIds: [], created: 0, reused: 0, payload: bundle };
+      return { status: 'SKIPPED', artifactIds: [], created: 0, reused: 0, payload: bundle, quality: EMPTY_QUALITY };
     }
 
     // Resolve best event for attachment
@@ -150,6 +167,10 @@ export async function runMemoryQualityForMessage(
     let created = 0;
     let reused = 0;
     let writes = 0;
+    let candidatesConsidered = 0;
+    let duplicatesRemoved = 0;
+    let lowConfidenceFiltered = 0;
+    let capFiltered = 0;
 
     // Consolidate: prefer distinct meaning types; skip near-duplicate labels
     const seenValues = new Set<string>();
@@ -162,15 +183,28 @@ export async function runMemoryQualityForMessage(
       epistemic: EpistemicType,
       extra?: { linkedFromType?: string; linkedFromValue?: string; linkedToType?: string; linkedToValue?: string },
     ) => {
-      if (writes >= MAX_ARTIFACTS_PER_MESSAGE) return;
-      if (confidence < MIN_CONFIDENCE) return;
+      candidatesConsidered++;
+      if (writes >= MAX_ARTIFACTS_PER_MESSAGE) {
+        capFiltered++;
+        return;
+      }
+      if (confidence < MIN_CONFIDENCE) {
+        lowConfidenceFiltered++;
+        return;
+      }
       const key = `${meaningType}|${displayLabel.toLowerCase().slice(0, 80)}`;
-      if (seenValues.has(key)) return;
+      if (seenValues.has(key)) {
+        duplicatesRemoved++;
+        return;
+      }
       // Near-duplicate consolidation across types (learned X / practice X)
       const norm = displayLabel.toLowerCase().replace(/^practice:\s*/, '').slice(0, 40);
       for (const s of seenValues) {
         if (s.includes(norm) || norm.includes(s.split('|')[1]?.slice(0, 40) ?? '___')) {
-          if (meaningType !== 'lesson' && s.startsWith('lesson|')) return;
+          if (meaningType !== 'lesson' && s.startsWith('lesson|')) {
+            duplicatesRemoved++;
+            return;
+          }
         }
       }
       seenValues.add(key);
@@ -295,9 +329,23 @@ export async function runMemoryQualityForMessage(
         created,
         reused,
         artifacts: artifactIds.length,
+        candidatesConsidered,
+        duplicatesRemoved,
+        lowConfidenceFiltered,
+        capFiltered,
       },
       'Memory quality durable stage completed',
     );
+
+    const filtered = duplicatesRemoved + lowConfidenceFiltered + capFiltered;
+    const quality: MemoryQualityRunResult['quality'] = {
+      candidatesConsidered,
+      artifactsSelected: writes,
+      duplicatesRemoved,
+      lowConfidenceFiltered,
+      capFiltered,
+      noiseRatio: candidatesConsidered > 0 ? Number((filtered / candidatesConsidered).toFixed(3)) : 0,
+    };
 
     return {
       status: 'COMPLETED',
@@ -305,6 +353,7 @@ export async function runMemoryQualityForMessage(
       created,
       reused,
       payload: bundle,
+      quality,
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -316,6 +365,7 @@ export async function runMemoryQualityForMessage(
       created: 0,
       reused: 0,
       payload: null,
+      quality: EMPTY_QUALITY,
       error: msg.slice(0, 500),
     };
   }

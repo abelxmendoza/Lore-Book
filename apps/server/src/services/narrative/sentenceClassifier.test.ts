@@ -17,6 +17,7 @@ describe('sentenceClassifier', () => {
     expect(classifySentence('Jamie blocked me on Instagram.').kind).toBe('EVENT');
     expect(classifySentence('I started onboarding at MemoVault.').kind).toBe('EVENT');
     expect(mayBecomeMoment('EVENT')).toBe(true);
+    expect(classifySentence('I was detained by police.').kind).toBe('EVENT');
   });
 
   it('ignores greetings and chat tests', () => {

@@ -155,4 +155,40 @@ describe('subject timeline compiler', () => {
     expect(compilation.events[0]?.source_id).toBe('linked-event');
     expect(compilation.events[0]?.relevance).toBeGreaterThan(0.9);
   });
+
+  it('scopes a generic career timeline to career-domain events only', () => {
+    const intent = interpretSubjectTimelineQuery('Build my career timeline');
+    const compilation = compileSubjectTimeline({
+      query: intent.rawQuery,
+      intent,
+      subject: null,
+      items: [
+        item({
+          id: 'event:job',
+          sourceId: 'job',
+          title: 'Joined Vanguard Robotics',
+          body: 'I started a robotics engineering role in the lab.',
+          sortTime: '2025-04-01T09:00:00.000Z',
+        }),
+        item({
+          id: 'event:relationship',
+          sourceId: 'relationship',
+          title: 'Dinner with Jamie',
+          body: 'We talked about our relationship over dinner.',
+          sortTime: '2025-03-01T09:00:00.000Z',
+        }),
+        item({
+          id: 'event:shopping',
+          sourceId: 'shopping',
+          title: 'Shopping trip',
+          body: 'I bought groceries at Northwind Market.',
+          sortTime: '2025-02-01T09:00:00.000Z',
+        }),
+      ],
+    });
+
+    expect(intent.mode).toBe('EMPLOYMENT_TIMELINE');
+    expect(compilation.events.map((event) => event.source_id)).toEqual(['job']);
+    expect(compilation.contextEvents).toHaveLength(0);
+  });
 });
