@@ -43,6 +43,19 @@ type CharacterRow = {
   metadata?: Record<string, unknown> | null;
 };
 
+/**
+ * Hard ceiling on how many source messages a single deletion can queue for
+ * reprocessing. Each message triggers a full ingestion-pipeline run (RAG +
+ * embeddings + multi-stage LLM extraction) at low concurrency, plus a second
+ * independent rescan over the same set (characterConversationRescanService) —
+ * a heavily-mentioned character with weeks of history could otherwise collect
+ * hundreds of message ids and fan out into hours of sequential LLM work,
+ * which previously ran the process out of heap memory. Capping here (the
+ * single point all four collection sources funnel through) bounds both
+ * downstream fan-outs at once.
+ */
+const MAX_SOURCE_MESSAGES = 30;
+
 async function collectSourceMessages(
   userId: string,
   entityType: EntityDeletionKind,
@@ -51,13 +64,15 @@ async function collectSourceMessages(
 ): Promise<{ messageIds: string[]; threadIds: string[] }> {
   const messageIds = new Set<string>();
   const threadIds = new Set<string>();
+  const capped = () => messageIds.size >= MAX_SOURCE_MESSAGES;
 
   const { data: links } = await supabaseAdmin
     .from('entity_conversation_links')
     .select('session_id')
     .eq('user_id', userId)
     .eq('entity_type', entityType)
-    .eq('entity_id', entityId);
+    .eq('entity_id', entityId)
+    .limit(MAX_SOURCE_MESSAGES);
 
   for (const link of links ?? []) {
     if (link.session_id) threadIds.add(link.session_id as string);
@@ -68,9 +83,11 @@ async function collectSourceMessages(
     .select('source_id, source_type')
     .eq('user_id', userId)
     .eq('relation', 'MENTIONED_ENTITY')
-    .in('target_id', [entityId]);
+    .in('target_id', [entityId])
+    .limit(MAX_SOURCE_MESSAGES);
 
   for (const edge of edges ?? []) {
+    if (capped()) break;
     if (edge.source_type !== 'utterance') continue;
     const { data: utterance } = await supabaseAdmin
       .from('utterances')
@@ -82,6 +99,7 @@ async function collectSourceMessages(
   }
 
   for (const term of searchTerms) {
+    if (capped()) break;
     if (!term || term.length < 3) continue;
     const pattern = `%${term.replace(/[%_]/g, '')}%`;
     const { data: chatMsgs } = await supabaseAdmin
@@ -90,22 +108,25 @@ async function collectSourceMessages(
       .eq('user_id', userId)
       .eq('role', 'user')
       .ilike('content', pattern)
-      .limit(40);
+      .limit(MAX_SOURCE_MESSAGES);
 
     for (const msg of chatMsgs ?? []) {
+      if (capped()) break;
       messageIds.add(msg.id as string);
       if (msg.session_id) threadIds.add(msg.session_id as string);
     }
   }
 
-  if (entityType === 'character') {
+  if (entityType === 'character' && !capped()) {
     const { data: memories } = await supabaseAdmin
       .from('character_memories')
       .select('journal_entry_id')
       .eq('user_id', userId)
-      .eq('character_id', entityId);
+      .eq('character_id', entityId)
+      .limit(MAX_SOURCE_MESSAGES);
 
     for (const mem of memories ?? []) {
+      if (capped()) break;
       if (!mem.journal_entry_id) continue;
       const { data: entry } = await supabaseAdmin
         .from('journal_entries')
@@ -121,14 +142,16 @@ async function collectSourceMessages(
     }
   }
 
-  if (entityType === 'location') {
+  if (entityType === 'location' && !capped()) {
     const { data: memories } = await supabaseAdmin
       .from('location_mentions')
       .select('memory_id')
       .eq('user_id', userId)
-      .eq('location_id', entityId);
+      .eq('location_id', entityId)
+      .limit(MAX_SOURCE_MESSAGES);
 
     for (const mem of memories ?? []) {
+      if (capped()) break;
       if (!mem.memory_id) continue;
       const { data: entry } = await supabaseAdmin
         .from('journal_entries')

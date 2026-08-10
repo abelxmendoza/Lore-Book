@@ -41,7 +41,7 @@ import { classifyIngestionError } from '../services/ingestion/ingestionJobStates
 import { loreBookNoticeBus } from '../services/lorebook/parser/loreBookNoticeBus';
 import { memoryFeedbackBus } from '../services/memoryFeedbackBus';
 import { messageCorrectionService } from '../services/messageCorrectionService';
-import { omegaChatService } from '../services/omegaChatService';
+import { omegaChatService, buildTimelineUpdateLabels } from '../services/omegaChatService';
 import { ChatPersonaRL } from '../services/reinforcementLearning/chatPersonaRL';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { incrementAiRequestCount } from '../services/usageTracking';
@@ -688,6 +688,7 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
       if (fullResponse.trim().length > 0 && result.resolveReplyMentionedEntities) {
         try {
           result.metadata.mentionedEntities = await result.resolveReplyMentionedEntities(fullResponse);
+          result.metadata.timelineUpdates = buildTimelineUpdateLabels(result.metadata.mentionedEntities);
         } catch (err) {
           logger.debug({ err }, 'Failed to merge reply-derived entity mentions (non-blocking)');
         }
@@ -762,6 +763,7 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
       if (fullResponse.trim().length > 0 && result.resolveReplyMentionedEntities) {
         try {
           result.metadata.mentionedEntities = await result.resolveReplyMentionedEntities(fullResponse);
+          result.metadata.timelineUpdates = buildTimelineUpdateLabels(result.metadata.mentionedEntities);
         } catch (err) {
           logger.debug({ err }, 'Failed to merge reply-derived entity mentions (non-blocking)');
         }

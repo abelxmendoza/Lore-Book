@@ -6,6 +6,8 @@ import {
   evaluateTimelineEligibility,
   guardTrackFromText,
   projectCanonicalTimeline,
+  canonicalTemporalFromLegacy,
+  compareCanonicalTemporal,
   suggestedOccurrenceIso,
 } from './index';
 import type { TemporalEvidence } from '../temporal/temporalEvidence';
@@ -151,5 +153,70 @@ describe('chronologyAuthority', () => {
     expect(result.unresolved.some((i) => i.id === 'rec1')).toBe(true);
     expect(result.excluded.some((i) => i.id === 'recap')).toBe(true);
     expect(result.unresolved.find((i) => i.id === 'rec1')?.timeConfidence).toBeLessThanOrEqual(0.2);
+  });
+
+  it('keeps occurrence, mention, and recording clocks independent', () => {
+    const temporal = canonicalTemporalFromLegacy({
+      id: 'event-1',
+      occurredAt: '2026-07-01T00:00:00.000Z',
+      mentionedAt: '2026-08-09T10:00:00.000Z',
+      recordedAt: '2026-08-09T10:00:01.000Z',
+      precision: 'month',
+      source: 'user_stated',
+      confidence: 0.9,
+      expression: 'July 2026',
+    });
+
+    expect(temporal.occurred.start).toContain('2026-07');
+    expect(temporal.mentionedAt).toContain('2026-08-09');
+    expect(temporal.recordedAt).toContain('2026-08-09');
+    expect(temporal.occurred.confidence).toBeLessThanOrEqual(0.55);
+    expect(temporal.provenance.map((entry) => entry.field)).toEqual(
+      expect.arrayContaining(['occurred_at', 'mentioned_at', 'recorded_at']),
+    );
+  });
+
+  it('orders by occurrence before recording time and leaves unknown occurrence last', () => {
+    const laterMentionedOlderEvent = canonicalTemporalFromLegacy({
+      occurredAt: '2024-06-01T00:00:00.000Z',
+      recordedAt: '2026-08-09T00:00:00.000Z',
+      precision: 'month',
+      source: 'user_stated',
+    });
+    const earlierMentionedNewerEvent = canonicalTemporalFromLegacy({
+      occurredAt: '2025-01-01T00:00:00.000Z',
+      recordedAt: '2025-01-02T00:00:00.000Z',
+      precision: 'year',
+      source: 'user_stated',
+    });
+    const unknown = canonicalTemporalFromLegacy({
+      occurredAt: null,
+      recordedAt: '2023-01-01T00:00:00.000Z',
+    });
+
+    const ordered = [unknown, earlierMentionedNewerEvent, laterMentionedOlderEvent]
+      .sort(compareCanonicalTemporal);
+    expect(ordered).toEqual([laterMentionedOlderEvent, earlierMentionedNewerEvent, unknown]);
+  });
+
+  it('excludes identity prompts even when punctuation is missing', () => {
+    const result = projectCanonicalTimeline([
+      {
+        id: 'prompt',
+        kind: 'moment',
+        sourceId: 'message-1',
+        sortTime: '2026-08-09T10:00:00.000Z',
+        title: 'What do you remember about me',
+        body: 'What do you remember about me',
+        sourceKind: 'journal_entry',
+        sourceIds: ['message-1'],
+        sourceType: 'chat',
+        recordedAt: '2026-08-09T10:00:00.000Z',
+        occurredAt: null,
+        temporalSource: 'recording_fallback',
+      },
+    ]);
+    expect(result.canonical).toHaveLength(0);
+    expect(result.excluded[0]?.speechAct).toBe('RECAP_REQUEST');
   });
 });

@@ -70,6 +70,30 @@ describe('lorebookSelfModelService', () => {
       expect(match?.strength).toBe('soft');
       expect(match?.concepts).toContain('user_is_narrator');
     });
+
+    it('detects content tracking explanation queries', () => {
+      for (const message of [
+        'How are you putting this on the timeline?',
+        'How would it go in the swimlanes?',
+        'How are you tracking this?',
+        'How does this get organized?',
+      ]) {
+        const match = detectMetaQuery(message);
+        expect(match?.strength, message).toBe('soft');
+        expect(match?.concepts, message).toContain('content_tracking_explanation');
+      }
+    });
+
+    it('does not treat plain recall or write requests as tracking-explanation queries', () => {
+      expect(detectMetaQuery('What happened this week?')).toBeNull();
+      expect(detectMetaQuery('Add this to the timeline')).toBeNull();
+    });
+
+    it('still routes product-identity queries to their own strong rule, not tracking explanation', () => {
+      const match = detectMetaQuery('What is LoreBook?');
+      expect(match?.strength).toBe('strong');
+      expect(match?.concepts).not.toContain('content_tracking_explanation');
+    });
   });
 
   describe('formatSelfModelBlock', () => {
@@ -113,6 +137,12 @@ describe('lorebookSelfModelService', () => {
       expect(result.promptBlock).toContain('main character');
     });
 
+    it('returns a grounding prompt block (not a short-circuit) for tracking-explanation queries', async () => {
+      const result = await resolveMetaProductContext('How are you putting this on the timeline?');
+      expect(result.shortCircuit).toBeNull();
+      expect(result.promptBlock).toContain('Timeline and Swimlanes reflect only what has already been extracted');
+    });
+
     it('returns empty for non-meta queries', async () => {
       const result = await resolveMetaProductContext('I had a hard day at work');
       expect(result.shortCircuit).toBeNull();
@@ -131,7 +161,7 @@ describe('lorebookSelfModelService', () => {
 
     it('exports every fallback concept in PRODUCT_SELF_MODEL_CONCEPTS', async () => {
       const { PRODUCT_SELF_MODEL_CONCEPTS } = await import('../../../src/services/chat/lorebookSelfModelService');
-      expect(PRODUCT_SELF_MODEL_CONCEPTS).toHaveLength(13);
+      expect(PRODUCT_SELF_MODEL_CONCEPTS).toHaveLength(14);
       expect(PRODUCT_SELF_MODEL_CONCEPTS).toContain('product_identity');
       expect(PRODUCT_SELF_MODEL_CONCEPTS).toContain('creator');
       expect(PRODUCT_SELF_MODEL_CONCEPTS).toContain('capabilities');

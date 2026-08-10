@@ -5,7 +5,13 @@ import { render, screen, waitFor } from '../../../test/utils';
 import userEvent from '@testing-library/user-event';
 import { RelationshipDetailModal } from '../RelationshipDetailModal';
 import { useMockData } from '../../../contexts/MockDataContext';
-import { getMockRomanticRelationshipById, getMockDateEvents, getMockRelationshipAnalytics } from '../../../mocks/romanticRelationships';
+import { fetchJson } from '../../../lib/api';
+import {
+  getMockRomanticRelationshipById,
+  getMockDateEvents,
+  getMockRelationshipAnalytics,
+  getMockKidsTogether,
+} from '../../../mocks/romanticRelationships';
 
 // Mock dependencies
 vi.mock('../../../contexts/MockDataContext', () => ({
@@ -19,7 +25,8 @@ vi.mock('../../../contexts/MockDataContext', () => ({
 vi.mock('../../../mocks/romanticRelationships', () => ({
   getMockRomanticRelationshipById: vi.fn(),
   getMockDateEvents: vi.fn(),
-  getMockRelationshipAnalytics: vi.fn()
+  getMockRelationshipAnalytics: vi.fn(),
+  getMockKidsTogether: vi.fn(),
 }));
 
 vi.mock('../../../lib/api', () => ({
@@ -98,6 +105,9 @@ describe('RelationshipDetailModal', () => {
     (getMockRomanticRelationshipById as any).mockReturnValue(mockRelationship);
     (getMockDateEvents as any).mockReturnValue(mockDates);
     (getMockRelationshipAnalytics as any).mockReturnValue(mockAnalytics);
+    (getMockKidsTogether as any).mockReturnValue([
+      { id: 'kid-mia', name: 'Mia', relation: 'together', belongsTo: 'both' },
+    ]);
     mockOpenChatWithFocus.mockClear();
   });
 
@@ -174,6 +184,25 @@ describe('RelationshipDetailModal', () => {
     await waitFor(() => {
       expect(screen.getByText(/intimacy & connection arc/i)).toBeInTheDocument();
     });
+  });
+
+  it('Kids Together tab uses mock data in demo mode and never calls the real API', async () => {
+    const onClose = vi.fn();
+    render(<RelationshipDetailModal relationshipId="rel-001" onClose={onClose} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Alex')).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getAllByRole('tab', { name: /kids together/i })[0]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('kids-together-panel')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Mia')).toBeInTheDocument();
+    expect(getMockKidsTogether).toHaveBeenCalledWith('rel-001');
+    expect(fetchJson).not.toHaveBeenCalledWith(expect.stringContaining('/kids'));
   });
 
   it('chat tab hands off to main chat with Dating & Romance focus', async () => {

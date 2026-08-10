@@ -61,4 +61,17 @@ describe('PerceptionDetailModal main chat handoff', () => {
     expect(handoff.detail.initialPrompt).toMatch(/clarify, resolve, or retract/i);
     expect(onClose).toHaveBeenCalledOnce();
   });
+
+  it('opens the shared evidence inspector for the recorded perception', async () => {
+    const user = userEvent.setup();
+    render(<PerceptionDetailModal perception={perception} onClose={onClose} />);
+
+    await user.click(screen.getByTestId('perception-open-evidence'));
+
+    expect(screen.getByText('Why LoreBook shows this')).toBeInTheDocument();
+    expect(screen.getAllByText(perception.content)).toHaveLength(2);
+    expect(screen.getByText('You believed')).toBeInTheDocument();
+    expect(screen.getAllByText('I became more guarded.')).toHaveLength(2);
+    expect(screen.getByText(/No source record or linked memory/i)).toBeInTheDocument();
+  });
 });

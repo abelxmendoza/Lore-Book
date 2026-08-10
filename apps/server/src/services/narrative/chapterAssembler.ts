@@ -65,6 +65,10 @@ export type AssembledChapter = {
   location: string | null;
   participants: string[];
   eventIds: string[];
+  /** Subset of eventIds whose source scene had isMilestone === true. */
+  milestoneIds: string[];
+  /** Max milestoneScore across constituent scenes; 0 when no milestone. */
+  topMilestoneScore: number;
   themes: string[];
   dominantEmotion: string | null;
   confidence: number;
@@ -321,6 +325,9 @@ function buildChapter(cluster: Beat[]): AssembledChapter | null {
   const identity = anchor.identity;
 
   if (identity.domain === 'unknown') {
+    // isMilestone implies promotedEventId is already set (milestone assessment
+    // only runs after event promotion), so Boolean(promotedEventId) already
+    // covers every milestone-eligible anchor here.
     const anchorSignificant =
       (anchor.anchor.significanceScore ?? 0) >= CHAPTER_ORPHAN_MIN_SIGNIFICANCE ||
       Boolean(anchor.anchor.promotedEventId);
@@ -376,6 +383,17 @@ function buildChapter(cluster: Beat[]): AssembledChapter | null {
   const eventIds = Array.from(
     new Set(scenes.map((s) => s.promotedEventId).filter((x): x is string => Boolean(x))),
   );
+  const milestoneIds = Array.from(
+    new Set(
+      scenes
+        .filter((s) => s.isMilestone && s.promotedEventId)
+        .map((s) => s.promotedEventId as string),
+    ),
+  );
+  const topMilestoneScore = scenes.reduce(
+    (max, s) => (s.isMilestone ? Math.max(max, s.milestoneScore ?? 0) : max),
+    0,
+  );
 
   const themeSet = new Set<string>([ownership.domain]);
   themeSet.delete('unknown');
@@ -415,6 +433,8 @@ function buildChapter(cluster: Beat[]): AssembledChapter | null {
     location,
     participants,
     eventIds,
+    milestoneIds,
+    topMilestoneScore,
     themes,
     dominantEmotion,
     confidence,

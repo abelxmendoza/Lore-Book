@@ -195,10 +195,10 @@ export const PerceptionSearchBar = ({ onSelect, onSearchChange, initialQuery = '
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-semibold text-white text-sm truncate">
+                      <span className="min-w-0 flex-1 truncate font-semibold text-white text-sm">
                         {perception.subject_alias}
                       </span>
-                      <span className={`text-xs ${getStatusColor(perception.status)}`}>
+                      <span className={`shrink-0 text-xs ${getStatusColor(perception.status)}`}>
                         {perception.status}
                       </span>
                       <div className="flex items-center gap-1 text-violet-400/60">

@@ -4,6 +4,12 @@ import { supabaseAdmin } from '../supabaseClient';
 
 export type TimePrecision = 'exact' | 'day' | 'month' | 'year' | 'approximate';
 
+type ChronologyMemoryEntry = MemoryEntry & {
+  end_time?: string | null;
+  time_precision?: TimePrecision | null;
+  time_confidence?: number | null;
+};
+
 export interface ChronologyEntry {
   id: string;
   user_id: string;
@@ -17,6 +23,10 @@ export interface ChronologyEntry {
   timeline_names?: string[]; // Timeline names (optional, populated by backend)
   /** Original Life Log source (chat, calendar, manual, etc.). */
   source_type?: string;
+  /** Independent clocks used by the canonical temporal adapter. */
+  recorded_at?: string | null;
+  mentioned_at?: string | null;
+  temporal_source?: string;
   tags?: string[];
 }
 
@@ -76,17 +86,20 @@ export class ChronologyService {
       }
       if (!entries?.length) return 0;
 
-      const rows = entries.map((entry: any) => {
-        const startIso = entry.date ?? new Date().toISOString();
+      const rows = entries.flatMap((entry: any) => {
+        // No date means no occurrence index row. created_at remains recording
+        // provenance and must never be promoted into event time here.
+        if (!entry.date) return [];
+        const startIso = entry.date;
         const buckets = computeChronologyBuckets(new Date(startIso));
-        return {
+        return [{
           user_id: userId,
           journal_entry_id: entry.id,
           start_time: startIso,
           end_time: entry.end_time ?? null,
-          time_precision: entry.time_precision ?? 'exact',
+          time_precision: entry.time_precision ?? 'unknown',
           ...buckets,
-        };
+        }];
       });
 
       const { error: upsertError } = await supabaseAdmin
@@ -122,7 +135,7 @@ export class ChronologyService {
           .from('chronology_index')
           .select(`
             *,
-            journal_entries!inner(id, content, user_id, source, tags)
+            journal_entries!inner(id, content, user_id, source, tags, date, created_at, metadata)
           `)
           .eq('user_id', userId)
           .order('start_time', { ascending: true });
@@ -176,7 +189,19 @@ export class ChronologyService {
         });
       }
 
-      return filteredData.map((row: any) => ({
+      return filteredData.map((row: any) => {
+        const journal = row.journal_entries ?? {};
+        const metadata = (journal.metadata ?? {}) as Record<string, unknown>;
+        const sourceType = journal.source || 'manual';
+        const inferredTemporalSource =
+          typeof metadata.temporal_source === 'string'
+            ? metadata.temporal_source
+            : /calendar|document|photo/i.test(sourceType)
+              ? 'document_stated'
+              : /chat|conversation|import/i.test(sourceType)
+                ? 'recording_fallback'
+                : 'user_stated';
+        return {
         id: row.id,
         user_id: row.user_id,
         journal_entry_id: row.journal_entry_id,
@@ -184,12 +209,16 @@ export class ChronologyService {
         end_time: row.end_time,
         time_precision: row.time_precision,
         time_confidence: row.time_confidence || 1.0,
-        content: row.journal_entries?.content || '',
-        source_type: row.journal_entries?.source || 'manual',
-        tags: row.journal_entries?.tags || [],
+        content: journal.content || '',
+        source_type: sourceType,
+        recorded_at: journal.created_at ?? null,
+        mentioned_at: /chat|conversation/i.test(sourceType) ? journal.created_at ?? null : null,
+        temporal_source: inferredTemporalSource,
+        tags: journal.tags || [],
         timeline_memberships: memberships[row.journal_entry_id] || [],
         timeline_names: (memberships[row.journal_entry_id] || []).map((tid: string) => timelineNames[tid] || 'Unknown Timeline')
-      }));
+        };
+      });
     } catch (error) {
       logger.error({ error, userId }, 'Error in getChronologicalOrder');
       throw error;
@@ -264,7 +293,7 @@ export class ChronologyService {
   /**
    * Validate chronology for an entry
    */
-  async validateChronology(entry: MemoryEntry): Promise<ChronologyConstraint[]> {
+  async validateChronology(entry: ChronologyMemoryEntry): Promise<ChronologyConstraint[]> {
     const constraints: ChronologyConstraint[] = [];
 
     try {

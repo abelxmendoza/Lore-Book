@@ -1,5 +1,3 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { shortDisplayName } from '../../lib/displayName';
 import {
   Brain,
   MessageSquare,
@@ -15,23 +13,33 @@ import {
   Pencil,
   Copy,
   Check,
+  ShieldCheck,
 } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Card, CardContent, CardHeader } from '../ui/card';
-import { Badge } from '../ui/badge';
-import { InsufficientData } from '../ui/InsufficientData';
-import { cachedFetchJson, invalidateCache } from '../../lib/requestCache';
+
+import {
+  projectCharacterClaimForKnowledgeInspector,
+  projectCharacterFactForKnowledgeInspector,
+  type KernelInspection,
+} from '../../api/knowledgeKernel';
+import type { CharacterChatMention } from '../../hooks/useCharacterProfileBundle';
+import type { Character } from '../../hooks/useLoreNavigatorData';
 import { fetchJson } from '../../lib/api';
+import { shortDisplayName } from '../../lib/displayName';
+import { highlightTextTerms } from '../../lib/highlightTextTerms';
 import { copyTextToClipboard } from '../../lib/listClipboard';
+import { cachedFetchJson, invalidateCache } from '../../lib/requestCache';
 import { buildWhatLoreKnowsClipboardText } from '../../lib/whatLoreKnowsClipboard';
 import {
   confirmationDisplayCount,
   partitionCurrentHistoryFacts,
 } from '../../lib/whatLoreKnowsFacts';
-import type { CharacterChatMention } from '../../hooks/useCharacterProfileBundle';
 import { getMockKnowledgeBaseBundle } from '../../mocks/characterIntelligence';
-import type { Character } from '../../hooks/useLoreNavigatorData';
-import { highlightTextTerms } from '../../lib/highlightTextTerms';
+import { KnowledgeInspector } from '../epistemic/KnowledgeInspector';
+import { Badge } from '../ui/badge';
+import { Card, CardContent, CardHeader } from '../ui/card';
+import { InsufficientData } from '../ui/InsufficientData';
 
 export type CharacterKnowledgeBaseData = {
   characterId: string;
@@ -67,7 +75,12 @@ export type CharacterKnowledgeBaseData = {
     evidence_links?: Array<{ evidence_summary?: string }>;
     last_reinforced_at?: string;
   }>;
-  sceneCandidates: Array<Record<string, unknown>>;
+  sceneCandidates: Array<{
+    id?: string;
+    continuity_strength?: number;
+    canonical_title?: string;
+    recurring_activities?: string[];
+  }>;
   relatedEntities: Array<{ id: string; name: string; type: string; relationship?: string }>;
   conversationLinks?: Array<{
     sessionId: string;
@@ -406,6 +419,7 @@ export function CharacterKnowledgeBase({
   const [editDraft, setEditDraft] = useState('');
   const [savingFactId, setSavingFactId] = useState<string | null>(null);
   const [copiedAll, setCopiedAll] = useState(false);
+  const [selectedInspection, setSelectedInspection] = useState<KernelInspection | null>(null);
   const copyAllTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -1009,6 +1023,21 @@ export function CharacterKnowledgeBase({
                               {pct}%
                             </span>
                           )}
+                          {!editing && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedInspection(projectCharacterFactForKnowledgeInspector({
+                                characterId,
+                                characterName,
+                                fact,
+                              }))}
+                              className="inline-flex items-center gap-1 rounded border border-violet-400/20 bg-violet-400/5 px-1.5 py-1 text-[10px] text-violet-200/70 hover:border-violet-400/40 hover:bg-violet-400/10 hover:text-violet-100"
+                              aria-label={`Why LoreBook shows this fact about ${characterName}`}
+                            >
+                              <ShieldCheck className="h-3 w-3" aria-hidden="true" />
+                              Why?
+                            </button>
+                          )}
                           {isSelfProfile && (
                             editing ? (
                               <div className="flex flex-col items-stretch gap-1.5 mt-0.5 min-w-[7.5rem]">
@@ -1214,6 +1243,19 @@ export function CharacterKnowledgeBase({
                       ))}
                     </div>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedInspection(projectCharacterClaimForKnowledgeInspector({
+                      characterId,
+                      characterName,
+                      claim,
+                    }))}
+                    className="inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-indigo-400/25 bg-indigo-400/5 px-3 text-xs font-medium text-indigo-200/80 hover:border-indigo-400/45 hover:bg-indigo-400/10 hover:text-indigo-100"
+                    aria-label={`Why LoreBook suggests this pattern about ${characterName}`}
+                  >
+                    <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                    Why does LoreBook show this?
+                  </button>
                 </div>
               );
             })}
@@ -1256,11 +1298,11 @@ export function CharacterKnowledgeBase({
             subtitle="Patterns LoreBook has noticed across multiple conversations."
           />
           <div className="space-y-2">
-            {kb!.sceneCandidates.map((c: any) => {
+            {kb!.sceneCandidates.map((c) => {
               const strength = Math.round((c.continuity_strength ?? 0) * 100);
               return (
                 <div
-                  key={c.id}
+                  key={c.id ?? c.canonical_title ?? c.recurring_activities?.join(':')}
                   className="p-3 rounded-lg border border-amber-500/15 bg-amber-500/5 space-y-1"
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -1284,6 +1326,17 @@ export function CharacterKnowledgeBase({
           </div>
         </section>
       )}
+
+      {selectedInspection ? (
+        <KnowledgeInspector
+          open
+          onClose={() => setSelectedInspection(null)}
+          assertion={selectedInspection.assertion}
+          evidence={selectedInspection.evidence}
+          revisions={selectedInspection.revisions}
+          warnings={selectedInspection.warnings}
+        />
+      ) : null}
     </div>
   );
 }

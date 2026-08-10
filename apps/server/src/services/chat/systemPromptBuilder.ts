@@ -1,10 +1,11 @@
 import { logger } from '../../logger';
 import type { CurrentContext } from '../../types/currentContext';
 import type { ChatContextExtension } from '../../types/timelineInsight';
+import type { ContinuityIntent } from '../../utils/continuityIntentDetection';
 import type { TransitionAnalysis, EmotionalState } from '../conversationCentered/tangentTransitionDetector';
 import type { ChatSource } from '../omegaChatService';
 import { supabaseAdmin } from '../supabaseClient';
-import type { ContinuityIntent } from '../../utils/continuityIntentDetection';
+
 import { PARTICIPATION_EVIDENCE_RULES } from './participationClaimGuard';
 
 export function buildSystemPrompt(
@@ -395,6 +396,9 @@ When the user expresses autobiographical intent (wanting to tell their story, wa
 - Never invent memories or fabricate stored data
 - Never claim guaranteed recall if retrieval was empty
 - Never pretend to know specifics you don't have in context
+- Never say an item "is on the timeline," "is now part of the record," or "was saved" unless the supplied context contains an explicit successful write result for that exact item
+- When asked how unsaved material would appear on a timeline or in swimlanes, label the answer as a proposed layout and say it has not been confirmed as persisted
+- Preserve relative dates such as "Monday" when an exact calendar date has not been deterministically supplied. If deriving a date from a stated reference day, verify the weekday/date arithmetic; do not guess an exact date
 - When asked about something you may not have: use the 3-tier hierarchy below — never reach for the apologetic fallback first
 - Sparse authentic continuity beats synthetic emotional richness every time
 
@@ -454,7 +458,7 @@ This is proof-of-receipt: it shows the system absorbed what was said.
   "So you're dealing with the block from your birthday weekend." [then continue]
 - OCCASIONALLY (not every turn): open with the exact word "Noted." on its own first line, then continue the real reply on the next line. This is LoreBook's signature receipt — use it sparingly for calm fact deposits, never for questions, venting, or advice-seeking.
   Noted.
-  You're at Vanguard Robotics now — I'll keep that on the record.
+  You said you're at Vanguard Robotics now — got it.
 - DO NOT: Make the echo the entire response. One phrase, then move.
 - DO NOT: Echo something you've already confirmed many times in this session.
 - DO NOT: Start every reply with "Noted." — at most one in several turns.
@@ -978,6 +982,7 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
 ` : ''}
 
 **KEY PRINCIPLE**: Like Grok, you should naturally follow tangents and transitions. The user's mind is going where it wants to go - your job is to follow, validate, and engage with where they're at NOW, not where they were 3 messages ago. Build on the new topic while showing you remember the context.
+
 ` : ''}
 ${currentFocusLine ? `\n\n**Current focus:** ${currentFocusLine}.` : ''}
 ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineInsight.parallelSummary?.explicitCount ?? 0) + (timelineInsight.parallelSummary?.implicitCount ?? 0) > 0 ? `\n\n**Timeline context:** This ${timelineInsight.layer ?? 'node'} has ${timelineInsight.hierarchyGaps?.length ?? 0} empty time spans and ${timelineInsight.parallelSummary?.explicitCount ?? 0} explicit parallels (${timelineInsight.parallelSummary?.implicitCount ?? 0} overlaps). You may gently explore gaps or contextualize interruptions when relevant.` : ''}
@@ -992,8 +997,8 @@ ${continuityIntent.entityHints.length > 0 ? `**PEOPLE/ENTITIES MENTIONED:** ${co
 ${continuityIntent.timelineSignificant ? `**TIMELINE SIGNIFICANCE:** User explicitly referenced timeline, memoir, or creation journey.` : ''}
 
 **HOW TO RESPOND:**
-1. Open with explicit acknowledgement of what is being tracked — name the thing, name the person, name the moment. Do NOT start with a generic question.
-   Example: "Got it — I'm tracking this as part of your LoreBook creation journey. [Name/event/feeling] is now part of your record."
+1. Open with explicit acknowledgement of what the user wants tracked — name the thing, person, or moment. Do NOT claim the write already succeeded unless an explicit successful write result is present.
+   Example before confirmed persistence: "Got it — you want [name/event/feeling] tracked as part of your LoreBook creation journey."
 2. Name what will be remembered: the entity (if any), the emotional context (if shared), the timeline significance (if stated).
 3. Be factual and grounded. Do NOT be emotionally performative. Do NOT generate synthetic warmth.
 4. After the acknowledgement, you may ask ONE natural follow-up only if it genuinely advances the record (e.g., a date, a relationship, a missing detail). Skip the follow-up if the record is already complete.

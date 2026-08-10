@@ -7,6 +7,7 @@
  * graph nodes.
  */
 
+import { isAppSurfacePersonName } from '../../utils/personNameValidation';
 import {
   classifyMention,
   mayAppearAsTranscriptMention,
@@ -51,6 +52,10 @@ export function isPresentableEntityName(name: string, kind?: string): boolean {
   const clean = name.trim().replace(/\s+/g, ' ');
   if (clean.length < 2 || clean.split(' ').length > 5) return false;
   if (JUNK_ENTITY_RE.test(clean)) return false;
+  // A stale event/entity row named after LoreBook navigation is product chrome,
+  // not story context. Keep exact-label matching so genuine titles containing
+  // these words remain eligible.
+  if (isAppSurfacePersonName(clean)) return false;
   if (/^(?:also|and|but|so|then)\s+/i.test(clean)) return false;
   // Mention resolver: generics / indefinites are not presentable chips. Pass
   // through the known book kind so place names are not judged as invalid

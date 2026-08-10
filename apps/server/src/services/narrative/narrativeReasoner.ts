@@ -53,7 +53,7 @@ const QUESTION_PATTERNS: Array<{ kind: CognitionQuestionKind; pattern: RegExp }>
   {
     kind: 'what_changed',
     pattern:
-      /\b(what('s| has| is)? changed( recently| lately)?|what changed (recently|lately|in my life)|what('s| is) (new|different) (in|with|about) my life)\b/i,
+      /\b(what('s| has| is)? changed( recently| lately| over time)?|what changed (recently|lately|in my life|over time)|what('s| is) (new|different) (in|with|about) my life|how (have|has|'ve) (i|my .+) (changed|evolved|shifted)|(plans|opinions|goals|priorities|beliefs).{0,40}(changed|evolved|shifted)( over time)?|before and after|what('s| is| are) different (now|about me)( (vs|versus|compared to).*)?)\b/i,
   },
   {
     kind: 'attention',
@@ -87,6 +87,9 @@ export function detectCognitionQuestion(message: string): CognitionQuestionKind 
 // ---------------------------------------------------------------------------
 
 const CHANGE_WINDOW_DAYS = 30;
+// Goals and priorities move slower than who's in your life — a wider window
+// matches "what changed over time" better than the 30-day people/role window.
+const GOAL_CHANGE_WINDOW_DAYS = 180;
 
 export function detectRecentChanges(
   cctx: NarrativeCognitionContext,
@@ -149,6 +152,41 @@ export function detectRecentChanges(
     changes.push({ kind: 'new_arc', label: arc.title, confidence: arc.confidence });
   }
 
+  for (const goal of cctx.goals ?? []) {
+    if (goal.status === 'ACTIVE') {
+      const createdDays = daysBetween(goal.created_at, cctx.now);
+      if (createdDays != null && createdDays <= GOAL_CHANGE_WINDOW_DAYS) {
+        changes.push({ kind: 'new_goal', label: `Took on a new goal: ${goal.title}`, confidence: 0.7 });
+      }
+      continue;
+    }
+    if (goal.status === 'COMPLETED' || goal.status === 'ABANDONED') {
+      const endedDays = daysBetween(goal.ended_at ?? undefined, cctx.now);
+      if (endedDays != null && endedDays <= GOAL_CHANGE_WINDOW_DAYS) {
+        changes.push({
+          kind: goal.status === 'COMPLETED' ? 'goal_completed' : 'goal_abandoned',
+          label:
+            goal.status === 'COMPLETED'
+              ? `Completed: ${goal.title}`
+              : `Stepped away from: ${goal.title}`,
+          confidence: 0.75,
+        });
+      }
+    }
+  }
+
+  for (const shift of cctx.priorityShifts ?? []) {
+    const shiftDays = daysBetween(shift.createdAt, cctx.now);
+    if (shiftDays == null || shiftDays > GOAL_CHANGE_WINDOW_DAYS) continue;
+    const direction = shift.newPriority > shift.oldPriority ? 'grew in importance' : 'became less central';
+    changes.push({
+      kind: 'priority_shift',
+      label: `${shift.valueName} ${direction}`,
+      detail: `${shift.oldPriority.toFixed(2)} → ${shift.newPriority.toFixed(2)}`,
+      confidence: 0.65,
+    });
+  }
+
   return changes.sort((a, b) => b.confidence - a.confidence).slice(0, 8);
 }
 
@@ -200,7 +238,40 @@ export async function buildCognitionContext(userId: string): Promise<NarrativeCo
     }
   }
 
-  return { graph, work, recencyByEntity, firstSeenByEntity, now: new Date().toISOString() };
+  // Goals and value-priority shifts are the "plans, opinions, goals, or
+  // priorities" half of "what changed" — people/role/arcs alone answer
+  // "who/where changed", not "what I'm working toward changed". Reuses the
+  // existing Goal Tracking & Value Alignment Engine rather than a new store.
+  let goals: NarrativeCognitionContext['goals'];
+  let priorityShifts: NarrativeCognitionContext['priorityShifts'];
+  try {
+    const { goalValueAlignmentService } = await import('../goalValueAlignmentService');
+    const [goalRows, values, evolutionEvents] = await Promise.all([
+      goalValueAlignmentService.getGoals(userId),
+      goalValueAlignmentService.getValues(userId, false),
+      goalValueAlignmentService.getValueEvolutionHistory(userId, undefined, 10),
+    ]);
+    goals = goalRows.map((g) => ({
+      id: g.id,
+      title: g.title,
+      status: g.status,
+      created_at: g.created_at,
+      ended_at: g.ended_at,
+    }));
+    const valueNameById = new Map(values.map((v) => [v.id, v.name]));
+    priorityShifts = evolutionEvents
+      .filter((e) => valueNameById.has(e.value_id))
+      .map((e) => ({
+        valueName: valueNameById.get(e.value_id)!,
+        oldPriority: e.old_priority,
+        newPriority: e.new_priority,
+        createdAt: e.created_at,
+      }));
+  } catch (err) {
+    logger.debug({ err, userId }, 'narrativeCognition: goal/value context unavailable, continuing');
+  }
+
+  return { graph, work, recencyByEntity, firstSeenByEntity, now: new Date().toISOString(), goals, priorityShifts };
 }
 
 // ---------------------------------------------------------------------------

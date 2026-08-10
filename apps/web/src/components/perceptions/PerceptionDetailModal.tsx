@@ -1,15 +1,20 @@
+import { formatDistanceToNow } from 'date-fns';
+import { X, MessageSquare, FileText, Eye, Save, Loader2, AlertTriangle, Clock, User, ArrowRight, ShieldCheck } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
-import { X, MessageSquare, FileText, Eye, Save, Loader2, AlertTriangle, Clock, User, ArrowRight } from 'lucide-react';
+
+import { projectPerceptionForKnowledgeInspector } from '../../api/knowledgeKernel';
+import { perceptionApi } from '../../api/perceptions';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import type { PerceptionEntry, PerceptionStatus } from '../../types/perception';
+import { KnowledgeInspector } from '../epistemic/KnowledgeInspector';
+import { ReactionList } from '../reactions/ReactionList';
+import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader } from '../ui/card';
-import { Badge } from '../ui/badge';
-import { perceptionApi } from '../../api/perceptions';
-import type { PerceptionEntry, PerceptionStatus } from '../../types/perception';
-import { formatDistanceToNow } from 'date-fns';
 import { Textarea } from '../ui/textarea';
-import { ReactionList } from '../reactions/ReactionList';
+
 import { PerceptionEvolutionTimeline } from './PerceptionEvolutionTimeline';
-import { openChatWithFocus } from '../../lib/openChatWithFocus';
+
 
 interface PerceptionDetailModalProps {
   perception: PerceptionEntry;
@@ -34,6 +39,7 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [showKnowledgeInspector, setShowKnowledgeInspector] = useState(false);
   const [editForm, setEditForm] = useState({
     content: perception.content,
     impact_on_me: perception.impact_on_me,
@@ -48,6 +54,12 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
       try {
         // Could fetch full details if needed
         setPerception(initialPerception);
+        setEditForm({
+          content: initialPerception.content,
+          impact_on_me: initialPerception.impact_on_me,
+          status: initialPerception.status,
+          resolution_note: initialPerception.resolution_note || '',
+        });
       } catch (error) {
         console.error('Failed to load perception:', error);
       } finally {
@@ -55,7 +67,7 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
       }
     };
     void loadPerception();
-  }, [initialPerception.id]);
+  }, [initialPerception]);
 
   const openPerceptionInMainChat = () => {
     onClose();
@@ -148,7 +160,7 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div className="bg-black/90 border border-border/60 rounded-2xl shadow-panel w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(255,165,0,0.35),_transparent)]">
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(255,165,0,0.35),_transparent)]">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <Eye className="w-6 h-6 text-orange-400 flex-shrink-0" />
             <div className="flex-1 min-w-0">
@@ -173,27 +185,46 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
         </div>
 
         <div className="border-b border-border/60 bg-orange-500/[0.06] px-4 py-3 sm:px-6">
-          <button
-            type="button"
-            onClick={openPerceptionInMainChat}
-            data-testid="perception-open-main-chat"
-            className="group flex w-full items-center justify-between gap-4 rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-left transition hover:border-orange-400/60 hover:bg-orange-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
-          >
-            <span className="flex min-w-0 items-center gap-3">
-              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-orange-300">
-                <MessageSquare className="h-4 w-4" />
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={openPerceptionInMainChat}
+              data-testid="perception-open-main-chat"
+              className="group flex w-full items-center justify-between gap-4 rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-left transition hover:border-orange-400/60 hover:bg-orange-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
+            >
+              <span className="flex min-w-0 items-center gap-3">
+                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-orange-300">
+                  <MessageSquare className="h-4 w-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block font-semibold text-white">Focus this perception in main chat</span>
+                  <span className="block text-xs text-white/60">LoreBook responds first while preserving uncertainty and evidence.</span>
+                </span>
               </span>
-              <span className="min-w-0">
-                <span className="block font-semibold text-white">Focus this perception in main chat</span>
-                <span className="block text-xs text-white/60">LoreBook responds first while preserving uncertainty and evidence.</span>
+              <ArrowRight className="h-4 w-4 flex-shrink-0 text-orange-300 transition-transform group-hover:translate-x-1" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowKnowledgeInspector(true)}
+              data-testid="perception-open-evidence"
+              className="group flex w-full items-center justify-between gap-4 rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-left transition hover:border-violet-400/60 hover:bg-violet-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+            >
+              <span className="flex min-w-0 items-center gap-3">
+                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-violet-500/20 text-violet-300">
+                  <ShieldCheck className="h-4 w-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block font-semibold text-white">Why is this recorded?</span>
+                  <span className="block text-xs text-white/60">See evidence, uncertainty, alternatives, and changes.</span>
+                </span>
               </span>
-            </span>
-            <ArrowRight className="h-4 w-4 flex-shrink-0 text-orange-300 transition-transform group-hover:translate-x-1" />
-          </button>
+              <ArrowRight className="h-4 w-4 flex-shrink-0 text-violet-300 transition-transform group-hover:translate-x-1" />
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-1 px-6 pt-4 border-b border-border/60">
+        <div className="flex items-center gap-1 px-4 sm:px-6 pt-4 border-b border-border/60">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
@@ -214,7 +245,7 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -333,7 +364,7 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
                       </div>
 
                       {/* Source & Certainty */}
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div>
                           <label className="text-xs text-white/60 mb-1 block">Source</label>
                           <Badge
@@ -407,6 +438,13 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
         </div>
 
       </div>
+      {showKnowledgeInspector ? (
+        <KnowledgeInspector
+          open
+          onClose={() => setShowKnowledgeInspector(false)}
+          {...projectPerceptionForKnowledgeInspector(perception)}
+        />
+      ) : null}
     </div>
   );
 };

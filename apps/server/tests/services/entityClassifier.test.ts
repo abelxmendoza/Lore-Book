@@ -87,6 +87,8 @@ describe('EntityClassifier — places, venues, companies', () => {
   it('company lexicon → COMPANY', () => {
     expect(t('Amazon')).toBe('ORGANIZATION');
     expect(t('Google')).toBe('ORGANIZATION');
+    expect(t('Rivian')).toBe('ORGANIZATION');
+    expect(t('Rivian', 'I have a phone interview for Rivian tomorrow')).toBe('ORGANIZATION');
   });
   it('band/org lexicon → ORGANIZATION', () => {
     expect(t('Prayers')).toBe('ORGANIZATION');

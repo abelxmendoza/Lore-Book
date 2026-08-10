@@ -53,7 +53,9 @@ describe('actorLabelPolicy', () => {
   it('rejects self / narrator labels', () => {
     expect(isSelfActorLabel('You')).toBe(true);
     expect(isSelfActorLabel('Also You')).toBe(true);
+    expect(isSelfActorLabel('You (Also)')).toBe(true);
     expect(classifyActorLabel('Also You').reason).toBe('self');
+    expect(classifyActorLabel('You (Also)').reason).toBe('self');
   });
 
   it('keeps named people as PERSON', () => {

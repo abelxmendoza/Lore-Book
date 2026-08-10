@@ -65,4 +65,43 @@ describe('ThreadSummaryBar', () => {
       themes: ['character cleanup'],
     })).toBe('Discussed Mara and Renna. You also clarified that Cyberpunk was a game mention, not a person.');
   });
+
+  it('uses durable message entities when summary entity extraction lagged', () => {
+    mockUseThreadSummary.mockReturnValue({
+      data: {
+        success: true,
+        summary: {
+          short: '4 messages in this thread.',
+          medium: '4 messages in this thread.',
+          long: '4 messages in this thread.',
+          version: 1,
+          messageCount: 4,
+          people: [],
+          places: [],
+          themes: [],
+        },
+        continuity: '',
+        recallText: '4 messages in this thread.',
+      },
+      loading: false,
+      refreshing: false,
+      error: null,
+      reload: vi.fn(),
+      refresh: vi.fn(),
+    });
+
+    render(
+      <ThreadSummaryBar
+        threadId="thread-1"
+        messageCount={4}
+        confirmedEntities={[
+          { name: 'Marcus', type: 'character' },
+          { name: 'Northwind Gym', type: 'location' },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('Marcus')).toBeInTheDocument();
+    expect(screen.getByText('Northwind Gym')).toBeInTheDocument();
+  });
 });

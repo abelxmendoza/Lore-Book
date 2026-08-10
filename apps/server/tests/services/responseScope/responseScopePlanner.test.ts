@@ -38,6 +38,8 @@ describe('scope intent and domain routing', () => {
     expect(plan.blockedDomains).toEqual(
       expect.arrayContaining(['family', 'romance', 'music_scene', 'diagnostics', 'full_graph']),
     );
+    expect(plan.contextPlan.primary).toBe('career');
+    expect(plan.contextPlan.excluded).toEqual(expect.arrayContaining(['relationships', 'family', 'music']));
   });
 
   it('family questions block work and romance', () => {

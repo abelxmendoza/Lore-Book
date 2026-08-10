@@ -4,6 +4,7 @@
 // =====================================================
 
 import { logger } from '../../logger';
+import { retryWithExponentialBackoff } from '../../lib/openaiRetry';
 import { config } from '../../config';
 import { isIndividualPersonName } from '../../utils/personNameValidation';
 import { detectAIUncertainty } from '../../utils/aiUncertainty';
@@ -12,6 +13,7 @@ import { memoryFeedbackBus, type MemoryFeedbackEvent } from '../memoryFeedbackBu
 import { normalizationService } from './normalizationService';
 import { semanticExtractionService } from './semanticExtractionService';
 import { eventAssemblyService } from './eventAssemblyService';
+import { pipelineRunService } from '../ingestion/pipelineRunService';
 import { multiEventSplittingService } from './multiEventSplittingService';
 import { correctionResolutionService } from './correctionResolutionService';
 import { entryEnrichmentService } from '../entryEnrichmentService';
@@ -115,7 +117,12 @@ export class ConversationIngestionPipeline {
     chatMessageId: string,
     sessionId: string,
     conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
-    force?: boolean
+    force?: boolean,
+    // Optional: only the queue worker has a pipeline_runs row to record
+    // async event-assembly failures against (see ingestMessageCore's use of
+    // this). Callers without one (e.g. conversationalOrchestrationService)
+    // simply omit it — failures there stay logger-only, as before.
+    runId?: string
   ): Promise<{ entityResolutionFailed?: boolean }> {
     const pipelineStart = Date.now();
     try {
@@ -206,8 +213,148 @@ export class ConversationIngestionPipeline {
         conversationHistory,
         eventContext,
         undefined,
-        { chatMessageId, sourceCreatedAt: chatMessage.created_at }
+        { chatMessageId, sourceCreatedAt: chatMessage.created_at },
+        runId
       );
+
+      // Compare direct user corrections and focus statements against the
+      // canonical Projects Book after evidence ingestion. This is intentionally
+      // narrow: it updates owned existing projects only, never creates entities,
+      // and records unresolved focus labels instead of guessing.
+      if (chatMessage.role === 'user') {
+        const stateStartedAt = Date.now();
+        try {
+          const { applyCanonicalStateFromMessage } = await import('../canonicalState');
+          const stateResult = await applyCanonicalStateFromMessage({
+            userId,
+            sourceMessageId: chatMessageId,
+            text: chatMessage.content,
+            now: chatMessage.created_at ?? new Date().toISOString(),
+          });
+          const { cognitiveObservatory } = await import('../cognitiveObservatory');
+          const observedAt = chatMessage.created_at ?? new Date().toISOString();
+          cognitiveObservatory.recordStage({
+            userId,
+            sourceId: chatMessageId,
+            trace: {
+              stage: 'SEMANTIC_EXTRACTION',
+              status: result.unitIds.length <= 6 ? 'PASS' : 'WARN',
+              startedAt: observedAt,
+              durationMs: 0,
+              counts: { inputs: 1, outputs: result.unitIds.length },
+              decisions: [result.unitIds.length <= 6 ? 'BOUNDED_UNITS' : 'HIGH_UNIT_COUNT'],
+              downstreamEffects: ['ASSERTION_CANDIDATES_READY'],
+            },
+          });
+          cognitiveObservatory.recordStage({
+            userId,
+            sourceId: chatMessageId,
+            trace: {
+              stage: 'GOVERNANCE',
+              status: stateResult.quality.legacyNonAtomicWrites > 0 ? 'WARN' : stateResult.governance.length > 0 ? 'PASS' : 'SKIPPED',
+              startedAt: observedAt,
+              durationMs: 0,
+              counts: {
+                inputs: stateResult.governance.length,
+                outputs: stateResult.quality.governanceAutomatic,
+                discarded: stateResult.quality.governanceReviewRequired,
+              },
+              decisions: stateResult.governance.map((decision) => `${decision.envelope.intent}:${decision.envelope.category}:${decision.outcome}`),
+              downstreamEffects: stateResult.governance.flatMap((decision) =>
+                decision.envelope.affectedProjections.map((projection) => `AFFECTS_AFTER_APPLY:${projection}`),
+              ),
+              error: stateResult.quality.legacyNonAtomicWrites > 0
+                ? 'Compatibility writes are policy-authorized but not yet mutation+audit atomic.'
+                : undefined,
+            },
+          });
+          cognitiveObservatory.recordStage({
+            userId,
+            sourceId: chatMessageId,
+            trace: {
+              stage: 'ENTITY_RESOLUTION',
+              status: result.entityResolutionFailed ? 'WARN' : 'PASS',
+              startedAt: observedAt,
+              durationMs: 0,
+              counts: {
+                outputs: result.resolvedEntityIds.length + result.resolvedLocationIds.length,
+                reused: result.resolvedEntityIds.length + result.resolvedLocationIds.length,
+                created: result.promotedEntities.filter((entity) => entity.created).length,
+              },
+              decisions: result.entityResolutionFailed ? ['DEGRADED_BOOK_MATCH_FALLBACK'] : ['CANONICAL_RESOLUTION'],
+              downstreamEffects: ['ENTITY_LINKS_READY'],
+            },
+          });
+          cognitiveObservatory.recordStage({
+            userId,
+            sourceId: chatMessageId,
+            trace: {
+              stage: 'CANONICAL_STATE',
+              status: stateResult.failed.length > 0 ? 'WARN' : stateResult.transitions.length > 0 ? 'PASS' : 'SKIPPED',
+              startedAt: observedAt,
+              durationMs: Date.now() - stateStartedAt,
+              counts: {
+                inputs: stateResult.transitions.length,
+                outputs: stateResult.applied.length + stateResult.unchanged.length,
+                updated: stateResult.quality.stateTransitionsApplied,
+                reused: stateResult.quality.canonicalProjectsReused,
+                discarded: stateResult.failed.length,
+              },
+              decisions: stateResult.transitions.map((transition) => `${transition.type}:${transition.subject}`),
+              downstreamEffects: stateResult.applied.map((transition) => `${transition.before ?? 'none'} -> ${transition.after}`),
+            },
+          });
+          if (runId && (stateResult.transitions.length > 0 || stateResult.failed.length > 0)) {
+            await pipelineRunService.recordStep(runId, {
+              step: 'CANONICAL_STATE',
+              success: stateResult.failed.length === 0,
+              duration_ms: Date.now() - stateStartedAt,
+              row_count: stateResult.quality.stateTransitionsApplied,
+              metadata: stateResult.quality,
+            }).catch((stepError) => {
+              logger.warn({ stepError, runId }, 'Could not append canonical-state diagnostic step');
+            });
+          }
+        } catch (err) {
+          logger.warn({ err, userId, chatMessageId }, 'Canonical state update failed without blocking ingestion');
+          if (runId) {
+            await pipelineRunService.recordStep(runId, {
+              step: 'CANONICAL_STATE',
+              success: false,
+              duration_ms: Date.now() - stateStartedAt,
+              error: err instanceof Error ? err.message : String(err),
+            }).catch((stepError) => {
+              logger.warn({ stepError, runId }, 'Could not append canonical-state failure diagnostic');
+            });
+          }
+        }
+      }
+
+      // Blueprint 15 — shadow-only cognitive update evaluation. This compares
+      // the new evidence against conservative transition rules and produces a
+      // projection-impact plan. It never writes canon, refreshes projections,
+      // or delays ingestion; promotion requires evaluation first.
+      if (chatMessage.role === 'user') {
+        setImmediate(() => {
+          void import('../cognitiveUpdate')
+            .then(({ runCognitiveUpdateShadow }) =>
+              runCognitiveUpdateShadow({
+                evidenceId: chatMessageId,
+                userId,
+                content: chatMessage.content,
+                source: 'chat_message',
+                authorRole: 'user',
+                recordedAt: chatMessage.created_at ?? new Date().toISOString(),
+                entityIds: result.resolvedEntityIds,
+                unitIds: result.unitIds,
+                confidence: result.entityResolutionFailed ? 0.55 : 0.8,
+              }),
+            )
+            .catch((err) => {
+              logger.debug({ err, userId, chatMessageId }, 'Cognitive update shadow skipped');
+            });
+        });
+      }
 
       // Link conversation message back to chat message via metadata
       await supabaseAdmin
@@ -662,7 +809,8 @@ export class ConversationIngestionPipeline {
       type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP';
       id: string;
     },
-    ingestOptions?: { chatMessageId?: string; sourceCreatedAt?: string }
+    ingestOptions?: { chatMessageId?: string; sourceCreatedAt?: string },
+    runId?: string
   ): Promise<{
     messageId: string;
     utteranceIds: string[];
@@ -708,7 +856,8 @@ export class ConversationIngestionPipeline {
         conversationHistory,
         eventContext,
         entityContext,
-        ingestOptions
+        ingestOptions,
+        runId
       );
     } catch (err) {
       logger.error({ error: err, userId, threadId }, 'Failed to ingest message');
@@ -1215,7 +1364,8 @@ export class ConversationIngestionPipeline {
     conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
     eventContext?: string,
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string },
-    ingestOptions?: { chatMessageId?: string; sourceCreatedAt?: string }
+    ingestOptions?: { chatMessageId?: string; sourceCreatedAt?: string },
+    runId?: string
   ): Promise<{
     messageId: string;
     utteranceIds: string[];
@@ -1406,13 +1556,39 @@ export class ConversationIngestionPipeline {
         if (normalizedUtterances.length > 0) {
           const fullNormalizedText = normalizedUtterances.map(u => u.normalized_text).join(' ');
           const { omegaMemoryService } = await import('../omegaMemoryService');
+          const { resolveMessageEntitiesForDisplay } = await import('../chat/messageEntityDisplayService');
+          const { mergeCanonicalEntityCandidates } = await import('./canonicalEntityCandidateService');
+          // Known tenant-owned book entities participate before candidate
+          // creation, not only as a fallback after provider failure.
+          const bookMatches = (await resolveMessageEntitiesForDisplay(userId, rawText)).filter(
+            (entity) => entity.type !== 'event',
+          );
           // Mirror the gate inside extractEntities so the meter can attribute the
           // skip to this message (same deterministic function — no divergence).
           const entityGateOpen = evaluateEntityCandidates(fullNormalizedText).hasCandidates;
-          const candidateEntities = (await omegaMemoryService.extractEntities(fullNormalizedText)).filter(
-            (e) => !isLoreBookProductName(e.name)
+          // Nothing has written yet at this point, so one bounded retry on a
+          // transient failure (LLM rate limit, momentary DB blip) is safe and
+          // cheap — without it, a single hiccup here becomes a hard
+          // entity_resolution_failed dead end for the whole message with no
+          // recovery, which is what previously left users like "can you
+          // summarize what happened" stuck on "something went wrong."
+          const { candidateEntities, resolved } = await retryWithExponentialBackoff(
+            async () => {
+              const extracted = (await omegaMemoryService.extractEntities(fullNormalizedText)).filter(
+                (entity) => !isLoreBookProductName(entity.name)
+              );
+              const entities = mergeCanonicalEntityCandidates(extracted, bookMatches);
+              return { candidateEntities: entities, resolved: await omegaMemoryService.resolveEntities(userId, entities) };
+            },
+            {
+              maxAttempts: 2,
+              baseDelayMs: 400,
+              shouldRetry: (err, attempt) => {
+                logger.warn({ err, messageId, attempt }, 'Entity extraction/resolution failed, retrying once before giving up');
+                return true;
+              },
+            },
           );
-          const resolved = await omegaMemoryService.resolveEntities(userId, candidateEntities);
           costMeter.record('entity_extraction', {
             eligible: entityGateOpen,
             invoked: entityGateOpen,
@@ -1567,7 +1743,49 @@ export class ConversationIngestionPipeline {
         }
       } catch (error) {
         _entityResolutionFailed = true;
-        logger.warn({ error }, 'Failed to resolve entities for enrichment, continuing without');
+        logger.warn({ error }, 'Failed to resolve entities for enrichment, using deterministic book matches');
+        // LLM extraction can time out even though the message names characters
+        // and places already present in the user's books. Preserve those exact,
+        // tenant-scoped matches as a degraded floor so thread People/Places,
+        // semantic conversion, and event assembly do not all become empty from
+        // one provider failure. This does not create or guess new entities.
+        try {
+          const { resolveMessageEntitiesForDisplay } = await import(
+            '../chat/messageEntityDisplayService'
+          );
+          const fallback = (await resolveMessageEntitiesForDisplay(userId, rawText)).filter(
+            (entity) => entity.type !== 'event',
+          );
+          const typeMap = {
+            character: 'PERSON',
+            location: 'LOCATION',
+            organization: 'ORG',
+          } as const;
+          _messageResolvedEntities = fallback.map((entity) => ({
+            id: entity.id,
+            type: typeMap[entity.type as keyof typeof typeMap],
+            name: entity.name,
+          }));
+          for (const entity of _messageResolvedEntities) {
+            resolvedEntities.push({ id: entity.id, type: entity.type });
+            if (entity.type === 'LOCATION') {
+              if (!_resolvedLocationIds.includes(entity.id)) _resolvedLocationIds.push(entity.id);
+              _threadMetaTurn.places.push(entity.name);
+            } else {
+              if (!_resolvedEntityIds.includes(entity.id)) _resolvedEntityIds.push(entity.id);
+              if (entity.type === 'PERSON') _threadMetaTurn.people.push(entity.name);
+            }
+          }
+          logger.info(
+            { userId, messageId, fallbackMatches: fallback.length },
+            'Recovered known entities from deterministic book matches after extraction failure',
+          );
+        } catch (fallbackError) {
+          logger.warn(
+            { error: fallbackError, userId, messageId },
+            'Deterministic entity fallback also failed; continuing without enrichment',
+          );
+        }
       }
       stageTimer.mark('entity_resolution');
 
@@ -2048,6 +2266,18 @@ export class ConversationIngestionPipeline {
               .reconcileEvent(eventContext, userId)
               .catch(err => {
                 logger.warn({ error: err, eventId: eventContext, userId }, 'Event reconciliation failed (non-blocking)');
+                if (runId) {
+                  // duration_ms 0: this settles asynchronously, well after the
+                  // pipeline_run's own timing window has closed — the point of
+                  // this step is visibility (success/error), not timing.
+                  void pipelineRunService.recordStep(runId, {
+                    step: 'event_assembly',
+                    success: false,
+                    error: 'event_assembly_failed',
+                    duration_ms: 0,
+                    metadata: { userId, threadId, phase: 'reconcile' },
+                  });
+                }
               });
           }
 
@@ -2472,6 +2702,15 @@ export class ConversationIngestionPipeline {
           })
           .catch(err => {
             logger.warn({ error: err, userId, threadId }, 'Event assembly failed (non-blocking)');
+            if (runId) {
+              void pipelineRunService.recordStep(runId, {
+                step: 'event_assembly',
+                success: false,
+                error: 'event_assembly_failed',
+                duration_ms: 0,
+                metadata: { userId, threadId, phase: 'assemble' },
+              });
+            }
           });
       }
 

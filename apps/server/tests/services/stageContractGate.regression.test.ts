@@ -41,6 +41,11 @@ describe('stageContractGate regressions (real failure fixtures)', () => {
     it('rejects command as PERSON', () => rejectPerson('Can you list my friends?'));
     it('rejects chat bubble styling as PERSON', () => rejectPerson('chat bubbles'));
     it('rejects testing chatter as PERSON', () => rejectPerson('testing the new chat'));
+    it('rejects sentence-opening Like as PERSON', () => rejectPerson('Like'));
+    it('rejects Tomorrow Im sentence bleed as PERSON', () => rejectPerson('Tomorrow Im'));
+    it('rejects recurring weekday Fridays as PERSON', () => rejectPerson('Fridays'));
+    it('rejects Fitness as PERSON', () => rejectPerson('Fitness'));
+    it('rejects Police as PERSON', () => rejectPerson('Police'));
 
     it('retypes bare place word Downtown toward LOCATION', () => {
       const r = validateEntityCandidateBeforePersist({
@@ -71,6 +76,18 @@ describe('stageContractGate regressions (real failure fixtures)', () => {
         confidence: 0.9,
       });
       expect(r.accepted).toBe(true);
+    });
+
+    it('still accepts the plausible names from the reported conversation', () => {
+      for (const name of ['Annie', 'Connor']) {
+        const r = validateEntityCandidateBeforePersist({
+          name,
+          type: 'PERSON',
+          evidenceIds: ['reported-message'],
+          confidence: 0.9,
+        });
+        expect(r.accepted).toBe(true);
+      }
     });
   });
 
@@ -155,6 +172,25 @@ describe('stageContractGate regressions (real failure fixtures)', () => {
         publishableTitle: true,
       });
       expect(r.accepted).toBe(true);
+    });
+
+    it('keeps unknown occurrence null instead of copying recordedAt', () => {
+      const r = validateEventBeforePersist({
+        title: 'Started a new creative practice',
+        occurredAt: null,
+        recordedAt: '2026-08-09T12:00:00.000Z',
+        temporalPrecision: 'unknown',
+        temporalSource: 'unknown',
+        eligibilityEligible: true,
+        eligibilityReason: 'personal_event',
+        evidenceIds: ['unit-unknown-time'],
+        publishableTitle: true,
+      });
+      expect(r.accepted).toBe(true);
+      if (r.accepted && 'occurredAt' in r.value) {
+        expect(r.value.occurredAt).toBeNull();
+        expect(r.value.recordedAt).toBe('2026-08-09T12:00:00.000Z');
+      }
     });
   });
 

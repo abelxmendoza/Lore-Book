@@ -19,6 +19,7 @@ export type ChapterSignificanceResult = {
     meanScene: number;
     sceneCount: number;
     eventBonus: number;
+    milestoneBonus: number;
     themeBonus: number;
     total: number;
   };
@@ -39,6 +40,16 @@ export function scoreChapterSignificance(chapter: AssembledChapter): ChapterSign
   if (chapter.eventIds.length >= 2) eventBonus += 8;
   eventBonus = clamp(eventBonus, 0, 20);
 
+  // Milestone eligibility is a strictly higher bar than mere event promotion
+  // (every milestone is a promoted event, not every promoted event is a
+  // milestone) — sized above eventBonus so a milestone-containing chapter
+  // reliably outscores an equivalent event-containing-but-non-milestone one.
+  // This intentionally stacks with eventBonus, not double-counting to fix.
+  let milestoneBonus = 0;
+  if (chapter.milestoneIds.length >= 1) milestoneBonus += 14;
+  if (chapter.milestoneIds.length >= 2) milestoneBonus += 10;
+  milestoneBonus = clamp(milestoneBonus, 0, 24);
+
   let themeBonus = 0;
   if (chapter.themes.length >= 2) themeBonus += 6;
   if (chapter.participants.length >= 1 && sceneCount >= 2) themeBonus += 6;
@@ -48,7 +59,7 @@ export function scoreChapterSignificance(chapter: AssembledChapter): ChapterSign
   const countLift = sceneCount >= 3 ? 12 : sceneCount >= 2 ? 8 : 0;
 
   const total = clamp(
-    Math.round(maxScene * 0.4 + meanScene * 0.25 + eventBonus + themeBonus + countLift),
+    Math.round(maxScene * 0.4 + meanScene * 0.25 + eventBonus + milestoneBonus + themeBonus + countLift),
     0,
     100,
   );
@@ -68,6 +79,7 @@ export function scoreChapterSignificance(chapter: AssembledChapter): ChapterSign
     Boolean(chapter.title.trim()) &&
     (sceneCount >= 2 ||
       chapter.eventIds.length > 0 ||
+      chapter.milestoneIds.length > 0 ||
       total >= CHAPTER_MIN_SIGNIFICANCE ||
       highStakesSingle);
 
@@ -79,6 +91,7 @@ export function scoreChapterSignificance(chapter: AssembledChapter): ChapterSign
       meanScene,
       sceneCount,
       eventBonus,
+      milestoneBonus,
       themeBonus,
       total,
     },

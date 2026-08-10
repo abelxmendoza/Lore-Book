@@ -15,6 +15,7 @@ import { messageReferencesMention } from '../utils/disambiguationUtils';
 import { classifyPostgresError, StorageBlockedError } from '../utils/postgresError';
 import { isClosedScopeQuery, isFocusEntityRelevant } from '@lorebook/api-contracts';
 import { buildClientSourcesWithRejected, type RejectedEvidenceItem } from './chat/clientSourcesBuilder';
+import { BIOGRAPHY_RE } from './chat/recallIntentPatterns';
 
 import {
   isBeliefChallengeAllowed,
@@ -417,6 +418,34 @@ export type MentionedEntityChip = {
   identityStage?: 'MENTION' | 'CANDIDATE' | 'RESOLVED' | 'CHARACTER' | 'CORE_CHARACTER';
   identityConfidence?: number;
 };
+
+const TIMELINE_UPDATE_ICON: Record<MentionedEntityChip['type'], string> = {
+  character: '👤',
+  location: '📍',
+  organization: '🏢',
+  event: '📅',
+};
+
+const TIMELINE_UPDATE_LABEL: Record<MentionedEntityChip['type'], string> = {
+  character: 'Person',
+  location: 'Place',
+  organization: 'Organization',
+  event: 'Event',
+};
+
+/**
+ * Surfaces which entities this turn actually touched (mention_count/omega_entities
+ * bookkeeping already happens via ingestMessageWithContext regardless of this label —
+ * this just reflects that real linkage back to the user, top 3 by confidence).
+ * Low-confidence passing mentions are excluded so this doesn't fire on every name-drop.
+ */
+export function buildTimelineUpdateLabels(entities: MentionedEntityChip[]): string[] {
+  return [...entities]
+    .filter((e) => e.mentionStatus === 'confirmed' || (e.confidence ?? 0) >= 0.8)
+    .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))
+    .slice(0, 3)
+    .map((e) => `${TIMELINE_UPDATE_ICON[e.type]} Linked ${e.name} (${TIMELINE_UPDATE_LABEL[e.type]})`);
+}
 
 class OmegaChatService {
   private personaRL: ChatPersonaRL;
@@ -1712,7 +1741,13 @@ When updating relationship analytics or emotional signals from this thread, weig
     // "Who matters most to me?", "what era am I in?", "what changed?" need
     // reasoning over the narrative graph. Without this gate they fall through
     // to generic chat and get an empathy deflection instead of an answer.
-    if (!workingMemoryPrimary && responseScope.isChatFacingMode(scopePlan.responseMode)) try {
+    //
+    // This was previously also gated on `!workingMemoryPrimary`, which
+    // defaults true and is unset in production — the gate has never actually
+    // run there. These are reasoning questions, not a retrieval-path choice;
+    // `isChatFacingMode` is the guard that actually matters (it already
+    // excludes debug/audit/inspector requests below).
+    if (responseScope.isChatFacingMode(scopePlan.responseMode)) try {
       const { detectCognitionQuestion, answerNarrativeCognition } = await import('./narrative/narrativeReasoner');
       const cognitionKind = detectCognitionQuestion(message);
       if (cognitionKind) {
@@ -1941,27 +1976,40 @@ When updating relationship analytics or emotional signals from this thread, weig
           }
         );
 
-        // Assistant persistence handled by chat.ts persistAssistant.
-        // Chat-facing questions never render dump-shaped handler output.
-        if (
-          responseScope.isChatFacingMode(scopePlan.responseMode) &&
-          typeof handlerResponse.content === 'string'
-        ) {
-          handlerResponse.content = scopeGuard(handlerResponse.content);
+        // A handler that hit an internal error (response_mode ending in
+        // _FAILED — e.g. BOOK_QUERY_FAILED) has nothing useful to say; drop
+        // through to the normal conversational pipeline instead of handing
+        // the user a dead-end "the query system could not complete" reply.
+        // A handler that ran fine and legitimately found zero matches (e.g.
+        // FAMILY_QUERY with no matching relatives) is NOT a failure — that's
+        // still returned as-is below.
+        if (!handlerResponse.response_mode?.endsWith('_FAILED')) {
+          // Assistant persistence handled by chat.ts persistAssistant.
+          // Chat-facing questions never render dump-shaped handler output.
+          if (
+            responseScope.isChatFacingMode(scopePlan.responseMode) &&
+            typeof handlerResponse.content === 'string'
+          ) {
+            handlerResponse.content = scopeGuard(handlerResponse.content);
+          }
+          // Persist enough of this turn's resolved shape that a later "try
+          // again" can replay it via retryContinuity.loadLastResolvedTurnState
+          // instead of being reclassified from scratch as a generic message.
+          const resolvedTurnState = {
+            mode: routing.mode,
+            scopeIntent: scopePlan.intent,
+            scopeSource: scopePlan.scopeSource,
+            entities: scopePlan.primaryEntities,
+            threadId: sessionId,
+            responseMode: handlerResponse.response_mode,
+            originalMessageText: (retryOriginalMessageText ?? message).slice(0, 500),
+          };
+          return formatModeResponse(handlerResponse, routing.mode, { ...modeExtras(), resolvedTurnState });
         }
-        // Persist enough of this turn's resolved shape that a later "try
-        // again" can replay it via retryContinuity.loadLastResolvedTurnState
-        // instead of being reclassified from scratch as a generic message.
-        const resolvedTurnState = {
-          mode: routing.mode,
-          scopeIntent: scopePlan.intent,
-          scopeSource: scopePlan.scopeSource,
-          entities: scopePlan.primaryEntities,
-          threadId: sessionId,
-          responseMode: handlerResponse.response_mode,
-          originalMessageText: (retryOriginalMessageText ?? message).slice(0, 500),
-        };
-        return formatModeResponse(handlerResponse, routing.mode, { ...modeExtras(), resolvedTurnState });
+        logger.warn(
+          { userId, mode: routing.mode, responseMode: handlerResponse.response_mode },
+          'Mode handler reported failure, falling back to normal chat',
+        );
       }
     } catch (error) {
       logger.warn({ error, userId, message }, 'Mode routing failed, falling back to normal chat');
@@ -2007,14 +2055,18 @@ When updating relationship analytics or emotional signals from this thread, weig
     }
 
     // ---- RECALL GATE: Foundation lore before journal vector search ----
-    if (!workingMemoryPrimary) try {
+    // Explicit identity questions already have a deterministic, longitudinal
+    // biography projection. Keep that fast path available when Working Memory
+    // is primary; otherwise a simple "What do you remember about me?" fans out
+    // across every memory domain before it can answer.
+    if (!workingMemoryPrimary || BIOGRAPHY_RE.test(effectiveMessage)) try {
       const { matchesFoundationRecallQuery } = await import('./chat/recallIntentPatterns');
-      if (matchesFoundationRecallQuery(message)) {
+      if (matchesFoundationRecallQuery(effectiveMessage)) {
         const { executeExplicitRecall } = await import('./chat/explicitRecallService');
         const { formatModeResponse } = await import('./modeRouter/responseFormatter');
         const foundation = await executeExplicitRecall(
           userId,
-          message,
+          effectiveMessage,
           conversationHistory.map((m) => ({ role: m.role, content: m.content })),
           { threadId: threadId ?? currentContext?.threadId }
         );
@@ -2747,7 +2799,8 @@ When updating relationship analytics or emotional signals from this thread, weig
     incMetric('assistant_generation_success');
 
     // User message already persisted at stream start (entryId)
-    const timelineUpdates: string[] = [];
+    // Populated below once mentionedEntities is resolved from the user's message.
+    let timelineUpdates: string[] = [];
 
     if (entryId && !isTrivialMessage(message)) {
       epiphanySessionManager.feedEntry(userId, {
@@ -2829,6 +2882,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         identityConfidence,
       }),
     );
+    timelineUpdates = buildTimelineUpdateLabels(mentionedEntities);
 
     // The reply text doesn't exist yet at this point in a streaming turn — the
     // caller (SSE stream consumer) invokes this once it has the full assistant
@@ -3713,7 +3767,8 @@ When updating relationship analytics or emotional signals from this thread, weig
     // Note: This is a placeholder - in production, you'd query omega_claims
     // based on entities mentioned in sources or the response content
     const memories: MemoryClaim[] = [];
-    const timelineUpdates: string[] = [];
+    // Populated below once mentionedEntities is resolved from message + answer.
+    let timelineUpdates: string[] = [];
 
     // Post-chat side effects (user message + pipeline already handled by persistUserMessageEarly)
     if (!isTrivialMessage(message) && entryId) {
@@ -3767,6 +3822,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         identityConfidence,
       }),
     );
+    timelineUpdates = buildTimelineUpdateLabels(mentionedEntities);
 
     // Detect unnamed characters and generate nicknames (fire and forget)
     const { characterNicknameService } = await import('./characterNicknameService');

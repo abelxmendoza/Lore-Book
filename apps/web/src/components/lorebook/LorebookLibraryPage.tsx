@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Menu, ChevronLeft, BookOpen, Edit3, Loader2, Download, Star, RefreshCw,
+  Menu, ChevronLeft, BookOpen, Edit3, Loader2, Download, Star, RefreshCw, History, ChevronDown,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
@@ -20,6 +20,7 @@ import {
 import { cn } from '../../lib/cn';
 import { useLorebookShell } from './LorebookShell';
 import { LorebookLibraryHero } from './LorebookSectionTitles';
+import { VersionManager } from './VersionManager';
 import type { Biography } from '../../../server/src/services/biographyGeneration/types';
 
 type LibraryBook = {
@@ -31,12 +32,15 @@ type LibraryBook = {
   created_at: string;
   is_core_lorebook?: boolean;
   lorebook_name?: string;
+  lorebook_version?: number;
   chapterCount: number;
   pages?: number;
   gradient: string;
   accent: string;
   border: string;
   biography?: Biography;
+  /** Older takes of the same named core lorebook, newest first, excluding this card itself. */
+  olderVersions?: LibraryBook[];
 };
 
 const BOOK_STYLES = [
@@ -50,6 +54,38 @@ const BOOK_STYLES = [
 
 function styleForIndex(index: number) {
   return BOOK_STYLES[index % BOOK_STYLES.length];
+}
+
+/**
+ * Core lorebooks with the same `lorebook_name` are takes of the same book —
+ * one row per recompile, never overwritten. Collapse each named group down to
+ * its highest-version card and hang the rest off it as `olderVersions` so the
+ * grid shows one card per book (like a DAW project with prior takes tucked
+ * underneath) instead of N indistinguishable duplicates.
+ */
+function collapseLorebookVersions(books: LibraryBook[]): LibraryBook[] {
+  const groups = new Map<string, LibraryBook[]>();
+  const ungrouped: LibraryBook[] = [];
+
+  for (const book of books) {
+    if (book.is_core_lorebook && book.lorebook_name) {
+      const key = book.lorebook_name;
+      const group = groups.get(key);
+      if (group) group.push(book);
+      else groups.set(key, [book]);
+    } else {
+      ungrouped.push(book);
+    }
+  }
+
+  const collapsed: LibraryBook[] = [...ungrouped];
+  for (const versions of groups.values()) {
+    const sorted = [...versions].sort((a, b) => (b.lorebook_version ?? 0) - (a.lorebook_version ?? 0));
+    const [latest, ...older] = sorted;
+    collapsed.push(older.length > 0 ? { ...latest, olderVersions: older } : latest);
+  }
+
+  return collapsed.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 }
 
 function formatDate(dateString: string) {
@@ -75,6 +111,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [savingCoreId, setSavingCoreId] = useState<string | null>(null);
   const [recompilingId, setRecompilingId] = useState<string | null>(null);
+  const [expandedVersionsId, setExpandedVersionsId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'core' | 'recent'>('all');
   const [actionError, setActionError] = useState<string | null>(null);
   const compiledBooksKey = useMemo(
@@ -121,6 +158,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
           created_at: string;
           is_core_lorebook?: boolean;
           lorebook_name?: string;
+          lorebook_version?: number;
           biography_data: Biography;
         }>;
       }>('/api/biography/list');
@@ -140,6 +178,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
           created_at: row.created_at,
           is_core_lorebook: row.is_core_lorebook,
           lorebook_name: row.lorebook_name,
+          lorebook_version: row.lorebook_version,
           chapterCount,
           pages: Math.max(chapterCount * 4, chapterCount),
           gradient: style.gradient,
@@ -149,7 +188,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
         };
       });
 
-      setBooks(mapped);
+      setBooks(collapseLorebookVersions(mapped));
     } catch (error) {
       console.error('Failed to load compiled lorebooks:', error);
       setLoadError('Could not load your lorebook library. Try refreshing.');
@@ -383,6 +422,15 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
                   </div>
 
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/35 font-mono mb-4">
+                    {book.lorebook_version != null && (
+                      <>
+                        <span className="text-amber-200/70">
+                          v{book.lorebook_version}
+                          {book.olderVersions?.length ? ` · ${book.olderVersions.length + 1} versions` : ''}
+                        </span>
+                        <span className="text-white/15">·</span>
+                      </>
+                    )}
                     <span>{book.chapterCount} chapters</span>
                     {book.pages != null && (
                       <>
@@ -455,6 +503,32 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
                             )}
                             Save as core edition
                           </button>
+                        )}
+                      </div>
+                    )}
+                    {book.olderVersions && book.olderVersions.length > 0 && (
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedVersionsId((current) => (current === book.id ? null : book.id))
+                          }
+                          className="w-full flex items-center justify-center gap-1.5 text-[11px] font-medium text-white/40 hover:text-white/70 py-1.5 transition-colors"
+                        >
+                          <History className="h-3 w-3" />
+                          {expandedVersionsId === book.id ? 'Hide older versions' : `${book.olderVersions.length} older version${book.olderVersions.length === 1 ? '' : 's'}`}
+                          <ChevronDown
+                            className={cn('h-3 w-3 transition-transform', expandedVersionsId === book.id && 'rotate-180')}
+                          />
+                        </button>
+                        {expandedVersionsId === book.id && book.lorebook_name && (
+                          <div className="mt-1">
+                            <VersionManager
+                              lorebookName={book.lorebook_name}
+                              baseBiographyId={book.id}
+                              onRead={(id) => navigate(lorebookReadUrl(id))}
+                            />
+                          </div>
                         )}
                       </div>
                     )}

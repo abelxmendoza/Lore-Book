@@ -11,6 +11,10 @@ import {
 import { detectTemporalContradiction } from './temporalContradiction';
 import { evaluateTimelineEligibility } from './timelineSpeechActGate';
 import type { TemporalPrecision, TemporalSource } from '../temporal/temporalEvidence';
+import {
+  canonicalTemporalFromLegacy,
+  type CanonicalTemporalModel,
+} from '../temporal/canonicalTemporalModel';
 
 export type ProjectionRole = 'canonical' | 'evidence' | 'unresolved' | 'excluded';
 export type OccurrenceStatus = 'confirmed' | 'range' | 'unresolved';
@@ -43,6 +47,12 @@ export type ProjectableTimelineItem = {
   timePrecision?: string;
   timeConfidence?: number;
   temporalSource?: string;
+  occurredAt?: string | null;
+  mentionedAt?: string | null;
+  recordedAt?: string | null;
+  knownFrom?: string | null;
+  validFrom?: string | null;
+  validUntil?: string | null;
   metadata?: Record<string, unknown> | null;
 };
 
@@ -55,6 +65,7 @@ export type ProjectedTimelineItem = ProjectableTimelineItem & {
   canonicalEventType: CanonicalEventType;
   eligibilitySurface: string;
   speechAct: string;
+  temporal: CanonicalTemporalModel;
 };
 
 function dayKey(iso: string): string {
@@ -90,13 +101,14 @@ function honestTemporal(item: ProjectableTimelineItem): {
 } {
   const tags = item.tags ?? [];
   const recovered = isImportOrRecoveryTag(tags);
+  const occurrence = item.occurredAt === undefined ? item.sortTime : item.occurredAt;
   const rawSource = (item.temporalSource ??
     (recovered ? 'recording_fallback' : 'context_inferred')) as TemporalSource;
   const rawPrecision = (item.timePrecision ?? 'date') as TemporalPrecision;
   const rawConf = item.timeConfidence ?? item.confidence ?? 0.5;
 
   const capped = applyTemporalConfidenceCeiling({
-    start: item.sortTime || null,
+    start: occurrence || null,
     end: null,
     timezone: null,
     precision: recovered ? 'unknown' : rawPrecision,
@@ -108,7 +120,7 @@ function honestTemporal(item: ProjectableTimelineItem): {
 
   const contradiction = detectTemporalContradiction({
     recordId: item.id,
-    storedOccurrence: item.sortTime,
+    storedOccurrence: occurrence,
     title: item.title,
     summary: item.body,
     temporalSource: capped.source,
@@ -124,7 +136,14 @@ function honestTemporal(item: ProjectableTimelineItem): {
     };
   }
 
-  if (capped.precision === 'month' || capped.precision === 'season' || capped.status === 'approximate') {
+  if (
+    capped.precision === 'week'
+    || capped.precision === 'month'
+    || capped.precision === 'season'
+    || capped.precision === 'quarter'
+    || capped.precision === 'approximate'
+    || capped.status === 'approximate'
+  ) {
     return {
       precision: capped.precision,
       confidence: capped.confidence,
@@ -170,6 +189,26 @@ export function projectCanonicalTimeline(items: ProjectableTimelineItem[]): {
 
   for (const item of items) {
     const temporal = honestTemporal(item);
+    const temporalModel = canonicalTemporalFromLegacy({
+      id: item.sourceId,
+      occurredAt: temporal.occurrenceStatus === 'unresolved' && item.occurredAt === null
+        ? null
+        : (item.occurredAt === undefined ? item.sortTime : item.occurredAt),
+      mentionedAt: item.mentionedAt,
+      recordedAt: item.recordedAt,
+      knownFrom: item.knownFrom,
+      validFrom: item.validFrom,
+      validUntil: item.validUntil,
+      precision: temporal.precision,
+      source: temporal.source,
+      status: temporal.occurrenceStatus === 'confirmed'
+        ? 'anchored'
+        : temporal.occurrenceStatus === 'range'
+          ? 'approximate'
+          : 'ambiguous',
+      confidence: temporal.confidence,
+      sourceLabel: item.sourceType,
+    });
     const eligibility = evaluateTimelineEligibility({
       text: item.body || item.title,
       title: item.title,
@@ -194,6 +233,7 @@ export function projectCanonicalTimeline(items: ProjectableTimelineItem[]): {
       canonicalEventType,
       eligibilitySurface: eligibility.surface,
       speechAct: eligibility.speechAct,
+      temporal: temporalModel,
       confidence: temporal.confidence,
     };
 
@@ -280,6 +320,7 @@ export function mapWebTimePrecision(
       return 'day';
     case 'month':
     case 'season':
+    case 'quarter':
       return 'month';
     case 'year':
       return 'year';

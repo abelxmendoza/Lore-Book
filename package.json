@@ -25,6 +25,8 @@
     "check:supabase": "node scripts/check-supabase.mjs",
     "snapshot:query-stats": "node scripts/snapshot-supabase-query-stats.mjs",
     "check:drift": "node scripts/check-migration-drift.mjs",
+    "audit:migration-ledger": "node scripts/audit-supabase-migration-ledger.mjs",
+    "test:migration-ledger": "node --test scripts/lib/migrationLedgerAudit.test.mjs scripts/lib/internalTableRlsMigration.test.mjs scripts/lib/knowledgeKernelMigration.test.mjs scripts/lib/productionSchemaBaseline.test.mjs",
     "check:demo-privacy": "cd apps/web && npm run test:demo-privacy",
     "check:founder-privacy": "node scripts/check-founder-privacy.cjs",
     "check:user-isolation": "node scripts/check-user-isolation.cjs",

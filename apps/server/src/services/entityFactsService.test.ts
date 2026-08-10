@@ -34,6 +34,7 @@ function chain(data: unknown = [], error: unknown = null) {
     in: vi.fn().mockReturnThis(),
     order: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
+    range: vi.fn().mockReturnThis(),
     insert: vi.fn().mockReturnThis(),
     upsert: vi.fn().mockReturnThis(),
     update: vi.fn().mockReturnThis(),

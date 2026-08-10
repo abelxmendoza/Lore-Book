@@ -108,9 +108,12 @@ describe('Egress projection guard (match_journal_entries RPC shape)', () => {
   }
 
   function returnsTableColumns(sql: string): string[] {
-    // Grab the column list inside the LAST `RETURNS TABLE ( ... )` block.
-    const matches = [...sql.matchAll(/RETURNS\s+TABLE\s*\(([\s\S]*?)\)/gi)];
-    const block = matches[matches.length - 1]?.[1] ?? '';
+    // Grab the column list from match_journal_entries's own `RETURNS TABLE ( ... )`
+    // block specifically — the migration file can define other functions (e.g.
+    // match_omega_claims) with their own RETURNS TABLE blocks elsewhere, so we
+    // can't just take the last one in the whole file.
+    const fnMatch = /FUNCTION\s+(?:public\.)?match_journal_entries\s*\([\s\S]*?\)\s*RETURNS\s+TABLE\s*\(([\s\S]*?)\)/i.exec(sql);
+    const block = fnMatch?.[1] ?? '';
     return block
       .split(',')
       .map((line) => line.trim().split(/\s+/)[0]?.toLowerCase())

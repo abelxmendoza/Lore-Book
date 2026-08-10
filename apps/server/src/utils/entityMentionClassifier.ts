@@ -4,9 +4,10 @@
  * are routed to the omega memory graph instead.
  */
 
-import { normalizeNameKey } from './nameNormalization';
 import { classifyEntity, isCharacterEligible, isUnknownEntity, toOmegaType } from '../services/entities/entityClassifier';
 import { hasKinshipTitle } from '../services/kinship/kinshipGlossary';
+
+import { normalizeNameKey } from './nameNormalization';
 
 export type MentionKind =
   | 'person'
@@ -114,7 +115,8 @@ const PHRASE_FRAGMENTS = new Set([
 /** Capitalized common English nouns that extractors mistake for first names. */
 const COMMON_NOUN_TOKENS = new Set([
   'magic', 'gathering', 'memorial', 'holiday', 'party', 'night', 'show',
-  'event', 'festival', 'concert', 'game', 'club', 'dance', 'music',
+  'event', 'festival', 'concert', 'game', 'club', 'dance', 'music', 'fitness',
+  'police', 'coding', 'sleep', 'reputation', 'guilt', 'shame', 'focus', 'peace',
 ]);
 
 const HOLIDAY_SUFFIX = /\b(?:day|weekend|eve)\b/i;

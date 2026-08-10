@@ -7,15 +7,19 @@ const COMMAND_OR_META =
   /^(?:please\s+)?(?:show|tell|list|check|remember|recap|summari[sz]e|update|delete|forget|can you|could you|what do you|who (?:am|is|else)|did i|testing|test the)\b/i;
 const GREETING = /^(?:hi|hey|hello|yo|ok(?:ay)?)[!,.\s]*$/i;
 const TEMPORAL_ONLY =
-  /^(?:tonight|today|tomorrow|yesterday|now|later|soon|this (?:morning|afternoon|evening|weekend|week|month|year)|last (?:night|week|weekend|month|year)|next (?:week|month|year)|current event|memorial day(?: weekend)?|labor day(?: weekend)?|independence day)$/i;
+  /^(?:tonight|today|tomorrow|yesterday|now|later|soon|(?:mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?)|this (?:morning|afternoon|evening|weekend|week|month|year)|last (?:night|week|weekend|month|year)|next (?:week|month|year)|current event|memorial day(?: weekend)?|labor day(?: weekend)?|independence day)$/i;
+const SENTENCE_START_FRAGMENT =
+  /^(?:(?:today|tomorrow|yesterday|tonight|later|then|now)\s+(?:i|im|i'm|i’m|ill|i'll|i’ll|we|were|we're|we’re|will|should|can|cant|can't|can’t)\b|(?:like|well|actually|maybe|anyway|sometimes|usually|hopefully|fortunately|unfortunately))$/i;
 const OCCUPATION_WORD =
   /^(?:engineer|developer|technician|manager|contractor|designer|nurse|teacher|doctor|lawyer|artist|musician|student|founder|ceo|quality assurance technician|qa technician|background check|therapist|archivist)$/i;
 const SOFTWARE_OR_MEDIA =
-  /^(?:chatgpt|openai|react|typescript|python|ios|android|instagram|tiktok|youtube|spotify|discord|slack|notion|figma|claude(?:\s+code)?|codex|cursor|copilot|github\s*copilot|vs\s*code|vscode|one piece|lorebook|lore book|magic(?:\s+the)?\s+gathering|mtg)$/i;
+  /^(?:chatgpt|openai|react|typescript|python|ios|android|instagram|tiktok|youtube|spotify|discord|slack|notion|figma|claude(?:\s+code)?|codex|cursor|copilot|github\s*copilot|vs\s*code|vscode|gemini|grok|llama|one piece|lorebook|lore book|magic(?:\s+the)?\s+gathering|mtg)$/i;
 const PLACE_WORD =
   /^(?:home|work|office|school|gym|church|park|beach|downtown|here|there|(?:my|his|her|their|our)\s+(?:house|home|place|room))$/i;
 const PROCESS_OR_AUDIT =
   /^(?:background check|reclassification|cleanup|debug|chat bubbles?|styling|ui|user interface|current event)$/i;
+const COMMON_NOUN_OR_INSTITUTION =
+  /^(?:fitness|police|law enforcement|coding|music|sleep|reputation|guilt|shame|focus|peace)$/i;
 // Truncated kinship mid-phrase extraction ("Cousin in", "uncle at").
 const TRUNCATED_KINSHIP =
   /^(?:(?:my|our|his|her|their)\s+)?(?:cousin|uncle|aunt|tio|tia|tío|tía|nephew|niece|brother|sister|sibling|mom|dad|mother|father)s?\s+(?:in|at|of|from|with|and|to)$/i;
@@ -53,10 +57,12 @@ const PERSON_FORBIDDEN_IF_MATCHES = [
   SOFTWARE_OR_MEDIA,
   PLACE_WORD,
   PROCESS_OR_AUDIT,
+  COMMON_NOUN_OR_INSTITUTION,
   RELATIONSHIP_PHRASE,
   TRUNCATED_KINSHIP,
   DATE_ONLY,
   DISCOURSE_PREFIX,
+  SENTENCE_START_FRAGMENT,
 ];
 
 /** Suggest a better entity type when PERSON would be wrong. */

@@ -159,14 +159,14 @@ function BeliefCard({
   return (
     <div className={`rounded-xl border ${src.border} bg-black/30 p-4 space-y-3`}>
       {/* Top row */}
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
         <div className="flex items-center gap-2">
           {statusIcon(perception.status)}
           <span className={`text-[10px] font-bold tracking-widest uppercase ${certainty.color}`}>
             {certainty.label}
           </span>
         </div>
-        <div className="flex items-center gap-1.5 text-white/30">
+        <div className="flex flex-wrap items-center gap-1.5 text-white/30">
           <span className="text-[10px]">{src.icon}</span>
           <span className="text-[10px] capitalize">{src.label}</span>
           <span className="text-[10px]">·</span>
@@ -305,10 +305,10 @@ export const CharacterPerceptionsTab = ({ personId, personName }: Props) => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-base font-bold text-white">Character Intelligence</h3>
-          <p className="text-xs text-white/50 mt-0.5">What you believe about {firstName}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-base font-bold text-white truncate">Character Intelligence</h3>
+          <p className="text-xs text-white/50 mt-0.5 truncate">What you believe about {firstName}</p>
         </div>
         <div className="flex items-center gap-2">
           <button

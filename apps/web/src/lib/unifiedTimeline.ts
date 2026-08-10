@@ -43,7 +43,7 @@ export function stitchedItemsToChronology(
       id: item.id,
       user_id: userId,
       journal_entry_id: item.sourceKind === 'journal_entry' ? item.sourceId : '',
-      start_time: item.sortTime,
+      start_time: item.temporal?.occurred.start ?? item.sortTime,
       end_time: null,
       time_precision: mapPrecision(item.timePrecision),
       time_confidence: timeConfidence,

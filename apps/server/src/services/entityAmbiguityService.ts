@@ -6,13 +6,67 @@
 // Never pollute memory or force ontology on the user
 // =====================================================
 
-import { logger } from '../logger';
+import { isInvalidPersonName } from '@lorebook/api-contracts';
+
 import { AI_THRESHOLDS } from '../config/aiThresholds';
+import { logger } from '../logger';
 import type { UserIntent } from '../types/conversationalOrchestration';
+import { dedupeCandidatesById, collapseSameNameCandidates } from '../utils/disambiguationUtils';
 import { jaroWinkler } from '../utils/jaroWinkler';
 
 import { entityResolutionService, type EntityCandidate } from './entityResolutionService';
-import { dedupeCandidatesById, collapseSameNameCandidates } from '../utils/disambiguationUtils';
+import { hasKinshipTitle } from './kinship/kinshipGlossary';
+
+/** Connector/context words that can't be a name even when name-shaped by position. */
+const LOWERCASE_CANDIDATE_STOPWORDS = new Set([
+  'and', 'or', 'but', 'for', 'the', 'a', 'an', 'my', 'our', 'your', 'his', 'her',
+  'their', 'its', 'to', 'from', 'with', 'at', 'in', 'on', 'today', 'tonight',
+  'lunch', 'dinner', 'breakfast', 'later', 'tomorrow', 'yesterday',
+]);
+
+function capitalizeWord(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+/**
+ * Catches names typed in lowercase right after a kinship title — "step dad
+ * ben" — which the capitalized-word regex above never sees, since a casual
+ * all-lowercase typer never capitalizes it. Deliberately scoped to kinship
+ * adjacency (a strong, low-noise anchor) rather than loosening the capital
+ * requirement globally: that requirement is what keeps ordinary lowercase
+ * words ("starving", "grub") from being proposed as people in the first
+ * place, so relaxing it message-wide would flood candidates with false
+ * positives instead of just filling this one gap.
+ */
+function extractLowercaseNamesAfterKinshipTitles(message: string): ExtractedEntityMention[] {
+  const mentions: ExtractedEntityMention[] = [];
+  const tokenPattern = /[a-zà-ÿ']+/gi;
+  const tokens: Array<{ text: string; index: number }> = [];
+  let tokenMatch: RegExpExecArray | null;
+  while ((tokenMatch = tokenPattern.exec(message)) !== null) {
+    tokens.push({ text: tokenMatch[0], index: tokenMatch.index });
+  }
+
+  for (let i = 0; i < tokens.length - 1; i++) {
+    if (!hasKinshipTitle(tokens[i].text)) continue;
+    const next = tokens[i + 1];
+    if (/^[A-Z]/.test(next.text)) continue; // already caught by the capitalized pass
+    if (next.text.length < 3) continue;
+    const lower = next.text.toLowerCase();
+    if (LOWERCASE_CANDIDATE_STOPWORDS.has(lower)) continue;
+    if (hasKinshipTitle(next.text)) continue; // "abuela mom" — two titles, no attached name
+
+    const candidate = capitalizeWord(next.text);
+    if (isInvalidPersonName(candidate).invalid) continue;
+    mentions.push({
+      text: candidate,
+      start_index: next.index,
+      end_index: next.index + next.text.length,
+      confidence: 0.55,
+    });
+  }
+  return mentions;
+}
 
 // -----------------------------
 // TYPES
@@ -104,7 +158,7 @@ export class EntityAmbiguityService {
         'Codex', 'Cursor', 'Claude', 'LoreBook', 'Lorekeeper',
       ];
 
-      if (!skipWords.includes(text) && text.length > 2) {
+      if (!skipWords.includes(text) && text.length > 2 && !isInvalidPersonName(text).invalid) {
         mentions.push({
           text,
           start_index: match.index,
@@ -113,6 +167,8 @@ export class EntityAmbiguityService {
         });
       }
     }
+
+    mentions.push(...extractLowercaseNamesAfterKinshipTitles(message));
 
     return mentions;
   }
@@ -335,4 +391,3 @@ export class EntityAmbiguityService {
 }
 
 export const entityAmbiguityService = new EntityAmbiguityService();
-

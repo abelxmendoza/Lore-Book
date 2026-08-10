@@ -155,7 +155,7 @@ export const PerceptionEntryModal = ({
 
           {/* Source */}
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="text-sm font-semibold text-white/90 mb-2 block">Source</label>
               <select
@@ -171,7 +171,7 @@ export const PerceptionEntryModal = ({
                 <option value="assumption">Assumption</option>
               </select>
             </div>
-            
+
             <div>
               <label className="text-sm font-semibold text-white/90 mb-2 block">Certainty</label>
               <input
@@ -183,7 +183,7 @@ export const PerceptionEntryModal = ({
                 onChange={(e) => setFormData({ ...formData, confidence_level: parseFloat(e.target.value) })}
                 className="w-full"
               />
-              <div className="flex items-center justify-between text-xs text-white/50 mt-1">
+              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-xs text-white/50 mt-1">
                 <span>0% (Not certain)</span>
                 <span className="font-medium text-white">{Math.round((formData.confidence_level ?? 0.3) * 100)}% certain</span>
                 <span>100% (Certain)</span>
@@ -191,17 +191,7 @@ export const PerceptionEntryModal = ({
               <p className="text-xs text-white/50 mt-1">Default: 30% certain — never auto-raised</p>
             </div>
             </div>
-            
-            <div>
-              <label className="text-sm font-semibold text-white/90 mb-2 block">Source Detail (Optional)</label>
-              <Input
-                value={formData.source_detail || ''}
-                onChange={(e) => setFormData({ ...formData, source_detail: e.target.value })}
-                placeholder="e.g., 'told by Alex', 'Instagram post'"
-                className="bg-black/60 border-border/50 text-white"
-              />
-            </div>
-            
+
             <div>
               <label className="text-sm font-semibold text-white/90 mb-2 block">Source Detail (Optional)</label>
               <Input

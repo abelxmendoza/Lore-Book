@@ -807,6 +807,15 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
 
   const [activeTab, setActiveTab] = useState<'about-others' | 'about-me'>('about-others');
 
+  const pageIntro = !personId ? (
+    <div className="rounded-xl border border-violet-400/15 bg-gradient-to-r from-violet-500/10 via-indigo-500/[0.06] to-transparent p-4">
+      <h2 className="text-lg font-semibold text-white">Perceptions &amp; Claims</h2>
+      <p className="mt-1 max-w-3xl text-xs leading-relaxed text-white/55 sm:text-sm">
+        See what you believed, what LoreBook has noticed, and why each understanding appears—without turning interpretation into fact.
+      </p>
+    </div>
+  ) : null;
+
   const tabToggle = !personId ? (
     <div className="flex gap-1 p-1 rounded-xl bg-white/5 border border-white/10 w-full sm:w-fit">
       <button
@@ -839,6 +848,7 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
   if (activeTab === 'about-me' && !personId) {
     return (
       <div className="space-y-4 min-w-0">
+        {pageIntro}
         {tabToggle}
         <SelfKnowledgeView />
       </div>
@@ -847,14 +857,15 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
 
   return (
     <div className="space-y-4 min-w-0">
+      {pageIntro}
       {tabToggle}
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-            <Eye className="h-5 w-5 text-primary" />
-            Perceived Lore
-            {personName && <span className="text-white/60">about {personName}</span>}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-lg font-semibold text-white flex flex-wrap items-center gap-2">
+            <Eye className="h-5 w-5 shrink-0 text-primary" />
+            <span className="truncate">Perceived Lore</span>
+            {personName && <span className="truncate text-white/60">about {personName}</span>}
           </h3>
           <p className="text-sm text-white/60 mt-1">
             What you heard, believed, and how it affected you — not objective truth
@@ -1023,7 +1034,7 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
 
                 {/* Page Footer with Navigation */}
                 {totalPages > 1 && (
-                  <div className="mt-4 flex shrink-0 items-center justify-between border-t border-orange-800/20 pt-4">
+                  <div className="mt-4 flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-orange-800/20 pt-4">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -1035,7 +1046,7 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
                       Previous
                     </Button>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center justify-center gap-2 order-last basis-full sm:order-none sm:basis-auto">
                       {/* Page indicators */}
                       {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
                         let pageNum: number;

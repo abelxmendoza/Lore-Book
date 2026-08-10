@@ -182,6 +182,10 @@ jobs:
         working-directory: apps/server
         run: npm run test:system-cognition
 
+      - name: Cognitive evaluation benchmarks (synthetic, read-only)
+        working-directory: apps/server
+        run: npm run eval:cognition
+
       - name: Composer entity chip regressions (matching, validation, chat integration)
         working-directory: apps/server
         run: npm run test:composer-chips

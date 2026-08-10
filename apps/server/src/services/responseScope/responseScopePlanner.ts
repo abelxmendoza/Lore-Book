@@ -3,6 +3,11 @@
  * Produces the ResponseScopePlan that gates everything downstream.
  */
 
+import { isClosedScopeQuery } from '@lorebook/api-contracts';
+
+import { buildContextAssemblyPlan } from '../contextAssembly';
+import { isExplicitSubjectTimelineRequest } from '../modeRouter/modeRouterService';
+
 import { domainPolicyFor } from './responseDomainPolicy';
 import { CORRECTION_RE, isFollowUpShaped, resolveResponseMode } from './responseModeResolver';
 import type {
@@ -12,8 +17,6 @@ import type {
   ScopeIntent,
   ScopeSource,
 } from './responseScopeTypes';
-import { isExplicitSubjectTimelineRequest } from '../modeRouter/modeRouterService';
-import { isClosedScopeQuery } from '@lorebook/api-contracts';
 
 const WORK_INTENT_RE =
   /\b(work|job|team|teammates?|coworkers?|colleagues?|manager|boss|lead(?:s)?\b|shift|on[- ]?site|office|warehouse|employer|company i work|my (role|position|title)\b|career|employed)\b/i;
@@ -147,6 +150,7 @@ export function planResponseScope(
 
   return {
     intent,
+    contextPlan: buildContextAssemblyPlan({ question: message, intent }),
     responseMode,
     scopeSource,
     allowedDomains: policy.allowed,

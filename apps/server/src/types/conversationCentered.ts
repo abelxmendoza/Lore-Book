@@ -107,6 +107,9 @@ export interface ExtractionResult {
     confidence: number;
     temporal_context?: Record<string, any>;
     entity_ids?: string[];
+    metadata?: Record<string, any>;
+    emotions?: string[];
+    themes?: string[];
   }>;
 }
 
@@ -125,4 +128,3 @@ export interface EventAssemblyResult {
   } | null;
   source_unit_ids: string[];
 }
-

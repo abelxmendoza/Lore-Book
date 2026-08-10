@@ -89,4 +89,24 @@ describe('buildSystemPrompt agent evidence injection', () => {
 
     expect(prompt).not.toContain('HOW LOREBOOK WORKS');
   });
+
+  it('forbids claiming timeline persistence without a successful write result', () => {
+    const prompt = buildSystemPrompt(
+      minimalOrchestrator,
+      [],
+      [],
+      null,
+      [],
+      undefined,
+      undefined,
+      undefined,
+      null,
+      undefined,
+      { primary: 'strategist', secondary: [], weights: { strategist: 1 } },
+    );
+
+    expect(prompt).toContain('TRUTHFULNESS CONSTRAINT');
+    expect(prompt).toContain('proposed layout');
+    expect(prompt).toContain('do not guess an exact date');
+  });
 });

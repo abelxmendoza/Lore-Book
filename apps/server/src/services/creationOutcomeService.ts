@@ -10,6 +10,7 @@ import {
   arbitrateDomainStrong,
   arbitrateDomainWeak,
   hasPersonNameShape,
+  nameAdjacentDomain,
   type ArbitrationDomain,
 } from './characters/audit/characterIdentityGate';
 import {
@@ -115,6 +116,14 @@ export function classifyCreationMentionDomain(
 
   const strong = arbitrateDomainStrong(mention, message);
   if (strong.domain) return strong.domain;
+  // Apposition ("Malcolm ... the show") is checked even for name-shaped
+  // mentions — a character's name doubling as (part of) a title is strong,
+  // specific evidence, unlike the broad "some media word is somewhere in
+  // this message" checks below, which stay gated behind hasPersonNameShape
+  // so a real friend mentioned near an unrelated show/band reference isn't
+  // misrouted.
+  const adjacent = nameAdjacentDomain(mention, message);
+  if (adjacent) return adjacent;
   if (hasPersonNameShape(mention)) return null;
   return arbitrateDomainWeak(mention, message).domain;
 }

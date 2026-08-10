@@ -76,6 +76,16 @@ describe('buildTimelineClipboardText', () => {
     expect(text).toContain('[chapter contribution 93]');
     expect(text).toContain('(merged duplicates: Show prep · Sound check at the venue)');
   });
+
+  it('does not print fabricated day precision for coarse or unknown dates', () => {
+    const text = buildTimelineClipboardText([
+      { ...ITEMS[0], timePrecision: 'year', sortTime: '2023-01-01T00:00:00.000Z' },
+      { ...ITEMS[1], occurrenceStatus: 'unresolved', sortTime: '2026-08-09T00:00:00.000Z' },
+    ]);
+    expect(text).toContain('2023 · Moment');
+    expect(text).not.toContain('2023-01-01');
+    expect(text).toContain('Occurrence date unknown · Event');
+  });
 });
 
 describe('TimelineReorderableList', () => {

@@ -102,10 +102,31 @@ export type RecentChange = {
     | 'rising_person'
     | 'fading_person'
     | 'new_arc'
-    | 'quieter_community';
+    | 'quieter_community'
+    | 'new_goal'
+    | 'goal_completed'
+    | 'goal_abandoned'
+    | 'priority_shift';
   label: string;
   detail?: string;
   confidence: number;
+};
+
+/** Minimal goal shape the cognition layer needs — see Goal in types/goalValueAlignment.ts. */
+export type CognitionGoal = {
+  id: string;
+  title: string;
+  status: 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'ABANDONED';
+  created_at: string;
+  ended_at?: string | null;
+};
+
+/** One priority change from value_evolution_events, with the value's name resolved. */
+export type CognitionPriorityShift = {
+  valueName: string;
+  oldPriority: number;
+  newPriority: number;
+  createdAt: string;
 };
 
 export type EventImportanceLevel = 'very_high' | 'high' | 'medium' | 'low';
@@ -148,6 +169,10 @@ export type NarrativeCognitionContext = {
   firstSeenByEntity: Map<string, string>;
   /** "now" is injected so resolvers and tests are deterministic. */
   now: string;
+  /** Goals across all statuses — "what changed" needs completed/abandoned too, not just active. */
+  goals?: CognitionGoal[];
+  /** Recent value-priority changes, name-resolved. */
+  priorityShifts?: CognitionPriorityShift[];
 };
 
 export type CognitionAnswer = {

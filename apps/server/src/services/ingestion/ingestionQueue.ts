@@ -483,6 +483,7 @@ class IngestionQueue {
             job.sessionId,
             job.conversationHistory,
             job.force,
+            runId ?? undefined,
           ),
       );
       const entityResolutionFailed = ingestResult?.entityResolutionFailed === true;
@@ -540,6 +541,7 @@ class IngestionQueue {
                   status: mq.status,
                   created: mq.created,
                   reused: mq.reused,
+                  ...mq.quality,
                 },
               });
             }
@@ -683,8 +685,11 @@ class IngestionQueue {
           .select('*', { count: 'exact', head: true })
           .eq('user_id', userId)
           .gte('created_at', sinceIso),
+        // resolved_events, not conversation_events — the latter has zero writers
+        // anywhere in the codebase and always reads back as 0, regardless of
+        // whether the narrative ladder (eventAssemblyService) actually ran.
         supabaseAdmin
-          .from('conversation_events')
+          .from('resolved_events')
           .select('*', { count: 'exact', head: true })
           .eq('user_id', userId)
           .gte('created_at', sinceIso),

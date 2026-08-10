@@ -25,6 +25,24 @@ function item(overrides: Partial<WorkingMemoryItem>): WorkingMemoryItem {
 function assembly(items: WorkingMemoryItem[]): WorkingMemoryAssembly {
   return {
     intent: 'LIFE_REVIEW',
+    contextPlan: {
+      version: 'context-assembly-v1',
+      primary: 'identity',
+      secondary: [],
+      excluded: [],
+      ranked: [{ context: 'identity', score: 1, reasons: ['test'] }],
+      reason: 'test',
+      strictBoundary: false,
+    },
+    contextDiagnostics: {
+      candidatesConsidered: items.length,
+      accepted: items.length,
+      prunedForDrift: 0,
+      coverageEstimate: 1,
+      confidenceEstimate: 0.8,
+      completenessEstimate: 1,
+      newestEvidenceAt: null,
+    },
     entities: [],
     episodes: items,
     events: [],

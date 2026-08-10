@@ -106,6 +106,7 @@ import rpgRouter from './rpg';
 import { memoryEngineRouter } from './memoryEngine';
 import { backwardStorytellingRouter } from './backwardStorytelling';
 import { knowledgeGraphRouter } from './knowledgeGraph';
+import knowledgeKernelRouter from './knowledgeKernel';
 import { searchRouter } from './search';
 import conversationCenteredRouter from './conversationCentered';
 import recommendationsRouter from './recommendations';
@@ -772,6 +773,13 @@ export const routeRegistry: RouteEntry[] = [
     router: knowledgeRouter,
     classification: 'CORE_RUNTIME',
     description: 'Knowledge crystallization — durable claims with evidence traceability',
+  },
+  {
+    path: '/api/knowledge-kernel',
+    router: knowledgeKernelRouter,
+    requiresAuth: true,
+    classification: 'CORE_RUNTIME',
+    description: 'Knowledge Kernel — provenance-first assertions, evidence, and revisions',
   },
 
   // ---- KNOWLEDGE GRAPH ----------------------------------------------------

@@ -351,7 +351,9 @@ router.get(
     const windowStart = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString();
     const [charResult, eventResult, kuResult, candResult] = await Promise.allSettled([
       supabaseAdmin.from('characters').select('*', { count: 'exact', head: true }).eq('user_id', userId).gte('created_at', windowStart),
-      supabaseAdmin.from('conversation_events').select('*', { count: 'exact', head: true }).eq('user_id', userId).gte('created_at', windowStart),
+      // resolved_events, not conversation_events — the latter has zero writers
+      // anywhere in the codebase and always reads back as 0.
+      supabaseAdmin.from('resolved_events').select('*', { count: 'exact', head: true }).eq('user_id', userId).gte('created_at', windowStart),
       supabaseAdmin.from('knowledge_units').select('*', { count: 'exact', head: true }).eq('user_id', userId).gte('created_at', windowStart),
       supabaseAdmin.from('event_candidates').select('*', { count: 'exact', head: true }).eq('user_id', userId).gte('created_at', windowStart),
     ]);

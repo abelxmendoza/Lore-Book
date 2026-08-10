@@ -39,6 +39,11 @@ import { eventImpactDetector } from '../services/conversationCentered/eventImpac
 import { groupNetworkBuilder } from '../services/conversationCentered/groupNetworkBuilder';
 import { conversationIngestionPipeline } from '../services/conversationCentered/ingestionPipeline';
 import { memoryTraceService } from '../services/conversationCentered/memoryTraceService';
+import { cognitiveObservatory } from '../services/cognitiveObservatory';
+import {
+  detectHistoricalInterpretationCandidate,
+  historicalInterpretationService,
+} from '../services/historicalInterpretation';
 import { relationshipCycleDetector } from '../services/conversationCentered/relationshipCycleDetector';
 import { relationshipDriftDetector } from '../services/conversationCentered/relationshipDriftDetector';
 import { relationshipTreeBuilder, type RelationshipCategory } from '../services/conversationCentered/relationshipTreeBuilder';
@@ -2271,6 +2276,26 @@ router.get(
 );
 
 /**
+ * GET /api/conversation/events/:id/interpretations
+ * Versioned meaning about an event. The underlying event remains immutable.
+ */
+router.get(
+  '/events/:id/interpretations',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const eventId = String(req.params.id);
+    const userId = req.user!.id;
+    const { data: eventRecord } = await supabaseAdmin.from('event_records')
+      .select('id').eq('user_id', userId).eq('resolved_event_id', eventId).maybeSingle();
+    if (!eventRecord) {
+      return res.status(404).json({ error: 'Interpretation timeline not found' });
+    }
+    const timeline = await historicalInterpretationService.getTimeline(userId, eventRecord.id);
+    return res.json({ success: true, timeline });
+  }),
+);
+
+/**
  * POST /api/conversation/events/:id/chat
  * Send a message scoped to a specific event
  */
@@ -2278,7 +2303,7 @@ router.post(
   '/events/:id/chat',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { id: eventId } = req.params;
+    const eventId = String(req.params.id);
     const userId = req.user!.id;
 
     const schema = z.object({
@@ -2408,17 +2433,17 @@ router.post(
       content: enhancedResponse,
     });
 
-    // ── Feed the Reflection Timeline ────────────────────────────────────────
-    // Every user message in an event-scoped chat is a "later reflection" — the
-    // user is revisiting this memory and articulating new understanding. Save it
-    // as a narrative_accounts record (account_type = 'later_interpretation') so
-    // the Meaning Tab's "Looking Back" section has data to render.
+    // ── Feed the Historical Interpretation Timeline ────────────────────────
+    // Ordinary event-chat details are not interpretations. Only explicit
+    // hindsight, changed-understanding, lesson, or then-vs-now language creates
+    // a versioned proposal. Historical event facts are never updated here.
     //
     // Strategy: find the event_record for this event's date (via the approximate
     // date join used throughout this codebase). If one exists, attach the
     // reflection. If not, create a minimal event_record so the narrative can
     // be stored. Fire-and-forget — must not block the chat response.
-    if (body.message.length >= 20) {
+    const interpretationCandidate = detectHistoricalInterpretationCandidate(body.message);
+    if (interpretationCandidate) {
       ;(async () => {
         try {
           const eventDate = new Date(event.start_time);
@@ -2472,6 +2497,7 @@ router.post(
               .from('event_records')
               .update({ resolved_event_id: eventId })
               .eq('id', eventRecordId)
+              .eq('user_id', userId)
               .is('resolved_event_id', null);            // never overwrite existing links
 
             if (!linkError) {
@@ -2481,22 +2507,20 @@ router.post(
               );
             }
 
-            await supabaseAdmin.from('narrative_accounts').insert({
-              user_id: userId,
-              event_record_id: eventRecordId,
-              account_type: 'later_interpretation',
-              narrative_text: body.message,
-              recorded_at: new Date().toISOString(),
-              metadata: {
-                source: 'event_chat',
-                event_id: eventId,
-                thread_id: threadId,
-              },
+            const proposal = await historicalInterpretationService.proposeUserInterpretation({
+              userId,
+              eventRecordId,
+              resolvedEventId: eventId,
+              text: body.message,
+              threadId,
+              candidate: interpretationCandidate,
             });
 
             logger.debug(
-              { userId, eventId, eventRecordId },
-              'Saved later_interpretation narrative from event chat'
+              { userId, eventId, eventRecordId, interpretationId: proposal?.id ?? null },
+              proposal
+                ? 'Saved historical interpretation proposal from event chat'
+                : 'Historical interpretation proposal was deduplicated or not persisted'
             );
           }
         } catch (err) {
@@ -2546,6 +2570,28 @@ router.get(
       trace,
     });
   })
+);
+
+/**
+ * GET /api/conversation/trace/cognitive/:chatMessageId
+ * Authenticated, tenant-scoped execution trace for the current process. The
+ * trace is deliberately short-lived and contains decisions/counts, never raw
+ * message text.
+ */
+router.get(
+  '/trace/cognitive/:chatMessageId',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const chatMessageId = String(req.params.chatMessageId);
+    const trace = cognitiveObservatory.get(req.user!.id, chatMessageId);
+    if (!trace) {
+      return res.status(404).json({
+        error: 'Cognitive trace not found',
+        message: 'The message is still processing, expired, or belongs to another account.',
+      });
+    }
+    return res.json({ success: true, trace });
+  }),
 );
 
 /**
@@ -4275,7 +4321,7 @@ router.get(
 
     const { data: rel, error: relError } = await supabaseAdmin
       .from('romantic_relationships')
-      .select('id, person_id, person_type, character_id, metadata')
+      .select('id, person_id, person_type, character_id, relationship_type, metadata')
       .eq('id', relationshipId)
       .eq('user_id', userId)
       .single();
@@ -4291,7 +4337,11 @@ router.get(
     const partnerCharacterId =
       rel.character_id ?? linkedFromMeta ?? (rel.person_type === 'character' ? rel.person_id : null);
 
-    const kids = await familyTreeService.getKidsTogetherForRelationship(userId, partnerCharacterId);
+    const kids = await familyTreeService.getKidsTogetherForRelationship(
+      userId,
+      partnerCharacterId,
+      rel.relationship_type as string | null,
+    );
 
     return res.json({ success: true, kids });
   })

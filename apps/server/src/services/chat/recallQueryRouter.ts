@@ -36,6 +36,8 @@ import {
 import { buildConversationSummaryWithRosterFallback } from './conversationSummaryBuilder';
 import { buildThreadRecall, THREAD_RECALL_RE } from './threadRecallService';
 import { loadFoundationEntityIndex } from './foundationEntityIndex';
+import { composeIdentityRecall, getIdentitySnapshot } from '../identitySnapshot';
+import { getNarrativeIdentityRecall } from '../livingBiographyService';
 
 async function loadKnownEntities(userId: string): Promise<Map<string, { id: string; type: string }>> {
   return loadFoundationEntityIndex(userId);
@@ -331,6 +333,8 @@ export type RecallResult = {
   confidence: number;
   /** When true, callers must not append raw journal snippets. */
   foundationPrimary: boolean;
+  /** Explainability details for diagnostics and source UI, never prose. */
+  metadata?: Record<string, unknown>;
 };
 
 export async function routeRecallQuery(
@@ -338,8 +342,6 @@ export async function routeRecallQuery(
   message: string,
   conversationHistory: Array<{ role: string; content: string }> = []
 ): Promise<RecallResult> {
-  const knownEntities = await loadKnownEntities(userId);
-
   if (CONVERSATION_RECALL_RE.test(message) && conversationHistory.length > 0) {
     const block = await buildConversationSummaryWithRosterFallback(userId, conversationHistory);
     return {
@@ -385,15 +387,39 @@ export async function routeRecallQuery(
   }
 
   if (BIOGRAPHY_RE.test(message)) {
-    const bioBlock = await fetchBiographyContext(userId);
-    const block = bioBlock || 'No biography snapshot yet.';
-    return {
-      intent: 'biography',
-      entityName: null,
-      contextBlock: block,
-      confidence: bioBlock ? 0.95 : 0.4,
-      foundationPrimary: true,
-    };
+    try {
+      const snapshot = await getIdentitySnapshot(userId);
+      const content = composeIdentityRecall(snapshot);
+      return {
+        intent: 'biography',
+        entityName: null,
+        contextBlock: content,
+        confidence: snapshot.confidence || 0.4,
+        foundationPrimary: true,
+        metadata: {
+          narrative_recall_version: 3,
+          identity_snapshot_id: snapshot.id,
+          identity_snapshot_version: snapshot.algorithmVersion,
+          identity_snapshot_stale: snapshot.stale,
+          coverage: snapshot.coverage,
+          provenance: snapshot.provenance,
+        },
+      };
+    } catch {
+      const fallback = await getNarrativeIdentityRecall(userId);
+      return {
+        intent: 'biography',
+        entityName: null,
+        contextBlock: fallback.content,
+        confidence: fallback.card.hasEnoughData ? 0.7 : 0.4,
+        foundationPrimary: true,
+        metadata: {
+          narrative_recall_version: 2,
+          identity_snapshot_degraded: true,
+          provenance: fallback.provenance,
+        },
+      };
+    }
   }
 
   if (LOCATION_RE.test(message)) {
@@ -418,6 +444,9 @@ export async function routeRecallQuery(
     };
   }
 
+  // The entity index is intentionally lazy. Identity, family, temporal, and
+  // focused fact recall should never pay the cost of loading every entity.
+  const knownEntities = await loadKnownEntities(userId);
   const mentionedEntity = await detectMentionedEntityName(message, userId, knownEntities);
   if (mentionedEntity || (WHO_IS_RE.test(message) && matchesEntityQuery(message))) {
     const entityName = mentionedEntity ?? extractEntityNameFromQuery(message);

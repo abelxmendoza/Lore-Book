@@ -39,13 +39,15 @@ export type TimelineEligibility = {
 };
 
 const RECAP = /\b(?:recap(?:\s+everything)?|summari[sz]e\s+(?:this|the)\s+thread|what\s+did\s+we\s+discuss)\b/i;
+const IDENTITY_OR_MEMORY_PROMPT =
+  /\b(?:what do you remember about me|tell me everything you know about me|based on everything you know about me|what do you know about me)\b/i;
 const CORRECTION =
   /\b(?:please\s+change|change\s+(?:his|her|their|the)\s+status|you\s+have\s+.+\s+in\s+(?:love|romance|relationships)|he(?:'s| is)\s+more\s+like\s+a\s+friend|correct\s+this|that(?:'s| is)\s+wrong)\b/i;
 const PRODUCT_FEEDBACK =
   /\b(?:what\s+happened\s+to\s+all\s+my\s+characters|token\s+spam|characters?\s+stroke|wtf|bug|broken|ui\s+(?:bug|issue)|testing\s+the\s+chat)\b/i;
 const SYSTEM_DEBUG = /\b(?:debug|console\.log|stack\s+trace|distilled:\s*"?empty"?)\b/i;
 const EXTERNAL = /^(?:the\s+)?(?:world cup|weather|news)\b.*\b(?:is|are|was|were|going on)\b/i;
-const QUESTION = /^(?:who|what|when|where|why|how|do you|can you|did i)\b.+\?$/i;
+const QUESTION = /^(?:who|what|when|where|why|how|do you|can you|could you|would you|did i)\b/i;
 const EMPTY_TITLE =
   /^(?:captured conversation|untitled(?: event)?|unknown(?: event)?|abel\s+\w+(?:'s)?\s+event|hi\s+\w+|event|moment)$/i;
 const DISTILLED_EMPTY = /distilled:\s*"?empty"?/i;
@@ -58,13 +60,13 @@ export function classifyTimelineSpeechAct(input: {
   if (!raw || DISTILLED_EMPTY.test(raw) || EMPTY_TITLE.test((input.title ?? '').trim())) {
     return 'EMPTY';
   }
-  if (RECAP.test(raw)) return 'RECAP_REQUEST';
+  if (RECAP.test(raw) || IDENTITY_OR_MEMORY_PROMPT.test(raw)) return 'RECAP_REQUEST';
   if (CORRECTION.test(raw)) return 'CORRECTION';
   if (SYSTEM_DEBUG.test(raw)) return 'SYSTEM_DEBUGGING';
   if (PRODUCT_FEEDBACK.test(raw)) return 'PRODUCT_FEEDBACK';
   if (EXTERNAL.test(raw)) return 'EXTERNAL_CONTEXT';
   if (QUESTION.test(raw.trim())) return 'QUESTION';
-  if (/^(?:please\s+)?(?:remember|fix|update|delete|generate|show me|list)\b/i.test(raw) &&
+  if (/^(?:please\s+)?(?:remember|fix|update|delete|build|create|generate|show me|list)\b/i.test(raw) &&
       !/\b(?:i|we)\s+(?:went|was|were|did|built|started)\b/i.test(autobiographicalClause(raw))) {
     return 'COMMAND';
   }

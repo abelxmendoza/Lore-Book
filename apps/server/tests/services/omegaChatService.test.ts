@@ -19,11 +19,23 @@ vi.mock('../../src/services/locationService');
 vi.mock('../../src/services/ragPacketCacheService');
 // supabaseClient not mocked: test env uses dbAdapter → SupabaseMock (chainable, no DB)
 // OpenAI must be a constructor (new OpenAI()); use function not arrow/vi.fn
-const { openaiCreateFn } = vi.hoisted(() => ({ openaiCreateFn: vi.fn() }));
+const { openaiCreateFn, executeExplicitRecallFn, detectCognitionQuestionFn, answerNarrativeCognitionFn } = vi.hoisted(() => ({
+  openaiCreateFn: vi.fn(),
+  executeExplicitRecallFn: vi.fn(),
+  detectCognitionQuestionFn: vi.fn(),
+  answerNarrativeCognitionFn: vi.fn(),
+}));
 vi.mock('openai', () => ({
   default: function OpenAI() {
     return { chat: { completions: { create: openaiCreateFn } } };
   },
+}));
+vi.mock('../../src/services/chat/explicitRecallService', () => ({
+  executeExplicitRecall: executeExplicitRecallFn,
+}));
+vi.mock('../../src/services/narrative/narrativeReasoner', () => ({
+  detectCognitionQuestion: detectCognitionQuestionFn,
+  answerNarrativeCognition: answerNarrativeCognitionFn,
 }));
 
 describe('OmegaChatService', () => {
@@ -32,6 +44,16 @@ describe('OmegaChatService', () => {
     openaiCreateFn.mockResolvedValue({
       choices: [{ message: { content: 'Test response' } }],
     });
+    executeExplicitRecallFn.mockResolvedValue({
+      content: 'What I know about you: a grounded biography.',
+      response_mode: 'RECALL',
+      confidence: 0.9,
+      metadata: { recall_intent: 'biography' },
+    });
+    // Default: no cognition question detected, so existing tests exercise the
+    // normal chat path unchanged. Individual tests override this.
+    detectCognitionQuestionFn.mockReturnValue(null);
+    answerNarrativeCognitionFn.mockResolvedValue(null);
     // Array reads resolve empty; single-row reads/inserts (e.g. the message
     // save's insert().select('id').single()) resolve to a row with an id so the
     // chat flow can persist and continue instead of throwing "Failed to save".
@@ -150,6 +172,98 @@ describe('OmegaChatService', () => {
       expect(result.stream).toBeDefined();
       expect(result.metadata).toBeDefined();
     });
+
+    it('uses deterministic biography recall even when Working Memory is primary', async () => {
+      const previousWorkingMemoryPrimary = process.env.WORKING_MEMORY_PRIMARY;
+      process.env.WORKING_MEMORY_PRIMARY = 'true';
+
+      try {
+        const result = await omegaChatService.chatStream(
+          'user-123',
+          'What do you remember about me?',
+        );
+
+        expect(executeExplicitRecallFn).toHaveBeenCalledWith(
+          'user-123',
+          'What do you remember about me?',
+          [],
+          { threadId: undefined },
+        );
+        expect(result.content).toContain('grounded biography');
+        expect(ragPacketCacheService.getCachedPacket).not.toHaveBeenCalled();
+      } finally {
+        if (previousWorkingMemoryPrimary === undefined) {
+          delete process.env.WORKING_MEMORY_PRIMARY;
+        } else {
+          process.env.WORKING_MEMORY_PRIMARY = previousWorkingMemoryPrimary;
+        }
+      }
+    });
+
+    it('reaches the Narrative Cognition gate even when Working Memory is primary', async () => {
+      // Regression test: this gate was previously `if (!workingMemoryPrimary && ...)`.
+      // WORKING_MEMORY_PRIMARY is unset in production, so workingMemoryPrimary
+      // defaults true and the entire gate — covering all cognition questions
+      // ("who matters", "what changed", "what era"), not just this one — was
+      // unreachable there regardless of what narrativeReasoner itself did.
+      const previousWorkingMemoryPrimary = process.env.WORKING_MEMORY_PRIMARY;
+      process.env.WORKING_MEMORY_PRIMARY = 'true';
+      detectCognitionQuestionFn.mockReturnValue('what_changed');
+      answerNarrativeCognitionFn.mockResolvedValue({
+        kind: 'what_changed',
+        content: 'Before: focused on Omega1. After: LoreBook is your primary project.',
+        confidence: 0.75,
+        reasoning: ['goal_completed: Ship LoreBook v1'],
+      });
+
+      try {
+        const result = await omegaChatService.chatStream(
+          'user-123',
+          'What plans, opinions, goals, or priorities of mine have changed over time? Show me the before and after.',
+        );
+
+        expect(detectCognitionQuestionFn).toHaveBeenCalled();
+        expect(answerNarrativeCognitionFn).toHaveBeenCalledWith('user-123', 'what_changed');
+        expect(result.content).toContain('Before: focused on Omega1');
+      } finally {
+        if (previousWorkingMemoryPrimary === undefined) {
+          delete process.env.WORKING_MEMORY_PRIMARY;
+        } else {
+          process.env.WORKING_MEMORY_PRIMARY = previousWorkingMemoryPrimary;
+        }
+      }
+    });
+
+    it('does not enter cognition routing for debug/audit-facing requests', async () => {
+      // isChatFacingMode is the guard that must still hold after removing the
+      // workingMemoryPrimary condition — debug/audit requests must keep
+      // bypassing cognition even though the gate now always evaluates.
+      vi.mocked(orchestratorService.getSummary).mockResolvedValue({
+        timeline: { events: [], arcs: [], season: null } as any,
+        characters: [],
+      });
+      vi.mocked(locationService.listLocations).mockResolvedValue([]);
+      vi.mocked(chapterService.listChapters).mockResolvedValue([]);
+      vi.mocked(ragPacketCacheService.getCachedPacket).mockReturnValue(null);
+
+      await omegaChatService.chatStream('user-123', 'show me the debug information for this');
+      expect(detectCognitionQuestionFn).not.toHaveBeenCalled();
+
+      vi.clearAllMocks();
+      detectCognitionQuestionFn.mockReturnValue(null);
+      await omegaChatService.chatStream('user-123', 'show me everything you know about my life');
+      expect(detectCognitionQuestionFn).not.toHaveBeenCalled();
+    });
+
+    it('still reaches (and passes through) cognition routing for an ordinary chat-facing message', async () => {
+      // Confirms the gate fix didn't make it MORE aggressive than intended:
+      // "Hello" is chat-facing, so the gate is reached, but detects no
+      // cognition kind and falls through to the normal chat path unchanged.
+      const result = await omegaChatService.chatStream('user-123', 'Hello');
+
+      expect(detectCognitionQuestionFn).toHaveBeenCalledWith('Hello');
+      expect(result).toBeDefined();
+      expect(result.content ?? result.stream).toBeDefined();
+    });
   });
 });
-

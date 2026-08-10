@@ -38,6 +38,10 @@ export type ChapterSceneInput = {
   significanceScore?: number;
   promotedEventId?: string | null;
   themes?: string[];
+  /** True when promotedEventId is also eligible in narrative_milestones. */
+  isMilestone?: boolean;
+  /** 0-100, only meaningful when isMilestone is true. */
+  milestoneScore?: number;
 };
 
 function compact(s: string): string {

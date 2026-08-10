@@ -22,6 +22,7 @@ import { trainingSignalLogger } from '../neural/trainingSignalLogger';
 import type { IdentityCoreProfile } from '../identityCore/identityTypes';
 import type { MemoryContext } from './chatTypes';
 import { JOURNAL_COLS } from '../../db/journalEntryColumns';
+import { BIOGRAPHY_RE } from './recallIntentPatterns';
 
 /**
  * Memory Retriever
@@ -70,7 +71,28 @@ export class MemoryRetriever {
       const engineResults = await getEngineResults(userId);
 
       // STEP 3: Extract specific engine outputs
-      const identity = engineResults?.identityCore?.data || null;
+      let identity = engineResults?.identityCore?.data || null;
+      if (query && BIOGRAPHY_RE.test(query)) {
+        try {
+          const { getIdentitySnapshot } = await import('../identitySnapshot');
+          const snapshot = await getIdentitySnapshot(userId);
+          identity = {
+            snapshotId: snapshot.id,
+            algorithmVersion: snapshot.algorithmVersion,
+            currentChapter: snapshot.currentChapter,
+            threads: snapshot.threads.slice(0, 6).map((thread) => ({
+              name: thread.name,
+              summary: thread.summary,
+              salience: thread.salience,
+              momentum: thread.momentum,
+              confidence: thread.confidence,
+            })),
+            coverage: snapshot.coverage,
+          };
+        } catch (error) {
+          logger.debug({ error, userId }, 'Identity snapshot unavailable to legacy memory context');
+        }
+      }
       const archetypes = engineResults?.archetype?.data || null;
       const paracosm = engineResults?.paracosm?.data || null;
       const values = engineResults?.values?.data || null;
@@ -795,4 +817,3 @@ export class MemoryRetriever {
     return intersection.size / union.size;
   }
 }
-

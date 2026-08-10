@@ -2,6 +2,30 @@ import { fetchJson } from '../lib/api';
 
 export type StitchedItemKind = 'moment' | 'event';
 
+export type CanonicalTemporalModel = {
+  occurred: {
+    start: string | null;
+    end: string | null;
+    precision: string;
+    source: string;
+    status: string;
+    confidence: number;
+    expression: string | null;
+    timezone: string | null;
+  };
+  mentionedAt: string | null;
+  recordedAt: string | null;
+  knownFrom: string | null;
+  validFrom: string | null;
+  validUntil: string | null;
+  provenance: Array<{
+    field: string;
+    source: string;
+    sourceId?: string | null;
+    expression?: string | null;
+  }>;
+};
+
 export type StitchedTimelineItem = {
   id: string;
   kind: StitchedItemKind;
@@ -33,6 +57,7 @@ export type StitchedTimelineItem = {
   projectionRole?: 'canonical' | 'evidence' | 'unresolved' | 'excluded';
   canonicalEventType?: string;
   speechAct?: string;
+  temporal?: CanonicalTemporalModel;
 };
 
 export type NarrativeChapterQuality = {

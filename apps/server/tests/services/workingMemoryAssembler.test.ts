@@ -15,6 +15,7 @@ function makeChain(result: TableResult) {
     overlaps: () => chain,
     order: () => chain,
     limit: () => chain,
+    upsert: () => Promise.resolve({ data: [], error: null }),
     single: () => Promise.resolve(result),
     maybeSingle: () =>
       Promise.resolve({
@@ -629,6 +630,18 @@ describe('Working Memory Assembler', () => {
     expect(result.episodes.some((item) => /LifeLedger/i.test(item.content))).toBe(true);
   });
 
+  it('classifies career recall as a bounded career context', async () => {
+    const result = await assembleWorkingMemory({ userId: 'user-1', question: 'What jobs have I had?' });
+
+    expect(result.intent).toBe('CAREER_QUERY');
+    expect(result.contextPlan.primary).toBe('career');
+    expect(result.contextPlan.excluded).toContain('relationships');
+    expect(result.contextDiagnostics.candidatesConsidered).toBeGreaterThan(0);
+    expect(result.contextDiagnostics.coverageEstimate).toBeGreaterThanOrEqual(0);
+    expect(result.contextDiagnostics.completenessEstimate).toBeLessThanOrEqual(1);
+    expect(result.rejected.some((item) => item.rejectedReason.startsWith('context_') || item.rejectedReason.startsWith('outside_context:'))).toBe(true);
+  });
+
   it('keeps Amazon as an organization, not a person', async () => {
     const result = await assembleWorkingMemory({ userId: 'user-1', question: 'What do you know about Amazon?' });
 
@@ -670,5 +683,74 @@ describe('Working Memory Assembler', () => {
     if (target === 'Amazon' || target === 'Costco') {
       expect(result.entities.every((entity) => entity.name !== target || entity.type !== 'PERSON')).toBe(true);
     }
+  });
+
+  it('surfaces event-query candidates from the canonical stitched timeline with correct provenance', async () => {
+    tableResults.resolved_events = {
+      data: [
+        {
+          id: 'resolved-graduation',
+          title: "Morgan Gray's graduation",
+          summary: 'Attended the graduation ceremony downtown.',
+          type: 'graduation',
+          start_time: '2026-06-11T00:00:00Z',
+          confidence: 0.9,
+          tags: [],
+          // Morgan Gray resolves to char-leslie in the characters fixture above —
+          // getStitchedTimeline's character_id scope only keeps resolved_events
+          // rows that name the resolved character, matching real behavior.
+          people: ['char-leslie'],
+          locations: [],
+          metadata: {},
+        },
+      ],
+      error: null,
+    };
+
+    const result = await assembleWorkingMemory({
+      userId: 'user-1',
+      question: "What happened at Morgan Gray's graduation?",
+    });
+
+    expect(result.intent).toBe('EVENT_QUERY');
+    const stitched = result.events.find((item) => item.source === 'stitched_timeline');
+    expect(stitched).toBeDefined();
+    expect(stitched?.content).toMatch(/graduation ceremony/i);
+  });
+
+  it('does not surface a resolved_events row that reads as a correction, not a lived event', async () => {
+    tableResults.resolved_events = {
+      data: [
+        {
+          id: 'resolved-correction',
+          title: "That's wrong",
+          summary: "That's wrong, please fix the date on this event.",
+          type: 'note',
+          start_time: '2026-06-11T00:00:00Z',
+          confidence: 0.9,
+          tags: [],
+          // Same character (char-leslie) as the passing test above, so exclusion
+          // here is provably from eligibility gating (CORRECTION speech act),
+          // not incidentally from character_id scoping filtering it out.
+          people: ['char-leslie'],
+          locations: [],
+          metadata: {},
+        },
+      ],
+      error: null,
+    };
+
+    const result = await assembleWorkingMemory({
+      userId: 'user-1',
+      question: "What happened at Morgan Gray's graduation?",
+    });
+
+    const allText = [...result.events, ...result.timeline]
+      .map((item) => `${item.title} ${item.content}`)
+      .join('\n');
+    // Eligibility gating (evaluateTimelineEligibility) excludes CORRECTION-classified
+    // text from the canonical projector — chat now inherits this the same way the
+    // Timeline/Swimlanes UI already does, which it did not before this change.
+    expect(allText).not.toMatch(/please fix the date/i);
   });
 });

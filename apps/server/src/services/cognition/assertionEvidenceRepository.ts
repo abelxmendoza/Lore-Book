@@ -2,12 +2,23 @@ import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 
 export type AssertionEvidenceInput = {
-  targetKind: 'node' | 'edge' | 'narrative_claim';
+  targetKind:
+    | 'node'
+    | 'edge'
+    | 'narrative_claim'
+    | 'knowledge_assertion'
+    | 'perception_entry'
+    | 'crystallized_knowledge';
   targetId: string;
   evidenceKind: string;
   evidenceId: string;
+  relation?: 'supports' | 'challenges' | 'contextualizes' | 'duplicates' | 'irrelevant';
   weight?: number;
   excerpt?: string | null;
+  locator?: Record<string, unknown>;
+  linkedBy?: 'user' | 'system' | 'import';
+  rationale?: string | null;
+  extractionConfidence?: number | null;
 };
 
 export async function writeAssertionEvidence(
@@ -22,14 +33,19 @@ export async function writeAssertionEvidence(
     target_id: item.targetId,
     evidence_kind: item.evidenceKind,
     evidence_id: item.evidenceId,
+    relation: item.relation ?? 'supports',
     weight: item.weight ?? 0.7,
     excerpt: item.excerpt ?? null,
+    locator: item.locator ?? {},
+    linked_by: item.linkedBy ?? 'system',
+    rationale: item.rationale ?? null,
+    extraction_confidence: item.extractionConfidence ?? null,
   }));
 
   const { error } = await supabaseAdmin
     .from('assertion_evidence')
     .upsert(rows, {
-      onConflict: 'user_id,target_kind,target_id,evidence_kind,evidence_id',
+      onConflict: 'user_id,target_kind,target_id,evidence_kind,evidence_id,relation',
       ignoreDuplicates: false,
     });
 

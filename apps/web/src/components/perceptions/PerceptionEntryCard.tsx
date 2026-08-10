@@ -1,9 +1,11 @@
-import { Eye, EyeOff, AlertTriangle, CheckCircle, XCircle, Clock, User, MessageSquare, Link2 } from 'lucide-react';
-import { Card, CardContent } from '../ui/card';
-import { Badge } from '../ui/badge';
-import type { PerceptionEntry, PerceptionStatus } from '../../types/perception';
 import { formatDistanceToNow } from 'date-fns';
+import { Eye, EyeOff, AlertTriangle, Clock, User, MessageSquare, Link2, History, BookOpenCheck } from 'lucide-react';
+
 import { formatEpistemicPercent } from '../../lib/epistemicLabels';
+import type { PerceptionEntry, PerceptionStatus } from '../../types/perception';
+import { EpistemicStatusBadge } from '../epistemic/EpistemicStatusBadge';
+import { Badge } from '../ui/badge';
+import { Card, CardContent } from '../ui/card';
 
 type PerceptionEntryCardProps = {
   perception: PerceptionEntry;
@@ -16,26 +18,30 @@ type PerceptionEntryCardProps = {
 
 export const PerceptionEntryCard = ({
   perception,
-  onEdit,
-  onRetract,
-  onResolve,
   onClick,
   showSubject = true
 }: PerceptionEntryCardProps) => {
+  const sourceLabel = perception.source.replace('_', ' ');
+  const certaintyLabel = typeof perception.confidence_level === 'number'
+    ? formatEpistemicPercent(perception.confidence_level)
+    : perception.confidence_level.replace('_', ' ');
+  const heardAt = formatDistanceToNow(new Date(perception.timestamp_heard), { addSuffix: true });
+  const evolutionCount = perception.evolution_notes?.length ?? 0;
+
   const getSourceIcon = (source: string) => {
     switch (source) {
       case 'overheard':
-        return <Eye className="h-3.5 w-3.5" />;
+        return <Eye className="h-2.5 w-2.5 shrink-0 sm:h-3 sm:w-3" aria-hidden="true" />;
       case 'told_by':
-        return <MessageSquare className="h-3.5 w-3.5" />;
+        return <MessageSquare className="h-2.5 w-2.5 shrink-0 sm:h-3 sm:w-3" aria-hidden="true" />;
       case 'rumor':
-        return <AlertTriangle className="h-3.5 w-3.5" />;
+        return <AlertTriangle className="h-2.5 w-2.5 shrink-0 sm:h-3 sm:w-3" aria-hidden="true" />;
       case 'social_media':
-        return <Link2 className="h-3.5 w-3.5" />;
+        return <Link2 className="h-2.5 w-2.5 shrink-0 sm:h-3 sm:w-3" aria-hidden="true" />;
       case 'intuition':
-        return <EyeOff className="h-3.5 w-3.5" />;
+        return <EyeOff className="h-2.5 w-2.5 shrink-0 sm:h-3 sm:w-3" aria-hidden="true" />;
       default:
-        return <MessageSquare className="h-3.5 w-3.5" />;
+        return <MessageSquare className="h-2.5 w-2.5 shrink-0 sm:h-3 sm:w-3" aria-hidden="true" />;
     }
   };
 
@@ -78,19 +84,6 @@ export const PerceptionEntryCard = ({
     }
   };
 
-  const getResolutionIcon = (status?: string | null) => {
-    switch (status) {
-      case 'confirmed':
-        return <CheckCircle className="h-4 w-4 text-green-400" />;
-      case 'disproven':
-        return <XCircle className="h-4 w-4 text-red-400" />;
-      case 'retracted':
-        return <XCircle className="h-4 w-4 text-gray-400" />;
-      default:
-        return null;
-    }
-  };
-
   // HARD RULE: Visual treatment - desaturated, muted, unstable appearance
   const isRetracted = perception.retracted || perception.status === 'retracted';
   const isUnverified = perception.status === 'unverified';
@@ -104,7 +97,7 @@ export const PerceptionEntryCard = ({
   // Visual treatment: desaturated/muted for perceptions (80% opacity default)
   return (
     <Card
-      className={`h-fit w-full min-w-0 max-w-full overflow-visible transition-all duration-200 ${
+      className={`min-w-0 h-fit overflow-visible transition-all duration-200 ${
         onClick ? 'cursor-pointer hover:border-violet-500/50 hover:shadow-lg hover:shadow-violet-500/20 hover:-translate-y-1 active:scale-[0.99] touch-manipulation' : ''
       } ${
         isRetracted
@@ -118,74 +111,98 @@ export const PerceptionEntryCard = ({
           : 'border-border/50 bg-gradient-to-br from-black/60 via-black/40 to-black/60 opacity-80'
       }`}
       onClick={() => onClick?.(perception)}
+      onKeyDown={(event) => {
+        if (!onClick || (event.key !== 'Enter' && event.key !== ' ')) return;
+        event.preventDefault();
+        onClick(perception);
+      }}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-label={onClick ? `Open perception about ${perception.subject_alias || 'this person'}` : undefined}
     >
-      <CardContent className="space-y-2 overflow-visible p-2.5 sm:space-y-3 sm:p-4">
-        {/* Header with source and confidence — stack on narrow 2-col mobile cards */}
-        <div className="flex flex-col gap-1.5">
-          <div className="flex min-w-0 flex-wrap items-center gap-1">
-            <Badge
-              variant="outline"
-              className={`${getSourceColor(perception.source)} flex items-center gap-1 px-1.5 py-0.5 text-[10px] sm:px-2 sm:text-xs`}
-            >
-              {getSourceIcon(perception.source)}
-              <span className="capitalize whitespace-nowrap">{perception.source.replace('_', ' ')}</span>
-            </Badge>
-            <Badge
-              variant="outline"
-              className={`${getConfidenceColor(perception.confidence_level)} px-1.5 py-0.5 text-[10px] sm:px-2 sm:text-xs whitespace-nowrap`}
-            >
-              {typeof perception.confidence_level === 'number'
-                ? formatEpistemicPercent(perception.confidence_level)
-                : perception.confidence_level.replace('_', ' ')}
-            </Badge>
-            {needsReview ? (
-              <Badge
-                variant="outline"
-                className="border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300 sm:px-2 sm:text-xs whitespace-nowrap"
-              >
-                Needs review
-              </Badge>
-            ) : null}
-            {perception.status === 'retracted' || perception.retracted ? (
-              <Badge variant="outline" className="border-gray-500/30 bg-gray-500/10 px-2 py-0.5 text-xs text-gray-400 line-through">
-                Retracted
-              </Badge>
-            ) : null}
-            <span>{getResolutionIcon(perception.status)}</span>
-          </div>
-          <div className="flex items-center gap-1 text-[10px] text-white/40 sm:text-xs">
-            <Clock className="h-3 w-3 shrink-0" />
-            <span className="whitespace-nowrap">
-              {formatDistanceToNow(new Date(perception.timestamp_heard), { addSuffix: true })}
-            </span>
+      <CardContent className="space-y-2 overflow-visible p-2 sm:space-y-2.5 sm:p-4">
+        {/* Subject + timestamp share a row — subject is the headline, everything
+            else below is supporting detail, not more headline-weight chips. */}
+        <div className="flex items-start justify-between gap-2">
+          {showSubject && (perception.subject_alias || perception.subject_person_id) && (
+            <div className="flex min-w-0 items-start gap-1 text-[11px] sm:gap-1.5 sm:text-sm">
+              <User className="mt-0.5 h-3 w-3 shrink-0 text-white/50 sm:h-3.5 sm:w-3.5" />
+              <span className="min-w-0 break-words font-medium text-white">
+                {perception.subject_alias || 'Unknown'}
+              </span>
+            </div>
+          )}
+          <div className="flex shrink-0 items-center gap-0.5 text-[8px] text-white/40 sm:gap-1 sm:text-xs">
+            <Clock className="h-2.5 w-2.5 sm:h-3 sm:w-3" aria-hidden="true" />
+            <span className="whitespace-nowrap">{heardAt}</span>
           </div>
         </div>
 
-        {/* Subject */}
-        {showSubject && (perception.subject_alias || perception.subject_person_id) && (
-          <div className="flex items-start gap-1.5 text-xs sm:gap-2 sm:text-sm">
-            <User className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/50" />
-            <span className="min-w-0 break-words text-white/70">
-              <span className="text-white/50">About: </span>
-              <span className="font-medium text-white">{perception.subject_alias || 'Unknown'}</span>
-            </span>
-          </div>
-        )}
+        {/* Source + confidence + status — compact chips, consistent across
+            breakpoints so they wrap as pairs instead of one-per-line. The
+            "who asserted this" badge is dropped here: every row in this book
+            is hardcoded actorKind="user"/stance="user_belief" today, so it
+            never varies and only added a fourth redundant chip. EpistemicStatusBadge
+            already renders a status-derived "Needs review" / "Retracted" label, so
+            only the review-reminder chip (independent of current status) is added
+            here. */}
+        <div className="flex flex-wrap items-center gap-0.5 sm:gap-1" aria-label="Source, certainty, and review status">
+          <Badge
+            variant="outline"
+            className={`${getSourceColor(perception.source)} flex max-w-full items-center gap-0.5 px-1 py-0 text-[9px] normal-case tracking-normal sm:gap-1 sm:px-1.5 sm:text-[10px]`}
+          >
+            {getSourceIcon(perception.source)}
+            <span className="capitalize">{sourceLabel}</span>
+          </Badge>
+          <Badge
+            variant="outline"
+            className={`${getConfidenceColor(perception.confidence_level)} px-1 py-0 text-[9px] normal-case tracking-normal sm:px-1.5 sm:text-[10px]`}
+          >
+            {certaintyLabel}
+          </Badge>
+          <EpistemicStatusBadge status={perception.status} compact />
+          {needsReview && (
+            <Badge
+              variant="outline"
+              className="border-amber-500/30 bg-amber-500/10 px-1 py-0 text-[9px] normal-case tracking-normal text-amber-300 sm:px-1.5 sm:text-[10px]"
+            >
+              Review due
+            </Badge>
+          )}
+        </div>
 
         {/* Content — full text, never clamped or ellipsized */}
-        <div className="break-words text-xs leading-relaxed text-white/80 sm:text-sm">
+        <div className="break-words text-[10px] font-medium leading-snug text-white/85 sm:text-sm sm:leading-relaxed">
           {perception.content}
         </div>
 
-        {/* Impact on Me (Key Insight Lever) — always visible */}
-        {perception.impact_on_me ? (
-          <div className="border-t border-border/30 pt-2">
-            <p className="mb-1 text-xs font-medium text-white/50">Impact on Me:</p>
-            <p className="break-words text-xs italic leading-relaxed text-white/70 sm:text-sm">
-              {perception.impact_on_me}
-            </p>
+        {/* Impact on Me (Key Insight Lever) — always visible, never clamped */}
+        {perception.impact_on_me && (
+          <div className="border-t border-border/30 pt-1.5 sm:pt-2">
+            <p className="text-[8px] font-semibold uppercase tracking-wide text-white/40 sm:text-xs sm:normal-case sm:tracking-normal">Impact on me</p>
+            <p className="mt-0.5 break-words text-[9px] leading-snug text-white/65 sm:text-xs sm:italic">{perception.impact_on_me}</p>
           </div>
-        ) : null}
+        )}
+
+        {(perception.source_detail || perception.related_memory_id || evolutionCount > 0) && (
+          <div className="flex flex-wrap gap-x-2 gap-y-1 border-t border-border/20 pt-1.5 text-[8px] text-white/45 sm:text-[10px]">
+            {perception.source_detail && (
+              <span className="min-w-0 basis-full break-words sm:basis-auto">
+                Source: {perception.source_detail}
+              </span>
+            )}
+            {perception.related_memory_id && (
+              <span className="inline-flex items-center gap-0.5">
+                <BookOpenCheck className="h-2.5 w-2.5" aria-hidden="true" /> Linked memory
+              </span>
+            )}
+            {evolutionCount > 0 && (
+              <span className="inline-flex items-center gap-0.5">
+                <History className="h-2.5 w-2.5" aria-hidden="true" /> Changed {evolutionCount}×
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Evolution Notes (if any) */}
         {perception.evolution_notes && perception.evolution_notes.length > 0 && (
@@ -211,21 +228,19 @@ export const PerceptionEntryCard = ({
 
         {/* Resolution note (tracks evolution) */}
         {perception.resolution_note && (
-          <div className="border-t border-border/30 pt-2">
-            <p className="mb-1 text-xs font-medium text-white/50">
+          <div className="border-t border-border/30 pt-1.5 sm:pt-2">
+            <p className="text-xs text-white/50 font-medium mb-1">
               {perception.status === 'retracted' ? 'Retraction:' : 'Resolution:'}
             </p>
-            <p className="break-words text-xs italic leading-relaxed text-white/70">{perception.resolution_note}</p>
+            <p className="break-words text-[9px] italic text-white/70 sm:text-xs">{perception.resolution_note}</p>
           </div>
         )}
 
         {/* Warning labels for unstable perceptions (MANDATORY for unverified) */}
         {isUnverified && !isRetracted && (
-          <div className="flex items-start gap-2 border-t border-violet-500/20 pt-2">
-            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-400/70" />
-            <span className="break-words text-xs leading-relaxed text-violet-400/70">
-              Unverified • Secondhand • Belief at the time
-            </span>
+          <div className="flex items-start gap-1 border-t border-violet-500/20 pt-1.5 sm:items-center sm:gap-2 sm:pt-2">
+            <AlertTriangle className="mt-px h-2.5 w-2.5 shrink-0 text-violet-400/70 sm:mt-0 sm:h-3.5 sm:w-3.5" aria-hidden="true" />
+            <span className="break-words text-[8px] leading-tight text-violet-300/70 sm:text-xs">Belief at the time — not verified fact</span>
           </div>
         )}
       </CardContent>

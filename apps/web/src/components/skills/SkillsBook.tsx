@@ -221,11 +221,23 @@ export const SkillsBook: React.FC = () => {
     }
   };
 
+  /** Demoted / non-skill ontology rows (projects, activities, archived merges) */
+  const contextRecords = useMemo(
+    () => skills.filter((s) => !isPrimarySkillBookRecord(s)),
+    [skills],
+  );
+
+  /** Same population filteredSkills starts from — category chips must count only records that can actually appear in the grid. */
+  const primarySkills = useMemo(
+    () => skills.filter((s) => isPrimarySkillBookRecord(s)),
+    [skills],
+  );
+
   // Dynamic categories based on actual skill categories in data
   const availableCategories = useMemo(() => {
     const categoryCounts = new Map<SkillCategoryFilter, number>();
-    
-    skills.forEach(skill => {
+
+    primarySkills.forEach(skill => {
       categoryCounts.set(skill.skill_category, (categoryCounts.get(skill.skill_category) || 0) + 1);
     });
 
@@ -254,17 +266,11 @@ export const SkillsBook: React.FC = () => {
     });
 
     return categories;
-  }, [skills]);
-
-  /** Demoted / non-skill ontology rows (projects, activities, archived merges) */
-  const contextRecords = useMemo(
-    () => skills.filter((s) => !isPrimarySkillBookRecord(s)),
-    [skills],
-  );
+  }, [primarySkills]);
 
   const filteredSkills = useMemo(() => {
     // Default Skills Book = durable skills only (cognition ontology)
-    let filtered = skills.filter((s) => isPrimarySkillBookRecord(s));
+    let filtered = primarySkills;
 
     if (bookQueryResult) {
       const matchingIds = new Set(bookQueryResult.results.map((result) => result.skillId));
@@ -304,7 +310,7 @@ export const SkillsBook: React.FC = () => {
     });
 
     return filtered;
-  }, [skills, activeCategory, searchTerm, filterLevelMin, filterLevelMax, filterConfidenceMin, filterConfidenceMax, filterProficiencyMin, bookQueryResult]);
+  }, [primarySkills, activeCategory, searchTerm, filterLevelMin, filterLevelMax, filterConfidenceMin, filterConfidenceMax, filterProficiencyMin, bookQueryResult]);
 
   const sortedSkills = useMemo(() => {
     const sorted = [...filteredSkills];
@@ -393,9 +399,12 @@ export const SkillsBook: React.FC = () => {
       availableCategories.map((id) => ({
         id,
         label: formatCategoryLabel(id),
-        count: skills.filter((skill) => skillMatchesCategory(skill, id)).length,
+        // Count against primarySkills (same population filteredSkills starts from) —
+        // otherwise a chip can show a count that includes demoted/non-primary records
+        // that can never actually appear once the category is selected.
+        count: primarySkills.filter((skill) => skillMatchesCategory(skill, id)).length,
       })),
-    [availableCategories, skills],
+    [availableCategories, primarySkills],
   );
 
   const bookTheme = useMemo(

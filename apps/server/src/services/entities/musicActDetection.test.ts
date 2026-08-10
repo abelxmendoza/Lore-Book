@@ -33,4 +33,17 @@ describe('looksLikeMusicAct', () => {
     expect(looksLikeMusicAct('Prayers', '').isMusicAct).toBe(false);
     expect(looksLikeMusicAct('Prayers', undefined).isMusicAct).toBe(false);
   });
+
+  describe('strength', () => {
+    it('marks explicit band language as strong', () => {
+      expect(looksLikeMusicAct('Ex Lover', 'Ex Lover the band sounded so good').strength).toBe('strong');
+      expect(looksLikeMusicAct('Prayers', 'Mr. Chino is a DJ for Prayers aka Cholo Goth').strength).toBe('strong');
+    });
+
+    it('marks bare "performed" language as weak (ambiguous solo vs group)', () => {
+      expect(looksLikeMusicAct('Kali Uchis', 'Kali Uchis performed last night').strength).toBe('weak');
+      expect(looksLikeMusicAct('Kali Uchis', 'I loved the set by Kali Uchis').strength).toBe('weak');
+      expect(looksLikeMusicAct('Kali Uchis', 'we were opening for Kali Uchis').strength).toBe('weak');
+    });
+  });
 });

@@ -58,6 +58,17 @@ export type LivingBiographyCard = {
   hasEnoughData: boolean;
 };
 
+export type NarrativeIdentityRecall = {
+  content: string;
+  card: LivingBiographyCard;
+  provenance: {
+    sourceEntryCount: number;
+    timelineEventCount: number;
+    relationshipCount: number;
+    generatedAt: string | null;
+  };
+};
+
 export type BiographyChange = {
   kind: 'new_chapter' | 'new_person' | 'new_milestone' | 'emerging_theme';
   label: string;
@@ -65,7 +76,7 @@ export type BiographyChange = {
 
 const MAX_THEMES = 3;
 const MAX_PEOPLE = 4;
-const MAX_FOCUS = 3;
+const MAX_FOCUS = 4;
 const MAX_DEVELOPMENTS = 3;
 
 /** Legacy snapshot strings that should never surface as "current focus". */
@@ -80,6 +91,14 @@ const STALE_FOCUS_RE = /\bepirus\b/i;
  */
 export async function getLivingBiographyCard(userId: string): Promise<LivingBiographyCard> {
   const bio = await biographyFoundationService.getBiography(userId);
+
+  return buildLivingBiographyCard(userId, bio);
+}
+
+async function buildLivingBiographyCard(
+  userId: string,
+  bio: BiographyOutput | null,
+): Promise<LivingBiographyCard> {
 
   if (!bio) {
     return {
@@ -106,7 +125,7 @@ export async function getLivingBiographyCard(userId: string): Promise<LivingBiog
 
   return {
     name: bio.facts.identity.name,
-    currentChapter: deriveCurrentChapter(bio),
+    currentChapter: deriveCurrentChapter(bio, currentFocus),
     topThemes: bio.themes.slice(0, MAX_THEMES).map(t => t.theme),
     keyPeople: deriveKeyPeople(bio),
     currentFocus,
@@ -114,6 +133,118 @@ export async function getLivingBiographyCard(userId: string): Promise<LivingBiog
     lastUpdated: bio.generatedAt,
     hasEnoughData: true,
   };
+}
+
+/**
+ * Authoritative identity-recall projection shared by chat and the About Me UI.
+ * It deliberately summarizes the Living Biography card instead of exposing the
+ * stored snapshot, full chapter archive, or persistence lifecycle metadata.
+ */
+export async function getNarrativeIdentityRecall(userId: string): Promise<NarrativeIdentityRecall> {
+  const bio = await biographyFoundationService.getBiography(userId);
+  const card = await buildLivingBiographyCard(userId, bio);
+
+  if (!bio || !card.hasEnoughData) {
+    return {
+      content: 'I do not have enough grounded biography evidence to summarize you yet.',
+      card,
+      provenance: {
+        sourceEntryCount: 0,
+        timelineEventCount: 0,
+        relationshipCount: 0,
+        generatedAt: null,
+      },
+    };
+  }
+
+  return {
+    content: formatNarrativeIdentityRecall(card, bio),
+    card,
+    provenance: {
+      sourceEntryCount: bio.facts.sourceEntryCount,
+      timelineEventCount: bio.facts.keyEvents.length,
+      relationshipCount: bio.facts.relationships.length,
+      generatedAt: bio.generatedAt,
+    },
+  };
+}
+
+export function formatNarrativeIdentityRecall(
+  card: LivingBiographyCard,
+  bio: BiographyOutput,
+): string {
+  const sections: string[] = [];
+  const identity = bio.facts.identity;
+  const identityDetails = [
+    identity.education,
+    identity.employment,
+    identity.location ? `based in ${identity.location}` : null,
+  ].filter((value): value is string => Boolean(value?.trim()));
+
+  if (card.name || identityDetails.length > 0) {
+    const lead = card.name
+      ? identityDetails.length > 0
+        ? `${card.name} — ${joinNaturally(identityDetails)}.`
+        : `${card.name}.`
+      : `${joinNaturally(identityDetails)}.`;
+    sections.push(`## Core identity\n${lead}`);
+  }
+
+  if (card.currentChapter) {
+    const focusSentence = card.currentFocus.length > 0
+      ? `Right now, your attention is on ${joinNaturally(card.currentFocus)}.`
+      : '';
+    sections.push(
+      `## Current chapter\n${card.currentChapter.label}.${focusSentence ? ` ${focusSentence}` : ''}`,
+    );
+  }
+
+  const peopleByCategory = groupPeopleForRecall(card.keyPeople);
+  if (peopleByCategory.length > 0) {
+    sections.push(
+      `## Important relationships\n${peopleByCategory
+        .map(([category, names]) => `${category}: ${joinNaturally(names)}.`)
+        .join(' ')}`,
+    );
+  }
+
+  if (card.recentDevelopments.length > 0) {
+    sections.push(`## Recent changes\n${card.recentDevelopments.slice(0, 3).map(item => `- ${item}`).join('\n')}`);
+  }
+
+  if (card.topThemes.length > 0) {
+    sections.push(`## Long-term themes\n${joinNaturally(card.topThemes)}.`);
+  }
+
+  return sections.join('\n\n');
+}
+
+function joinNaturally(values: string[]): string {
+  if (values.length <= 1) return values[0] ?? '';
+  if (values.length === 2) return `${values[0]} and ${values[1]}`;
+  return `${values.slice(0, -1).join(', ')}, and ${values[values.length - 1]}`;
+}
+
+function relationshipCategory(type: string): string {
+  const normalized = type.toLowerCase();
+  if (/family|parent|sibling|cousin|aunt|uncle|grand/.test(normalized)) return 'Family';
+  if (/partner|romantic|dating|spouse|crush|love/.test(normalized)) return 'Romantic';
+  if (/friend|close|confidant/.test(normalized)) return 'Friends';
+  if (/coworker|colleague|manager|mentor|professional|work/.test(normalized)) return 'Professional';
+  if (/community|group|organization|member/.test(normalized)) return 'Community';
+  if (/creator|public|inspiration|influencer/.test(normalized)) return 'Public figures';
+  return 'Other people';
+}
+
+function groupPeopleForRecall(people: LivingBiographyPerson[]): Array<[string, string[]]> {
+  const grouped = new Map<string, string[]>();
+  for (const person of people) {
+    const category = relationshipCategory(person.relationship);
+    const names = grouped.get(category) ?? [];
+    if (!names.includes(person.name)) names.push(person.name);
+    grouped.set(category, names);
+  }
+  return [...grouped.entries()];
 }
 
 /**
@@ -166,7 +297,14 @@ export async function deriveCurrentFocus(userId: string, bio: BiographyOutput): 
     focus.push(trimmed);
   };
 
-  const [{ data: quests }, { data: futureEvents }] = await Promise.all([
+  const [{ data: focusedProjects }, { data: quests }, { data: futureEvents }] = await Promise.all([
+    supabaseAdmin
+      .from('projects')
+      .select('name, status, metadata')
+      .eq('user_id', userId)
+      .contains('metadata', { current_focus: true })
+      .order('importance_score', { ascending: false })
+      .limit(MAX_FOCUS),
     supabaseAdmin
       .from('quests')
       .select('title')
@@ -183,6 +321,11 @@ export async function deriveCurrentFocus(userId: string, bio: BiographyOutput): 
       .limit(MAX_FOCUS),
   ]);
 
+  for (const project of focusedProjects ?? []) {
+    if (!['dormant', 'paused', 'completed', 'abandoned'].includes(String(project.status ?? '').toLowerCase())) {
+      push(project.name);
+    }
+  }
   for (const quest of quests ?? []) push(quest.title);
   for (const event of futureEvents ?? []) push(event.event_title);
 
@@ -220,7 +363,13 @@ function deriveRecentDevelopments(bio: BiographyOutput): string[] {
  * Every label is a direct transformation of an existing string; nothing is composed
  * from guesses about the user's life.
  */
-export function deriveCurrentChapter(bio: BiographyOutput): CurrentChapter | null {
+export function deriveCurrentChapter(
+  bio: BiographyOutput,
+  currentFocus: string[] = [],
+): CurrentChapter | null {
+  const focusChapter = deriveChapterFromCurrentFocus(currentFocus);
+  if (focusChapter) return focusChapter;
+
   const latestPeriod = mostRecentPeriod(bio.periods);
   if (latestPeriod?.dominantTheme) {
     return {
@@ -238,6 +387,34 @@ export function deriveCurrentChapter(bio: BiographyOutput): CurrentChapter | nul
   }
 
   return null;
+}
+
+const FOCUS_CHAPTER_SIGNALS: Array<{ label: string; pattern: RegExp }> = [
+  { label: 'Career Rebuilding', pattern: /\b(job|career|interview|employment|resume|robotic|engineering|technical prep)\b/i },
+  { label: 'Building', pattern: /\b(build|building|ship|develop|coding|code|app|product|project|software|launch|beta)\b/i },
+  { label: 'Creative Work', pattern: /\b(music|song|album|record|recording|art|creative|writing|release)\b/i },
+  { label: 'Health', pattern: /\b(health|fitness|therapy|recovery|training|sleep|wellness)\b/i },
+  { label: 'Relationships', pattern: /\b(relationship|dating|romance|partner|friendship|reconnect)\b/i },
+  { label: 'Family', pattern: /\b(family|parent|sibling|grandparent|cousin|home)\b/i },
+  { label: 'Learning', pattern: /\b(school|class|course|degree|study|learning|certification)\b/i },
+];
+
+function deriveChapterFromCurrentFocus(currentFocus: string[]): CurrentChapter | null {
+  // One task is too weak to redefine a life chapter. Two or more live focus
+  // signals can safely outrank a stale historical period.
+  if (currentFocus.length < 2) return null;
+
+  const labels: string[] = [];
+  for (const signal of FOCUS_CHAPTER_SIGNALS) {
+    if (currentFocus.some(item => signal.pattern.test(item))) labels.push(signal.label);
+    if (labels.length >= 3) break;
+  }
+  if (labels.length === 0) return null;
+
+  return {
+    label: `${joinNaturally(labels)} Chapter`,
+    evidence: currentFocus.slice(0, 3),
+  };
 }
 
 function mostRecentPeriod(periods: LifePeriod[]): LifePeriod | null {

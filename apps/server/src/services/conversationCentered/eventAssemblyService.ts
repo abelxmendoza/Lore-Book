@@ -60,6 +60,7 @@ import {
 } from '../narrative/eraAssembler';
 import { mayPersistEra } from '../narrative/eraSignificance';
 import { narrativeLifeEraService } from '../narrative/narrativeLifeEraService';
+import { assessAndPersistMilestone } from '../narrative/milestoneClassifier';
 
 interface EventAssemblyOptions {
   windowDays?: number;
@@ -232,6 +233,8 @@ export class EventAssemblyService {
           });
 
           let promotedEventId: string | null = null;
+          let isMilestone = false;
+          let milestoneScore = 0;
 
           const sceneUnits = assembled.momentIds
             .map((id) => unitByMomentId.get(id))
@@ -250,6 +253,8 @@ export class EventAssemblyService {
                 dominantEmotion: assembled.dominantEmotion,
                 significanceScore: sceneScore.score,
                 promotedEventId: null,
+                isMilestone: false,
+                milestoneScore: 0,
               });
             }
             continue;
@@ -312,6 +317,21 @@ export class EventAssemblyService {
                   event.event_id,
                 );
                 results.push(event);
+                // Milestone tier of the Day Story -> Milestone -> ... hierarchy.
+                // Scoped to first promotion only, not update/reconcile paths —
+                // an event that only becomes milestone-eligible after a later
+                // refinement won't get re-assessed (known gap, not scope creep).
+                // Awaited (not fire-and-forget): the whole assembleEvents() call
+                // is itself fire-and-forget from its one hot-path caller
+                // (ingestionPipelineClass.ts), so this adds no externally
+                // observable latency, and the result feeds chapterSceneInputs
+                // below so chapters know which of their scenes are milestones.
+                const assessment = await assessAndPersistMilestone(userId, event.event_id).catch(err => {
+                  logger.warn({ error: err, userId, eventId: event.event_id }, 'Milestone assessment failed (non-blocking)');
+                  return null;
+                });
+                isMilestone = Boolean(assessment?.eligible);
+                milestoneScore = assessment ? Math.round(assessment.finalScore) : 0;
               }
             }
           }
@@ -330,6 +350,8 @@ export class EventAssemblyService {
               dominantEmotion: assembled.dominantEmotion,
               significanceScore: sceneScore.score,
               promotedEventId,
+              isMilestone,
+              milestoneScore,
             });
           }
         }

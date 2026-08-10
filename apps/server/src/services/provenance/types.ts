@@ -45,6 +45,10 @@ export type ArtifactType =
   | 'entity'                // any resolved entity
   | 'character'             // character book record (characters table)
   | 'omega_claim'           // entity-bound semantic claim (omega_claims table)
+  | 'perception_entry'      // user-authored belief about another subject
+  | 'crystallized_knowledge' // materialized self-knowledge projection
+  | 'knowledge_assertion'   // first-class kernel assertion
+  | 'derivation_run'        // auditable computation that produced knowledge
   | 'insight';              // derived reflection or pattern
 
 // ─── Provenance Edge ─────────────────────────────────────────────────────────

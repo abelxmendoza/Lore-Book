@@ -43,3 +43,12 @@ export {
   type OccurrenceStatus,
   type CanonicalEventType,
 } from './canonicalTimelineProjector';
+
+export {
+  canonicalTemporalFromLegacy,
+  canonicalTemporalSortKey,
+  compareCanonicalTemporal,
+  type CanonicalTemporalModel,
+  type LegacyTemporalRecord,
+  type TemporalProvenanceRef,
+} from '../temporal/canonicalTemporalModel';

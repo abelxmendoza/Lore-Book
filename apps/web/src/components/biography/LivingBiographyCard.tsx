@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { BookOpen, Sparkles, Users, Compass, Clock, BookMarked, ArrowUpRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { fetchLivingBiographyCard, type LivingBiographyCard as LivingBiographyCardData } from '../../api/livingBiography';
+import {
+  fetchLivingBiographyCard,
+  type IdentitySnapshotSummary,
+  type LivingBiographyCard as LivingBiographyCardData,
+} from '../../api/livingBiography';
 import { cn } from '../../lib/cn';
 import { apiCache } from '../../lib/cache';
 import { lorebookEditorUrlForCompiledBooks } from '../../lib/lorebookLibrary';
@@ -23,6 +27,7 @@ function formatLastUpdated(iso: string | null): string {
 
 export const LivingBiographyCard = () => {
   const [card, setCard] = useState<LivingBiographyCardData | null>(null);
+  const [identitySnapshot, setIdentitySnapshot] = useState<IdentitySnapshotSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { compiledBooks } = useLoreReadiness();
@@ -31,7 +36,10 @@ export const LivingBiographyCard = () => {
   const loadCard = useCallback((force = false) => {
     if (force) apiCache.deletePattern(BIOGRAPHY_CACHE_PATTERN);
     return fetchLivingBiographyCard()
-      .then(data => setCard(data.card))
+      .then(data => {
+        setCard(data.card);
+        setIdentitySnapshot(data.identitySnapshot ?? null);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -74,8 +82,24 @@ export const LivingBiographyCard = () => {
     navigate(`/lorebook?focus=${encodeURIComponent(query)}`);
   };
 
-  const focusItems = card.currentFocus.length > 0 ? card.currentFocus : card.recentDevelopments;
-  const focusLabel = card.currentFocus.length > 0 ? 'Current focus' : 'Recent developments';
+  const focusItems = identitySnapshot?.goals.length
+    ? identitySnapshot.goals.slice(0, 3).map(goal => goal.title)
+    : card.currentFocus.length > 0
+      ? card.currentFocus
+      : card.recentDevelopments;
+  const focusLabel = (identitySnapshot?.goals.length ?? 0) > 0 || card.currentFocus.length > 0
+    ? 'Current focus'
+    : 'Recent developments';
+  const currentChapter = identitySnapshot?.currentChapter
+    ? { label: identitySnapshot.currentChapter.title, evidence: [] }
+    : card.currentChapter;
+  const identityThreads = identitySnapshot?.threads
+    .filter(thread => thread.salience !== 'supporting')
+    .slice(0, 4) ?? [];
+  const developingCoverage = identitySnapshot?.coverage.filter(item => item.band !== 'unknown') ?? [];
+  const coverageScore = developingCoverage.length > 0
+    ? Math.round(developingCoverage.reduce((sum, item) => sum + item.score, 0) / developingCoverage.length)
+    : null;
 
   return (
     <div
@@ -115,19 +139,19 @@ export const LivingBiographyCard = () => {
           )}
         </div>
 
-        {card.currentChapter && (
+        {currentChapter && (
           <div className="flex items-start justify-between gap-3 mb-5">
             <div className="min-w-0">
               <p className="text-[11px] uppercase tracking-wider text-white/35 mb-1">Current chapter</p>
               <p className="text-xl sm:text-2xl font-semibold tracking-tight text-white">
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-200 via-white to-violet-200">
-                  {card.currentChapter.label}
+                  {currentChapter.label}
                 </span>
               </p>
             </div>
             <button
               type="button"
-              onClick={(e) => generateLorebook(e, `the story of ${card.currentChapter!.label}`)}
+              onClick={(e) => generateLorebook(e, `the story of ${currentChapter.label}`)}
               className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-cyan-200/80 border border-cyan-500/25 hover:border-cyan-400/50 hover:text-cyan-100 hover:bg-cyan-500/10 transition-colors shrink-0"
             >
               <BookMarked className="h-3 w-3" />
@@ -137,22 +161,32 @@ export const LivingBiographyCard = () => {
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {card.topThemes.length > 0 && (
+          {(identityThreads.length > 0 || card.topThemes.length > 0) && (
             <div className="rounded-xl border border-white/6 bg-black/25 p-3.5">
               <div className="flex items-center gap-1.5 mb-2.5">
                 <Sparkles className="h-3.5 w-3.5 text-amber-300/90" />
-                <span className="text-[11px] font-medium uppercase tracking-wider text-white/40">Strongest themes</span>
+                <span className="text-[11px] font-medium uppercase tracking-wider text-white/40">Identity threads</span>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {card.topThemes.map((theme) => (
-                  <span
-                    key={theme}
-                    className="rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-100/90"
-                  >
-                    {theme}
-                  </span>
-                ))}
+              <div className="space-y-2">
+                {(identityThreads.length > 0
+                  ? identityThreads.map(thread => ({
+                      key: thread.id,
+                      label: thread.name,
+                      detail: `${thread.momentum} · ${thread.strength}%`,
+                    }))
+                  : card.topThemes.map(theme => ({ key: theme, label: theme, detail: '' })))
+                  .map(thread => (
+                    <div key={thread.key} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-amber-100/90 truncate">{thread.label}</span>
+                      {thread.detail && <span className="text-white/35 shrink-0">{thread.detail}</span>}
+                    </div>
+                  ))}
               </div>
+              {coverageScore != null && (
+                <p className="mt-2.5 border-t border-white/6 pt-2 text-[10px] text-white/30">
+                  Identity evidence coverage · {coverageScore}%
+                </p>
+              )}
             </div>
           )}
 

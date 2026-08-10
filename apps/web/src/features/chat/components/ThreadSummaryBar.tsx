@@ -14,6 +14,8 @@ type ThreadSummaryBarProps = {
   messageCount: number;
   isMobile?: boolean;
   onRecallInChat?: (prompt: string) => void;
+  /** Durable entity chips are a deterministic floor when summary extraction lagged. */
+  confirmedEntities?: Array<{ name: string; type: string }>;
 };
 
 function normalizeSummary(value?: string | null) {
@@ -67,6 +69,7 @@ export function ThreadSummaryBar({
   messageCount,
   isMobile = false,
   onRecallInChat,
+  confirmedEntities = [],
 }: ThreadSummaryBarProps) {
   const { data, loading, refreshing, error, refresh } = useThreadSummary(threadId, messageCount);
   const [expanded, setExpanded] = useState(!isMobile);
@@ -101,8 +104,14 @@ export function ThreadSummaryBar({
   }
 
   const recallText = data?.recallText?.trim();
-  const people = scrubPeopleLabels(data?.summary.people ?? []);
-  const places = scrubPlacesLabels(data?.summary.places ?? []);
+  const fallbackPeople = confirmedEntities
+    .filter((entity) => entity.type === 'character')
+    .map((entity) => entity.name);
+  const fallbackPlaces = confirmedEntities
+    .filter((entity) => entity.type === 'location')
+    .map((entity) => entity.name);
+  const people = scrubPeopleLabels([...(data?.summary.people ?? []), ...fallbackPeople]);
+  const places = scrubPlacesLabels([...(data?.summary.places ?? []), ...fallbackPlaces]);
   const themes = (data?.summary.themes ?? []).map((t) => t.trim()).filter(Boolean);
   const hasContext = people.length > 0 || places.length > 0 || themes.length > 0;
   const canExpand = Boolean(hasContext);

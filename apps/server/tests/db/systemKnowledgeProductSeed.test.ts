@@ -7,23 +7,29 @@ import { PRODUCT_SELF_MODEL_CONCEPTS } from '../../src/services/chat/lorebookSel
 
 const MIGRATION_PATH = join(
   __dirname,
-  '../../../../supabase/migrations/20260618200000_system_knowledge_product_seed.sql'
+  '../../../../supabase/migrations_legacy_20260806/20260618200000_system_knowledge_product_seed.sql'
 );
 
 const CREATOR_MIGRATION_PATH = join(
   __dirname,
-  '../../../../supabase/migrations/20260711200000_system_knowledge_creator_capabilities.sql'
+  '../../../../supabase/migrations_legacy_20260806/20260711200000_system_knowledge_creator_capabilities.sql'
 );
 
 const AGENT_MIGRATION_PATH = join(
   __dirname,
-  '../../../../supabase/migrations/20260618100000_lore_agents.sql'
+  '../../../../supabase/migrations_legacy_20260806/20260618100000_lore_agents.sql'
+);
+
+const CONTENT_TRACKING_MIGRATION_PATH = join(
+  __dirname,
+  '../../../../supabase/migrations/20260807093500_system_knowledge_content_tracking_explanation.sql'
 );
 
 describe('system_knowledge product seed migration', () => {
   const sql = [
     readFileSync(MIGRATION_PATH, 'utf8'),
     readFileSync(CREATOR_MIGRATION_PATH, 'utf8'),
+    readFileSync(CONTENT_TRACKING_MIGRATION_PATH, 'utf8'),
   ].join('\n');
 
   it('migration file exists and is idempotent', () => {
