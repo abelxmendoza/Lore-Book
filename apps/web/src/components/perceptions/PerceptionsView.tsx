@@ -15,7 +15,25 @@ import { shouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { mockDataService } from '../../services/mockDataService';
 import { useMockData } from '../../contexts/MockDataContext';
 
-const ITEMS_PER_PAGE = 12; // 4 columns × 3 rows for grid view
+const ITEMS_PER_PAGE = 12; // 2–3 columns × rows for grid view
+const LARGE_BOOK_GRID_MQ = '(min-width: 1024px)';
+
+function usePerceptionBookColumns(): 2 | 3 {
+  const [columns, setColumns] = useState<2 | 3>(() => {
+    if (typeof window === 'undefined') return 2;
+    return window.matchMedia(LARGE_BOOK_GRID_MQ).matches ? 3 : 2;
+  });
+
+  useEffect(() => {
+    const mql = window.matchMedia(LARGE_BOOK_GRID_MQ);
+    const sync = () => setColumns(mql.matches ? 3 : 2);
+    sync();
+    mql.addEventListener('change', sync);
+    return () => mql.removeEventListener('change', sync);
+  }, []);
+
+  return columns;
+}
 
 // Mock dummy data for perceptions
 // Export for use in mock data service
@@ -621,6 +639,7 @@ type PerceptionsViewProps = {
 
 export const PerceptionsView = ({ personId, personName, showCreateButton = true }: PerceptionsViewProps) => {
   const { useMockData: isMockDataEnabled } = useMockData();
+  const bookColumns = usePerceptionBookColumns();
   const [perceptions, setPerceptions] = useState<PerceptionEntry[]>([]);
   const [loading, setLoading] = useState(false);
   
@@ -967,12 +986,12 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
       ) : (
         <Card className="bg-black/40 border-border/60 overflow-hidden">
           <CardContent className="p-0">
-            {/* Book Page Container */}
-            <div className="relative w-full min-h-[82dvh] sm:min-h-[900px] lg:min-h-[1080px] bg-gradient-to-br from-orange-50/5 via-orange-100/5 to-orange-50/5 rounded-lg border-2 border-orange-800/30 shadow-2xl overflow-hidden">
-              {/* Page Content */}
-              <div className="absolute inset-0 flex flex-col p-3 sm:p-6">
+            {/* Book Page Container — normal document flow so the card grid is never
+                clipped under the header (absolute inset layouts were hiding columns). */}
+            <div className="relative w-full min-h-[70dvh] sm:min-h-[900px] bg-gradient-to-br from-orange-50/5 via-orange-100/5 to-orange-50/5 rounded-lg border-2 border-orange-800/30 shadow-2xl">
+              <div className="flex flex-col p-3 sm:p-6">
                 {/* Page Header */}
-                <div className="flex items-center justify-between mb-4 pb-4 border-b border-orange-800/20">
+                <div className="mb-3 flex shrink-0 items-center justify-between border-b border-orange-800/20 pb-3 sm:mb-4 sm:pb-4">
                   <div className="flex items-center gap-3">
                     <BookOpen className="h-5 w-5 text-orange-600/60" />
                     <div>
@@ -990,23 +1009,32 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
                   </div>
                 </div>
 
-                {/* Perceptions Grid */}
-                <div className="mb-4 grid min-h-0 flex-1 grid-cols-1 content-start gap-3 overflow-y-auto sm:mb-6 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+                {/* Perceptions Grid — two columns on mobile, three on large (inline style so nothing can override) */}
+                <div
+                  data-testid="perception-book-grid"
+                  className="w-full gap-2 sm:gap-3 lg:gap-4"
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: `repeat(${bookColumns}, minmax(0, 1fr))`,
+                    alignContent: 'start',
+                  }}
+                >
                   {paginatedPerceptions.map((perception, index) => (
-                    <PerceptionEntryCard
-                      key={perception.id || `perception-${index}`}
-                      perception={perception}
-                      showSubject={!personId}
-                      onClick={(p) => setSelectedPerceptionForDetail(p)}
-                      onRetract={() => handleRetract(perception)}
-                      onResolve={(p, status, notes) => handleResolve(p, status, notes)}
-                    />
+                    <div key={perception.id || `perception-${index}`} className="min-w-0 w-full">
+                      <PerceptionEntryCard
+                        perception={perception}
+                        showSubject={!personId}
+                        onClick={(p) => setSelectedPerceptionForDetail(p)}
+                        onRetract={() => handleRetract(perception)}
+                        onResolve={(p, status, notes) => handleResolve(p, status, notes)}
+                      />
+                    </div>
                   ))}
                 </div>
 
                 {/* Page Footer with Navigation */}
                 {totalPages > 1 && (
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t border-orange-800/20">
+                  <div className="mt-4 flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-orange-800/20 pt-4">
                     <Button
                       variant="ghost"
                       size="sm"
