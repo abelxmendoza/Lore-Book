@@ -19,7 +19,7 @@ describe('mergeLoadedThreadsWithHydrated', () => {
     expect(mergeLoadedThreadsWithHydrated(loaded, []).map((t) => t.id)).toEqual(['b', 'a']);
   });
 
-  it('preserves hydrated messages when the server list arrives', () => {
+  it('preserves hydrated messages but keeps server updatedAt for list order', () => {
     const hydrated = thread(
       'a',
       [{ id: 'm1', role: 'user', content: 'hello', timestamp: new Date('2026-06-02T00:00:00Z') }],
@@ -33,7 +33,27 @@ describe('mergeLoadedThreadsWithHydrated', () => {
     expect(merged[0].messages[0]?.content).toBe('hello');
     expect(merged[0].messageCount).toBe(2);
     expect(merged[0].title).toBe('Last chat');
-    expect(merged[0].updatedAt).toBe('2026-06-02T00:00:00Z');
+    // Server updatedAt wins even when local cache is newer — cross-device order.
+    expect(merged[0].updatedAt).toBe('2026-06-01T00:00:00Z');
+  });
+
+  it('orders by server updatedAt even when local messages are fresher', () => {
+    const localHot = thread(
+      'phone',
+      [{ id: 'm1', role: 'user', content: 'hi', timestamp: new Date('2026-06-10T00:00:00Z') }],
+      '2026-06-10T00:00:00Z'
+    );
+    const localCold = thread('desktop', [], '2026-06-05T00:00:00Z');
+    const loaded = [
+      thread('phone', [], '2026-06-01T00:00:00Z'),
+      thread('desktop', [], '2026-06-05T00:00:00Z'),
+    ];
+
+    const merged = mergeLoadedThreadsWithHydrated(loaded, [localHot, localCold]);
+
+    expect(merged.map((t) => t.id)).toEqual(['desktop', 'phone']);
+    expect(merged[0].updatedAt).toBe('2026-06-05T00:00:00Z');
+    expect(merged[1].messages).toHaveLength(1);
   });
 
   it('keeps recent pending local-only threads not yet on the server', () => {

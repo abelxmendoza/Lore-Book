@@ -20,6 +20,10 @@ function shouldKeepPendingLocal(thread: ChatThread): boolean {
 
 /**
  * Merge the authoritative server thread list with in-memory state.
+ *
+ * Ordering must follow the server `updatedAt` on every device. Preferring a
+ * newer local timestamp caused phone/desktop caches to diverge so the same
+ * account showed different stack order after refresh.
  */
 export function mergeLoadedThreadsWithHydrated(
   loaded: ChatThread[],
@@ -34,8 +38,6 @@ export function mergeLoadedThreadsWithHydrated(
     const existing = prevById.get(t.id);
     if (!existing) return t;
 
-    const existingUpdated = new Date(existing.updatedAt).getTime();
-    const loadedUpdated = new Date(t.updatedAt).getTime();
     const keepMessages = existing.messages.length > 0;
 
     return {
@@ -45,7 +47,8 @@ export function mergeLoadedThreadsWithHydrated(
       dominantEntities: t.dominantEntities ?? existing.dominantEntities,
       threadNumber: t.threadNumber ?? existing.threadNumber,
       ...(keepMessages ? { messages: existing.messages } : {}),
-      updatedAt: existingUpdated > loadedUpdated ? existing.updatedAt : t.updatedAt,
+      // Server is the cross-device source of truth for list order.
+      updatedAt: t.updatedAt,
     };
   });
 
