@@ -3,6 +3,7 @@ import { documentService } from '../documentService';
 import { relationshipFoundationService } from '../relationshipFoundationService';
 import { eventRecoveryService } from '../eventRecoveryService';
 import { profileClaimsService } from '../profileClaims/profileClaimsService';
+import { parseResumeHeuristics } from '../profileClaims/resumeHeuristicParser';
 import { resumeParsingService } from '../profileClaims/resumeParsingService';
 import { resumeLorePopulationService } from '../profileClaims/resumeLorePopulationService';
 import { memoryService } from '../memoryService';
@@ -51,8 +52,18 @@ export class UnifiedFileIngestionService {
     await userFileRegistry.setStatus(userFile.id, 'processing');
 
     try {
+      // Filename hints ("resume.pdf") are useful but not authoritative — a
+      // resume uploaded through the generic Documents flow with any other
+      // filename must still be recognized. Detect from content instead:
+      // route through resume ingestion whenever the extracted text actually
+      // has resume-shaped structure (employment/education entries), no
+      // matter which upload surface or filename it arrived under.
+      const effectiveKind: IngestKind =
+        kind === 'resume' || (kind === 'document' && (await this.looksLikeResume(buffer, filename, mimeType)))
+          ? 'resume'
+          : kind;
       const result =
-        kind === 'resume'
+        effectiveKind === 'resume'
           ? await this.ingestResume(userId, buffer, filename, mimeType, userFile.id)
           : await this.ingestDocument(userId, buffer, filename, mimeType, userFile.id);
 
@@ -68,6 +79,29 @@ export class UnifiedFileIngestionService {
         derivedCounts: userFile.derived_counts,
         error: message,
       };
+    }
+  }
+
+  /**
+   * Cheap, non-LLM structural check: does the extracted text actually look
+   * like a resume — real employment/education entries — regardless of what
+   * the file was named? Uses the same heuristic parser the resume pipeline
+   * itself relies on, so "resume-shaped" means the same thing everywhere.
+   * Pure text extraction, no side effects, safe to call speculatively.
+   */
+  private async looksLikeResume(buffer: Buffer, filename: string, mimeType: string): Promise<boolean> {
+    try {
+      const artifact = await fileNormalizer.normalizeDocument({
+        buffer,
+        filename,
+        mimeType,
+        sourceFileId: 'resume-detection',
+      });
+      const heuristics = parseResumeHeuristics(artifact.text);
+      return heuristics.employment.length > 0 || heuristics.education.length > 0;
+    } catch (err) {
+      logger.debug({ err, filename }, 'Resume content detection failed, falling back to generic document ingestion');
+      return false;
     }
   }
 

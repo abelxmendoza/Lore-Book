@@ -16,7 +16,9 @@ import { documentService } from '../services/documentService';
 import { resolveFileProvenance } from '../services/ingestion/fileProvenanceService';
 import { unifiedFileIngestionService } from '../services/ingestion/unifiedFileIngestionService';
 import { userFileRegistry } from '../services/ingestion/userFileRegistry';
+import { buildResumeChatFeedback } from '../services/profileClaims/resumeFeedbackService';
 import { resumeParsingService } from '../services/profileClaims/resumeParsingService';
+import type { ParsedResume } from '../services/profileClaims/resumeStructuredTypes';
 import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
@@ -281,15 +283,49 @@ router.post('/upload', requireAuth, upload.single('file'), async (req: Authentic
       });
     }
 
+    // `result.structured` is only present when unifiedFileIngestionService
+    // auto-detected resume-shaped content and routed through the resume
+    // pipeline, regardless of the filename or that this hit the generic
+    // Documents upload endpoint. Surface the same career timeline data the
+    // dedicated /api/resume/upload endpoint returns, so the UI doesn't need
+    // to know or care which upload surface the user picked.
+    const structured = result.structured as ParsedResume | undefined;
+    const feedback = structured
+      ? buildResumeChatFeedback({
+          parsed: structured,
+          fileName: req.file.originalname || 'document',
+          userFileId: result.userFileId,
+          counts: {
+            claims: result.claimsCreated ?? 0,
+            journalEntries: result.momentsCreated ?? 0,
+            timelineEvents: result.eventsCreated ?? 0,
+            skills: result.skillsCreated ?? 0,
+            organizations: result.organizationsCreated ?? 0,
+            characterAttributes: result.derivedCounts?.characterAttributes ?? 0,
+          },
+        })
+      : null;
+
     res.json({
       success: true,
       userFileId: result.userFileId,
-      message: `Document processed successfully. Created ${result.momentsCreated ?? 0} entries, ${result.charactersCreated ?? 0} characters, and ${result.sectionsCreated ?? 0} memoir sections.`,
+      detectedAsResume: Boolean(structured),
+      message: feedback?.chatFeedback
+        ? `Recognized as a resume — saved to your library and career timeline.`
+        : `Document processed successfully. Created ${result.momentsCreated ?? 0} entries, ${result.charactersCreated ?? 0} characters, and ${result.sectionsCreated ?? 0} memoir sections.`,
       entriesCreated: result.momentsCreated ?? 0,
       charactersCreated: result.charactersCreated ?? 0,
       sectionsCreated: result.sectionsCreated ?? 0,
       derivedCounts: result.derivedCounts,
       entryIds: result.entryIds,
+      claimsCreated: result.claimsCreated ?? 0,
+      skillsCreated: result.skillsCreated ?? 0,
+      organizationsCreated: result.organizationsCreated ?? 0,
+      eventsCreated: result.eventsCreated ?? 0,
+      roleConflicts: result.roleConflicts ?? [],
+      chatFeedback: feedback?.chatFeedback ?? null,
+      careerTimeline: feedback?.careerTimeline ?? [],
+      educationTimeline: feedback?.educationTimeline ?? [],
     });
   } catch (error) {
     logger.error({ err: error }, 'Failed to upload document');

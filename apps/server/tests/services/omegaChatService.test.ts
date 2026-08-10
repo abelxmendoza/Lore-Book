@@ -19,15 +19,25 @@ vi.mock('../../src/services/locationService');
 vi.mock('../../src/services/ragPacketCacheService');
 // supabaseClient not mocked: test env uses dbAdapter → SupabaseMock (chainable, no DB)
 // OpenAI must be a constructor (new OpenAI()); use function not arrow/vi.fn
-const { openaiCreateFn, executeExplicitRecallFn, detectCognitionQuestionFn, answerNarrativeCognitionFn } = vi.hoisted(() => ({
+const { openaiCreateFn, openaiResponsesCreateFn, executeExplicitRecallFn, detectCognitionQuestionFn, answerNarrativeCognitionFn } = vi.hoisted(() => ({
   openaiCreateFn: vi.fn(),
+  openaiResponsesCreateFn: vi.fn(),
   executeExplicitRecallFn: vi.fn(),
   detectCognitionQuestionFn: vi.fn(),
   answerNarrativeCognitionFn: vi.fn(),
 }));
 vi.mock('openai', () => ({
   default: function OpenAI() {
-    return { chat: { completions: { create: openaiCreateFn } } };
+    return {
+      chat: { completions: { create: openaiCreateFn } },
+      // config.useResponsesApiForChat defaults true whenever
+      // OPENAI_USE_RESPONSES / OPENAI_CHAT_USE_RESPONSES aren't set, so
+      // createOpenAIChatStream may take the Responses API branch instead of
+      // chat.completions.create — this mock must support both, or any test
+      // that reaches real generation becomes environment-dependent instead
+      // of deterministic.
+      responses: { create: openaiResponsesCreateFn },
+    };
   },
 }));
 vi.mock('../../src/services/chat/explicitRecallService', () => ({
@@ -43,6 +53,12 @@ describe('OmegaChatService', () => {
     vi.clearAllMocks();
     openaiCreateFn.mockResolvedValue({
       choices: [{ message: { content: 'Test response' } }],
+    });
+    // A fresh async generator per call — a single shared generator instance
+    // would be exhausted after the first test that consumes it.
+    openaiResponsesCreateFn.mockImplementation(async function* () {
+      yield { type: 'response.output_text.delta', delta: 'Test response' };
+      yield { type: 'response.completed', response: { id: 'resp-test', usage: null } };
     });
     executeExplicitRecallFn.mockResolvedValue({
       content: 'What I know about you: a grounded biography.',
@@ -239,9 +255,9 @@ describe('OmegaChatService', () => {
       // workingMemoryPrimary condition — debug/audit requests must keep
       // bypassing cognition even though the gate now always evaluates.
       vi.mocked(orchestratorService.getSummary).mockResolvedValue({
-        timeline: { events: [], arcs: [], season: null } as any,
+        timeline: { events: [], arcs: [] },
         characters: [],
-      });
+      } as any);
       vi.mocked(locationService.listLocations).mockResolvedValue([]);
       vi.mocked(chapterService.listChapters).mockResolvedValue([]);
       vi.mocked(ragPacketCacheService.getCachedPacket).mockReturnValue(null);
