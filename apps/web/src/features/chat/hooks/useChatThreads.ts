@@ -41,6 +41,7 @@ import {
   persistAuthThreadCache,
   readAuthThreadCache,
   readAuthThreadFromCache,
+  subscribeThreadCacheChanges,
 } from '../utils/threadLocalCache';
 
 export type ChatThread = {
@@ -213,16 +214,20 @@ export const useChatThreads = () => {
     runtimeDiagnostics.startTimer('backend_load');
     if (!quiet) setThreadsLoading(true);
     try {
-      // Repair + recover before listing — ensures nothing is orphaned or drifted.
-      await store.dispatch(chatApi.endpoints.repairChatHealth.initiate()).unwrap().catch(() => {});
-      await store.dispatch(chatApi.endpoints.recoverThreadOrphans.initiate()).unwrap().catch(() => {});
+      // Cold boot repairs orphaned/drifted rows. Quiet focus refreshes skip this so
+      // list order updates quickly without racing the open thread selection.
+      if (!quiet) {
+        await store.dispatch(chatApi.endpoints.repairChatHealth.initiate()).unwrap().catch(() => {});
+        await store.dispatch(chatApi.endpoints.recoverThreadOrphans.initiate()).unwrap().catch(() => {});
+      }
 
       const data = await fetchThreadsPage({ limit: 30 });
       const loaded = dedupeThreads((data.threads || []).map(dbRowToThread));
       const cached = userId ? readAuthThreadCache(userId) : null;
       let mergedThreads: ChatThread[] = [];
       setThreads((prev) => {
-        const base = cached?.threads.length ? cached.threads : prev;
+        // Prefer live in-memory rows over disk cache so in-flight bumps survive merge.
+        const base = prev.length > 0 ? prev : cached?.threads.length ? cached.threads : prev;
         const merged = sortThreadsByActivity(mergeLoadedThreadsWithHydrated(loaded, base));
         mergedThreads = merged;
         threadsRef.current = merged;
@@ -243,14 +248,18 @@ export const useChatThreads = () => {
             .catch(() => {});
         }
       }
-      const lastFromCache = cached?.lastThreadId ?? null;
-      const lastFromStorage = localStorage.getItem(lastThreadKey(userId));
-      const last = lastFromCache ?? lastFromStorage;
-      if (last && mergedThreads.some((t) => t.id === last)) {
-        applyCurrentThreadId(last);
-        if (userId) localStorage.setItem(lastThreadKey(userId), last);
-      } else if (!quiet) {
-        applyCurrentThreadId(null);
+      // Quiet refreshes must not yank the open conversation. Only cold loads
+      // re-apply last-thread selection from cache/storage.
+      if (!quiet) {
+        const lastFromStorage = localStorage.getItem(lastThreadKey(userId));
+        const lastFromCache = cached?.lastThreadId ?? null;
+        const last = lastFromStorage ?? lastFromCache;
+        if (last && mergedThreads.some((t) => t.id === last)) {
+          applyCurrentThreadId(last);
+          if (userId) localStorage.setItem(lastThreadKey(userId), last);
+        } else {
+          applyCurrentThreadId(null);
+        }
       }
       setThreadsReady(true);
       dispatch(clearThreadError());
@@ -314,8 +323,8 @@ export const useChatThreads = () => {
     }
   }, [isAuthenticated, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-fetch the server list when returning to the tab so mobile/desktop stay aligned
-  // without requiring a full remount (same account, different device activity).
+  // Re-fetch the server list when returning to the tab / sibling tab activity so
+  // mobile and desktop stay aligned without a full remount.
   useEffect(() => {
     if (!isAuthenticated || authLoading || isDemoChatMockup()) return;
 
@@ -330,12 +339,17 @@ export const useChatThreads = () => {
 
     document.addEventListener('visibilitychange', refreshFromServer);
     window.addEventListener('focus', refreshFromServer);
+    const unsubscribeCache = userId
+      ? subscribeThreadCacheChanges(userId, refreshFromServer)
+      : () => {};
+
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       document.removeEventListener('visibilitychange', refreshFromServer);
       window.removeEventListener('focus', refreshFromServer);
+      unsubscribeCache();
     };
-  }, [isAuthenticated, authLoading, loadFromBackend]);
+  }, [isAuthenticated, authLoading, loadFromBackend, userId]);
 
   // Messages persist via chat_messages on the server (omegaChatService). Client only bumps activity.
   const flushSave = useCallback((_id: string) => {
@@ -509,7 +523,10 @@ export const useChatThreads = () => {
           const row = prev.find((t) => t.id === id);
           const serverUpdatedAt =
             ensuredMeta.updatedAt ??
-            messages[messages.length - 1].timestamp.toISOString();
+            row?.updatedAt ??
+            existing?.updatedAt ??
+            cachedThread?.updatedAt ??
+            new Date().toISOString();
           hydratedThread = {
             id,
             title: ensuredMeta.title || row?.title || existing?.title || 'Restored chat',
@@ -517,7 +534,7 @@ export const useChatThreads = () => {
             dominantEntities: row?.dominantEntities ?? existing?.dominantEntities,
             messages,
             messageCount: messages.length,
-            // Prefer server activity timestamp so mobile/desktop share list order.
+            // Never invent list order from message clocks — that diverges devices.
             updatedAt: serverUpdatedAt,
             threadNumber: result.thread_number ?? row?.threadNumber ?? existing?.threadNumber,
           };
@@ -548,6 +565,7 @@ export const useChatThreads = () => {
       applyCurrentThreadId(id);
       if (isAuthenticated) {
         localStorage.setItem(lastThreadKey(userId), id);
+        if (userId) persistAuthThreadCache(userId, threadsRef.current, id);
       } else {
         persistLocal(threadsRef.current, id);
       }

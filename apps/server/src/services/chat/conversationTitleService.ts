@@ -201,7 +201,7 @@ class ConversationTitleService {
 
     await supabaseAdmin
       .from('conversation_sessions')
-      .update({ title, metadata: newMeta, updated_at: new Date().toISOString() })
+      .update({ title, metadata: newMeta })
       .eq('id', threadId)
       .eq('user_id', userId);
 
@@ -234,7 +234,6 @@ class ConversationTitleService {
       .update({
         title: uniqueTitle,
         metadata: { ...existingMeta, titleSource: 'user' },
-        updated_at: new Date().toISOString(),
       })
       .eq('id', threadId)
       .eq('user_id', userId);

@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   persistAuthThreadCache,
   readAuthThreadCache,
   readAuthThreadFromCache,
+  subscribeThreadCacheChanges,
 } from './threadLocalCache';
 import type { ChatThread } from '../hooks/useChatThreads';
 
@@ -45,5 +46,27 @@ describe('threadLocalCache', () => {
     persistAuthThreadCache(USER_ID, [THREAD], THREAD.id);
     const row = readAuthThreadFromCache(USER_ID, THREAD.id);
     expect(row?.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
+  });
+
+  it('notifies other tabs via a storage ping key on persist', () => {
+    persistAuthThreadCache(USER_ID, [THREAD], THREAD.id);
+    const ping = localStorage.getItem(`lorekeeper_chat_sync_ping_${USER_ID}`);
+    expect(ping).toBeTruthy();
+    expect(JSON.parse(String(ping)).userId).toBe(USER_ID);
+  });
+
+  it('subscribeThreadCacheChanges reacts to sync ping storage events', () => {
+    const onChange = vi.fn();
+    const unsubscribe = subscribeThreadCacheChanges(USER_ID, onChange);
+
+    window.dispatchEvent(
+      new StorageEvent('storage', {
+        key: `lorekeeper_chat_sync_ping_${USER_ID}`,
+        newValue: JSON.stringify({ userId: USER_ID, at: Date.now() }),
+      })
+    );
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    unsubscribe();
   });
 });

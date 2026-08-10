@@ -1,7 +1,7 @@
 import type { ChatThread } from '../hooks/useChatThreads';
 import type { Message } from '../message/ChatMessage';
 
-const AUTH_CACHE_PREFIX = 'lorekeeper_chat_cache_';
+export const AUTH_CACHE_PREFIX = 'lorekeeper_chat_cache_';
 
 function parseStoredMessage(msg: Record<string, unknown>): Message {
   return {
@@ -17,6 +17,51 @@ function messagesToJson(messages: Message[]) {
   }));
 }
 
+export function authThreadCacheKey(userId: string): string {
+  return `${AUTH_CACHE_PREFIX}${userId}`;
+}
+
+export function authThreadSyncPingKey(userId: string): string {
+  return `lorekeeper_chat_sync_ping_${userId}`;
+}
+
+/**
+ * Notify *other* same-origin tabs that the thread cache changed.
+ * Uses a companion localStorage key so the `storage` event fires elsewhere
+ * (same-tab writes do not emit `storage`, avoiding refresh loops).
+ */
+export function notifyThreadCacheChanged(userId: string): void {
+  if (typeof window === 'undefined' || !userId) return;
+  try {
+    localStorage.setItem(
+      authThreadSyncPingKey(userId),
+      JSON.stringify({ userId, at: Date.now() })
+    );
+  } catch {
+    // Private mode / quota — non-fatal
+  }
+}
+
+export function subscribeThreadCacheChanges(
+  userId: string,
+  onChange: () => void
+): () => void {
+  if (typeof window === 'undefined' || !userId) return () => {};
+
+  const onStorage = (event: StorageEvent) => {
+    if (!event.key) return;
+    if (
+      event.key === authThreadCacheKey(userId) ||
+      event.key === authThreadSyncPingKey(userId)
+    ) {
+      onChange();
+    }
+  };
+
+  window.addEventListener('storage', onStorage);
+  return () => window.removeEventListener('storage', onStorage);
+}
+
 export function persistAuthThreadCache(
   userId: string,
   threads: ChatThread[],
@@ -25,13 +70,14 @@ export function persistAuthThreadCache(
   if (typeof window === 'undefined' || !userId) return;
   try {
     localStorage.setItem(
-      `${AUTH_CACHE_PREFIX}${userId}`,
+      authThreadCacheKey(userId),
       JSON.stringify({
         threads: threads.map((t) => ({ ...t, messages: messagesToJson(t.messages) })),
         lastThreadId,
         savedAt: new Date().toISOString(),
       })
     );
+    notifyThreadCacheChanged(userId);
   } catch {
     // Quota or private mode — non-fatal
   }
@@ -43,7 +89,7 @@ export function readAuthThreadCache(userId: string): {
 } | null {
   if (typeof window === 'undefined' || !userId) return null;
   try {
-    const raw = localStorage.getItem(`${AUTH_CACHE_PREFIX}${userId}`);
+    const raw = localStorage.getItem(authThreadCacheKey(userId));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as {
       threads?: ChatThread[];
