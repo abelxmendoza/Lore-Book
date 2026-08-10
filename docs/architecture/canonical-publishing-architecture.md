@@ -1,7 +1,68 @@
 # Canonical Publishing Architecture
 
-Status: Blueprint 20 (+ 20.1 Publication Identity) foundation — architecture
-contract, not yet implemented.
+Status: Blueprint 20 (+ 20.1 Publication Identity) — Milestone 1 implemented
+(Edition, Manifest, Difference Viewer). Phase Two and Phase Three below are
+not yet implemented.
+
+Milestone 1 landed as a read-compatible layer over the existing
+`biographies` table, per the Next Steps below — no migration:
+
+- `bookVersionManager.getVersionHistory()`
+  (`apps/server/src/services/biographyGeneration/bookVersionManager.ts`) now
+  returns `lorebookVersion` and a computed `published`/`superseded` status
+  per edition, keyed by `lorebook_name` — the Publication handle.
+- `bookVersionManager.getManifest()` + `GET /api/biography/:id/manifest`
+  implement the Manifest Contract from existing columns and
+  `biography_data.metadata`. `generatorVersion` / `promptVersion` /
+  `modelVersion` / `filterVersion` are honestly reported as `null` — the
+  generation engine does not yet stamp them.
+- `bookVersionManager.compareVersions()` + `POST /api/biography/versions/compare`
+  implement the Difference Contract, matching chapters by stable id (not
+  incidental `timeSpan` equality) and reporting `added` / `removed` /
+  `changed` / `reordered`, plus book-level `metadataChanges`.
+- `VersionManager.tsx`, mounted in `LorebookLibraryPage.tsx`'s expandable
+  older-versions panel, is the Difference Viewer. Its build-variant
+  generation UI (safe/explicit/private) is gated off by default — that axis
+  is Phase Two, not Milestone 1.
+
+## Milestone 1 acceptance tests
+
+Eight acceptance tests were run against the implementation before calling it
+canonical. Six passed by construction (identical editions, the chapter
+mutation torture test, edition lineage status, manifest truth, UI/API
+parity, and round-trip identity all follow directly from the id-based diff,
+the frozen `biography_data` read path, and returning `null` rather than a
+guess for unrecorded provenance).
+
+The historical-immutability test did not pass on the first attempt. Tracing
+the read path confirmed `GET /api/biography/:id` and the reader UI render
+`biography_data` exactly as stored, with no live re-resolution — but tracing
+the *write* path found that `updateBiographySection()` (used by the section
+editor and its chat-assisted variant) updated `biography_data` **in place,
+by id, with no check for whether that row was a published Core Lorebook
+edition**. A published edition opened for editing — reachable in practice
+from the Difference Viewer's own "Read" action, since the reader carries the
+opened edition's id into its edit affordance — would have been silently
+mutated, falsifying "a publication must never silently change after
+release" for exactly the artifact this blueprint exists to protect.
+
+Fixed by adding `EditionImmutableError` at the single choke point
+(`getBiographyRow()` in `apps/server/src/services/biographySectionService.ts`):
+any `biographyId`-scoped edit against a row with `is_core_lorebook = true`
+now throws before any write, surfaced as `409 EDITION_IMMUTABLE` by both
+`PATCH /api/biography/section` and `POST /api/biography/section/chat`. The
+always-current main lifestory (no `biographyId`, or `is_core_lorebook =
+false`) is unaffected and remains editable — only published editions are
+frozen. Covered by `biographySectionService.test.ts`.
+
+The chapter mutation torture test also caught a real bug on its own: the
+initial reorder detection compared raw array indices, which breaks the
+moment a chapter is also added or removed in the same edition (every
+downstream index shifts). Fixed with an LIS-based relative-order comparison
+— the same technique a line-level diff uses to distinguish a genuine move
+from incidental index drift — so `added`/`removed`/`changed`/`reordered`
+now resolve correctly even when all four happen at once. Covered by
+`bookVersionManager.test.ts`.
 
 ## Purpose
 
@@ -328,16 +389,15 @@ is not required yet; only the handle reference is.
 
 ## Next steps
 
-- Write the Edition and Manifest contracts as concrete TypeScript types
-  layered over the existing `biographies` table — no migration required for
-  the first slice, matching the read-compatible adapter strategy used for
-  the Canonical Temporal Model (`canonical-temporal-model.md`).
-- Formalize `lorebook_name` as the canonical Publication handle in that same
-  slice — a naming/typing change, not a schema migration, since the column
-  already exists and is already used this way in practice.
-- Build the Difference Viewer against the two most recent editions of an
-  existing Core Lorebook before generalizing the diff engine to other
-  publication types.
+- Done: Edition, Manifest, and Difference Contracts implemented over the
+  existing `biographies` table and its `bookVersionManager` service — see
+  Status above. `lorebook_name` now functions as the canonical Publication
+  handle in practice, though it is not yet renamed at the column level.
+- Instrument `biographyGenerationEngine` to stamp `generatorVersion` and
+  `modelVersion` (from `config.defaultModel`) into new editions' metadata,
+  so the Manifest stops reporting `null` for edition going forward. Do not
+  backfill historical editions — absence of a recorded version is itself
+  honest information about editions predating this instrumentation.
 - Defer Publication Contracts (recipes) until a second real publication type
   needs one — do not design the recipe format speculatively against one
   data point.

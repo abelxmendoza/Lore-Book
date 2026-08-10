@@ -22,7 +22,7 @@ import {
 } from '../services/lorebook/lorebookSearchParser';
 import { validateEntityOwnership } from '../services/search/entitySearchService';
 import type { EntitySearchType } from '../services/search/entitySearchTypes';
-import { chatEditBiographySection, updateBiographySection } from '../services/biographySectionService';
+import { chatEditBiographySection, updateBiographySection, EditionImmutableError } from '../services/biographySectionService';
 import { mainLifestoryService } from '../services/mainLifestoryService';
 import { getLivingBiographyCard, getBiographyChanges } from '../services/livingBiographyService';
 import { getIdentitySnapshot } from '../services/identitySnapshot';
@@ -241,6 +241,9 @@ router.patch('/section', requireAuth, async (req: AuthenticatedRequest, res) => 
     await updateBiographySection(req.user!.id, sectionId, { title, content }, biographyId);
     res.json({ ok: true });
   } catch (error) {
+    if (error instanceof EditionImmutableError) {
+      return res.status(409).json({ error: error.message, code: 'EDITION_IMMUTABLE' });
+    }
     logger.error({ err: error, userId: req.user!.id }, 'Failed to update biography section');
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to update section',
@@ -280,6 +283,9 @@ router.post('/section/chat', requireAuth, async (req: AuthenticatedRequest, res)
     );
     res.json(result);
   } catch (error) {
+    if (error instanceof EditionImmutableError) {
+      return res.status(409).json({ error: error.message, code: 'EDITION_IMMUTABLE' });
+    }
     logger.error({ err: error, userId: req.user!.id }, 'Failed to process section chat edit');
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to process section edit',
@@ -944,6 +950,23 @@ router.get('/versions/:lorebookName', requireAuth, async (req: AuthenticatedRequ
   } catch (error) {
     logger.error({ error, userId: req.user!.id, lorebookName: req.params.lorebookName }, 'Failed to get version history');
     res.status(500).json({ error: 'Failed to get version history' });
+  }
+});
+
+/**
+ * GET /api/biography/:id/manifest
+ * Manifest Contract (Blueprint 20) — explains how this edition was produced.
+ */
+router.get('/:id/manifest', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const manifest = await bookVersionManager.getManifest(String(req.params.id), req.user!.id);
+    if (!manifest) {
+      return res.status(404).json({ error: 'Edition not found' });
+    }
+    res.json({ manifest });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id, biographyId: req.params.id }, 'Failed to get manifest');
+    res.status(500).json({ error: 'Failed to get manifest' });
   }
 });
 

@@ -17,16 +17,37 @@ type BiographyRow = {
   biography_data: Record<string, unknown>;
 };
 
+/** Thrown when a caller tries to mutate a published edition in place. */
+export class EditionImmutableError extends Error {
+  readonly biographyId: string;
+
+  constructor(biographyId: string) {
+    super(
+      'This is a published Core Lorebook edition and cannot be edited in place — ' +
+        'recompile to publish a new edition instead.',
+    );
+    this.name = 'EditionImmutableError';
+    this.biographyId = biographyId;
+  }
+}
+
 async function getBiographyRow(userId: string, biographyId?: string): Promise<BiographyRow> {
   if (biographyId) {
     const { data, error } = await supabaseAdmin
       .from('biographies')
-      .select('id, biography_data')
+      .select('id, biography_data, is_core_lorebook, lorebook_version')
       .eq('user_id', userId)
       .eq('id', biographyId)
       .single();
     if (error || !data) {
       throw new Error('Biography not found');
+    }
+    // A published edition (Blueprint 20's Edition Contract) must never
+    // silently change after release — that guarantee is the entire point of
+    // publishing lineage. Only the always-current main lifestory, and
+    // biographies never promoted to a Core Lorebook, may be edited in place.
+    if (data.is_core_lorebook) {
+      throw new EditionImmutableError(biographyId);
     }
     return data as BiographyRow;
   }

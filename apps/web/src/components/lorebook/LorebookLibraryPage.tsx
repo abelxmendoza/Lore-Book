@@ -20,6 +20,7 @@ import {
 import { cn } from '../../lib/cn';
 import { useLorebookShell } from './LorebookShell';
 import { LorebookLibraryHero } from './LorebookSectionTitles';
+import { VersionManager } from './VersionManager';
 import type { Biography } from '../../../server/src/services/biographyGeneration/types';
 
 type LibraryBook = {
@@ -520,26 +521,13 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
                             className={cn('h-3 w-3 transition-transform', expandedVersionsId === book.id && 'rotate-180')}
                           />
                         </button>
-                        {expandedVersionsId === book.id && (
-                          <div className="mt-1 space-y-1 rounded-lg border border-white/10 bg-black/20 p-2">
-                            {book.olderVersions.map((older) => (
-                              <div
-                                key={older.id}
-                                className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-white/5 transition-colors"
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <span className="text-[11px] font-mono text-amber-200/60">v{older.lorebook_version}</span>
-                                  <span className="text-[11px] text-white/35 ml-2">{formatDate(older.created_at)}</span>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => navigate(lorebookReadUrl(older.id))}
-                                  className="text-[11px] font-medium text-primary/80 hover:text-primary shrink-0"
-                                >
-                                  Read
-                                </button>
-                              </div>
-                            ))}
+                        {expandedVersionsId === book.id && book.lorebook_name && (
+                          <div className="mt-1">
+                            <VersionManager
+                              lorebookName={book.lorebook_name}
+                              baseBiographyId={book.id}
+                              onRead={(id) => navigate(lorebookReadUrl(id))}
+                            />
                           </div>
                         )}
                       </div>
