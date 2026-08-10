@@ -48,7 +48,7 @@ describe('extractPatternCandidates with explicit literals', () => {
 
   it('keeps intelligence fixture parity', () => {
     const result = runLexicalIntelligence({ text: SCHOOL_DETENTION_LUNCH_FOOTBALL_TEAM_FRIENDS_TEXT });
-    expect(result.spans.some((s) => /Abel Mendoza/i.test(s.text))).toBe(true);
+    expect(result.spans.some((s) => /Jordan Vega/i.test(s.text))).toBe(true);
     expect(result.spans.some((s) => s.type === 'FRIEND_GROUP')).toBe(true);
   });
 });

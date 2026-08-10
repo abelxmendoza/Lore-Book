@@ -4,7 +4,7 @@ import type { LexicalPreviewResult } from '../../src/services/lexical/lexicalPre
 /**
  * Fixture: school / community inference with live entity color highlighting.
  *
- * "Abel Mendoza from the coding club at school got detention yesterday. I didn't
+ * "Jordan Vega from the coding club at school got detention yesterday. I didn't
  *  see him at lunch break so I had to kick it with my friends from the football team"
  *
  * Exercises: PERSON, school club, school-discipline EVENT, relative + school-day
@@ -14,7 +14,7 @@ export const SCHOOL_DETENTION_LUNCH_FOOTBALL_TEAM_FRIENDS_ID =
   'school_detention_lunch_football_team_friends';
 
 export const SCHOOL_DETENTION_LUNCH_FOOTBALL_TEAM_FRIENDS_TEXT =
-  "Abel Mendoza from the coding club at school got detention yesterday. " +
+  "Jordan Vega from the coding club at school got detention yesterday. " +
   "I didn't see him at lunch break so I had to kick it with my friends from the football team";
 
 const span = (result: LexicalPreviewResult, re: RegExp) =>
@@ -22,8 +22,8 @@ const span = (result: LexicalPreviewResult, re: RegExp) =>
 
 /** Assert the composer-preview colored spans (read-only; no DB writes). */
 export function assertSchoolPreviewSpans(result: LexicalPreviewResult): void {
-  const person = span(result, /^Abel Mendoza$/);
-  expect(person, 'PERSON Abel Mendoza').toBeDefined();
+  const person = span(result, /^Jordan Vega$/);
+  expect(person, 'PERSON Jordan Vega').toBeDefined();
   expect(person!.type).toBe('PERSON');
   expect(person!.colorKey).toBe('person');
 

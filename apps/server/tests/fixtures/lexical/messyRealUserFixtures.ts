@@ -7,7 +7,7 @@ export const WORKPLACE_SOCIAL_CONFLICT_MARTIAL_ARTS_TEXT =
 
 export const FAMILY_IDENTITY_COLLISION_ID = 'family_identity_collision';
 export const FAMILY_IDENTITY_COLLISION_TEXT =
-  "Abel Mendoza is me but it's also my estranged dad's name and people keep mixing us up.";
+  "Jordan Vega is me but it's also my estranged dad's name and people keep mixing us up.";
 
 export const SCHOOL_GROUP_LUNCH_SOCIAL_ID = 'school_group_lunch_social';
 export const SCHOOL_GROUP_LUNCH_SOCIAL_TEXT =
@@ -73,8 +73,8 @@ export const MESSY_REAL_USER_FIXTURES: LexicalFixtureSpec[] = [
     text: FAMILY_IDENTITY_COLLISION_TEXT,
     expected: [
       {
-        label: 'Abel Mendoza',
-        match: /^Abel Mendoza$/,
+        label: 'Jordan Vega',
+        match: /^Jordan Vega$/,
         type: 'PERSON',
         subtype: 'SELF_NAME_CANDIDATE',
         minConfidence: 0.85,

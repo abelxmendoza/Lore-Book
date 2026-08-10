@@ -220,7 +220,10 @@ export function applyContextRules(
     confidenceDelta += 0.04;
   }
 
-  if (/^Abel Mendoza$/i.test(window.match) && /\bis me\b/i.test(window.after)) {
+  // A capitalized full-name-shaped span immediately followed by "is me" is a
+  // self-name candidate for ANY user — this must not hardcode one person's
+  // name, or the rule silently never fires for anyone else's account.
+  if (/^[A-Z][a-zA-Z'-]*(?:\s+[A-Z][a-zA-Z'-]*)+$/.test(window.match) && /\bis me\b/i.test(window.after)) {
     subtype = 'SELF_NAME_CANDIDATE';
     rulesFired.push('identity_self_name_candidate');
     needsReview = true;

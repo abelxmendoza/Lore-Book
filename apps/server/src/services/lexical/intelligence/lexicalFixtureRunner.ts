@@ -48,7 +48,7 @@ export const LEXICAL_FIXTURE_PACK: LexicalFixtureSpec[] = [
     id: SCHOOL_DETENTION_LUNCH_FOOTBALL_TEAM_FRIENDS_ID,
     text: SCHOOL_DETENTION_LUNCH_FOOTBALL_TEAM_FRIENDS_TEXT,
     expected: [
-      { label: 'Abel Mendoza', match: /^Abel Mendoza$/, type: 'PERSON', minConfidence: 0.85 },
+      { label: 'Jordan Vega', match: /^Jordan Vega$/, type: 'PERSON', minConfidence: 0.85 },
       { label: 'coding club', match: /coding club at school/i, type: 'SCHOOL_CLUB', minConfidence: 0.8, rulesFired: ['school_club_at_school'] },
       { label: 'detention', match: /^detention$/i, type: 'EVENT', subtype: 'SCHOOL_DISCIPLINE_EVENT', minConfidence: 0.8 },
       { label: 'yesterday', match: /^yesterday$/i, type: 'TIME_PERIOD', minConfidence: 0.85 },

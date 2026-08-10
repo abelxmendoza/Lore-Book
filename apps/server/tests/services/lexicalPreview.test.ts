@@ -83,7 +83,7 @@ describe('lexicalPreview — school/community fixture', () => {
     const result = await run();
     // The plural "friends" yields ONE group span, never PERSON spans for friends.
     const personNames = result.spans.filter((s) => s.type === 'PERSON').map((s) => s.text);
-    expect(personNames).toEqual(['Abel Mendoza']);
+    expect(personNames).toEqual(['Jordan Vega']);
   });
 
   it('is read-only — performs no DB writes', async () => {

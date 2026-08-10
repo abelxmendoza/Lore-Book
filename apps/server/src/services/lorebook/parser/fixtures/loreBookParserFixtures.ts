@@ -59,7 +59,7 @@ export const FIXTURE_CONSUMER_TOOLS_TEXT =
   'I used Codex, Cursor, and Claude Code to work on LoreBook.';
 
 export const FIXTURE_IDENTITY_COLLISION_TEXT =
-  "Abel Mendoza is me but also my estranged dad's name.";
+  "Jordan Vega is me but also my estranged dad's name.";
 
 function allOperations(result: LoreBookParseResult): LoreBookOperation[] {
   return [...result.operations, ...result.suppressed, ...result.redirects];
@@ -272,12 +272,12 @@ export const LOREBOOK_PARSER_FIXTURE_PACK: LoreBookParserFixtureSpec[] = [
     ],
   },
   {
-    id: 'identity_collision_abel',
+    id: 'identity_collision_jordan',
     text: FIXTURE_IDENTITY_COLLISION_TEXT,
     expected: [
-      { kind: 'suggest_add', domain: 'characters', nameMatch: /Abel Mendoza/i, gate: 'review' },
+      { kind: 'suggest_add', domain: 'characters', nameMatch: /Jordan Vega/i, gate: 'review' },
     ],
-    forbidden: [{ kind: 'suggest_merge', nameMatch: /Abel/i }],
+    forbidden: [{ kind: 'suggest_merge', nameMatch: /Jordan/i }],
   },
   // --- Additional fixtures (categories 11–35) ---
   {
@@ -453,8 +453,8 @@ export const LOREBOOK_PARSER_FIXTURE_PACK: LoreBookParserFixtureSpec[] = [
   {
     id: 'identity_no_auto_merge',
     text: FIXTURE_IDENTITY_COLLISION_TEXT,
-    expected: [{ kind: 'suggest_add', domain: 'characters', nameMatch: /Abel/i, gate: 'review' }],
-    forbidden: [{ kind: 'suggest_merge', nameMatch: /Abel/i }],
+    expected: [{ kind: 'suggest_add', domain: 'characters', nameMatch: /Jordan/i, gate: 'review' }],
+    forbidden: [{ kind: 'suggest_merge', nameMatch: /Jordan/i }],
   },
   {
     id: 'tool_sentence_lorebook_only_project',
