@@ -882,7 +882,13 @@ export const RelationshipDetailModal = ({
 
           {/* Kids Together Tab — offspring, step-kids, and other co-parents */}
           <TabsContent value="kids" className={tabPanelClass}>
-            <KidsTogetherPanel kids={kids} loading={kidsLoading} partnerName={displayName} />
+            <KidsTogetherPanel
+              kids={kids}
+              loading={kidsLoading}
+              partnerName={displayName}
+              onOpenPeripheralCharacter={onOpenPeripheralCharacter}
+              onCloseModal={onClose}
+            />
           </TabsContent>
 
           {/* Timeline Tab */}

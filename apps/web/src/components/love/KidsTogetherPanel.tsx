@@ -1,6 +1,7 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
 import { Baby, Users } from 'lucide-react';
+import { openCharacterBookModal } from '../../lib/openCharacterBookModal';
 
 export type KidTogether = {
   id: string;
@@ -15,10 +16,27 @@ type KidsTogetherPanelProps = {
   kids: KidTogether[];
   loading: boolean;
   partnerName: string;
+  /** Prefer in-place Character modal (Love surface) over navigating to Character Book. */
+  onOpenPeripheralCharacter?: (characterId: string) => void;
+  onCloseModal?: () => void;
 };
 
 /** Dating & Romance — offspring, step-kids, and any other co-parents on that same kid. */
-export function KidsTogetherPanel({ kids, loading, partnerName }: KidsTogetherPanelProps) {
+export function KidsTogetherPanel({
+  kids,
+  loading,
+  partnerName,
+  onOpenPeripheralCharacter,
+  onCloseModal,
+}: KidsTogetherPanelProps) {
+  const openCharacter = (characterId: string) => {
+    if (onOpenPeripheralCharacter) {
+      onOpenPeripheralCharacter(characterId);
+      return;
+    }
+    onCloseModal?.();
+    openCharacterBookModal({ characterId, tab: 'info' });
+  };
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -51,7 +69,7 @@ export function KidsTogetherPanel({ kids, loading, partnerName }: KidsTogetherPa
           </p>
           <div className="space-y-2">
             {together.map((kid) => (
-              <KidCard key={kid.id} kid={kid} partnerName={partnerName} />
+              <KidCard key={kid.id} kid={kid} partnerName={partnerName} onOpenCharacter={openCharacter} />
             ))}
           </div>
         </div>
@@ -64,7 +82,7 @@ export function KidsTogetherPanel({ kids, loading, partnerName }: KidsTogetherPa
           </p>
           <div className="space-y-2">
             {step.map((kid) => (
-              <KidCard key={kid.id} kid={kid} partnerName={partnerName} />
+              <KidCard key={kid.id} kid={kid} partnerName={partnerName} onOpenCharacter={openCharacter} />
             ))}
           </div>
         </div>
@@ -73,7 +91,15 @@ export function KidsTogetherPanel({ kids, loading, partnerName }: KidsTogetherPa
   );
 }
 
-function KidCard({ kid, partnerName }: { kid: KidTogether; partnerName: string }) {
+function KidCard({
+  kid,
+  partnerName,
+  onOpenCharacter,
+}: {
+  kid: KidTogether;
+  partnerName: string;
+  onOpenCharacter: (characterId: string) => void;
+}) {
   const isStep = kid.relation === 'step';
   const belongsToLabel =
     kid.belongsTo === 'self' ? 'Your child — now step-child to ' + partnerName
@@ -88,7 +114,14 @@ function KidCard({ kid, partnerName }: { kid: KidTogether; partnerName: string }
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <Baby className="h-4 w-4 shrink-0 text-pink-300/80" />
-          <span className="text-sm font-medium text-white truncate">{kid.name}</span>
+          <button
+            type="button"
+            onClick={() => onOpenCharacter(kid.id)}
+            className="text-sm font-medium text-white truncate hover:text-pink-200 hover:underline underline-offset-2 transition-colors text-left"
+            data-testid="kids-together-open-kid"
+          >
+            {kid.name}
+          </button>
         </div>
         <span
           className={`shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${
@@ -110,7 +143,18 @@ function KidCard({ kid, partnerName }: { kid: KidTogether; partnerName: string }
             Also co-parented by{' '}
             {kid.coParents.map((cp, i) => (
               <span key={cp.id ?? cp.name}>
-                <span className="text-white/70">{cp.name}</span>
+                {cp.id ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenCharacter(cp.id!)}
+                    className="text-white/70 hover:text-pink-200 hover:underline underline-offset-2 transition-colors"
+                    data-testid="kids-together-open-coparent"
+                  >
+                    {cp.name}
+                  </button>
+                ) : (
+                  <span className="text-white/70">{cp.name}</span>
+                )}
                 {cp.relation_label ? ` (${cp.relation_label})` : ''}
                 {i < kid.coParents!.length - 1 ? ', ' : ''}
               </span>
