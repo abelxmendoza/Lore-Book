@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { useMockData } from '../../contexts/MockDataContext';
 import {
   evaluateTimelineTierOffer,
   type LorebookForm,
@@ -104,6 +105,7 @@ export function EntityLorebookCompileControl({
   showMeter = true,
   autoFetchSignals = true,
 }: Props) {
+  const { useMockData: shouldUseMockData } = useMockData();
   const [prefill, setPrefill] = useState<LorebookCreatorPrefill | null>(null);
   const [fetchedSignals, setFetchedSignals] = useState<EntityLorebookCompileSignals | null>(null);
 
@@ -130,7 +132,11 @@ export function EntityLorebookCompileControl({
       themes: focusThemes,
     };
 
-    if (tierOfferProp || !autoFetchSignals || !shouldAutoFetch(nextFocus)) {
+    // Demo/mock focus ids (e.g. "kid-mia", "char-daniel") don't exist in the
+    // real backend — firing this fetch in demo mode always 401s. It also had
+    // no .catch(), so every one of those failures was an unhandled promise
+    // rejection on every relationship modal open.
+    if (tierOfferProp || !autoFetchSignals || !shouldAutoFetch(nextFocus) || shouldUseMockData) {
       setFetchedSignals(null);
       return;
     }
@@ -138,9 +144,13 @@ export function EntityLorebookCompileControl({
     let cancelled = false;
     setFetchedSignals(null);
 
-    void fetchEntityLorebookSignals({ subjectLabel, focus: nextFocus }).then((next) => {
-      if (!cancelled) setFetchedSignals(next);
-    });
+    fetchEntityLorebookSignals({ subjectLabel, focus: nextFocus })
+      .then((next) => {
+        if (!cancelled) setFetchedSignals(next);
+      })
+      .catch(() => {
+        if (!cancelled) setFetchedSignals(null);
+      });
 
     return () => {
       cancelled = true;
@@ -148,6 +158,7 @@ export function EntityLorebookCompileControl({
   }, [
     tierOfferProp,
     autoFetchSignals,
+    shouldUseMockData,
     fetchKey,
     subjectLabel,
     focusCharacterId,

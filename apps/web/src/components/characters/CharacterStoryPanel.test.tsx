@@ -4,6 +4,10 @@ import { MemoryRouter } from 'react-router-dom';
 import { CharacterStoryPanel } from './CharacterStoryPanel';
 import type { MemoryCard } from '../../types/memory';
 
+vi.mock('../../contexts/MockDataContext', () => ({
+  useMockData: () => ({ useMockData: false }),
+}));
+
 vi.mock('../../lib/api', () => ({
   fetchJson: vi.fn(),
 }));

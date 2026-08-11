@@ -8,6 +8,10 @@ vi.mock('../../hooks/useShouldUseMockData', () => ({
   useShouldUseMockData: () => true,
 }));
 
+vi.mock('../../contexts/MockDataContext', () => ({
+  useMockData: () => ({ useMockData: false }),
+}));
+
 const project: ProjectCardData = {
   id: 'proj-1',
   name: 'MemoVault',

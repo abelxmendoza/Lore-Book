@@ -3,6 +3,10 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { CharacterTimelinePanel } from './CharacterTimelinePanel';
 
+vi.mock('../../contexts/MockDataContext', () => ({
+  useMockData: () => ({ useMockData: false }),
+}));
+
 vi.mock('../../lib/api', () => ({
   fetchJson: vi.fn(),
 }));

@@ -16,6 +16,10 @@ const mockFetchCharacterList = vi.fn();
 const mockOpenChatWithFocus = vi.fn();
 const mockFetchJson = vi.fn();
 
+vi.mock('../../contexts/MockDataContext', () => ({
+  useMockData: () => ({ useMockData: false }),
+}));
+
 vi.mock('../../store/api/entitiesApi', () => ({
   useUpdateOrganizationMutation: () => [vi.fn()],
   useDeleteOrganizationMutation: () => [vi.fn()],

@@ -9,6 +9,10 @@ import { OrganizationDetailModal } from './OrganizationDetailModal';
 
 const mockOpenChatWithFocus = vi.fn();
 
+vi.mock('../../contexts/MockDataContext', () => ({
+  useMockData: () => ({ useMockData: false }),
+}));
+
 vi.mock('../../store/api/entitiesApi', () => ({
   useUpdateOrganizationMutation: () => [vi.fn()],
   useDeleteOrganizationMutation: () => [vi.fn()],
