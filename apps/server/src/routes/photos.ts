@@ -425,6 +425,60 @@ router.post('/process', requireAuth, upload.single('photo'), async (req: Authent
   }
 });
 
+const PRESET_PHOTO_CATEGORIES = ['selfie', 'group_photo', 'message_screenshot', 'event_flyer', 'meme', 'other'];
+
+const categoryUpdateSchema = z.object({
+  category: z.string().trim().min(1).max(64),
+  customLabel: z.string().trim().max(120).optional(),
+});
+
+/**
+ * Set/override a photo's Photo Album category — user correction of the AI
+ * classification, or a brand-new user-defined category.
+ */
+router.patch('/:entryId/category', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = categoryUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json(parsed.error.flatten());
+    }
+
+    const { memoryService } = await import('../services/memoryService');
+    const entry = await memoryService.getEntry(req.user!.id, req.params.entryId as string);
+    if (!entry) {
+      return res.status(404).json({ error: 'Photo entry not found' });
+    }
+
+    const existingMetadata = (entry.metadata as Record<string, unknown>) ?? {};
+    const priorCategory = typeof existingMetadata.category === 'string' ? existingMetadata.category : undefined;
+    const nextCategory = parsed.data.category.toLowerCase().replace(/\s+/g, '_');
+    const existingTags = Array.isArray(entry.tags) ? (entry.tags as string[]) : [];
+    const nextTags = Array.from(
+      new Set([...existingTags.filter((t) => t !== priorCategory), nextCategory]),
+    );
+
+    const updated = await memoryService.updateEntry(req.user!.id, req.params.entryId as string, {
+      tags: nextTags,
+      metadata: {
+        ...existingMetadata,
+        category: nextCategory,
+        customCategoryLabel: PRESET_PHOTO_CATEGORIES.includes(nextCategory)
+          ? undefined
+          : (parsed.data.customLabel?.trim() || parsed.data.category.trim()),
+        categorySetBy: 'user',
+      },
+    });
+
+    res.json({ success: true, entry: updated });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to update photo category');
+    res.status(500).json({
+      error: 'Failed to update photo category',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
 /**
  * Get all photos for the authenticated user
  * Returns entries that have photoUrl in metadata

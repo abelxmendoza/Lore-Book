@@ -16,6 +16,25 @@ export type PhotoSubjectFocus =
   | 'document'
   | 'unknown';
 
+/** Content-type category for Photo Album sorting/filtering — distinct from
+ * subjectFocus (who's in the photo): this is what KIND of image it is. */
+export type PhotoCategory =
+  | 'selfie'
+  | 'group_photo'
+  | 'message_screenshot'
+  | 'event_flyer'
+  | 'meme'
+  | 'other';
+
+export const PHOTO_CATEGORIES: readonly PhotoCategory[] = [
+  'selfie',
+  'group_photo',
+  'message_screenshot',
+  'event_flyer',
+  'meme',
+  'other',
+];
+
 export type PhotoAnalysisResult = {
   photoType: 'memory' | 'document' | 'junk';
   confidence: number;
@@ -50,6 +69,10 @@ export type PhotoAnalysisResult = {
   isSelfie?: boolean;
   /** Visual appearance traits of the person who appears to be the user (for look profile). */
   appearanceSignals?: string[];
+  /** Content-type category for the Photo Album's sort/filter chips. */
+  category?: PhotoCategory;
+  /** Short free-text label when category is 'other' and a specific type is obvious (e.g. "recipe", "workout log"). */
+  customCategoryLabel?: string;
   metadata?: {
     date?: string;
     location?: string;
@@ -108,8 +131,16 @@ Determine:
    - isSelfie: true if arm's-length selfie, mirror selfie, or front-camera self-portrait cues
    - likelyUserInFrame: true if the person who took/is the subject of a personal selfie appears present
    - appearanceSignals: short visual traits of the person who is likely the user (hair, glasses, facial hair, clothing style, age range estimate, expression). Only when isSelfie or likelyUserInFrame. No medical diagnoses.
+9. Category — the KIND of image, for Photo Album sorting (different from subjectFocus, which is about who's in frame):
+   - selfie: a self-portrait (front camera, arm's length, mirror)
+   - group_photo: multiple people posed/together, not a selfie
+   - message_screenshot: a screenshot of a text/DM/chat conversation
+   - event_flyer: a poster, flyer, or promotional graphic for an event/show/party
+   - meme: a meme image (caption text over a picture, joke format, reaction image)
+   - other: anything that doesn't fit the above (landscapes, food, documents, objects, etc.)
+   - customCategoryLabel: if category is "other" and a specific, obvious type applies (e.g. "recipe", "workout log", "receipt"), give a short 1-3 word label. Otherwise omit/null.
 
-IMPORTANT: 
+IMPORTANT:
 - For skills: Only include skills that match the user's CONFIRMED skills list (provided below). If a skill is detected in the photo but NOT in the user's confirmed skills, do NOT include it.
 - For groups: Only include groups if clearly visible (e.g., gym logo, club name, organization sign, etc.)
 - For locations: Include if location is visible or can be inferred from context${skillsContext}
@@ -147,7 +178,9 @@ Return JSON:
   "subjectFocus": "selfie" | "user_with_others" | "other_people" | "place" | "object" | "document" | "unknown",
   "isSelfie": false,
   "likelyUserInFrame": false,
-  "appearanceSignals": ["short dark hair", "glasses"]
+  "appearanceSignals": ["short dark hair", "glasses"],
+  "category": "selfie" | "group_photo" | "message_screenshot" | "event_flyer" | "meme" | "other",
+  "customCategoryLabel": "short label if category is other and a specific type is obvious, else null"
 }`
           },
           {
@@ -524,7 +557,8 @@ Return JSON:
         const entryContent = `${summaryLine}${placeLine}${people}`;
 
         const { memoryService } = await import('./memoryService');
-        const tags = ['photo', 'memory'];
+        const category = analysis.category ?? 'other';
+        const tags = ['photo', 'memory', category];
         if (analysis.isSelfie) tags.push('selfie');
         if (analysis.likelyUserInFrame) tags.push('user_in_frame');
 
@@ -532,7 +566,7 @@ Return JSON:
           userId,
           content: entryContent,
           date: metadata.dateTimeOriginal || metadata.dateTime || new Date().toISOString(),
-          tags,
+          tags: Array.from(new Set(tags)),
           source: 'photo',
           metadata: {
             photoUrl: uploadResult.url,
@@ -544,6 +578,8 @@ Return JSON:
             isSelfie: Boolean(analysis.isSelfie),
             subjectFocus: analysis.subjectFocus,
             appearanceSignals: analysis.appearanceSignals,
+            category,
+            customCategoryLabel: analysis.customCategoryLabel,
           }
         });
 

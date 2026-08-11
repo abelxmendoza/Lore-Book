@@ -93,6 +93,10 @@ export interface PhotoEntry {
     people?: string[];
     latitude?: number;
     longitude?: number;
+    /** Content-type category for Photo Album sort/filter chips. */
+    category?: string;
+    /** Short free-text label when category is 'other' and a specific type is obvious. */
+    customCategoryLabel?: string;
   };
 }
 

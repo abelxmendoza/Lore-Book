@@ -8,6 +8,8 @@ vi.mock('../../src/middleware/auth');
 vi.mock('../../src/services/memoryService', () => ({
   memoryService: {
     searchEntries: vi.fn(),
+    getEntry: vi.fn(),
+    updateEntry: vi.fn(),
   },
 }));
 
@@ -49,6 +51,71 @@ describe('Photos API Routes', () => {
   describe('POST /api/photos/upload', () => {
     it('returns 400 when no file provided', async () => {
       await request(app).post('/api/photos/upload').expect(400);
+    });
+  });
+
+  describe('PATCH /api/photos/:entryId/category', () => {
+    it('merges the new category into existing metadata instead of replacing it', async () => {
+      const { memoryService } = await import('../../src/services/memoryService');
+      vi.mocked(memoryService.getEntry).mockResolvedValue({
+        id: 'entry-1',
+        tags: ['photo', 'memory', 'other'],
+        metadata: { photoUrl: 'https://example.com/a.jpg', photoId: 'p1', category: 'other' },
+      } as any);
+      vi.mocked(memoryService.updateEntry).mockResolvedValue({ id: 'entry-1' } as any);
+
+      await request(app)
+        .patch('/api/photos/entry-1/category')
+        .send({ category: 'meme' })
+        .expect(200);
+
+      expect(memoryService.updateEntry).toHaveBeenCalledWith(
+        'user-123',
+        'entry-1',
+        expect.objectContaining({
+          tags: expect.arrayContaining(['photo', 'memory', 'meme']),
+          metadata: expect.objectContaining({
+            photoUrl: 'https://example.com/a.jpg',
+            photoId: 'p1',
+            category: 'meme',
+          }),
+        }),
+      );
+      // The stale 'other' tag from before the correction must not linger.
+      const call = vi.mocked(memoryService.updateEntry).mock.calls[0][2];
+      expect(call.tags).not.toContain('other');
+    });
+
+    it('slugifies a custom category and stores the display label separately', async () => {
+      const { memoryService } = await import('../../src/services/memoryService');
+      vi.mocked(memoryService.getEntry).mockResolvedValue({
+        id: 'entry-2',
+        tags: ['photo'],
+        metadata: { photoUrl: 'https://example.com/b.jpg' },
+      } as any);
+      vi.mocked(memoryService.updateEntry).mockResolvedValue({ id: 'entry-2' } as any);
+
+      await request(app)
+        .patch('/api/photos/entry-2/category')
+        .send({ category: 'Cool Fits', customLabel: 'Cool Fits' })
+        .expect(200);
+
+      const call = vi.mocked(memoryService.updateEntry).mock.calls[0][2];
+      expect(call.metadata).toMatchObject({ category: 'cool_fits', customCategoryLabel: 'Cool Fits' });
+    });
+
+    it('returns 404 when the photo entry does not exist', async () => {
+      const { memoryService } = await import('../../src/services/memoryService');
+      vi.mocked(memoryService.getEntry).mockResolvedValue(null);
+
+      await request(app)
+        .patch('/api/photos/missing/category')
+        .send({ category: 'meme' })
+        .expect(404);
+    });
+
+    it('returns 400 when category is missing from the body', async () => {
+      await request(app).patch('/api/photos/entry-1/category').send({}).expect(400);
     });
   });
 });

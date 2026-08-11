@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Image as ImageIcon, Calendar, MapPin, Search, X, Loader2 } from 'lucide-react';
+import { Image as ImageIcon, Calendar, MapPin, Search, X, Loader2, Tag } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { LazyImage } from '../ui/LazyImage';
@@ -142,13 +142,38 @@ const dummyPhotos: PhotoEntry[] = [
 
 const PHOTO_VIEW_STORAGE_KEY = 'lk_photo_album_view';
 
+const PRESET_PHOTO_CATEGORIES = ['selfie', 'group_photo', 'message_screenshot', 'event_flyer', 'meme'] as const;
+const PRESET_CATEGORY_LABELS: Record<string, string> = {
+  selfie: 'Selfies',
+  group_photo: 'Group Photos',
+  message_screenshot: 'Message Screenshots',
+  event_flyer: 'Event Flyers',
+  meme: 'Memes',
+  other: 'Other',
+};
+
+function categoryDisplayLabel(category?: string, customLabel?: string): string {
+  if (!category || category === 'other') return customLabel?.trim() || 'Other';
+  if (PRESET_CATEGORY_LABELS[category]) return PRESET_CATEGORY_LABELS[category];
+  if (customLabel?.trim()) return customLabel.trim();
+  return category
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function PhotoCard({
   photo,
   onClick,
+  onEditCategory,
 }: {
   photo: PhotoEntry;
   onClick: () => void;
+  onEditCategory: () => void;
 }) {
+  const categoryLabel = photo.metadata?.category
+    ? categoryDisplayLabel(photo.metadata.category, photo.metadata.customCategoryLabel)
+    : null;
+
   return (
     <div className="relative group cursor-pointer" onClick={onClick}>
       <div className="aspect-square rounded-lg overflow-hidden border border-border/60 bg-black/40">
@@ -158,6 +183,25 @@ function PhotoCard({
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         />
       </div>
+      {categoryLabel && (
+        <Badge
+          variant="outline"
+          className="absolute top-1.5 left-1.5 text-[9px] px-1.5 py-0 bg-black/70 text-white/80 border-white/20"
+        >
+          {categoryLabel}
+        </Badge>
+      )}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onEditCategory();
+        }}
+        title="Set category"
+        className="absolute top-1.5 right-1.5 p-1 rounded bg-black/70 border border-white/20 text-white/70 opacity-0 group-hover:opacity-100 hover:text-white transition-opacity"
+      >
+        <Tag className="w-3 h-3" />
+      </button>
       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg p-3 flex flex-col justify-end">
         <p className="text-xs text-white line-clamp-2 mb-1">
           {photo.summary || photo.content.substring(0, 100)}
@@ -181,17 +225,37 @@ function PhotoCard({
 function PhotoListRow({
   photo,
   onClick,
+  onEditCategory,
 }: {
   photo: PhotoEntry;
   onClick: () => void;
+  onEditCategory: () => void;
 }) {
   const people = photo.metadata?.people ?? [];
+  const categoryLabel = photo.metadata?.category
+    ? categoryDisplayLabel(photo.metadata.category, photo.metadata.customCategoryLabel)
+    : null;
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className="w-full flex items-stretch gap-3 px-3 py-2.5 hover:bg-white/5 transition-colors text-left"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') onClick();
+      }}
+      className="group relative w-full flex items-stretch gap-3 px-3 py-2.5 hover:bg-white/5 transition-colors text-left cursor-pointer"
     >
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onEditCategory();
+        }}
+        title="Set category"
+        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded bg-black/60 border border-white/15 text-white/60 opacity-0 group-hover:opacity-100 hover:text-white transition-opacity"
+      >
+        <Tag className="w-3 h-3" />
+      </button>
       <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-md overflow-hidden border border-border/60 bg-black/40 shrink-0">
         <LazyImage
           src={photo.metadata?.photoUrl || ''}
@@ -210,6 +274,11 @@ function PhotoListRow({
         </div>
         <p className="text-xs text-white/55 line-clamp-2 mt-0.5">{photo.content}</p>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[10px] text-white/45">
+          {categoryLabel && (
+            <Badge variant="outline" className="text-[9px] px-1.5 py-0">
+              {categoryLabel}
+            </Badge>
+          )}
           {photo.metadata?.locationName && (
             <span className="inline-flex items-center gap-1">
               <MapPin className="w-3 h-3" />
@@ -222,7 +291,7 @@ function PhotoListRow({
           )}
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -232,7 +301,11 @@ export const PhotoAlbum: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoEntry | null>(null);
+  const [categoryDraft, setCategoryDraft] = useState<string>('other');
+  const [customCategoryDraft, setCustomCategoryDraft] = useState('');
+  const [categorySaving, setCategorySaving] = useState(false);
   const [filterBy, setFilterBy] = useState<'all' | 'recent' | 'by-location' | 'by-date'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<CardViewMode>(() =>
     readStoredCardViewMode(PHOTO_VIEW_STORAGE_KEY, 'grid'),
   );
@@ -283,6 +356,53 @@ export const PhotoAlbum: React.FC = () => {
     fetchPhotos();
   }, [fetchPhotos]);
 
+  useEffect(() => {
+    if (!selectedPhoto) return;
+    const cat = selectedPhoto.metadata?.category ?? 'other';
+    const isPreset = cat === 'other' || (PRESET_PHOTO_CATEGORIES as readonly string[]).includes(cat);
+    setCategoryDraft(isPreset ? cat : 'custom');
+    setCustomCategoryDraft(isPreset ? '' : categoryDisplayLabel(cat, selectedPhoto.metadata?.customCategoryLabel));
+  }, [selectedPhoto]);
+
+  const saveCategory = useCallback(async () => {
+    if (!selectedPhoto) return;
+    const category = categoryDraft === 'custom' ? customCategoryDraft.trim() : categoryDraft;
+    if (!category) return;
+    setCategorySaving(true);
+    try {
+      const { entry } = await fetchJson<{ entry: PhotoEntry }>(`/api/photos/${selectedPhoto.id}/category`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          category,
+          customLabel: categoryDraft === 'custom' ? customCategoryDraft.trim() : undefined,
+        }),
+      });
+      setPhotos((prev) => prev.map((p) => (p.id === entry.id ? { ...p, ...entry } : p)));
+      setSelectedPhoto((prev) => (prev && prev.id === entry.id ? { ...prev, ...entry } : prev));
+    } catch (error) {
+      console.error('Failed to update photo category:', error);
+    } finally {
+      setCategorySaving(false);
+    }
+  }, [selectedPhoto, categoryDraft, customCategoryDraft]);
+
+  // Category chips: the fixed presets always show (even with zero photos yet,
+  // so users know sorting exists), plus any custom category the user has set
+  // via the detail-modal editor, plus a catch-all "Other" for uncategorized.
+  const categoryOptions = useMemo(() => {
+    const custom = new Map<string, string>();
+    for (const photo of photos) {
+      const cat = photo.metadata?.category;
+      if (!cat || cat === 'other' || (PRESET_PHOTO_CATEGORIES as readonly string[]).includes(cat)) continue;
+      if (!custom.has(cat)) custom.set(cat, categoryDisplayLabel(cat, photo.metadata?.customCategoryLabel));
+    }
+    return [
+      ...PRESET_PHOTO_CATEGORIES.map((value) => ({ value, label: PRESET_CATEGORY_LABELS[value] })),
+      ...Array.from(custom.entries()).map(([value, label]) => ({ value, label })),
+      { value: 'other', label: 'Other' },
+    ];
+  }, [photos]);
+
   const filteredPhotos = useMemo(() => {
     let filtered = photos;
 
@@ -306,8 +426,13 @@ export const PhotoAlbum: React.FC = () => {
       filtered = filtered.filter(photo => photo.metadata?.locationName);
     }
 
+    // Filter by category — orthogonal to the view-mode filter above.
+    if (categoryFilter !== 'all') {
+      filtered = filtered.filter(photo => (photo.metadata?.category || 'other') === categoryFilter);
+    }
+
     return filtered;
-  }, [photos, searchQuery, filterBy]);
+  }, [photos, searchQuery, filterBy, categoryFilter]);
 
   const clipboardText = useMemo(
     () =>
@@ -315,9 +440,10 @@ export const PhotoAlbum: React.FC = () => {
         filters: clipboardFilterLines([
           searchQuery.trim() && `search="${searchQuery.trim()}"`,
           filterBy !== 'all' && `view=${filterBy}`,
+          categoryFilter !== 'all' && `category=${categoryFilter}`,
         ]),
       }),
-    [filteredPhotos, searchQuery, filterBy],
+    [filteredPhotos, searchQuery, filterBy, categoryFilter],
   );
 
   const groupedByLocation = useMemo(() => {
@@ -431,6 +557,33 @@ export const PhotoAlbum: React.FC = () => {
             </button>
           ))}
         </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-white/50">Category:</span>
+          <button
+            onClick={() => setCategoryFilter('all')}
+            className={`px-3 py-1 rounded text-xs font-medium transition-colors border ${
+              categoryFilter === 'all'
+                ? 'bg-primary/20 text-white border-primary/40'
+                : 'bg-black/40 text-white/60 border-border/60 hover:border-primary/40'
+            }`}
+          >
+            All
+          </button>
+          {categoryOptions.map((option) => (
+            <button
+              key={option.value}
+              onClick={() => setCategoryFilter(option.value)}
+              className={`px-3 py-1 rounded text-xs font-medium transition-colors border ${
+                categoryFilter === option.value
+                  ? 'bg-primary/20 text-white border-primary/40'
+                  : 'bg-black/40 text-white/60 border-border/60 hover:border-primary/40'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Photo grid / list */}
@@ -464,6 +617,7 @@ export const PhotoAlbum: React.FC = () => {
                       key={photo.id}
                       photo={photo}
                       onClick={() => handlePhotoClick(photo)}
+                      onEditCategory={() => setSelectedPhoto(photo)}
                     />
                   ))}
                 </div>
@@ -474,6 +628,7 @@ export const PhotoAlbum: React.FC = () => {
                       key={photo.id}
                       photo={photo}
                       onClick={() => handlePhotoClick(photo)}
+                      onEditCategory={() => setSelectedPhoto(photo)}
                     />
                   ))}
                 </div>
@@ -501,6 +656,7 @@ export const PhotoAlbum: React.FC = () => {
                         key={photo.id}
                         photo={photo}
                         onClick={() => handlePhotoClick(photo)}
+                        onEditCategory={() => setSelectedPhoto(photo)}
                       />
                     ))}
                   </div>
@@ -511,6 +667,7 @@ export const PhotoAlbum: React.FC = () => {
                         key={photo.id}
                         photo={photo}
                         onClick={() => handlePhotoClick(photo)}
+                        onEditCategory={() => setSelectedPhoto(photo)}
                       />
                     ))}
                   </div>
@@ -525,6 +682,7 @@ export const PhotoAlbum: React.FC = () => {
               key={photo.id}
               photo={photo}
               onClick={() => handlePhotoClick(photo)}
+              onEditCategory={() => setSelectedPhoto(photo)}
             />
           ))}
         </div>
@@ -535,6 +693,7 @@ export const PhotoAlbum: React.FC = () => {
               key={photo.id}
               photo={photo}
               onClick={() => handlePhotoClick(photo)}
+              onEditCategory={() => setSelectedPhoto(photo)}
             />
           ))}
         </div>
@@ -597,6 +756,41 @@ export const PhotoAlbum: React.FC = () => {
                       ))}
                     </div>
                   )}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs text-white/50 block">Category</label>
+                  <div className="flex flex-wrap gap-2">
+                    <select
+                      value={categoryDraft}
+                      onChange={(e) => setCategoryDraft(e.target.value)}
+                      className="flex-1 min-w-[140px] px-2 py-1.5 bg-black/40 border border-border/60 rounded text-xs text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    >
+                      {PRESET_PHOTO_CATEGORIES.map((c) => (
+                        <option key={c} value={c}>
+                          {PRESET_CATEGORY_LABELS[c]}
+                        </option>
+                      ))}
+                      <option value="other">Other</option>
+                      <option value="custom">Custom…</option>
+                    </select>
+                    {categoryDraft === 'custom' && (
+                      <input
+                        type="text"
+                        value={customCategoryDraft}
+                        onChange={(e) => setCustomCategoryDraft(e.target.value)}
+                        placeholder="e.g. Recipes"
+                        className="flex-1 min-w-[140px] px-2 py-1.5 bg-black/40 border border-border/60 rounded text-xs text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      />
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={saveCategory}
+                      disabled={categorySaving || (categoryDraft === 'custom' && !customCategoryDraft.trim())}
+                    >
+                      {categorySaving ? 'Saving…' : 'Save'}
+                    </Button>
+                  </div>
                 </div>
                 <Button
                   onClick={() => {
