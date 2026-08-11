@@ -220,8 +220,12 @@ Only include values with confidence > 0.6. Priority should reflect how often/str
         throw error;
       }
 
-      // If no values exist, try to extract from conversations
-      if ((!data || data.length === 0) && activeOnly) {
+      // If no values exist at all (active or ended), try to extract from
+      // conversations. This must NOT be gated on activeOnly — a caller
+      // asking for full history (activeOnly=false, e.g. narrativeReasoner's
+      // "what changed" comparison) has an equally empty table to bootstrap
+      // from, and previously never triggered this fallback at all.
+      if (!data || data.length === 0) {
         logger.info({ userId }, 'No values found, attempting to extract from conversations');
         const extracted = await this.extractValuesFromConversations(userId);
         if (extracted.length > 0) {

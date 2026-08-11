@@ -103,6 +103,58 @@ describe('GoalValueAlignmentService', () => {
     });
   });
 
+  describe('getValues — conversation-extraction bootstrap', () => {
+    // Regression: the bootstrap fallback ("if no values exist, extract from
+    // conversations") used to be gated on activeOnly=true. A caller asking
+    // for full history (activeOnly=false — e.g. narrativeReasoner's "what
+    // changed" comparison) got an empty table forever, since nothing else
+    // in the app calls getValues(userId, true) for a user who's never used
+    // the Values feature directly.
+    it('still attempts extraction when called with activeOnly=false and the table is empty', async () => {
+      vi.mocked(supabaseAdmin.from).mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            order: vi.fn().mockResolvedValue({ data: [], error: null }),
+          }),
+        }),
+      } as any);
+
+      const extractSpy = vi
+        .spyOn(goalValueAlignmentService, 'extractValuesFromConversations')
+        .mockResolvedValue([]);
+
+      await goalValueAlignmentService.getValues('user-123', false);
+
+      expect(extractSpy).toHaveBeenCalledWith('user-123');
+    });
+
+    it('does not attempt extraction when ended values already exist (table is not actually empty)', async () => {
+      const mockEndedValue = {
+        id: 'value-1',
+        user_id: 'user-123',
+        name: 'Freedom',
+        priority: 0.5,
+        ended_at: '2025-01-01T00:00:00Z',
+      };
+      vi.mocked(supabaseAdmin.from).mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            order: vi.fn().mockResolvedValue({ data: [mockEndedValue], error: null }),
+          }),
+        }),
+      } as any);
+
+      const extractSpy = vi
+        .spyOn(goalValueAlignmentService, 'extractValuesFromConversations')
+        .mockResolvedValue([]);
+
+      const values = await goalValueAlignmentService.getValues('user-123', false);
+
+      expect(extractSpy).not.toHaveBeenCalled();
+      expect(values).toEqual([mockEndedValue]);
+    });
+  });
+
   describe('computeAlignment', () => {
     it('should compute alignment for a goal', async () => {
       const mockGoal = {

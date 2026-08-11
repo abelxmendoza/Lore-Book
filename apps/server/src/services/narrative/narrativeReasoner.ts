@@ -113,6 +113,18 @@ export function detectComparisonDimensions(question: string): Set<ComparisonDime
   return dimensions.size > 0 ? dimensions : null;
 }
 
+// "What changed recently?" and "what's changed over time?" are different
+// questions — the former wants the last few weeks, the latter wants the
+// full history. Without this, goal/priority evidence older than the fixed
+// recency window gets silently dropped even when the question explicitly
+// asked to look across all of it.
+const FULL_HISTORY_PATTERN =
+  /\b(over time|before and after|since (the beginning|i started|day one)|throughout|historically|over the years|ever since)\b/i;
+
+export function wantsFullHistoryHorizon(question: string): boolean {
+  return FULL_HISTORY_PATTERN.test(question);
+}
+
 // ---------------------------------------------------------------------------
 // Change detection — recent window vs what came before
 // ---------------------------------------------------------------------------
@@ -145,9 +157,13 @@ export function detectRecentChanges(
   cctx: NarrativeCognitionContext,
   salience: PersonSalience[],
   arcs: ActiveArc[],
+  options?: { horizon?: 'recent' | 'all_time' },
 ): RecentChange[] {
   const changes: RecentChange[] = [];
   const { graph, work, firstSeenByEntity, now } = cctx;
+  // Goals/priorities move slower than who's in your life, and "over time"
+  // questions explicitly ask to look past the default recency window.
+  const goalWindowDays = options?.horizon === 'all_time' ? Infinity : GOAL_CHANGE_WINDOW_DAYS;
 
   if (work?.currentRole?.status === 'current' && work.organization?.name) {
     const startedRecently =
@@ -214,7 +230,7 @@ export function detectRecentChanges(
   for (const goal of cctx.goals ?? []) {
     if (goal.status === 'ACTIVE') {
       const createdDays = daysBetween(goal.created_at, cctx.now);
-      if (createdDays != null && createdDays <= GOAL_CHANGE_WINDOW_DAYS) {
+      if (createdDays != null && createdDays <= goalWindowDays) {
         changes.push({
           kind: 'new_goal',
           label: `Took on a new goal: ${goal.title}`,
@@ -226,7 +242,7 @@ export function detectRecentChanges(
     }
     if (goal.status === 'COMPLETED' || goal.status === 'ABANDONED') {
       const endedDays = daysBetween(goal.ended_at ?? undefined, cctx.now);
-      if (endedDays != null && endedDays <= GOAL_CHANGE_WINDOW_DAYS) {
+      if (endedDays != null && endedDays <= goalWindowDays) {
         changes.push({
           kind: goal.status === 'COMPLETED' ? 'goal_completed' : 'goal_abandoned',
           label:
@@ -242,7 +258,7 @@ export function detectRecentChanges(
 
   for (const shift of cctx.priorityShifts ?? []) {
     const shiftDays = daysBetween(shift.createdAt, cctx.now);
-    if (shiftDays == null || shiftDays > GOAL_CHANGE_WINDOW_DAYS) continue;
+    if (shiftDays == null || shiftDays > goalWindowDays) continue;
     const direction = shift.newPriority > shift.oldPriority ? 'grew in importance' : 'became less central';
     changes.push({
       kind: 'priority_shift',
@@ -470,7 +486,8 @@ function composeWhatChanged(
   resolved: ResolvedCognition,
   question: string,
 ): CognitionAnswer | null {
-  const allChanges = detectRecentChanges(cctx, resolved.salience, resolved.arcs);
+  const horizon = wantsFullHistoryHorizon(question) ? 'all_time' : 'recent';
+  const allChanges = detectRecentChanges(cctx, resolved.salience, resolved.arcs, { horizon });
   const requestedDimensions = detectComparisonDimensions(question);
   const changes = requestedDimensions
     ? allChanges.filter((c) => requestedDimensions.has(c.dimension))

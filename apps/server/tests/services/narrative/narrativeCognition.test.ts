@@ -355,6 +355,33 @@ describe('comparison scoping — "what changed" stays inside the dimension the u
     expect(answer).not.toBeNull();
     expect(answer!.content).toContain('entered your story');
   });
+
+  it('"over time" phrasing surfaces a goal change older than the 180-day recency window', () => {
+    const cctx = {
+      ...fixtureContext(),
+      goals: [
+        {
+          id: 'g1',
+          title: 'Ship LoreBook v1',
+          status: 'COMPLETED' as const,
+          created_at: daysAgo(400),
+          ended_at: daysAgo(250), // older than the 180-day recency window
+        },
+      ],
+    };
+
+    const recent = answerCognitionQuestion('what_changed', cctx, 'How have my goals changed recently?');
+    expect(recent).not.toBeNull();
+    expect(recent!.content).not.toContain('Ship LoreBook v1');
+
+    const overTime = answerCognitionQuestion(
+      'what_changed',
+      cctx,
+      'What plans, opinions, goals, or priorities of mine have changed over time?',
+    );
+    expect(overTime).not.toBeNull();
+    expect(overTime!.content).toContain('Ship LoreBook v1');
+  });
 });
 
 describe('story assembly: multi-stop outings become one story', () => {
