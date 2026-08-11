@@ -94,6 +94,13 @@ export type AttentionState = {
   }>;
 };
 
+/**
+ * Which part of the user's life a change belongs to. "What changed" questions
+ * often name a scope ("my goals", "my career") — the answer must stay inside
+ * it instead of surfacing every detected change regardless of relevance.
+ */
+export type ComparisonDimension = 'goals' | 'values' | 'career' | 'projects' | 'identity' | 'relationships';
+
 export type RecentChange = {
   kind:
     | 'new_organization'
@@ -110,6 +117,7 @@ export type RecentChange = {
   label: string;
   detail?: string;
   confidence: number;
+  dimension: ComparisonDimension;
 };
 
 /** Minimal goal shape the cognition layer needs — see Goal in types/goalValueAlignment.ts. */

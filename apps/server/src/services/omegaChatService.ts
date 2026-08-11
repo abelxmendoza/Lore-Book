@@ -1751,7 +1751,7 @@ When updating relationship analytics or emotional signals from this thread, weig
       const { detectCognitionQuestion, answerNarrativeCognition } = await import('./narrative/narrativeReasoner');
       const cognitionKind = detectCognitionQuestion(message);
       if (cognitionKind) {
-        const cognition = await answerNarrativeCognition(userId, cognitionKind);
+        const cognition = await answerNarrativeCognition(userId, cognitionKind, message);
         if (cognition) {
           const { formatModeResponse } = await import('./modeRouter/responseFormatter');
           return formatModeResponse(
@@ -3192,7 +3192,7 @@ When updating relationship analytics or emotional signals from this thread, weig
       const { detectCognitionQuestion, answerNarrativeCognition } = await import('./narrative/narrativeReasoner');
       const cognitionKind = detectCognitionQuestion(message);
       if (cognitionKind) {
-        const cognition = await answerNarrativeCognition(userId, cognitionKind);
+        const cognition = await answerNarrativeCognition(userId, cognitionKind, message);
         if (cognition) {
           return { answer: cognition.content, entryId };
         }

@@ -10,9 +10,11 @@ import { logger } from '../../logger';
 import type { AnchorBuildContext } from './narrativeAnchorTypes';
 import type {
   ActiveArc,
+  ActiveArcKind,
   AttentionState,
   CognitionAnswer,
   CognitionQuestionKind,
+  ComparisonDimension,
   LifeEra,
   NarrativeCognitionContext,
   PersonSalience,
@@ -83,6 +85,35 @@ export function detectCognitionQuestion(message: string): CognitionQuestionKind 
 }
 
 // ---------------------------------------------------------------------------
+// Comparison scoping — "what changed" isn't one question. A "what changed"
+// question that names a scope ("my goals", "my career") must stay inside it
+// instead of surfacing every detected change (new people crowd out everything
+// else because they're the most common change kind).
+// ---------------------------------------------------------------------------
+
+const DIMENSION_PATTERNS: Array<{ dimension: ComparisonDimension; pattern: RegExp }> = [
+  { dimension: 'goals', pattern: /\b(goals?|plans?|ambitions?)\b/i },
+  { dimension: 'values', pattern: /\b(opinions?|beliefs?|values?|priorit(?:y|ies))\b/i },
+  { dimension: 'career', pattern: /\b(career|job|role)\b/i },
+  { dimension: 'projects', pattern: /\bprojects?\b/i },
+  { dimension: 'identity', pattern: /\b(identity|sense of self|who i am|confidence)\b/i },
+  { dimension: 'relationships', pattern: /\b(relationships?|friendships?|friends?|people)\b/i },
+];
+
+/**
+ * Which dimensions a "what changed" question is actually scoped to.
+ * Returns null for a truly generic question ("what's changed lately?") —
+ * that keeps the old unfiltered behavior, since there's nothing to scope to.
+ */
+export function detectComparisonDimensions(question: string): Set<ComparisonDimension> | null {
+  const dimensions = new Set<ComparisonDimension>();
+  for (const { dimension, pattern } of DIMENSION_PATTERNS) {
+    if (pattern.test(question)) dimensions.add(dimension);
+  }
+  return dimensions.size > 0 ? dimensions : null;
+}
+
+// ---------------------------------------------------------------------------
 // Change detection — recent window vs what came before
 // ---------------------------------------------------------------------------
 
@@ -90,6 +121,25 @@ const CHANGE_WINDOW_DAYS = 30;
 // Goals and priorities move slower than who's in your life — a wider window
 // matches "what changed over time" better than the 30-day people/role window.
 const GOAL_CHANGE_WINDOW_DAYS = 180;
+
+/** Which comparison dimension owns a given active-arc kind. */
+function dimensionForArcKind(kind: ActiveArcKind): ComparisonDimension {
+  switch (kind) {
+    case 'job_onboarding':
+      return 'career';
+    case 'project_build':
+      return 'projects';
+    case 'relationship_healing':
+    case 'community_distance':
+      return 'relationships';
+    case 'financial_stability':
+    case 'social_confidence':
+    case 'health_fitness':
+      return 'identity';
+    default:
+      return 'identity';
+  }
+}
 
 export function detectRecentChanges(
   cctx: NarrativeCognitionContext,
@@ -109,6 +159,7 @@ export function detectRecentChanges(
         label: `Started as ${work.currentRole.title} at ${work.organization.name}`,
         detail: work.tenure?.phrase,
         confidence: work.currentRole.confidence,
+        dimension: 'career',
       });
     }
   }
@@ -124,6 +175,7 @@ export function detectRecentChanges(
         label: `${entity.name} entered your story`,
         detail: person ? person.reasonBreakdown[0] : undefined,
         confidence: 0.7,
+        dimension: 'relationships',
       });
     }
   }
@@ -134,6 +186,7 @@ export function detectRecentChanges(
       kind: 'rising_person',
       label: `${person.name} is becoming more central`,
       confidence: person.confidence,
+      dimension: 'relationships',
     });
   }
 
@@ -143,20 +196,31 @@ export function detectRecentChanges(
         kind: 'quieter_community',
         label: arc.title,
         confidence: arc.confidence,
+        dimension: 'relationships',
       });
     }
   }
 
   const newArcs = arcs.filter((arc) => arc.status === 'emerging');
   for (const arc of newArcs) {
-    changes.push({ kind: 'new_arc', label: arc.title, confidence: arc.confidence });
+    changes.push({
+      kind: 'new_arc',
+      label: arc.title,
+      confidence: arc.confidence,
+      dimension: dimensionForArcKind(arc.kind),
+    });
   }
 
   for (const goal of cctx.goals ?? []) {
     if (goal.status === 'ACTIVE') {
       const createdDays = daysBetween(goal.created_at, cctx.now);
       if (createdDays != null && createdDays <= GOAL_CHANGE_WINDOW_DAYS) {
-        changes.push({ kind: 'new_goal', label: `Took on a new goal: ${goal.title}`, confidence: 0.7 });
+        changes.push({
+          kind: 'new_goal',
+          label: `Took on a new goal: ${goal.title}`,
+          confidence: 0.7,
+          dimension: 'goals',
+        });
       }
       continue;
     }
@@ -170,6 +234,7 @@ export function detectRecentChanges(
               ? `Completed: ${goal.title}`
               : `Stepped away from: ${goal.title}`,
           confidence: 0.75,
+          dimension: 'goals',
         });
       }
     }
@@ -184,6 +249,7 @@ export function detectRecentChanges(
       label: `${shift.valueName} ${direction}`,
       detail: `${shift.oldPriority.toFixed(2)} → ${shift.newPriority.toFixed(2)}`,
       confidence: 0.65,
+      dimension: 'values',
     });
   }
 
@@ -390,12 +456,40 @@ function composeActiveArcs(resolved: ResolvedCognition): CognitionAnswer | null 
   };
 }
 
+const DIMENSION_LABELS: Record<ComparisonDimension, string> = {
+  goals: 'goals',
+  values: 'opinions and values',
+  career: 'career',
+  projects: 'projects',
+  identity: 'sense of identity',
+  relationships: 'relationships',
+};
+
 function composeWhatChanged(
   cctx: NarrativeCognitionContext,
   resolved: ResolvedCognition,
+  question: string,
 ): CognitionAnswer | null {
-  const changes = detectRecentChanges(cctx, resolved.salience, resolved.arcs);
+  const allChanges = detectRecentChanges(cctx, resolved.salience, resolved.arcs);
+  const requestedDimensions = detectComparisonDimensions(question);
+  const changes = requestedDimensions
+    ? allChanges.filter((c) => requestedDimensions.has(c.dimension))
+    : allChanges;
+
+  if (requestedDimensions && changes.length === 0) {
+    // The question named a scope and nothing in it moved — say so plainly
+    // instead of falling back to unrelated changes (e.g. new people) just to
+    // fill space.
+    const dims = [...requestedDimensions].map((d) => DIMENSION_LABELS[d]).join(', ');
+    return {
+      kind: 'what_changed',
+      content: capitalize(`I don't see a meaningful shift in your ${dims} — that part of your story looks like it's held steady.`),
+      confidence: 0.4,
+      reasoning: [`requested dimensions: ${[...requestedDimensions].join(', ')}`, 'no matching changes in scope'],
+    };
+  }
   if (changes.length === 0) return null;
+
   const lines = changes.map((c) => `- ${c.label}${c.detail ? ` (${c.detail})` : ''}`);
   const confidence = Math.min(0.75, changes[0].confidence);
   return {
@@ -468,6 +562,7 @@ function composeStruggles(resolved: ResolvedCognition): CognitionAnswer | null {
 export function answerCognitionQuestion(
   kind: CognitionQuestionKind,
   cctx: NarrativeCognitionContext,
+  question: string = '',
 ): CognitionAnswer | null {
   const peopleCount = cctx.graph.entities.filter((e) => e.entityType === 'character').length;
   // Reasoning needs a graph to reason over. Thin graphs fall through to chat.
@@ -484,7 +579,7 @@ export function answerCognitionQuestion(
     case 'active_arcs':
       return composeActiveArcs(resolved);
     case 'what_changed':
-      return composeWhatChanged(cctx, resolved);
+      return composeWhatChanged(cctx, resolved, question);
     case 'attention':
       return composeAttention(resolved);
     case 'life_summary':
@@ -500,10 +595,11 @@ export function answerCognitionQuestion(
 export async function answerNarrativeCognition(
   userId: string,
   kind: CognitionQuestionKind,
+  question: string = '',
 ): Promise<CognitionAnswer | null> {
   try {
     const cctx = await buildCognitionContext(userId);
-    return answerCognitionQuestion(kind, cctx);
+    return answerCognitionQuestion(kind, cctx, question);
   } catch (err) {
     logger.warn({ err, userId, kind }, 'narrativeCognition: answer failed, falling back to chat');
     return null;

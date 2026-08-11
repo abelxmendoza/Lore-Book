@@ -239,7 +239,11 @@ describe('OmegaChatService', () => {
         );
 
         expect(detectCognitionQuestionFn).toHaveBeenCalled();
-        expect(answerNarrativeCognitionFn).toHaveBeenCalledWith('user-123', 'what_changed');
+        expect(answerNarrativeCognitionFn).toHaveBeenCalledWith(
+          'user-123',
+          'what_changed',
+          'What plans, opinions, goals, or priorities of mine have changed over time? Show me the before and after.',
+        );
         expect(result.content).toContain('Before: focused on Omega1');
       } finally {
         if (previousWorkingMemoryPrimary === undefined) {

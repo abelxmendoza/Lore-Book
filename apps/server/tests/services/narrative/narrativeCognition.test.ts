@@ -10,6 +10,7 @@ import {
   detectCognitionQuestion,
   answerCognitionQuestion,
   detectRecentChanges,
+  detectComparisonDimensions,
 } from '../../../src/services/narrative/narrativeReasoner';
 import { buildSalienceInputs } from '../../../src/services/narrative/relationshipSalience';
 import {
@@ -290,6 +291,69 @@ describe('what changed recently', () => {
     expect(labels).toContain('QA Technician at Vanguard Robotics');
     expect(labels).toContain('Priya entered your story');
     expect(changes.some((c) => c.kind === 'quieter_community')).toBe(true);
+  });
+});
+
+describe('comparison scoping — "what changed" stays inside the dimension the user asked about', () => {
+  // Regression for the diagnostic where "what plans, opinions, goals, or
+  // priorities have changed" answered with "Ruben entered your story / Dan
+  // entered your story / ..." — every detected change was treated as equally
+  // relevant instead of being scoped to what was actually asked about.
+  it('detects goals + values dimensions from the original failing question, not relationships', () => {
+    const dims = detectComparisonDimensions(
+      'What plans, opinions, goals, or priorities of mine have changed over time? Show me the before and after.',
+    );
+    expect(dims).not.toBeNull();
+    expect(dims!.has('goals')).toBe(true);
+    expect(dims!.has('values')).toBe(true);
+    expect(dims!.has('relationships')).toBe(false);
+    expect(dims!.has('career')).toBe(false);
+  });
+
+  it('returns null (no scope) for a truly generic "what changed" question', () => {
+    expect(detectComparisonDimensions('what changed recently?')).toBeNull();
+    expect(detectComparisonDimensions("what's different about my life lately?")).toBeNull();
+  });
+
+  it('answers a goals-scoped question with the goal change, excluding new-person churn', () => {
+    const cctx = {
+      ...fixtureContext(),
+      goals: [
+        {
+          id: 'g1',
+          title: 'Ship LoreBook v1',
+          status: 'COMPLETED' as const,
+          created_at: daysAgo(200),
+          ended_at: daysAgo(10),
+        },
+      ],
+    };
+    const answer = answerCognitionQuestion(
+      'what_changed',
+      cctx,
+      'What plans, opinions, goals, or priorities of mine have changed over time? Show me the before and after.',
+    );
+    expect(answer).not.toBeNull();
+    expect(answer!.content).toContain('Ship LoreBook v1');
+    expect(answer!.content).not.toContain('entered your story');
+    expect(answer!.content).not.toContain('Priya');
+  });
+
+  it('gives explicit negative evidence for a scoped dimension with no changes, instead of listing unrelated ones', () => {
+    // fixtureContext has plenty of relationship + career + arc changes, but
+    // no goals or priority-shift data — a goals-scoped question should say
+    // so plainly rather than falling back to "Priya entered your story".
+    const answer = answerCognitionQuestion('what_changed', fixtureContext(), 'How have my goals changed?');
+    expect(answer).not.toBeNull();
+    expect(answer!.content.toLowerCase()).toMatch(/held steady|no meaningful/);
+    expect(answer!.content).not.toContain('entered your story');
+  });
+
+  it('keeps the old unfiltered behavior for a generic "what changed" question', () => {
+    const cctx = fixtureContext();
+    const answer = answerCognitionQuestion('what_changed', cctx, 'what changed recently?');
+    expect(answer).not.toBeNull();
+    expect(answer!.content).toContain('entered your story');
   });
 });
 
