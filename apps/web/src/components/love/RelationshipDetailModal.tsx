@@ -601,22 +601,24 @@ export const RelationshipDetailModal = ({
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden px-4 sm:px-6 pb-4 sm:pb-6">
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as RelationshipModalTab)} className="flex flex-col flex-1 min-h-0">
           <TabsList
-            className="hidden md:grid w-full max-w-full h-auto shrink-0 md:grid-cols-8 gap-0.5 p-1 bg-black/40 border border-border/50"
+            className="hidden md:flex w-full max-w-full h-auto shrink-0 items-stretch gap-1 overflow-x-auto scrollbar-none p-1 bg-black/40 border border-border/50"
             aria-label="Relationship sections"
           >
-            {RELATIONSHIP_TABS.map(({ value, label, shortLabel, icon: Icon }) => (
+            {/* A fixed 8-column grid squeezed tab cells hard enough at
+                borderline desktop widths (just above the md breakpoint) that
+                clicks could land on the wrong trigger. A scrollable flex row
+                — the same pattern the mobile bottom nav already uses
+                reliably — never squeezes: each tab keeps its natural size. */}
+            {RELATIONSHIP_TABS.map(({ value, label, icon: Icon }) => (
               <TabsTrigger
                 key={value}
                 value={value}
                 data-testid={value === 'their-connections' ? 'tab-their-connections' : undefined}
                 aria-label={label}
-                className="flex flex-col md:flex-row items-center justify-center gap-px md:gap-2 rounded-md px-0.5 py-1 md:px-3 md:py-2 min-h-[34px] md:min-h-0 text-[8px] md:text-sm font-medium leading-none touch-manipulation data-[state=active]:bg-pink-500/20 data-[state=active]:text-pink-200 data-[state=active]:border data-[state=active]:border-pink-500/30"
+                className="flex flex-row shrink-0 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium leading-none whitespace-nowrap touch-manipulation data-[state=active]:bg-pink-500/20 data-[state=active]:text-pink-200 data-[state=active]:border data-[state=active]:border-pink-500/30"
               >
-                <Icon className="h-3 w-3 md:h-4 md:w-4 flex-shrink-0" />
-                <span className="w-full text-center truncate md:w-auto md:whitespace-nowrap">
-                  <span className="md:hidden">{shortLabel}</span>
-                  <span className="hidden md:inline">{label}</span>
-                </span>
+                <Icon className="h-4 w-4 flex-shrink-0" />
+                <span>{label}</span>
               </TabsTrigger>
             ))}
           </TabsList>
