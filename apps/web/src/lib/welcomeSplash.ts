@@ -51,9 +51,17 @@ export function resetWelcomeSplash(): void {
   notifyWelcomeSplashChange();
 }
 
-/** Show the splash as soon as possible (e.g. on Guest/Demo click before navigate). */
+/**
+ * Show the splash as soon as possible (e.g. on Guest/Demo click before navigate).
+ *
+ * No-op once the splash has been seen this session: entering the demo by URL
+ * (`/demo/love`) already auto-shows it for the route, and the guest identity
+ * that demo entry creates then requested a second one — replaying the whole
+ * near-black animation. A genuinely new login clears the gate on sign-out
+ * (see AuthGate), so it still shows there.
+ */
 export function requestWelcomeSplash(): void {
-  resetWelcomeSplash();
+  if (wasWelcomeSplashSeen()) return;
   try {
     sessionStorage.setItem(PENDING_KEY, '1');
   } catch {
