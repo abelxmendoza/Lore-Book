@@ -205,21 +205,6 @@ const SidebarContent = ({
           </button>
           <button
             type="button"
-            onClick={() => handleSurfaceChange('anchors')}
-            aria-label="Open narrative anchors"
-            aria-current={activeSurface === 'anchors' ? 'page' : undefined}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
-              activeSurface === 'anchors'
-                ? 'border-primary bg-primary/10 text-white'
-                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-            )}
-          >
-            <Anchor className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-            <span className="flex-1 text-left">Narrative Anchors</span>
-          </button>
-          <button
-            type="button"
             onClick={() => handleSurfaceChange('events')}
             aria-label="Open life log"
             aria-current={activeSurface === 'events' ? 'page' : undefined}
@@ -234,6 +219,24 @@ const SidebarContent = ({
             <span className="flex-1 text-left">Life Log</span>
             {counts && counts.events > 0 && (
               <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.events}</span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSurfaceChange('projects')}
+            aria-label="Open projects view"
+            aria-current={activeSurface === 'projects' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
+              activeSurface === 'projects'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Briefcase className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+            <span className="flex-1 text-left">Projects</span>
+            {counts && counts.projects > 0 && (
+              <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.projects}</span>
             )}
           </button>
           <button
@@ -256,21 +259,18 @@ const SidebarContent = ({
           </button>
           <button
             type="button"
-            onClick={() => handleSurfaceChange('projects')}
-            aria-label="Open projects view"
-            aria-current={activeSurface === 'projects' ? 'page' : undefined}
+            onClick={() => handleSurfaceChange('anchors')}
+            aria-label="Open narrative anchors"
+            aria-current={activeSurface === 'anchors' ? 'page' : undefined}
             className={cn(
               "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
-              activeSurface === 'projects'
+              activeSurface === 'anchors'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
             )}
           >
-            <Briefcase className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-            <span className="flex-1 text-left">Projects</span>
-            {counts && counts.projects > 0 && (
-              <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.projects}</span>
-            )}
+            <Anchor className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+            <span className="flex-1 text-left">Narrative Anchors</span>
           </button>
 
           {/* 3. Beliefs & evidence */}
