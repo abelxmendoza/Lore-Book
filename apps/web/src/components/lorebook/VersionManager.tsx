@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
 import { FileText, GitBranch, Eye, Download, RefreshCw, Clock, Info, BookOpen } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import {
+  compareDemoVersions,
+  getDemoManifest,
+  getDemoVersionHistory,
+} from '../../services/demoBookVersioning';
+import { generateDemoEdition } from '../../lib/storyForge/demoCoreLorebookStore';
+import { runForgeForPreset } from '../../lib/storyForge/forgeReadinessBridge';
+import { useLoreReadinessSimulationOptional } from '../../contexts/LoreReadinessSimulationContext';
 
 interface BiographyVersion {
   id: string;
@@ -77,6 +86,8 @@ const CHANGE_TYPE_STYLE: Record<ChapterChangeType, { label: string; border: stri
 };
 
 export const VersionManager = ({ lorebookName, baseBiographyId, showGenerateVariants = false, onRead }: VersionManagerProps) => {
+  const shouldUseMock = useShouldUseMockData();
+  const simulation = useLoreReadinessSimulationOptional();
   const [versions, setVersions] = useState<BiographyVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,16 +102,21 @@ export const VersionManager = ({ lorebookName, baseBiographyId, showGenerateVari
     if (lorebookName) {
       loadVersions();
     }
-  }, [lorebookName]);
+  }, [lorebookName, shouldUseMock]);
 
   const loadVersions = async () => {
     try {
       setLoading(true);
       setError(null);
-      const result = await fetchJson<{ versions: BiographyVersion[] }>(
-        `/api/biography/versions/${encodeURIComponent(lorebookName)}`
-      );
-      setVersions(result.versions);
+      if (shouldUseMock) {
+        const result = getDemoVersionHistory(lorebookName);
+        setVersions(result.versions);
+      } else {
+        const result = await fetchJson<{ versions: BiographyVersion[] }>(
+          `/api/biography/versions/${encodeURIComponent(lorebookName)}`
+        );
+        setVersions(result.versions);
+      }
     } catch (err) {
       console.error('Failed to load versions:', err);
       setError('Failed to load versions');
@@ -112,13 +128,18 @@ export const VersionManager = ({ lorebookName, baseBiographyId, showGenerateVari
   const generateVersion = async (baseId: string, versionType: 'safe' | 'explicit' | 'private') => {
     try {
       setGeneratingVersion(versionType);
-      await fetchJson('/api/biography/versions/generate', {
-        method: 'POST',
-        body: JSON.stringify({
-          baseBiographyId: baseId,
-          versionType
-        })
-      });
+      if (shouldUseMock) {
+        const forge = runForgeForPreset(simulation?.preset ?? 'rich');
+        generateDemoEdition(lorebookName, versionType, forge);
+      } else {
+        await fetchJson('/api/biography/versions/generate', {
+          method: 'POST',
+          body: JSON.stringify({
+            baseBiographyId: baseId,
+            versionType
+          })
+        });
+      }
       await loadVersions();
     } catch (err) {
       console.error('Failed to generate version:', err);
@@ -137,14 +158,20 @@ export const VersionManager = ({ lorebookName, baseBiographyId, showGenerateVari
       (a?.lorebookVersion ?? 0) <= (b?.lorebookVersion ?? 0) ? [idA, idB] : [idB, idA];
     try {
       setComparing({ id1: fromId, id2: toId });
-      const result = await fetchJson<{ comparison: VersionComparison }>(
-        `/api/biography/versions/compare`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ biographyId1: fromId, biographyId2: toId })
-        }
-      );
-      setComparison(result.comparison);
+      if (shouldUseMock) {
+        const result = compareDemoVersions(fromId, toId);
+        if (!result) throw new Error('Demo comparison unavailable');
+        setComparison(result.comparison);
+      } else {
+        const result = await fetchJson<{ comparison: VersionComparison }>(
+          `/api/biography/versions/compare`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ biographyId1: fromId, biographyId2: toId })
+          }
+        );
+        setComparison(result.comparison);
+      }
     } catch (err) {
       console.error('Failed to compare versions:', err);
       alert('Failed to compare versions');
@@ -163,8 +190,13 @@ export const VersionManager = ({ lorebookName, baseBiographyId, showGenerateVari
     setManifest(null);
     setManifestLoading(true);
     try {
-      const result = await fetchJson<{ manifest: EditionManifest }>(`/api/biography/${versionId}/manifest`);
-      setManifest(result.manifest);
+      if (shouldUseMock) {
+        const result = getDemoManifest(versionId);
+        setManifest(result?.manifest ?? null);
+      } else {
+        const result = await fetchJson<{ manifest: EditionManifest }>(`/api/biography/${versionId}/manifest`);
+        setManifest(result.manifest);
+      }
     } catch (err) {
       console.error('Failed to load manifest:', err);
     } finally {
