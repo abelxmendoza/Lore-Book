@@ -362,7 +362,7 @@ export const LoveAndRelationshipsView = () => {
     }, 0);
   }, []);
 
-  const openPeripheralCharacter = useCallback(async (characterId: string) => {
+  const openPeripheralCharacter = useCallback(async (characterId: string, onFailure?: (message: string) => void) => {
     if (shouldUseMockData) {
       const merged = mergeRomanticDemoCharacters(mockDataService.get.characters());
       if (merged.length !== mockDataService.get.characters().length) {
@@ -384,16 +384,29 @@ export const LoveAndRelationshipsView = () => {
     // "open character" flows, e.g. openCharacterCard/openCharacterTimeline)
     // rather than navigating away to Character Book — losing your place in
     // Dating & Romance to view a kid or co-parent read as "it closes".
+    //
+    // Crucially: do NOT close the relationship modal until we're certain the
+    // fetch succeeded with usable data. Closing first and only THEN finding
+    // out the open failed is exactly what reads as "it closes and shows
+    // nothing" — staying put with a visible error is strictly better than a
+    // silent full close.
     try {
       const character = await fetchCharacterById<Character>(characterId);
+      if (!character?.id || !character?.name) {
+        throw new Error('That Character Book card looks incomplete — try again from Character Book directly.');
+      }
       setSelectedRelationship(null);
       window.setTimeout(() => {
         setCharacterModalInitialTab('info');
         setSelectedCharacter(character);
       }, 0);
-    } catch {
-      setSelectedRelationship(null);
-      openCharacterBookModal({ characterId, tab: 'info' });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not open that Character Book card.';
+      if (onFailure) {
+        onFailure(message);
+      } else {
+        setRelationshipError(message);
+      }
     }
   }, [shouldUseMockData]);
 

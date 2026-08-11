@@ -137,7 +137,7 @@ interface RelationshipDetailModalProps {
   /** Open this partner's Character Book Story tab (parent usually opens CharacterDetailModal in-place). */
   onOpenCharacterTimeline?: (characterId: string | null) => void | Promise<void>;
   /** Open a Character Book card in-place (Their connections → periphery people). */
-  onOpenPeripheralCharacter?: (characterId: string) => void;
+  onOpenPeripheralCharacter?: (characterId: string, onFailure?: (message: string) => void) => void;
   /** Open directly on a tab (e.g. from Character Story → Dating arc). */
   initialTab?: RelationshipModalTab;
 }
@@ -170,6 +170,14 @@ export const RelationshipDetailModal = ({
   const [kidsLoaded, setKidsLoaded] = useState(false);
   const [crudBusy, setCrudBusy] = useState(false);
   const [crudError, setCrudError] = useState<string | null>(null);
+  const [peripheralOpenError, setPeripheralOpenError] = useState<string | null>(null);
+  const handleOpenPeripheralCharacter = useCallback(
+    (characterId: string) => {
+      setPeripheralOpenError(null);
+      onOpenPeripheralCharacter?.(characterId, setPeripheralOpenError);
+    },
+    [onOpenPeripheralCharacter],
+  );
   const [deleteReason, setDeleteReason] = useState('wrong_person_or_not_real');
   const [deleteReasonNote, setDeleteReasonNote] = useState('');
   const [scoresRefreshing, setScoresRefreshing] = useState(false);
@@ -563,6 +571,20 @@ export const RelationshipDetailModal = ({
           </div>
         </DialogHeader>
 
+        {peripheralOpenError && (
+          <div className="mx-4 sm:mx-6 mt-2 flex items-start justify-between gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+            <span>{peripheralOpenError}</span>
+            <button
+              type="button"
+              onClick={() => setPeripheralOpenError(null)}
+              className="shrink-0 text-red-300/70 hover:text-red-200"
+              aria-label="Dismiss error"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         <div className="sm:hidden px-4 pt-2">
           <EntityLorebookCompileControl
             subjectLabel={displayName}
@@ -886,7 +908,7 @@ export const RelationshipDetailModal = ({
               kids={kids}
               loading={kidsLoading}
               partnerName={displayName}
-              onOpenPeripheralCharacter={onOpenPeripheralCharacter}
+              onOpenPeripheralCharacter={handleOpenPeripheralCharacter}
               onCloseModal={onClose}
             />
           </TabsContent>
@@ -924,7 +946,7 @@ export const RelationshipDetailModal = ({
                 openCharacterBookModal({ characterId: timelineCharacterId, tab: 'timeline' });
                 onClose();
               }}
-              onOpenPeripheralCharacter={onOpenPeripheralCharacter}
+              onOpenPeripheralCharacter={handleOpenPeripheralCharacter}
               onCloseParentModal={onClose}
             />
           </TabsContent>
@@ -1086,7 +1108,7 @@ export const RelationshipDetailModal = ({
               }
               onCloseModal={onClose}
               onUpdate={onUpdate}
-              onOpenPeripheralCharacter={onOpenPeripheralCharacter}
+              onOpenPeripheralCharacter={handleOpenPeripheralCharacter}
             />
           </TabsContent>
 

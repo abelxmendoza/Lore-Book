@@ -324,6 +324,52 @@ describe('RelationshipDetailModal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('surfaces a visible error and stays open when opening a peripheral character fails, instead of closing', async () => {
+    const onClose = vi.fn();
+    (getMockKidsTogether as any).mockReturnValue([
+      {
+        id: 'kid-mia',
+        name: 'Mia',
+        relation: 'step',
+        belongsTo: 'partner',
+        coParents: [{ id: 'coparent-broken', name: 'Riley' }],
+      },
+    ]);
+    const onOpenPeripheralCharacter = vi.fn(
+      (_characterId: string, onFailure?: (message: string) => void) => {
+        onFailure?.('Could not open that Character Book card.');
+      },
+    );
+
+    render(
+      <RelationshipDetailModal
+        relationshipId="rel-001"
+        onClose={onClose}
+        onOpenPeripheralCharacter={onOpenPeripheralCharacter}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Alex')).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getAllByRole('tab', { name: /kids together/i })[0]);
+    await waitFor(() => {
+      expect(screen.getByTestId('kids-together-panel')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('kids-together-open-coparent'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Could not open that Character Book card.')).toBeInTheDocument();
+    });
+    // The relationship modal must stay open — a failed peripheral-open must
+    // never silently close the surface the user was already looking at.
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText('Alex')).toBeInTheDocument();
+  });
+
   it('shows error state when relationship not found', async () => {
     (getMockRomanticRelationshipById as any).mockReturnValue(undefined);
     
