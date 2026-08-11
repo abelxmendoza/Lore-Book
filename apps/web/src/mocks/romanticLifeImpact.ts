@@ -274,6 +274,121 @@ const MOCK_INFLUENCE_BY_REL_ID: Record<string, MockRelationshipInfluence> = {
       recovery_status: 'peaceful_distance',
     },
   },
+  'rel-010': {
+    autobiographical_impact: 0.91,
+    impact_label: 'Foundational',
+    impact_summary:
+      'Marrying Jamie and building a household with Mia and Eli reshaped what stability means to you — this is the relationship the rest of your story gets measured against.',
+    life_arcs_influenced: [
+      { id: 'arc-jamie-1', title: 'Building a shared household', arc_type: 'family', confidence: 0.95 },
+      { id: 'arc-jamie-2', title: 'Becoming a step-parent to Eli', arc_type: 'family', confidence: 0.87 },
+      { id: 'arc-jamie-3', title: 'Long-term financial partnership', arc_type: 'career', confidence: 0.74 },
+    ],
+    knowledge_claims_crystallized: [
+      {
+        id: 'kc-jamie-1',
+        evidence_summary:
+          'Choosing each other on ordinary days matters more than grand gestures — the marriage runs on steady, unglamorous teamwork.',
+      },
+      {
+        id: 'kc-jamie-2',
+        evidence_summary:
+          'Step-parenting Eli taught you patience does not mean waiting quietly — it means showing up consistently until trust is earned.',
+      },
+    ],
+    relationship_patterns: [
+      {
+        pattern_description: 'Logistics conversations (kids, money, schedules) crowd out romance during busy seasons, but you both notice and course-correct.',
+        pattern_type: 'household_load_balancing',
+        frequency: 9,
+      },
+    ],
+  },
+  'rel-012': {
+    autobiographical_impact: 0.56,
+    impact_label: 'Grounding',
+    impact_summary:
+      'Co-parenting Noah with Priya is not romantic anymore, but the discipline it takes shaped how reliable you are with everyone else in your life.',
+    life_arcs_influenced: [
+      { id: 'arc-priya-1', title: 'Co-parenting Noah across two households', arc_type: 'family', confidence: 0.9 },
+    ],
+    knowledge_claims_crystallized: [
+      {
+        id: 'kc-priya-1',
+        evidence_summary:
+          'A calm handoff schedule with Priya proved you can separate romantically and still run a household together for Noah.',
+      },
+    ],
+    relationship_patterns: [
+      {
+        pattern_description: 'Conflict stays low because you default to the shared parenting group chat instead of unstructured texts.',
+        pattern_type: 'structured_coparent_communication',
+        frequency: 6,
+      },
+    ],
+  },
+  'rel-013': {
+    autobiographical_impact: 0.5,
+    impact_label: 'Steady',
+    impact_summary:
+      'Raising Zoe with Harper across two homes is mostly logistics now, but the consistency you both hold matters more than either of you say out loud.',
+    life_arcs_influenced: [
+      { id: 'arc-harper-1', title: 'Two-household parenting rhythm for Zoe', arc_type: 'family', confidence: 0.83 },
+    ],
+    knowledge_claims_crystallized: [
+      {
+        id: 'kc-harper-1',
+        evidence_summary:
+          'Different bedtime styles between homes caused early friction — you learned to let Harper\'s house run its own rules without relitigating it.',
+      },
+    ],
+    relationship_patterns: [
+      {
+        pattern_description: 'Texts get sharp under deadline pressure but resolve quickly once a game or conference is actually on the calendar.',
+        pattern_type: 'stress_spike_quick_repair',
+        frequency: 4,
+      },
+    ],
+  },
+  'rel-014': {
+    autobiographical_impact: 0.48,
+    impact_label: 'Steady',
+    impact_summary:
+      "Leo's weekends with Daniel are dependable — that reliability is the whole relationship now, and it works.",
+    life_arcs_influenced: [
+      { id: 'arc-daniel-1', title: 'Reliable weekend co-parenting for Leo', arc_type: 'family', confidence: 0.8 },
+    ],
+    knowledge_claims_crystallized: [
+      {
+        id: 'kc-daniel-1',
+        evidence_summary:
+          'Daniel is slow to reply mid-week but never misses a pickup or a birthday — you learned to judge the relationship by follow-through, not response time.',
+      },
+    ],
+  },
+  'rel-015': {
+    autobiographical_impact: 0.55,
+    impact_label: 'Stabilizing',
+    impact_summary:
+      "The co-parent label with Sage fits cleanly — no romantic ambiguity to manage, just a shared calendar for Riley that actually holds.",
+    life_arcs_influenced: [
+      { id: 'arc-sage-1', title: 'Joint decision-making on school and health for Riley', arc_type: 'family', confidence: 0.85 },
+    ],
+    knowledge_claims_crystallized: [
+      {
+        id: 'kc-sage-1',
+        evidence_summary:
+          'Naming the relationship "co-parent" instead of leaving it undefined removed months of ambiguity for both of you and for Riley.',
+      },
+    ],
+    relationship_patterns: [
+      {
+        pattern_description: 'Holidays need advance planning, but once scheduled neither of you renegotiates it — that discipline is what makes it work.',
+        pattern_type: 'advance_planning_discipline',
+        frequency: 3,
+      },
+    ],
+  },
 };
 
 export function getMockRelationshipInfluence(relationshipId: string): MockRelationshipInfluence | undefined {

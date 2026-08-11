@@ -9,8 +9,10 @@ import {
   getMockDateEvents,
   getMockRelationshipAnalytics,
   getMockRankings,
+  getMockKidsTogether,
   type MockRomanticRelationship
 } from '../romanticRelationships';
+import { getMockRomanticBookCharacterById } from '../romanticPeripheralCharacters';
 
 describe('Romantic Relationships Mock Data', () => {
   describe('generateMockRomanticRelationships', () => {
@@ -255,6 +257,45 @@ describe('Romantic Relationships Mock Data', () => {
       const rankings = getMockRankings('health');
       for (let i = 1; i < rankings.length; i++) {
         expect(rankings[i - 1].relationship_health).toBeGreaterThanOrEqual(rankings[i].relationship_health);
+      }
+    });
+  });
+
+  describe('getMockKidsTogether', () => {
+    it('returns the together kid and the step-kid with a co-parent for the marriage relationship', () => {
+      const kids = getMockKidsTogether('rel-010');
+      expect(kids.length).toBe(2);
+      const mia = kids.find((k) => k.name === 'Mia');
+      const eli = kids.find((k) => k.name === 'Eli');
+      expect(mia?.relation).toBe('together');
+      expect(eli?.relation).toBe('step');
+      expect(eli?.coParents?.[0]?.name).toBe('Jordan Ellis');
+      expect(eli?.coParents?.[0]?.id).toBe('romantic-periph-jordan-ellis');
+    });
+
+    it('returns an empty array for a relationship with no kids', () => {
+      expect(getMockKidsTogether('rel-011')).toEqual([]);
+    });
+
+    // Regression: every kid/co-parent id the Kids Together tab can render as
+    // clickable must resolve to a real demo Character, or clicking it in demo
+    // mode falls through to a real (failing) API fetch instead of opening
+    // the in-place demo character modal.
+    it('every kid and co-parent id resolves to a real demo Character', () => {
+      const withKids = generateMockRomanticRelationships().filter(
+        (rel) => rel.metadata?.has_kids_together === true,
+      );
+      for (const rel of withKids) {
+        for (const kid of getMockKidsTogether(rel.id)) {
+          expect(getMockRomanticBookCharacterById(kid.id), `kid ${kid.name} (${kid.id})`).toBeDefined();
+          for (const coParent of kid.coParents ?? []) {
+            if (!coParent.id) continue;
+            expect(
+              getMockRomanticBookCharacterById(coParent.id),
+              `co-parent ${coParent.name} (${coParent.id})`,
+            ).toBeDefined();
+          }
+        }
       }
     });
   });

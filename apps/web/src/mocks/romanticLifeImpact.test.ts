@@ -4,6 +4,7 @@ import {
   getMockRelationshipInfluenceForPerson,
   resolveMockRelationshipInfluence,
 } from './romanticLifeImpact';
+import { generateMockRomanticRelationships } from './romanticRelationships';
 
 describe('romanticLifeImpact', () => {
   it('returns unique impact stories per relationship id', () => {
@@ -25,5 +26,21 @@ describe('romanticLifeImpact', () => {
       personId: 'char-001',
     });
     expect(resolved?.impact_label).toBe('Significant');
+  });
+
+  // Regression: every relationship with kids_together data (the ones the
+  // Dating & Romance "Kids Together" tab links to) must ALSO have a Life
+  // Impact story, or that tab renders empty in demo mode for exactly the
+  // relationships someone would open first while checking Kids Together.
+  it('covers Life Impact for every demo relationship that has kids together', () => {
+    const withKids = generateMockRomanticRelationships().filter(
+      (rel) => rel.metadata?.has_kids_together === true,
+    );
+    expect(withKids.length).toBeGreaterThan(0);
+    for (const rel of withKids) {
+      const influence = getMockRelationshipInfluence(rel.id);
+      expect(influence, `${rel.id} (${rel.person_name}) has kids together but no Life Impact story`).toBeDefined();
+      expect(influence?.impact_summary?.length ?? 0).toBeGreaterThan(0);
+    }
   });
 });

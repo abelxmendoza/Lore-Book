@@ -684,7 +684,7 @@ export function generateMockRomanticRelationships(): MockRomanticRelationship[] 
             name: 'Eli',
             relation: 'step',
             belongsTo: 'partner',
-            coParents: [{ name: 'Jordan Ellis', relation_label: "Jamie's ex-husband" }],
+            coParents: [{ id: 'romantic-periph-jordan-ellis', name: 'Jordan Ellis', relation_label: "Jamie's ex-husband" }],
           },
         ],
       },
