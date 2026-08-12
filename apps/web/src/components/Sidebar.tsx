@@ -75,8 +75,11 @@ const SidebarContent = ({
   };
 
   return (
-    <div className="flex flex-col h-full relative">
-      <div className="flex-1 overflow-y-auto pb-20">
+    <div className="relative flex h-full min-w-0 max-w-full flex-col overflow-x-hidden">
+      <div
+        className="flex-1 min-w-0 max-w-full overflow-x-hidden overflow-y-auto overscroll-x-none pb-20"
+        data-testid="sidebar-scroll"
+      >
         <div className="mb-6 hidden lg:block">
           {/* Logo — clicking returns to Home dashboard */}
           <button
@@ -781,14 +784,15 @@ export const Sidebar = ({
       )}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-64 flex flex-col border-r border-border/60 bg-black/95 backdrop-blur-lg transform transition-transform duration-300 ease-in-out lg:hidden",
+          "fixed inset-y-0 left-0 z-50 flex w-64 max-w-[100vw] min-w-0 flex-col overflow-x-hidden border-r border-border/60 bg-black/95 backdrop-blur-lg transform transition-transform duration-300 ease-in-out overscroll-x-none touch-pan-y lg:hidden",
           isMobileDrawerOpen ? "translate-x-0" : "-translate-x-full"
         )}
         style={{ paddingTop: 'env(safe-area-inset-top, 0)', paddingBottom: 'env(safe-area-inset-bottom, 0)' }}
         aria-label="Navigation menu"
         aria-hidden={!isMobileDrawerOpen}
+        data-testid="mobile-sidebar-drawer"
       >
-        <div className="flex shrink-0 items-center justify-between p-4 border-b border-border/60 lg:hidden">
+        <div className="flex min-w-0 max-w-full shrink-0 items-center justify-between overflow-x-hidden p-4 border-b border-border/60 lg:hidden">
           <Logo size="md" showText={true} />
           <Button
             variant="ghost"
@@ -800,7 +804,7 @@ export const Sidebar = ({
             <X className="h-5 w-5" />
           </Button>
         </div>
-        <div className="flex-1 min-h-0 p-4 lg:hidden">
+        <div className="flex-1 min-h-0 min-w-0 max-w-full overflow-x-hidden p-4 lg:hidden">
           <SidebarContent
             activeSurface={activeSurface}
             onSurfaceChange={onSurfaceChange}
