@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { LorebookLibraryPage } from './LorebookLibraryPage';
 
@@ -34,6 +34,31 @@ vi.mock('../../hooks/useLoreReadiness', () => ({
 describe('LorebookLibraryPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.removeItem('demo_core_lorebooks_v2');
+    localStorage.removeItem('demo_edition_fixtures_seeded_v1');
+  });
+
+  it('shows seeded edition history for selected demo subjects', async () => {
+    render(
+      <MemoryRouter>
+        <LorebookLibraryPage />
+      </MemoryRouter>
+    );
+
+    const careerTitle = await screen.findByText('Career at Vanguard Robotics');
+    const card = careerTitle.closest('article');
+    expect(card).not.toBeNull();
+    expect(within(card!).getByText(/v3 · 3 versions/i)).toBeInTheDocument();
+    expect(screen.getByText('Relationships — Jamie & Marcus')).toBeInTheDocument();
+
+    fireEvent.click(within(card!).getByRole('button', { name: /2 older versions/i }));
+    await waitFor(() => {
+      expect(within(card!).getByText('Edition History')).toBeInTheDocument();
+      expect(within(card!).getByText('v3')).toBeInTheDocument();
+      expect(within(card!).getByText('v2')).toBeInTheDocument();
+      expect(within(card!).getByText('v1')).toBeInTheDocument();
+    });
+    expect(card).toHaveClass('xl:col-span-3');
   });
 
   it('renders compiled lorebooks heading and demo books', () => {

@@ -5,12 +5,20 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { useLoreReadiness } from '../../hooks/useLoreReadiness';
+import { useLoreReadinessSimulationOptional } from '../../contexts/LoreReadinessSimulationContext';
 import {
   lorebookEditUrl,
   lorebookReadUrl,
 } from '../../lib/lorebookLibrary';
 import { DEMO_LOREBOOK_CATALOG } from '../../mocks/lorebooks';
 import { resolveDemoLorebookById } from '../../lib/storyForge/forgeDemoLibrary';
+import {
+  listDemoCoreRecords,
+  recompileDemoCoreLorebook,
+  saveDemoCoreLorebook,
+} from '../../lib/storyForge/demoCoreLorebookStore';
+import { ensureDemoEditionFixturesSeeded } from '../../lib/storyForge/demoEditionFixtures';
+import { runForgeForPreset } from '../../lib/storyForge/forgeReadinessBridge';
 import { fetchJson } from '../../lib/api';
 import {
   biographyToPdfSections,
@@ -104,6 +112,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
   const inShell = useLorebookShell();
   const navigate = useNavigate();
   const shouldUseMock = useShouldUseMockData();
+  const simulation = useLoreReadinessSimulationOptional();
   const { compiledBooks, loading: readinessLoading } = useLoreReadiness();
   const [books, setBooks] = useState<LibraryBook[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,6 +123,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
   const [expandedVersionsId, setExpandedVersionsId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'core' | 'recent'>('all');
   const [actionError, setActionError] = useState<string | null>(null);
+  const [demoStoreTick, setDemoStoreTick] = useState(0);
   const compiledBooksKey = useMemo(
     () => compiledBooks.map((book) => book.id).join(','),
     [compiledBooks],
@@ -121,10 +131,37 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
 
   const loadBooks = useCallback(async () => {
     if (shouldUseMock) {
-      setBooks(
-        compiledBooks.map((book, index) => {
+      ensureDemoEditionFixturesSeeded();
+      const coreRecords = listDemoCoreRecords().filter((record) => record.edition === 'main');
+      const coreIds = new Set(coreRecords.map((record) => record.id));
+      const coreBookIds = new Set(coreRecords.map((record) => record.bookId));
+
+      const coreMapped: LibraryBook[] = coreRecords.map((record, index) => {
+        const style = styleForIndex(index);
+        const catalog = DEMO_LOREBOOK_CATALOG.find((entry) => entry.id === record.bookId);
+        return {
+          id: record.id,
+          title: record.lorebookName,
+          subtitle: record.compiledBook.subtitle,
+          scope: 'Core edition',
+          period: formatDate(record.createdAt),
+          created_at: record.createdAt,
+          is_core_lorebook: true,
+          lorebook_name: record.lorebookName,
+          lorebook_version: record.lorebookVersion,
+          chapterCount: record.compiledBook.chapters.length,
+          pages: Math.max(record.compiledBook.chapters.length * 4, record.compiledBook.chapters.length),
+          gradient: catalog?.gradient ?? style.gradient,
+          accent: catalog?.accent ?? style.accent,
+          border: catalog?.border ?? style.border,
+        };
+      });
+
+      const compiledMapped: LibraryBook[] = compiledBooks
+        .filter((book) => !coreIds.has(book.id) && !coreBookIds.has(book.id))
+        .map((book, index) => {
           const catalog = DEMO_LOREBOOK_CATALOG.find((entry) => entry.id === book.id);
-          const style = styleForIndex(index);
+          const style = styleForIndex(coreMapped.length + index);
           return {
             id: book.id,
             title: book.title ?? catalog?.title ?? 'Untitled lorebook',
@@ -133,14 +170,16 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
             created_at: book.created_at,
             is_core_lorebook: book.is_core_lorebook,
             lorebook_name: book.lorebook_name,
+            lorebook_version: undefined,
             chapterCount: book.chapterCount ?? catalog?.chapters ?? 0,
             pages: catalog?.pages ?? Math.max((book.chapterCount ?? 0) * 4, book.chapterCount ?? 0),
             gradient: catalog?.gradient ?? style.gradient,
             accent: catalog?.accent ?? style.accent,
             border: catalog?.border ?? style.border,
           };
-        }),
-      );
+        });
+
+      setBooks(collapseLorebookVersions([...coreMapped, ...compiledMapped]));
       setLoadError(null);
       setLoading(readinessLoading);
       return;
@@ -197,7 +236,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
       setLoading(false);
     }
     // compiledBooksKey stabilizes the effect when parent re-renders with a fresh array reference.
-  }, [shouldUseMock, compiledBooksKey, readinessLoading]);
+  }, [shouldUseMock, compiledBooksKey, readinessLoading, demoStoreTick]);
 
   useEffect(() => {
     void loadBooks();
@@ -212,17 +251,24 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
   }, [books, filter]);
 
   const handleSaveAsCore = async (book: LibraryBook) => {
-    if (savingCoreId || shouldUseMock) return;
+    if (savingCoreId) return;
     const name = window.prompt('Name this core edition (e.g. "My Full Life Story")', book.lorebook_name || book.title);
     if (!name?.trim()) return;
     setSavingCoreId(book.id);
     setActionError(null);
     try {
-      await fetchJson(`/api/biography/${book.id}/save-as-core`, {
-        method: 'POST',
-        body: JSON.stringify({ lorebookName: name.trim() }),
-      });
-      await loadBooks();
+      if (shouldUseMock) {
+        const forge = runForgeForPreset(simulation?.preset ?? 'rich');
+        const saved = saveDemoCoreLorebook(name.trim(), forge);
+        if (!saved) throw new Error('Demo save as core failed');
+        setDemoStoreTick((tick) => tick + 1);
+      } else {
+        await fetchJson(`/api/biography/${book.id}/save-as-core`, {
+          method: 'POST',
+          body: JSON.stringify({ lorebookName: name.trim() }),
+        });
+        await loadBooks();
+      }
     } catch (error) {
       console.error('Failed to save as core:', error);
       setActionError('Could not save as a core edition. Try again.');
@@ -232,7 +278,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
   };
 
   const handleRecompileCore = async (book: LibraryBook) => {
-    if (recompilingId || shouldUseMock || !book.lorebook_name) return;
+    if (recompilingId || !book.lorebook_name) return;
     const ok = window.confirm(
       `Recompile “${book.lorebook_name}” from your latest memory? This creates a new version — the previous edition stays in your library.`,
     );
@@ -240,11 +286,17 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
     setRecompilingId(book.id);
     setActionError(null);
     try {
-      await fetchJson('/api/biography/recompile-core', {
-        method: 'POST',
-        body: JSON.stringify({ lorebookName: book.lorebook_name }),
-      });
-      await loadBooks();
+      if (shouldUseMock) {
+        const forge = recompileDemoCoreLorebook(book.lorebook_name);
+        if (!forge) throw new Error('Demo recompile failed');
+        setDemoStoreTick((tick) => tick + 1);
+      } else {
+        await fetchJson('/api/biography/recompile-core', {
+          method: 'POST',
+          body: JSON.stringify({ lorebookName: book.lorebook_name }),
+        });
+        await loadBooks();
+      }
     } catch (error) {
       console.error('Failed to recompile core:', error);
       setActionError('Recompile failed. Chat more, then try again.');
@@ -313,17 +365,15 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
             </button>
           </div>
 
-          {!shouldUseMock && (
-            <button
-              type="button"
-              onClick={() => void loadBooks()}
-              disabled={loading}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-mono text-white/50 hover:text-white/80 border border-white/10 hover:border-white/20 transition-colors shrink-0"
-            >
-              <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-              Refresh
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => void loadBooks()}
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-mono text-white/50 hover:text-white/80 border border-white/10 hover:border-white/20 transition-colors shrink-0"
+          >
+            <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+            Refresh
+          </button>
         </div>
 
         <LorebookLibraryHero
@@ -338,7 +388,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
           </div>
         )}
 
-        {!shouldUseMock && books.length > 0 && (
+        {books.length > 0 && (
           <div className="flex flex-wrap justify-center gap-2 mb-6 sm:mb-8">
             {(['all', 'recent', 'core'] as const).map((key) => (
               <button
@@ -396,6 +446,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
                 key={book.id}
                 className={cn(
                   'group relative flex flex-col rounded-2xl border overflow-hidden text-left transition-all hover:shadow-xl hover:shadow-black/40 hover:-translate-y-0.5',
+                  expandedVersionsId === book.id && 'sm:col-span-2 xl:col-span-3',
                   book.border
                 )}
               >
@@ -473,8 +524,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
                         PDF
                       </button>
                     </div>
-                    {!shouldUseMock && (
-                      <div className="grid grid-cols-1 gap-2">
+                    <div className="grid grid-cols-1 gap-2">
                         {book.is_core_lorebook && book.lorebook_name ? (
                           <button
                             type="button"
@@ -505,8 +555,8 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
                           </button>
                         )}
                       </div>
-                    )}
-                    {book.olderVersions && book.olderVersions.length > 0 && (
+                    {(book.olderVersions && book.olderVersions.length > 0) ||
+                    (book.is_core_lorebook && book.lorebook_name) ? (
                       <div className="pt-1">
                         <button
                           type="button"
@@ -516,7 +566,11 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
                           className="w-full flex items-center justify-center gap-1.5 text-[11px] font-medium text-white/40 hover:text-white/70 py-1.5 transition-colors"
                         >
                           <History className="h-3 w-3" />
-                          {expandedVersionsId === book.id ? 'Hide older versions' : `${book.olderVersions.length} older version${book.olderVersions.length === 1 ? '' : 's'}`}
+                          {expandedVersionsId === book.id
+                            ? 'Hide edition history'
+                            : book.olderVersions && book.olderVersions.length > 0
+                              ? `${book.olderVersions.length} older version${book.olderVersions.length === 1 ? '' : 's'}`
+                              : 'Edition history'}
                           <ChevronDown
                             className={cn('h-3 w-3 transition-transform', expandedVersionsId === book.id && 'rotate-180')}
                           />
@@ -531,7 +585,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
                           </div>
                         )}
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </article>

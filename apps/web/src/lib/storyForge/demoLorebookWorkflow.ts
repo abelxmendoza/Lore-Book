@@ -10,6 +10,8 @@ import {
   setForgeDemoBook,
 } from './forgeDemoLibrary';
 import type { CompiledBookDraft } from './types';
+import { ensureDemoEditionFixturesSeeded } from './demoEditionFixtures';
+import { listDemoCoreRecords } from './demoCoreLorebookStore';
 
 export type DemoCompileInput = {
   query?: string;
@@ -91,6 +93,29 @@ export function syncSimulationDemoLibrary(
   }
 
   registerForgeDemoBooks(books);
+
+  // Core edition lineage lives in localStorage; re-seed + register after cache clear
+  // so VersionManager / Read still resolve edition ids in demo mode.
+  const coreRecords = ensureDemoEditionFixturesSeeded();
+  const memory = runForgeForPreset('rich').memory;
+  if (memory) {
+    for (const record of coreRecords.length > 0 ? coreRecords : listDemoCoreRecords()) {
+      const converted = compiledBookToDemoLorebook(record.compiledBook, memory, {
+        lorebookName: record.lorebookName,
+        lorebookVersion: record.lorebookVersion,
+        edition: record.edition,
+      });
+      const readable = { ...converted, id: record.id, outline: { ...converted.outline, id: record.id } };
+      setForgeDemoBook(readable);
+      if (record.bookId !== record.id) {
+        setForgeDemoBook({
+          ...readable,
+          id: record.bookId,
+          outline: { ...readable.outline, id: record.bookId },
+        });
+      }
+    }
+  }
 }
 
 export function compileDemoLorebook(input: DemoCompileInput): DemoCompileResult {

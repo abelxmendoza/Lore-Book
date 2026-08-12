@@ -4,6 +4,7 @@ import { mockDataService } from '../services/mockDataService';
 import { dummyCharacters } from './characters/CharacterBook';
 import { dummyLocations } from './locations/LocationBook';
 import { narrativeSkills } from '../mocks/skills';
+import { ensureDemoEditionFixturesSeeded } from '../lib/storyForge/demoEditionFixtures';
 
 /**
  * Pre-registers all mock data into the mockDataService registry when demo mode is active.
@@ -21,6 +22,7 @@ export function DemoModeBootstrap() {
     mockDataService.register.characters(dummyCharacters);
     mockDataService.register.locations(dummyLocations);
     mockDataService.register.skills(narrativeSkills);
+    ensureDemoEditionFixturesSeeded();
   }, [runtimeDataMode]);
 
   return null;
