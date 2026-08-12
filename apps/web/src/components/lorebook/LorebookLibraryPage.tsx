@@ -20,6 +20,8 @@ import {
 import { ensureDemoEditionFixturesSeeded } from '../../lib/storyForge/demoEditionFixtures';
 import { runForgeForPreset } from '../../lib/storyForge/forgeReadinessBridge';
 import { fetchJson } from '../../lib/api';
+import { isDevelopment } from '../../config/env';
+import { isSupabaseConfigured } from '../../lib/supabase';
 import {
   biographyToPdfSections,
   downloadLorebookPdf,
@@ -113,7 +115,16 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
   const navigate = useNavigate();
   const shouldUseMock = useShouldUseMockData();
   const simulation = useLoreReadinessSimulationOptional();
-  const { compiledBooks, loading: readinessLoading } = useLoreReadiness();
+  const { compiledBooks, loading: readinessLoading, isSimulated } = useLoreReadiness();
+  // Local Lore readiness simulation can be active independently of the global
+  // mock-data toggle. Treat either as the demo library; otherwise this exact
+  // route receives simulated compiledBooks but still calls the unavailable
+  // real biography API and renders no version cards.
+  const localSimulationFallback =
+    isDevelopment &&
+    !isSupabaseConfigured() &&
+    simulation?.simulationEnabled === true;
+  const useDemoLibrary = shouldUseMock || isSimulated || localSimulationFallback;
   const [books, setBooks] = useState<LibraryBook[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -130,7 +141,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
   );
 
   const loadBooks = useCallback(async () => {
-    if (shouldUseMock) {
+    if (useDemoLibrary) {
       ensureDemoEditionFixturesSeeded();
       const coreRecords = listDemoCoreRecords().filter((record) => record.edition === 'main');
       const coreIds = new Set(coreRecords.map((record) => record.id));
@@ -236,7 +247,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
       setLoading(false);
     }
     // compiledBooksKey stabilizes the effect when parent re-renders with a fresh array reference.
-  }, [shouldUseMock, compiledBooksKey, readinessLoading, demoStoreTick]);
+  }, [useDemoLibrary, compiledBooksKey, readinessLoading, demoStoreTick]);
 
   useEffect(() => {
     void loadBooks();
@@ -257,7 +268,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
     setSavingCoreId(book.id);
     setActionError(null);
     try {
-      if (shouldUseMock) {
+      if (useDemoLibrary) {
         const forge = runForgeForPreset(simulation?.preset ?? 'rich');
         const saved = saveDemoCoreLorebook(name.trim(), forge);
         if (!saved) throw new Error('Demo save as core failed');
@@ -286,7 +297,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
     setRecompilingId(book.id);
     setActionError(null);
     try {
-      if (shouldUseMock) {
+      if (useDemoLibrary) {
         const forge = recompileDemoCoreLorebook(book.lorebook_name);
         if (!forge) throw new Error('Demo recompile failed');
         setDemoStoreTick((tick) => tick + 1);
@@ -309,7 +320,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
     if (downloadingId) return;
     setDownloadingId(book.id);
     try {
-      if (shouldUseMock) {
+      if (useDemoLibrary) {
         const demo = resolveDemoLorebookById(book.id);
         if (!demo) throw new Error('Demo book not found');
         const sections = flattenMemoirSections(demo.outline.sections ?? []);
