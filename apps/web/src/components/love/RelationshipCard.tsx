@@ -12,7 +12,7 @@ import {
   metricLabel,
   type DemoMetricKey,
 } from '../../mocks/romanticDemoProfiles';
-import { composeRomanticRelationshipBadgeLabel, humanizeRomanceToken } from '../../lib/romanticRelationshipLabel';
+import { composeRomanticRelationshipBadgeLabel, humanizeRomanceToken, isCoParentRomanceType } from '../../lib/romanticRelationshipLabel';
 import { getRelationshipStatusClasses } from './relationshipStatusColors';
 
 type RomanticRelationship = {
@@ -200,15 +200,16 @@ export const RelationshipCard = ({
             >
               {badgeLabel}
             </Badge>
-            {relationship.metadata?.has_kids_together === true && (
-              <Badge
-                variant="outline"
-                className="max-w-full truncate text-[10px] font-medium px-1.5 py-0 bg-cyan-500/10 text-cyan-200 border-cyan-500/25"
-                data-testid="kids-together-badge"
-              >
-                Kids together
-              </Badge>
-            )}
+            {relationship.metadata?.has_kids_together === true &&
+              !isCoParentRomanceType(relationship.relationship_type) && (
+                <Badge
+                  variant="outline"
+                  className="max-w-full truncate text-[10px] font-medium px-1.5 py-0 bg-cyan-500/10 text-cyan-200 border-cyan-500/25"
+                  data-testid="kids-together-badge"
+                >
+                  Kids together
+                </Badge>
+              )}
           </div>
           <Heart
             className={cn(

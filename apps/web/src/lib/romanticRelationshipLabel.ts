@@ -14,6 +14,7 @@ export type RomanticLabelInput = {
   is_situationship?: boolean | null;
   exclusivity_status?: string | null;
   is_current?: boolean | null;
+  character_sex?: string | null;
 };
 
 const ROMANCE_IDENTITY_TYPES = new Set([
@@ -131,16 +132,43 @@ export function isRedundantRomanceIdentityLabel(
 }
 
 /**
+ * Baby Mama / Baby Daddy / Co-parent — 'baby_mama'/'baby_daddy' are already
+ * gendered by relationship_type; generic 'co_parent' falls back to the other
+ * character's confirmed sex when known, or stays neutral when it isn't
+ * (e.g. nonbinary or unconfirmed — matches the demo "neutral label" case).
+ */
+function composeCoParentLabel(type: string, characterSex?: string | null): string {
+  if (type === 'baby_mama') return 'Baby Mama';
+  if (type === 'baby_daddy') return 'Baby Daddy';
+  const sex = (characterSex ?? '').toLowerCase();
+  if (sex === 'female') return 'Baby Mama';
+  if (sex === 'male') return 'Baby Daddy';
+  return 'Co-parent';
+}
+
+/**
  * Single Dating & Romance–style badge: prefer demo showcaseTag, otherwise
  * compose type · exclusivity / status without duplicating situationship.
  */
 export function composeRomanticRelationshipBadgeLabel(rel: RomanticLabelInput): string {
+  const type = normalizeRomanceTypeKey(rel.relationship_type);
+
+  // Co-parent relationships always compute a gendered label dynamically —
+  // takes priority over any demo showcaseTag, which otherwise duplicates the
+  // standalone "Kids together" badge already shown separately on cards that
+  // have it (see RelationshipCard.tsx).
+  if (isCoParentRomanceType(type)) {
+    const label = composeCoParentLabel(type, rel.character_sex);
+    const statusKey = (rel.status ?? '').toLowerCase();
+    const statusLabel = statusKey && statusKey !== 'active' ? humanizeRomanceToken(statusKey) : null;
+    return [label, statusLabel].filter(Boolean).join(' · ') || label;
+  }
+
   if (rel.id) {
     const showcase = getRomanticDemoProfile(rel.id)?.showcaseTag;
     if (showcase) return showcase;
   }
 
-  const type = normalizeRomanceTypeKey(rel.relationship_type);
   const typeLabel = type ? humanizeRomanceToken(type) : null;
   const exclusivity = formatExclusivityLabel(rel.exclusivity_status);
   const statusKey = (rel.status ?? '').toLowerCase();
