@@ -615,6 +615,13 @@ export const RelationshipDetailModal = ({
                 value={value}
                 data-testid={value === 'their-connections' ? 'tab-their-connections' : undefined}
                 aria-label={label}
+                // Radix's TabsTrigger activates on mousedown internally, which
+                // can be unreliable across trackpads/remote input — a plain
+                // click (mouseup+click) is the one signal every pointer type
+                // reliably fires. Set the tab explicitly here too so a normal
+                // click always switches and keeps the tab open, instead of
+                // depending solely on Radix's own mousedown-based activation.
+                onClick={() => setActiveTab(value)}
                 className="flex flex-row shrink-0 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium leading-none whitespace-nowrap touch-manipulation data-[state=active]:bg-pink-500/20 data-[state=active]:text-pink-200 data-[state=active]:border data-[state=active]:border-pink-500/30"
               >
                 <Icon className="h-4 w-4 flex-shrink-0" />
