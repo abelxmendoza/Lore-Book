@@ -539,7 +539,12 @@ export const RelationshipDetailModal = ({
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="border-pink-500/30 bg-gradient-to-br from-black via-purple-950 to-black" onClose={onClose}>
+      {/* Stable height: short tabs (Kids Together) must not shrink the panel and
+          shift the tab strip out from under the pointer mid-click. */}
+      <DialogContent
+        className="border-pink-500/30 bg-gradient-to-br from-black via-purple-950 to-black sm:h-[90vh]"
+        onClose={onClose}
+      >
         <DialogHeader>
           <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
             <Heart className="w-5 h-5 sm:w-6 sm:h-6 text-pink-400 shrink-0" />

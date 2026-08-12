@@ -1,5 +1,6 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
+import { useRef } from 'react';
 import { X } from 'lucide-react';
 import { Button } from './button';
 import { cn } from '../../lib/cn';
@@ -25,6 +26,15 @@ type DialogTitleProps = {
 };
 
 export const Dialog = ({ open, onOpenChange, children }: DialogProps) => {
+  /**
+   * A `click` fires on the nearest common ancestor of press and release, so a
+   * press that starts on a control inside the panel and releases over the
+   * backdrop (the panel re-laid out under the cursor — e.g. switching to a
+   * shorter tab) targets this backdrop and used to dismiss the modal. Require
+   * the press to start on the backdrop too.
+   */
+  const pressedBackdrop = useRef(false);
+
   if (!open) return null;
 
   return (
@@ -32,7 +42,13 @@ export const Dialog = ({ open, onOpenChange, children }: DialogProps) => {
       role="dialog"
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4"
-      onClick={() => onOpenChange(false)}
+      onPointerDown={(event) => {
+        pressedBackdrop.current = event.target === event.currentTarget;
+      }}
+      onClick={(event) => {
+        if (event.target !== event.currentTarget || !pressedBackdrop.current) return;
+        onOpenChange(false);
+      }}
     >
       {children}
     </div>
