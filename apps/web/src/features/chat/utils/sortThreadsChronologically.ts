@@ -1,40 +1,25 @@
 import type { ChatThread } from '../hooks/useChatThreads';
 
 /**
- * Best activity timestamp for sidebar order:
- * max(updatedAt, last message timestamp). Invalid clocks fall back safely.
+ * Activity timestamp for sidebar order — matches server list ordering
+ * (`conversation_sessions.updated_at`). Do not mix in local message clocks:
+ * that made hydrated devices reorder differently from fresh ones.
  */
 export function threadActivityMs(thread: {
   id?: string;
   updatedAt?: string | null;
   messages?: Array<{ timestamp?: Date | string | null }>;
 }): number {
-  let best = 0;
-
   if (thread.updatedAt) {
     const updated = Date.parse(thread.updatedAt);
-    if (Number.isFinite(updated)) best = Math.max(best, updated);
+    if (Number.isFinite(updated)) return updated;
   }
-
-  const messages = thread.messages;
-  if (messages?.length) {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const ts = messages[i]?.timestamp;
-      if (!ts) continue;
-      const ms = ts instanceof Date ? ts.getTime() : Date.parse(String(ts));
-      if (Number.isFinite(ms)) {
-        best = Math.max(best, ms);
-        break;
-      }
-    }
-  }
-
-  return best;
+  return 0;
 }
 
 /**
- * Newest activity first (reverse chronological). Stable tie-break on id.
- * This is the single source of truth for thread list order across devices.
+ * Newest server activity first (reverse chronological). Stable tie-break on id.
+ * Single source of truth for thread list order across mobile and desktop.
  */
 export function sortThreadsChronologically<T extends {
   id: string;

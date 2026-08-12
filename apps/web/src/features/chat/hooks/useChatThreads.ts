@@ -41,6 +41,7 @@ import {
   persistAuthThreadCache,
   readAuthThreadCache,
   readAuthThreadFromCache,
+  subscribeThreadCacheChanges,
 } from '../utils/threadLocalCache';
 
 export type ChatThread = {
@@ -207,21 +208,26 @@ export const useChatThreads = () => {
 
   // ── Backend helpers ─────────────────────────────────────────────────────────
 
-  const loadFromBackend = useCallback(async () => {
+  const loadFromBackend = useCallback(async (opts?: { quiet?: boolean }) => {
+    const quiet = opts?.quiet === true;
     runtimeDiagnostics.record('backend_load_start');
     runtimeDiagnostics.startTimer('backend_load');
-    setThreadsLoading(true);
+    if (!quiet) setThreadsLoading(true);
     try {
-      // Repair + recover before listing — ensures nothing is orphaned or drifted.
-      await store.dispatch(chatApi.endpoints.repairChatHealth.initiate()).unwrap().catch(() => {});
-      await store.dispatch(chatApi.endpoints.recoverThreadOrphans.initiate()).unwrap().catch(() => {});
+      // Cold boot repairs orphaned/drifted rows. Quiet focus refreshes skip this so
+      // list order updates quickly without racing the open thread selection.
+      if (!quiet) {
+        await store.dispatch(chatApi.endpoints.repairChatHealth.initiate()).unwrap().catch(() => {});
+        await store.dispatch(chatApi.endpoints.recoverThreadOrphans.initiate()).unwrap().catch(() => {});
+      }
 
       const data = await fetchThreadsPage({ limit: 30 });
       const loaded = dedupeThreads((data.threads || []).map(dbRowToThread));
       const cached = userId ? readAuthThreadCache(userId) : null;
       let mergedThreads: ChatThread[] = [];
       setThreads((prev) => {
-        const base = cached?.threads.length ? cached.threads : prev;
+        // Prefer live in-memory rows over disk cache so in-flight bumps survive merge.
+        const base = prev.length > 0 ? prev : cached?.threads.length ? cached.threads : prev;
         const merged = sortThreadsByActivity(mergeLoadedThreadsWithHydrated(loaded, base));
         mergedThreads = merged;
         threadsRef.current = merged;
@@ -242,24 +248,28 @@ export const useChatThreads = () => {
             .catch(() => {});
         }
       }
-      const lastFromCache = cached?.lastThreadId ?? null;
-      const lastFromStorage = localStorage.getItem(lastThreadKey(userId));
-      const last = lastFromCache ?? lastFromStorage;
-      if (last && mergedThreads.some((t) => t.id === last)) {
-        applyCurrentThreadId(last);
-        if (userId) localStorage.setItem(lastThreadKey(userId), last);
-      } else {
-        applyCurrentThreadId(null);
+      // Quiet refreshes must not yank the open conversation. Only cold loads
+      // re-apply last-thread selection from cache/storage.
+      if (!quiet) {
+        const lastFromStorage = localStorage.getItem(lastThreadKey(userId));
+        const lastFromCache = cached?.lastThreadId ?? null;
+        const last = lastFromStorage ?? lastFromCache;
+        if (last && mergedThreads.some((t) => t.id === last)) {
+          applyCurrentThreadId(last);
+          if (userId) localStorage.setItem(lastThreadKey(userId), last);
+        } else {
+          applyCurrentThreadId(null);
+        }
       }
       setThreadsReady(true);
       dispatch(clearThreadError());
       runtimeDiagnostics.recordTimed('backend_load_complete', 'backend_load', {
-        meta: { threadCount: loaded.length },
+        meta: { threadCount: loaded.length, quiet },
       });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       runtimeDiagnostics.recordTimed('backend_load_fallback', 'backend_load', {
-        meta: { error: errMsg },
+        meta: { error: errMsg, quiet },
       });
       threadPersistenceTracker.markOffline();
       // Backend unreachable — fall back to localStorage.
@@ -267,9 +277,9 @@ export const useChatThreads = () => {
       if (config.env.isDevelopment) {
         console.warn('[useChatThreads] Backend unreachable, falling back to localStorage:', errMsg);
       }
-      loadFromLocalStorage();
+      if (!quiet) loadFromLocalStorage();
     } finally {
-      setThreadsLoading(false);
+      if (!quiet) setThreadsLoading(false);
     }
   }, [userId, loadFromLocalStorage, dispatch]);
 
@@ -312,6 +322,34 @@ export const useChatThreads = () => {
       loadFromLocalStorage();
     }
   }, [isAuthenticated, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-fetch the server list when returning to the tab / sibling tab activity so
+  // mobile and desktop stay aligned without a full remount.
+  useEffect(() => {
+    if (!isAuthenticated || authLoading || isDemoChatMockup()) return;
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const refreshFromServer = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        void loadFromBackend({ quiet: true });
+      }, 250);
+    };
+
+    document.addEventListener('visibilitychange', refreshFromServer);
+    window.addEventListener('focus', refreshFromServer);
+    const unsubscribeCache = userId
+      ? subscribeThreadCacheChanges(userId, refreshFromServer)
+      : () => {};
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      document.removeEventListener('visibilitychange', refreshFromServer);
+      window.removeEventListener('focus', refreshFromServer);
+      unsubscribeCache();
+    };
+  }, [isAuthenticated, authLoading, loadFromBackend, userId]);
 
   // Messages persist via chat_messages on the server (omegaChatService). Client only bumps activity.
   const flushSave = useCallback((_id: string) => {
@@ -450,12 +488,7 @@ export const useChatThreads = () => {
           let emptyThread: ChatThread | null = null;
           setThreads((prev) => {
             const row = prev.find((t) => t.id === id);
-            const localUpdatedAt = row?.updatedAt ?? existing?.updatedAt ?? cachedThread?.updatedAt;
             const serverUpdatedAt = ensuredMeta.updatedAt;
-            const bestUpdatedAt =
-              localUpdatedAt && serverUpdatedAt && localUpdatedAt > serverUpdatedAt
-                ? localUpdatedAt
-                : serverUpdatedAt ?? localUpdatedAt ?? new Date().toISOString();
             emptyThread = {
               id,
               title: ensuredMeta.title || row?.title || existing?.title || DRAFT_THREAD_TITLE,
@@ -465,7 +498,12 @@ export const useChatThreads = () => {
               // Clear list-API messageCount so the UI does not spin on
               // "Finding connections" forever when the server snapshot is empty.
               messageCount: 0,
-              updatedAt: bestUpdatedAt,
+              updatedAt:
+                serverUpdatedAt ??
+                row?.updatedAt ??
+                existing?.updatedAt ??
+                cachedThread?.updatedAt ??
+                new Date().toISOString(),
               threadNumber: result.thread_number ?? row?.threadNumber ?? existing?.threadNumber,
             };
             const next = sortThreadsByActivity(
@@ -485,10 +523,10 @@ export const useChatThreads = () => {
           const row = prev.find((t) => t.id === id);
           const serverUpdatedAt =
             ensuredMeta.updatedAt ??
-            messages[messages.length - 1].timestamp.toISOString();
-          const localUpdatedAt = row?.updatedAt ?? existing?.updatedAt ?? cachedThread?.updatedAt;
-          const bestUpdatedAt =
-            localUpdatedAt && localUpdatedAt > serverUpdatedAt ? localUpdatedAt : serverUpdatedAt;
+            row?.updatedAt ??
+            existing?.updatedAt ??
+            cachedThread?.updatedAt ??
+            new Date().toISOString();
           hydratedThread = {
             id,
             title: ensuredMeta.title || row?.title || existing?.title || 'Restored chat',
@@ -496,7 +534,8 @@ export const useChatThreads = () => {
             dominantEntities: row?.dominantEntities ?? existing?.dominantEntities,
             messages,
             messageCount: messages.length,
-            updatedAt: bestUpdatedAt,
+            // Never invent list order from message clocks — that diverges devices.
+            updatedAt: serverUpdatedAt,
             threadNumber: result.thread_number ?? row?.threadNumber ?? existing?.threadNumber,
           };
 
@@ -526,6 +565,7 @@ export const useChatThreads = () => {
       applyCurrentThreadId(id);
       if (isAuthenticated) {
         localStorage.setItem(lastThreadKey(userId), id);
+        if (userId) persistAuthThreadCache(userId, threadsRef.current, id);
       } else {
         persistLocal(threadsRef.current, id);
       }

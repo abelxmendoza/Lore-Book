@@ -3,6 +3,8 @@ import { sortThreadsByActivity } from './sortThreadsChronologically';
 import { isGenericThreadTitle } from './threadTitleUtils';
 
 const PENDING_DRAFT_TTL_MS = 60 * 60 * 1000; // keep optimistic empty drafts for 1h
+/** Keep a just-bumped local updatedAt until the server write lands. */
+export const LOCAL_ACTIVITY_GRACE_MS = 60_000;
 
 function preferTitle(serverTitle: string, localTitle: string): string {
   if (isGenericThreadTitle(serverTitle) && !isGenericThreadTitle(localTitle)) {
@@ -19,7 +21,30 @@ function shouldKeepPendingLocal(thread: ChatThread): boolean {
 }
 
 /**
+ * Prefer server activity time for cross-device order, but keep a very recent
+ * local bump (in-flight send) so quiet refresh does not drop the active thread.
+ */
+export function resolveThreadUpdatedAt(
+  serverUpdatedAt: string,
+  localUpdatedAt?: string | null,
+  nowMs: number = Date.now()
+): string {
+  if (!localUpdatedAt) return serverUpdatedAt;
+  const serverMs = Date.parse(serverUpdatedAt);
+  const localMs = Date.parse(localUpdatedAt);
+  if (!Number.isFinite(localMs)) return serverUpdatedAt;
+  if (!Number.isFinite(serverMs)) return localUpdatedAt;
+  if (localMs <= serverMs) return serverUpdatedAt;
+  const age = nowMs - localMs;
+  if (age >= 0 && age < LOCAL_ACTIVITY_GRACE_MS) return localUpdatedAt;
+  return serverUpdatedAt;
+}
+
+/**
  * Merge the authoritative server thread list with in-memory state.
+ *
+ * Ordering follows server `updatedAt` across devices, with a short grace window
+ * for optimistic local activity bumps that have not yet been confirmed.
  */
 export function mergeLoadedThreadsWithHydrated(
   loaded: ChatThread[],
@@ -34,8 +59,6 @@ export function mergeLoadedThreadsWithHydrated(
     const existing = prevById.get(t.id);
     if (!existing) return t;
 
-    const existingUpdated = new Date(existing.updatedAt).getTime();
-    const loadedUpdated = new Date(t.updatedAt).getTime();
     const keepMessages = existing.messages.length > 0;
 
     return {
@@ -45,7 +68,7 @@ export function mergeLoadedThreadsWithHydrated(
       dominantEntities: t.dominantEntities ?? existing.dominantEntities,
       threadNumber: t.threadNumber ?? existing.threadNumber,
       ...(keepMessages ? { messages: existing.messages } : {}),
-      updatedAt: existingUpdated > loadedUpdated ? existing.updatedAt : t.updatedAt,
+      updatedAt: resolveThreadUpdatedAt(t.updatedAt, existing.updatedAt),
     };
   });
 

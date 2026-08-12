@@ -21,14 +21,14 @@ describe('threadActivityMs', () => {
     );
   });
 
-  it('prefers the latest message timestamp over updatedAt', () => {
+  it('ignores local message timestamps so devices share the same order', () => {
     const ms = threadActivityMs({
       updatedAt: '2026-06-01T00:00:00Z',
       messages: [
         { id: 'm1', role: 'user', content: 'hi', timestamp: new Date('2026-06-02T00:00:00Z') },
       ],
     });
-    expect(ms).toBe(Date.parse('2026-06-02T00:00:00Z'));
+    expect(ms).toBe(Date.parse('2026-06-01T00:00:00Z'));
   });
 });
 
@@ -41,14 +41,14 @@ describe('sortThreadsChronologically', () => {
     expect(sortThreadsChronologically(threads).map((t) => t.id)).toEqual(['newer', 'older']);
   });
 
-  it('uses message timestamps when they are fresher than updatedAt', () => {
+  it('does not let hydrated message clocks reorder past server updatedAt', () => {
     const threads = [
       thread('a', '2026-06-01T00:00:00Z', [
         { id: 'm1', role: 'user', content: 'hi', timestamp: new Date('2026-06-03T00:00:00Z') },
       ]),
       thread('b', '2026-06-02T00:00:00Z'),
     ];
-    expect(sortThreadsChronologically(threads).map((t) => t.id)).toEqual(['a', 'b']);
+    expect(sortThreadsChronologically(threads).map((t) => t.id)).toEqual(['b', 'a']);
   });
 
   it('stable tie-breaks on id when activity is equal', () => {
