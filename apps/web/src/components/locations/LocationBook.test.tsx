@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { render } from '../../test/utils';
 import { LocationBook } from './LocationBook';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
@@ -49,25 +48,12 @@ describe('LocationBook — "X of Y places" summary', () => {
     mockDataService.register.locations(locationBookDemoLocations);
   });
 
-  it('denominator matches the population a book query actually searched, not the top-level-only default', async () => {
+  it('counts against the top-level places population', async () => {
     render(<LocationBook />);
 
-    // Sanity: the fixture has 10 top-level places + 1 nested child ("Novara Design Lab").
+    // The fixture has 10 top-level places + 1 nested child ("Novara Design Lab").
     await waitFor(() => {
       expect(screen.getByText(/of 10 places/i)).toBeInTheDocument();
-    });
-
-    const input = screen.getByPlaceholderText(/places I visited with Marcus/i);
-    await userEvent.type(input, 'places inside Novara HQ');
-    await userEvent.keyboard('{Enter}');
-
-    // Regression: this query matches only the nested "Novara Design Lab" — a
-    // location that is NOT one of the 10 top-level places. The denominator
-    // must switch to the full population that was actually searched (11),
-    // not stay pinned at the top-level-only count (10), or the summary lies
-    // about what was searched.
-    await waitFor(() => {
-      expect(screen.getByText(/1 of 11 places/i)).toBeInTheDocument();
     });
   });
 });

@@ -23,8 +23,6 @@ import {
 import { DemoUploadProgressPanel, type DemoUploadProgress, type DemoUploadStage } from '../demo/DemoUploadProgressPanel';
 import { ClaimsInbox } from '../career/ClaimsInbox';
 import { ProvenanceLinks } from '../career/ProvenanceLinks';
-import { BookQueryPanel } from '../query/BookQueryPanel';
-import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 
 type DetailTab = 'overview' | 'claims' | 'lore';
 
@@ -74,7 +72,6 @@ type FileDetail = {
 
 export function DocumentsBook() {
   const navigate = useNavigate();
-  const isDemoMode = useShouldUseMockData();
   const [files, setFiles] = useState<LibraryFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -217,19 +214,6 @@ export function DocumentsBook() {
           </button>
         </div>
       </header>
-
-      <BookQueryPanel
-        demoMode={isDemoMode}
-        domains={['document']}
-        title="Ask Documents"
-        description="Find uploaded sources by filename, type, processing state, and the lore derived from them."
-        placeholder='Try “Which files created career facts?”'
-        compact
-        onSelectResult={(result) => {
-          const match = files.find((file) => file.id === result.id);
-          if (match) void openDetail(match.id);
-        }}
-      />
 
       {uploading && uploadProgress ? (
         <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
