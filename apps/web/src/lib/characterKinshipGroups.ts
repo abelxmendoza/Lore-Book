@@ -40,6 +40,33 @@ export const KINSHIP_GROUP_ORDER: KinshipGroupKey[] = [
   'pets',
 ];
 
+export type KinshipSectionKey = 'parents' | 'kids_and_pets';
+
+/**
+ * The two lists the Connections tab shows. Each keeps its finer buckets as
+ * sub-labels so "step" and "adopted" stay legible without splitting the page
+ * into six competing headers.
+ */
+export const KINSHIP_SECTIONS: Array<{
+  key: KinshipSectionKey;
+  title: string;
+  emptyLabel: string;
+  groups: KinshipGroupKey[];
+}> = [
+  {
+    key: 'parents',
+    title: 'Parents',
+    emptyLabel: 'No parents linked yet.',
+    groups: ['parents', 'step_parents', 'adopted_parents'],
+  },
+  {
+    key: 'kids_and_pets',
+    title: 'Kids & pets',
+    emptyLabel: 'No kids or pets linked yet.',
+    groups: ['children', 'step_children', 'adopted_children', 'pets'],
+  },
+];
+
 /**
  * Ordered so the qualified forms win: `step_parent` and `adoptive_mother` both
  * contain a plain-parent word, so they must be tested before it.
