@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Menu, ChevronLeft, BookOpen, Edit3, Loader2, Download, Star, RefreshCw, History, ChevronDown, Sparkles,
+  Menu, ChevronLeft, BookOpen, Edit3, Loader2, Download, Star, RefreshCw, History, Sparkles,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
@@ -29,6 +29,7 @@ import {
   flattenMemoirSections,
 } from '../../lib/downloadLorebookPdf';
 import { cn } from '../../lib/cn';
+import { Modal } from '../ui/modal';
 import { useLorebookShell } from './LorebookShell';
 import { LorebookLibraryHero } from './LorebookSectionTitles';
 import { VersionManager } from './VersionManager';
@@ -132,7 +133,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [savingCoreId, setSavingCoreId] = useState<string | null>(null);
   const [recompilingId, setRecompilingId] = useState<string | null>(null);
-  const [expandedVersionsId, setExpandedVersionsId] = useState<string | null>(null);
+  const [editionHistoryBookId, setEditionHistoryBookId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'core' | 'recent'>('all');
   const [actionError, setActionError] = useState<string | null>(null);
   const [demoStoreTick, setDemoStoreTick] = useState(0);
@@ -193,10 +194,6 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
 
       const nextBooks = collapseLorebookVersions([...coreMapped, ...compiledMapped]);
       setBooks(nextBooks);
-      setExpandedVersionsId((current) => {
-        if (current && nextBooks.some((book) => book.id === current)) return current;
-        return nextBooks.find((book) => (book.olderVersions?.length ?? 0) > 0)?.id ?? null;
-      });
       setLoadError(null);
       setLoading(readinessLoading);
       return;
@@ -246,10 +243,6 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
 
       const nextBooks = collapseLorebookVersions(mapped);
       setBooks(nextBooks);
-      setExpandedVersionsId((current) => {
-        if (current && nextBooks.some((book) => book.id === current)) return current;
-        return nextBooks.find((book) => (book.olderVersions?.length ?? 0) > 0)?.id ?? null;
-      });
     } catch (error) {
       console.error('Failed to load compiled lorebooks:', error);
       setLoadError('Could not load your lorebook library. Try refreshing.');
@@ -332,6 +325,11 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
     ).slice(0, 12);
     return books;
   }, [books, filter]);
+
+  const editionHistoryBook = useMemo(
+    () => books.find((book) => book.id === editionHistoryBookId) ?? null,
+    [books, editionHistoryBookId]
+  );
 
   const handleSaveAsCore = async (book: LibraryBook) => {
     if (savingCoreId) return;
@@ -529,7 +527,6 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
                 key={book.id}
                 className={cn(
                   'group relative flex flex-col rounded-2xl border overflow-hidden text-left transition-all hover:shadow-xl hover:shadow-black/40 hover:-translate-y-0.5',
-                  expandedVersionsId === book.id && 'sm:col-span-2 xl:col-span-3',
                   book.border
                 )}
               >
@@ -659,35 +656,14 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
                       <div className="pt-1">
                         <button
                           type="button"
-                          onClick={() =>
-                            setExpandedVersionsId((current) => (current === book.id ? null : book.id))
-                          }
-                          className={cn(
-                            'w-full flex items-center justify-center gap-1.5 rounded-lg border py-2 text-[11px] font-medium transition-colors',
-                            expandedVersionsId === book.id
-                              ? 'border-amber-500/30 bg-amber-500/10 text-amber-100/80'
-                              : 'border-white/10 bg-white/[0.03] text-white/55 hover:border-amber-500/25 hover:bg-amber-500/10 hover:text-amber-100/80',
-                          )}
+                          onClick={() => setEditionHistoryBookId(book.id)}
+                          className="w-full flex items-center justify-center gap-1.5 rounded-lg border py-2 text-[11px] font-medium transition-colors border-white/10 bg-white/[0.03] text-white/55 hover:border-amber-500/25 hover:bg-amber-500/10 hover:text-amber-100/80"
                         >
                           <History className="h-3 w-3" />
-                          {expandedVersionsId === book.id
-                            ? 'Hide edition history'
-                            : book.olderVersions && book.olderVersions.length > 0
-                              ? `Show edition history · ${book.olderVersions.length + 1} versions`
-                              : 'Show edition history'}
-                          <ChevronDown
-                            className={cn('h-3 w-3 transition-transform', expandedVersionsId === book.id && 'rotate-180')}
-                          />
+                          {book.olderVersions && book.olderVersions.length > 0
+                            ? `Edition history · ${book.olderVersions.length + 1} versions`
+                            : 'Edition history'}
                         </button>
-                        {expandedVersionsId === book.id && book.lorebook_name && (
-                          <div className="mt-1">
-                            <VersionManager
-                              lorebookName={book.lorebook_name}
-                              baseBiographyId={book.id}
-                              onRead={(id) => navigate(lorebookReadUrl(id))}
-                            />
-                          </div>
-                        )}
                       </div>
                     ) : null}
                   </div>
@@ -697,6 +673,21 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
           </div>
         )}
       </div>
+
+      <Modal
+        isOpen={editionHistoryBookId != null}
+        onClose={() => setEditionHistoryBookId(null)}
+        maxWidth="3xl"
+      >
+        {editionHistoryBook?.lorebook_name && (
+          <VersionManager
+            lorebookName={editionHistoryBook.lorebook_name}
+            baseBiographyId={editionHistoryBook.id}
+            onRead={(id) => navigate(lorebookReadUrl(id))}
+            onClose={() => setEditionHistoryBookId(null)}
+          />
+        )}
+      </Modal>
     </div>
   );
 };

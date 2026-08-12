@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FileText, GitBranch, Eye, Download, RefreshCw, Clock, Info, BookOpen } from 'lucide-react';
+import { FileText, GitBranch, Eye, Download, RefreshCw, Clock, Info, BookOpen, X } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import {
@@ -76,6 +76,8 @@ interface VersionManagerProps {
   /** Safe/explicit/private build-target generation is Phase Two — off by default in Milestone 1. */
   showGenerateVariants?: boolean;
   onRead?: (biographyId: string) => void;
+  /** Renders a close (X) button next to Refresh — set when hosted inside a modal. */
+  onClose?: () => void;
 }
 
 const CHANGE_TYPE_STYLE: Record<ChapterChangeType, { label: string; border: string; text: string }> = {
@@ -85,7 +87,7 @@ const CHANGE_TYPE_STYLE: Record<ChapterChangeType, { label: string; border: stri
   reordered: { label: 'Reordered', border: 'border-sky-500/50', text: 'text-sky-300' },
 };
 
-export const VersionManager = ({ lorebookName, baseBiographyId, showGenerateVariants = false, onRead }: VersionManagerProps) => {
+export const VersionManager = ({ lorebookName, baseBiographyId, showGenerateVariants = false, onRead, onClose }: VersionManagerProps) => {
   const shouldUseMock = useShouldUseMockData();
   const simulation = useLoreReadinessSimulationOptional();
   const [versions, setVersions] = useState<BiographyVersion[]>([]);
@@ -236,7 +238,16 @@ export const VersionManager = ({ lorebookName, baseBiographyId, showGenerateVari
 
   if (loading) {
     return (
-      <div className="p-6 text-center text-white/60">
+      <div className="p-6 text-center text-white/60 relative">
+        {onClose && (
+          <button
+            onClick={onClose}
+            aria-label="Close edition history"
+            className="absolute top-4 right-4 text-white/60 hover:text-white transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
         <p className="mt-2">Loading versions...</p>
       </div>
@@ -245,7 +256,16 @@ export const VersionManager = ({ lorebookName, baseBiographyId, showGenerateVari
 
   if (error) {
     return (
-      <div className="p-6 text-center text-red-400">
+      <div className="p-6 text-center text-red-400 relative">
+        {onClose && (
+          <button
+            onClick={onClose}
+            aria-label="Close edition history"
+            className="absolute top-4 right-4 text-white/60 hover:text-white transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
         <p>{error}</p>
         <button
           onClick={loadVersions}
@@ -268,13 +288,24 @@ export const VersionManager = ({ lorebookName, baseBiographyId, showGenerateVari
           <GitBranch className="h-5 w-5 text-primary" />
           Edition History
         </h2>
-        <button
-          onClick={loadVersions}
-          className="text-xs text-white/60 hover:text-white transition-colors flex items-center gap-1"
-        >
-          <RefreshCw className="h-3 w-3" />
-          Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={loadVersions}
+            className="text-xs text-white/60 hover:text-white transition-colors flex items-center gap-1"
+          >
+            <RefreshCw className="h-3 w-3" />
+            Refresh
+          </button>
+          {onClose && (
+            <button
+              onClick={onClose}
+              aria-label="Close edition history"
+              className="text-white/60 hover:text-white transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {versions.length === 0 ? (

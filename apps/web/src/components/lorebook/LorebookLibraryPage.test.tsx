@@ -68,7 +68,7 @@ describe('LorebookLibraryPage', () => {
     expect(screen.getByText(/v3 · 3 versions/i)).toBeInTheDocument();
   });
 
-  it('shows seeded edition history for selected demo subjects', async () => {
+  it('opens seeded edition history for a selected demo subject in a modal', async () => {
     render(
       <MemoryRouter>
         <LorebookLibraryPage />
@@ -81,17 +81,21 @@ describe('LorebookLibraryPage', () => {
     expect(within(card!).getByText(/v3 · 3 versions/i)).toBeInTheDocument();
     expect(screen.getByText('Relationships — Jamie & Marcus')).toBeInTheDocument();
 
-    await waitFor(() => {
-      expect(within(card!).getByText('Edition History')).toBeInTheDocument();
-      expect(within(card!).getByText('v3')).toBeInTheDocument();
-      expect(within(card!).getByText('v2')).toBeInTheDocument();
-      expect(within(card!).getByText('v1')).toBeInTheDocument();
-    });
-    expect(within(card!).getByRole('button', { name: /hide edition history/i })).toBeInTheDocument();
-    expect(card).toHaveClass('xl:col-span-3');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(within(card!).getByRole('button', { name: /edition history · 3 versions/i }));
 
-    fireEvent.click(within(card!).getByRole('button', { name: /hide edition history/i }));
-    expect(within(card!).getByRole('button', { name: /show edition history · 3 versions/i })).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => {
+      expect(within(dialog).getByText('Edition History')).toBeInTheDocument();
+      expect(within(dialog).getByText('v3')).toBeInTheDocument();
+      expect(within(dialog).getByText('v2')).toBeInTheDocument();
+      expect(within(dialog).getByText('v1')).toBeInTheDocument();
+    });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /close edition history/i }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
   });
 
   it('renders compiled lorebooks heading and demo books', () => {
