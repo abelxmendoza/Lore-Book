@@ -1,4 +1,4 @@
-import { BookOpen } from 'lucide-react';
+import { BookOpen, ChevronLeft } from 'lucide-react';
 
 export type ReadingTheme = 'lore' | 'parchment' | 'daylight';
 
@@ -10,6 +10,7 @@ interface BookCoverPageProps {
   theme?: ReadingTheme;
   onOpen: () => void;
   onEdit?: () => void;
+  onBackToLibrary?: () => void;
 }
 
 const ORNAMENT = '— ✦ —';
@@ -53,16 +54,31 @@ export const BookCoverPage = ({
   theme = 'lore',
   onOpen,
   onEdit,
+  onBackToLibrary,
 }: BookCoverPageProps) => {
   const t = COVER_THEMES[theme];
 
   return (
     <div
-      className={`w-full h-full flex flex-col items-center justify-center ${t.bg} cursor-pointer select-none`}
+      className={`relative w-full h-full flex flex-col items-center justify-center ${t.bg} cursor-pointer select-none`}
       onClick={onOpen}
       role="button"
       aria-label="Open book — click to begin reading"
     >
+      {onBackToLibrary && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onBackToLibrary();
+          }}
+          aria-label="Back to LoreBook Library"
+          className={`absolute top-3 left-3 z-10 flex items-center gap-0.5 px-2 py-2 rounded-lg text-sm font-mono ${t.sub} hover:opacity-80`}
+        >
+          <ChevronLeft className="h-4 w-4" />
+          <span>Library</span>
+        </button>
+      )}
       {/* Inner frame */}
       <div className={`relative flex flex-col items-center justify-center text-center px-10 sm:px-16 py-14 sm:py-20 max-w-lg w-full mx-auto border ${t.border} rounded-sm`}
         style={{ boxShadow: theme === 'lore' ? '0 0 60px rgba(139,92,246,0.06), inset 0 0 80px rgba(0,0,0,0.4)' : undefined }}

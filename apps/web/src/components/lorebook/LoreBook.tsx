@@ -23,7 +23,7 @@ import {
 import { resolveDemoLorebookById } from '../../lib/storyForge/forgeDemoLibrary';
 import { compileDemoLorebook } from '../../lib/storyForge/demoLorebookWorkflow';
 import { useLoreReadinessSimulation } from '../../contexts/LoreReadinessSimulationContext';
-import { isDemoBookId, lorebookEditUrl, lorebookEditorUrlForCompiledBooks, lorebookReadUrl } from '../../lib/lorebookLibrary';
+import { isDemoBookId, lorebookEditUrl, lorebookEditorUrlForCompiledBooks, lorebookLibraryUrl, lorebookReadUrl } from '../../lib/lorebookLibrary';
 import {
   compileLorebookFromQuery,
   compileLorebookFromSpec,
@@ -456,12 +456,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
   }, [currentPageIndex, allPages, currentSectionIndex, isAnimating]);
 
   const goToLibrary = useCallback(() => {
-    setShowLibrary(true);
-    setIsCoverVisible(false);
-    setActiveBookId(null);
-    setActiveBookMeta(null);
-    urlBookHandledRef.current = null;
-    navigate('/lorebook', { replace: true });
+    navigate(lorebookLibraryUrl());
   }, [navigate]);
 
   const isOnLastPage = allPages.length > 0 && currentPageIndex >= allPages.length - 1;
@@ -1079,6 +1074,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
           theme={theme}
           onOpen={() => setIsCoverVisible(false)}
           onEdit={activeBookId ? goToEditActiveBook : undefined}
+          onBackToLibrary={goToLibrary}
         />
       </div>
     );
@@ -1108,6 +1104,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
           <button
             type="button"
             onClick={goToLibrary}
+            aria-label="Back to LoreBook Library"
             className={`flex items-center gap-0.5 px-2 py-2 rounded-lg text-sm font-mono active:bg-white/10 ${theme === 'daylight' ? 'text-[#3a2e1a]/60' : 'text-white/50'}`}
           >
             <ChevronLeft className="h-4 w-4" />
@@ -1168,6 +1165,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
         {/* Left: back + title + page count */}
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <button type="button" onClick={goToLibrary}
+            aria-label="Back to LoreBook Library"
             className={`flex items-center gap-1 text-xs font-mono shrink-0 transition-colors ${theme === 'daylight' ? 'text-[#6b5a3a] hover:text-[#1a1208]' : 'text-white/40 hover:text-white'}`}>
             <ChevronLeft className="h-3.5 w-3.5" />
             Library
