@@ -129,7 +129,7 @@ describe('LorebookLibraryPage', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/lorebook');
   });
 
-  it('shows a new-content meter and regenerate nudge for a stale core edition', async () => {
+  it('shows a new-content progress meter and regenerate nudge for a stale core edition', async () => {
     render(
       <MemoryRouter>
         <LorebookLibraryPage />
@@ -142,9 +142,13 @@ describe('LorebookLibraryPage', () => {
     const card = careerTitle.closest('article');
     expect(card).not.toBeNull();
 
+    let meter: HTMLElement;
     await waitFor(() => {
-      expect(within(card!).getByText(/new .* since v3 — a new edition is ready to generate/i)).toBeInTheDocument();
+      expect(within(card!).getByText(/new .* since v3/i)).toBeInTheDocument();
+      meter = within(card!).getByRole('progressbar');
     });
+    expect(meter!).toHaveAttribute('aria-valuenow');
+    expect(Number(meter!.getAttribute('aria-valuenow'))).toBeGreaterThan(0);
     expect(within(card!).getByRole('button', { name: /regenerate with new memories/i })).toBeInTheDocument();
   });
 });

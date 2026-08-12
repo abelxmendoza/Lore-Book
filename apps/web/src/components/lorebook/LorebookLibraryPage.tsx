@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Menu, ChevronLeft, BookOpen, Edit3, Loader2, Download, Star, RefreshCw, History, Sparkles,
+  Menu, ChevronLeft, BookOpen, Edit3, Loader2, Download, Star, RefreshCw, History,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
@@ -32,6 +32,7 @@ import { cn } from '../../lib/cn';
 import { Modal } from '../ui/modal';
 import { useLorebookShell } from './LorebookShell';
 import { LorebookLibraryHero } from './LorebookSectionTitles';
+import { NewContentMeter } from './NewContentMeter';
 import { VersionManager } from './VersionManager';
 import type { Biography } from '../../../server/src/services/biographyGeneration/types';
 
@@ -258,7 +259,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
   }, [loadBooks]);
 
   const [recompileHints, setRecompileHints] = useState<
-    Record<string, { available: boolean; nextVersion: number; newCount: number }>
+    Record<string, { available: boolean; nextVersion: number; newCount: number; priorCount: number }>
   >({});
 
   const coreLorebookNames = useMemo(
@@ -283,10 +284,17 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
 
     if (useDemoLibrary) {
       const forge = runForgeForPreset(simulation?.preset ?? 'rich');
-      const next: Record<string, { available: boolean; nextVersion: number; newCount: number }> = {};
+      const next: Record<string, { available: boolean; nextVersion: number; newCount: number; priorCount: number }> = {};
       for (const name of coreLorebookNames) {
         const hint = getDemoRecompileHint(name, forge);
-        if (hint) next[name] = { available: hint.available, nextVersion: hint.nextVersion, newCount: hint.newTurns };
+        if (hint) {
+          next[name] = {
+            available: hint.available,
+            nextVersion: hint.nextVersion,
+            newCount: hint.newTurns,
+            priorCount: hint.priorTurns,
+          };
+        }
       }
       setRecompileHints(next);
       return;
@@ -296,9 +304,9 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
       const entries = await Promise.all(
         coreLorebookNames.map(async (name) => {
           try {
-            const result = await fetchJson<{ hint: { available: boolean; nextVersion: number; newAtoms: number } | null }>(
-              `/api/biography/recompile-hint?lorebookName=${encodeURIComponent(name)}`
-            );
+            const result = await fetchJson<{
+              hint: { available: boolean; nextVersion: number; newAtoms: number; priorAtomCount: number } | null;
+            }>(`/api/biography/recompile-hint?lorebookName=${encodeURIComponent(name)}`);
             return [name, result.hint] as const;
           } catch {
             return [name, null] as const;
@@ -306,9 +314,16 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
         })
       );
       if (cancelled) return;
-      const next: Record<string, { available: boolean; nextVersion: number; newCount: number }> = {};
+      const next: Record<string, { available: boolean; nextVersion: number; newCount: number; priorCount: number }> = {};
       for (const [name, hint] of entries) {
-        if (hint) next[name] = { available: hint.available, nextVersion: hint.nextVersion, newCount: hint.newAtoms };
+        if (hint) {
+          next[name] = {
+            available: hint.available,
+            nextVersion: hint.nextVersion,
+            newCount: hint.newAtoms,
+            priorCount: hint.priorAtomCount,
+          };
+        }
       }
       setRecompileHints(next);
     })();
@@ -575,13 +590,12 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
 
                   <div className="mt-auto space-y-2">
                     {book.is_core_lorebook && book.lorebook_name && recompileHints[book.lorebook_name] && (
-                      <div className="flex items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] text-emerald-200/85">
-                        <Sparkles className="h-3 w-3 shrink-0" />
-                        <span>
-                          +{recompileHints[book.lorebook_name].newCount} new {useDemoLibrary ? 'turns' : 'memories'} since v
-                          {recompileHints[book.lorebook_name].nextVersion - 1} — a new edition is ready to generate
-                        </span>
-                      </div>
+                      <NewContentMeter
+                        newCount={recompileHints[book.lorebook_name].newCount}
+                        priorCount={recompileHints[book.lorebook_name].priorCount}
+                        sinceVersion={recompileHints[book.lorebook_name].nextVersion - 1}
+                        unitLabel={useDemoLibrary ? 'turns' : 'memories'}
+                      />
                     )}
                     <div className="grid grid-cols-3 gap-2">
                       <button

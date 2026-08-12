@@ -6,6 +6,7 @@ export type RecompileHint = {
   available: boolean;
   nextVersion: number;
   newAtoms: number;
+  priorAtomCount: number;
 };
 
 /**
@@ -47,5 +48,6 @@ export async function getRecompileHint(userId: string, lorebookName: string): Pr
     available: true,
     nextVersion: (latest.lorebook_version ?? 1) + 1,
     newAtoms,
+    priorAtomCount,
   };
 }

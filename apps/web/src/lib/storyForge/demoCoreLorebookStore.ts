@@ -291,7 +291,7 @@ function bumpPreset(preset: LoreReadinessKnowledgePreset): LoreReadinessKnowledg
 export function getDemoRecompileHint(
   lorebookName: string,
   forge: ForgeReadinessSnapshot | null
-): { available: boolean; nextVersion: number; newTurns: number } | null {
+): { available: boolean; nextVersion: number; newTurns: number; priorTurns: number } | null {
   if (!forge?.mainBook?.latestVersion.snapshotHash) return null;
 
   const mainRecords = listDemoCoreRecords()
@@ -302,7 +302,8 @@ export function getDemoRecompileHint(
 
   const latest = mainRecords[0];
   const liveHash = forge.mainBook.latestVersion.snapshotHash;
-  const newTurns = (forge.memory?.turnsProcessed ?? 0) - (latest.compiledBook.latestVersion.sourceTurns ?? 0);
+  const priorTurns = latest.compiledBook.latestVersion.sourceTurns ?? 0;
+  const newTurns = (forge.memory?.turnsProcessed ?? 0) - priorTurns;
 
   if (latest.snapshotHash === liveHash && newTurns <= 0) return null;
 
@@ -310,6 +311,7 @@ export function getDemoRecompileHint(
     available: true,
     nextVersion: latest.lorebookVersion + 1,
     newTurns: Math.max(newTurns, 1),
+    priorTurns,
   };
 }
 

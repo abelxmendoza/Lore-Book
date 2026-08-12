@@ -64,6 +64,6 @@ describe('getRecompileHint', () => {
     (filterAtoms as any).mockReturnValue([atom('a1'), atom('a2'), atom('a3'), atom('a4'), atom('a5')]);
 
     const hint = await getRecompileHint('user-1', 'My Life Story');
-    expect(hint).toEqual({ available: true, nextVersion: 3, newAtoms: 2 });
+    expect(hint).toEqual({ available: true, nextVersion: 3, newAtoms: 2, priorAtomCount: 3 });
   });
 });
