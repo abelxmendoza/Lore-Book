@@ -2,6 +2,27 @@
 <!-- Build timestamp: 2025-01-20T00:15:00Z - Force fresh deployment -->
 <html lang="en" class="dark">
   <head>
+    <!--
+      Classic (non-module) stub so Vite React Refresh does not white-screen when
+      browser extensions (NoScript, Worlds, MetaMask content scripts) delay or
+      rewrite the module preamble inject. Vite still injects the real
+      /@react-refresh hook afterward and overwrites these no-ops.
+    -->
+    <script>
+      (function () {
+        if (typeof window === 'undefined') return;
+        if (typeof window.$RefreshReg$ !== 'function') {
+          window.$RefreshReg$ = function () {};
+        }
+        if (typeof window.$RefreshSig$ !== 'function') {
+          window.$RefreshSig$ = function () {
+            return function (type) {
+              return type;
+            };
+          };
+        }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <!-- interactive-widget makes Android shrink the layout (and dvh) for the on-screen keyboard -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, interactive-widget=resizes-content" />
