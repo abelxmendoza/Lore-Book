@@ -236,7 +236,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
       setLoading(false);
     }
     // compiledBooksKey stabilizes the effect when parent re-renders with a fresh array reference.
-  }, [shouldUseMock, compiledBooksKey, readinessLoading, demoStoreTick, compiledBooks]);
+  }, [shouldUseMock, compiledBooksKey, readinessLoading, demoStoreTick]);
 
   useEffect(() => {
     void loadBooks();
@@ -446,6 +446,7 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
                 key={book.id}
                 className={cn(
                   'group relative flex flex-col rounded-2xl border overflow-hidden text-left transition-all hover:shadow-xl hover:shadow-black/40 hover:-translate-y-0.5',
+                  expandedVersionsId === book.id && 'sm:col-span-2 xl:col-span-3',
                   book.border
                 )}
               >

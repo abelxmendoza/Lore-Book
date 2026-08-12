@@ -1,4 +1,4 @@
-import type { CompiledBookDraft } from './types';
+import type { CompiledBookChapter, CompiledBookDraft } from './types';
 import { compiledBookToDemoLorebook, filterBookEdition, registerForgeDemoBooks } from './forgeDemoLibrary';
 import type { ForgeReadinessSnapshot } from './forgeReadinessBridge';
 import { runForgeForPreset } from './forgeReadinessBridge';
@@ -171,20 +171,62 @@ export function recompileDemoCoreLorebook(lorebookName: string): ForgeReadinessS
   if (!forge.mainBook) return null;
 
   const nextVersion = Math.max(...versions.map((v) => v.lorebookVersion)) + 1;
+  const latest = [...versions].sort((a, b) => b.lorebookVersion - a.lorebookVersion)[0];
+  const latestBook = latest.compiledBook;
+  const compiledAt = new Date().toISOString();
+  const subjectSlug = lorebookName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const addedChapter: CompiledBookChapter = {
+    id: `demo-added-${subjectSlug}-v${nextVersion}`,
+    title:
+      /career|work|vanguard/i.test(lorebookName)
+        ? 'What the latest work stories changed'
+        : /relationship|jamie|marcus/i.test(lorebookName)
+          ? 'What recent conversations added'
+          : 'New material from recent chats',
+    summary:
+      /career|work|vanguard/i.test(lorebookName)
+        ? 'New conversations added context about the work, the people involved, and how this chapter feels in hindsight.'
+        : /relationship|jamie|marcus/i.test(lorebookName)
+          ? 'Recent conversations added another layer to the relationship — new context, clearer boundaries, and details that were not in the prior edition.'
+          : `Recent conversations added new material specifically about ${lorebookName}.`,
+    domain: latestBook.chapters[0]?.domain ?? 'identity',
+    atomIds: [`demo-added-atom-${subjectSlug}-v${nextVersion}`],
+  };
+  const snapshotHash = `${latest.snapshotHash}-added-v${nextVersion}`;
   const record: DemoCoreLorebookRecord = {
     id: `demo-core-${lorebookName}-${nextVersion}`,
     lorebookName,
     lorebookVersion: nextVersion,
     edition: 'main',
-    bookId: `${forge.mainBook.id}-v${nextVersion}`,
+    bookId: `${latestBook.id.replace(/-v\d+$/, '')}-v${nextVersion}`,
     compiledBook: {
-      ...forge.mainBook,
-      id: `${forge.mainBook.id}-v${nextVersion}`,
+      ...latestBook,
+      id: `${latestBook.id.replace(/-v\d+$/, '')}-v${nextVersion}`,
       title: lorebookName,
-      latestVersion: { ...forge.mainBook.latestVersion, version: nextVersion },
+      subtitle: `Regenerated after adding new content about ${lorebookName}`,
+      chapters: [...latestBook.chapters, addedChapter],
+      versions: [
+        ...latestBook.versions,
+        {
+          ...latestBook.latestVersion,
+          version: nextVersion,
+          compiledAt,
+          atomCount: latestBook.latestVersion.atomCount + 3,
+          sourceTurns: latestBook.latestVersion.sourceTurns + 4,
+          snapshotHash,
+        },
+      ],
+      latestVersion: {
+        ...latestBook.latestVersion,
+        version: nextVersion,
+        compiledAt,
+        atomCount: latestBook.latestVersion.atomCount + 3,
+        sourceTurns: latestBook.latestVersion.sourceTurns + 4,
+        snapshotHash,
+      },
     },
-    createdAt: new Date().toISOString(),
-    snapshotHash: forge.mainBook.latestVersion.snapshotHash,
+    createdAt: compiledAt,
+    snapshotHash,
   };
 
   store.records.push(record);
