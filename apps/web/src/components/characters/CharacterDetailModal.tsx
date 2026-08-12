@@ -198,7 +198,7 @@ type CharacterDetailModalProps = {
   onOpenDatingArc?: (relationshipId: string) => void;
 };
 
-type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'timeline' | 'chat' | 'insights' | 'metadata' | 'knowledge' | 'evidence' | 'photos' | 'messages';
+type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'timeline' | 'chat' | 'insights' | 'metadata' | 'knowledge' | 'evidence' | 'photos' | 'messages' | 'archive';
 
 /** Legacy `network` deep-links land on Connections; legacy `history` → Timelines. */
 function resolveInitialTab(tab: TabKey | 'network' | 'history' | undefined): TabKey {
@@ -207,7 +207,7 @@ function resolveInitialTab(tab: TabKey | 'network' | 'history' | undefined): Tab
   return tab ?? 'info';
 }
 
-const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof FileText }> = [
+const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof FileText; tone?: 'danger' }> = [
   { key: 'info',          label: 'Info',              shortLabel: 'Info',       icon: FileText },
   { key: 'chat',          label: 'Intelligent Chat',  shortLabel: 'Chat',       icon: MessageSquare },
   { key: 'knowledge',     label: 'What I Know',       shortLabel: 'Know',       icon: Brain },
@@ -220,6 +220,7 @@ const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof
   { key: 'evidence',      label: 'Evidence Locker',   shortLabel: 'Evidence',   icon: Shield },
   { key: 'social',        label: 'Social',            shortLabel: 'Social',     icon: Globe },
   { key: 'metadata',      label: 'Metadata',          shortLabel: 'Meta',       icon: Database },
+  { key: 'archive',       label: 'Archive',           shortLabel: 'Archive',    icon: Trash2, tone: 'danger' },
 ];
 
 /**
@@ -434,11 +435,14 @@ export const CharacterDetailModal = ({
     }
   };
 
-  const canDeleteCharacter =
+  const canArchiveCharacter =
     !isMainCharacter &&
     !isSyntheticSelfId(character.id) &&
-    !character.id.startsWith('dummy-') &&
-    !character.id.startsWith('temp-');
+    !character.id.startsWith('temp-') &&
+    (isMockDataEnabled || !character.id.startsWith('dummy-'));
+  const visibleTabs = canArchiveCharacter
+    ? tabs
+    : tabs.filter((tab) => tab.key !== 'archive');
 
   const getImportanceColor = (level?: string | null) => {
     const colors: Record<string, string> = {
@@ -693,6 +697,12 @@ export const CharacterDetailModal = ({
     setDeleteConfirmText('');
     setDeleteReason('wrong_person_or_not_real');
     setDeleteReasonNote('');
+    setDeleteError(null);
+  };
+
+  const startArchiveFlow = () => {
+    setDeleteStep('warn');
+    setDeleteConfirmText('');
     setDeleteError(null);
   };
 
@@ -3339,7 +3349,7 @@ export const CharacterDetailModal = ({
             aria-label="Character sections"
           >
             <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
-              {tabs.map((tab) => {
+              {visibleTabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.key;
                 return (
@@ -3348,9 +3358,13 @@ export const CharacterDetailModal = ({
                     type="button"
                     onClick={() => setActiveTab(tab.key)}
                     className={`flex items-center gap-2 w-full px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-medium transition text-left border-l-2 ${
-                      isActive
-                        ? 'border-l-primary bg-primary/10 text-white'
-                        : 'border-l-transparent text-white/60 hover:text-white hover:bg-white/5'
+                      tab.tone === 'danger'
+                        ? isActive
+                          ? 'border-l-amber-400 bg-amber-500/10 text-amber-100'
+                          : 'border-l-transparent text-amber-200/55 hover:bg-amber-500/10 hover:text-amber-100'
+                        : isActive
+                          ? 'border-l-primary bg-primary/10 text-white'
+                          : 'border-l-transparent text-white/60 hover:text-white hover:bg-white/5'
                     }`}
                     aria-current={isActive ? 'page' : undefined}
                     aria-label={tab.label}
@@ -3359,7 +3373,9 @@ export const CharacterDetailModal = ({
                         ? 'character-tab-connections'
                         : tab.key === 'timeline'
                           ? 'character-tab-story'
-                          : undefined
+                          : tab.key === 'archive'
+                            ? 'character-tab-archive'
+                            : undefined
                     }
                   >
                     <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
@@ -3369,23 +3385,6 @@ export const CharacterDetailModal = ({
               })}
             </div>
 
-            {canDeleteCharacter && (
-              <div className="mt-auto flex-shrink-0 px-2 pb-1.5 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeleteStep('warn');
-                    setDeleteConfirmText('');
-                    setDeleteError(null);
-                  }}
-                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-white/40 hover:text-amber-200/80 hover:bg-amber-500/10 transition"
-                  aria-label="Archive character"
-                >
-                  <Trash2 className="h-2.5 w-2.5 flex-shrink-0" />
-                  <span>Archive</span>
-                </button>
-              </div>
-            )}
           </nav>
 
           <div
@@ -3454,6 +3453,40 @@ export const CharacterDetailModal = ({
               <div className="text-center py-12 text-white/60">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
                 <p className="text-lg">Loading character details...</p>
+              </div>
+            )}
+            {!loadingDetails && activeTab === 'archive' && canArchiveCharacter && (
+              <div
+                className="mx-auto w-full max-w-2xl rounded-xl border border-amber-500/25 bg-gradient-to-br from-amber-950/20 to-black/30 p-4 sm:p-6"
+                data-testid="character-archive-panel"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-amber-500/25 bg-amber-500/10">
+                    <Trash2 className="h-5 w-5 text-amber-300" aria-hidden="true" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-semibold text-white">Archive {displayName}</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-white/55">
+                      Remove this card from your active Character Book while preserving their facts,
+                      memories, connections, and conversation evidence. A future Rescan conversations
+                      can restore the card.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-lg border border-white/10 bg-black/30 p-3 text-xs text-white/45">
+                  Archiving is reversible. Permanent deletion remains a separate, reviewed action.
+                </div>
+
+                <Button
+                  type="button"
+                  onClick={startArchiveFlow}
+                  className="mt-5 border border-amber-500/30 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25"
+                  leftIcon={<Trash2 className="h-4 w-4" />}
+                  data-testid="character-archive-start"
+                >
+                  Archive character
+                </Button>
               </div>
             )}
             {!loadingDetails && activeTab === 'info' && (
@@ -4927,25 +4960,11 @@ export const CharacterDetailModal = ({
         </div>
 
         <EntityModalBottomNav
-          tabs={tabs}
+          tabs={visibleTabs}
           activeTab={activeTab}
           onTabChange={setActiveTab}
           ariaLabel="Character sections"
           breakpoint="md"
-          dangerAction={
-            canDeleteCharacter
-              ? {
-                  label: 'Archive',
-                  icon: Trash2,
-                  active: deleteStep !== null,
-                  onClick: () => {
-                    setDeleteStep('warn');
-                    setDeleteConfirmText('');
-                    setDeleteError(null);
-                  },
-                }
-              : undefined
-          }
         />
         </div>
 
