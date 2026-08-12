@@ -3,6 +3,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '../../../test/utils';
 import { RelationshipTimeline } from '../RelationshipTimeline';
+import { getMockPeripheralsForRelationship } from '../../../mocks/romanticPeripherals';
+import { isExPartnerPeripheral } from '../../../lib/romanticExPartners';
+
+const mockExes = (relationshipId: string) =>
+  getMockPeripheralsForRelationship(relationshipId).filter(isExPartnerPeripheral);
 
 vi.mock('../../../lib/openChatWithFocus', () => ({
   openChatWithFocus: vi.fn(),
@@ -69,7 +74,7 @@ describe('RelationshipTimeline', () => {
         relationshipId="rel-001"
         dates={mockDates}
         relationship={mockRelationship}
-        useMockData
+        exPartners={mockExes('rel-001')}
       />,
     );
 
@@ -90,7 +95,7 @@ describe('RelationshipTimeline', () => {
         dates={mockDates}
         relationship={mockRelationship}
         onOpenPeripheralCharacter={onOpen}
-        useMockData
+        exPartners={mockExes('rel-001')}
       />,
     );
 
@@ -104,7 +109,7 @@ describe('RelationshipTimeline', () => {
         relationshipId="rel-010"
         dates={[]}
         relationship={{ ...mockRelationship, id: 'rel-010', person_name: 'Jamie' }}
-        useMockData
+        exPartners={mockExes('rel-010')}
       />,
     );
 
@@ -136,7 +141,7 @@ describe('RelationshipTimeline', () => {
         relationshipId="rel-003"
         dates={[]}
         relationship={{ ...mockRelationship, id: 'rel-003', person_name: 'Sam' }}
-        useMockData
+        exPartners={mockExes('rel-003')}
       />,
     );
 
