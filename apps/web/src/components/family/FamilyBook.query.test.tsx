@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../hooks/useShouldUseMockData', () => ({
@@ -28,25 +28,26 @@ vi.mock('../characters/CharacterDetailModal', () => ({
   CharacterDetailModal: () => null,
 }));
 
-import { fetchJson } from '../../lib/api';
 import { FamilyBook } from './FamilyBook';
 
 describe('FamilyBook query system', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('queries and filters the synthetic family tree without calling the API', async () => {
+  it('sends family questions into focused main chat', () => {
+    const handler = vi.fn();
+    window.addEventListener('lorebook:open-chat-focus', handler);
+
     render(<FamilyBook />);
 
-    fireEvent.change(screen.getByLabelText('Ask your Family and Family Tree'), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Ask in chat' }), {
       target: { value: 'Show my maternal cousins' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Ask Family' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ask in chat' }));
 
-    await waitFor(() => {
-      expect(screen.getByText('1 matching relative')).toBeInTheDocument();
-    });
-    expect(screen.getByText('Lina Solenne')).toBeInTheDocument();
-    expect(fetchJson).not.toHaveBeenCalled();
+    expect(handler).toHaveBeenCalledTimes(1);
+    const detail = handler.mock.calls[0][0].detail;
+    expect(detail.entityId).toBe('book:family');
+    expect(detail.sourceSurface).toBe('family');
+    expect(detail.initialPrompt).toBe('Show my maternal cousins');
   });
 });
-

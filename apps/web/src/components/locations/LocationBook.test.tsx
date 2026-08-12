@@ -49,7 +49,9 @@ describe('LocationBook — "X of Y places" summary', () => {
     mockDataService.register.locations(locationBookDemoLocations);
   });
 
-  it('denominator matches the population a book query actually searched, not the top-level-only default', async () => {
+  it('keeps the top-level browse count and sends nested-place questions to focused chat', async () => {
+    const handler = vi.fn();
+    window.addEventListener('lorebook:open-chat-focus', handler);
     render(<LocationBook />);
 
     // Sanity: the fixture has 10 top-level places + 1 nested child ("Novara Design Lab").
@@ -61,13 +63,12 @@ describe('LocationBook — "X of Y places" summary', () => {
     await userEvent.type(input, 'places inside Novara HQ');
     await userEvent.keyboard('{Enter}');
 
-    // Regression: this query matches only the nested "Novara Design Lab" — a
-    // location that is NOT one of the 10 top-level places. The denominator
-    // must switch to the full population that was actually searched (11),
-    // not stay pinned at the top-level-only count (10), or the summary lies
-    // about what was searched.
-    await waitFor(() => {
-      expect(screen.getByText(/1 of 11 places/i)).toBeInTheDocument();
-    });
+    expect(handler).toHaveBeenCalledTimes(1);
+    const detail = handler.mock.calls[0][0].detail;
+    expect(detail.entityId).toBe('book:location');
+    expect(detail.sourceSurface).toBe('locations');
+    expect(detail.initialPrompt).toBe('places inside Novara HQ');
+    expect(screen.getByText(/of 10 places/i)).toBeInTheDocument();
+    window.removeEventListener('lorebook:open-chat-focus', handler);
   });
 });

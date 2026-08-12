@@ -3654,19 +3654,7 @@ export const CharacterBook = () => {
         error={focusedChatError}
         onContinue={openCharacterFocusedChat}
       />
-      <BookQueryPanel
-        demoMode={isMockDataEnabled}
-        domains={['character']}
-        title="Ask People & Characters"
-        description="Search names, aliases, roles, relationship context, and records that need review."
-        placeholder='Try “Who are my creative collaborators?”'
-        compact
-        onSelectResult={(result) => {
-          const match = characters.find((character) => character.id === result.id);
-          if (match) openCharacterDetail(match);
-          else setSearchTerm(result.title);
-        }}
-      />
+      <BookQueryPanel domains={['character']} compact />
       <DetectedCharacterSuggestions
         demoMode={isMockDataEnabled}
         existingBookEntries={

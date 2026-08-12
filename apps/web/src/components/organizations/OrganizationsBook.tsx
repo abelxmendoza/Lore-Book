@@ -26,6 +26,7 @@ import { FocusedEntityChatLauncher } from '../chat/FocusedEntityChatLauncher';
 import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
 import { openFocusedEntityChat } from '../../lib/openFocusedEntityChat';
 import { OntologyCompliancePanel } from '../ontology/OntologyCompliancePanel';
+import { BookQueryPanel } from '../query/BookQueryPanel';
 import { isEventGroup, isTopLevelGroup } from '../../lib/groupTaxonomy';
 import { buildOrganizationBookClipboardText } from '../../lib/organizationBookClipboard';
 import { clipboardFilterLines } from '../../lib/listClipboard';
@@ -43,11 +44,6 @@ import { FamilyTreePanel } from '../family/FamilyTreePanel';
 import { Modal } from '../ui/modal';
 import { subDays } from 'date-fns';
 import { enrichOrganizationForDemo } from '../../mocks/modalDemoData';
-import type {
-  OrganizationQueryResponse,
-  OrganizationQueryResult,
-} from '../../lib/api-contracts';
-import { BookQueryPanel } from '../query/BookQueryPanel';
 
 const ITEMS_PER_PAGE = 24;
 const ORG_VIEW_STORAGE_KEY = 'lk_org_view';
@@ -1085,10 +1081,6 @@ export const OrganizationsBook: React.FC = () => {
   const [focusedChatBusy, setFocusedChatBusy] = useState(false);
   const [focusedChatError, setFocusedChatError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [bookQuery, setBookQuery] = useState('');
-  const [bookQueryResult, setBookQueryResult] = useState<OrganizationQueryResponse | null>(null);
-  const [bookQueryLoading, setBookQueryLoading] = useState(false);
-  const [bookQueryError, setBookQueryError] = useState<string | null>(null);
   /** Your relationship lens — Mine / Close to / Their world / Mentioned. */
   const [activeStance, setActiveStance] = useState<OrganizationStance | 'all'>('mine');
   const [activeCategory, setActiveCategory] = useState<OrganizationCategory>('all');
@@ -1200,134 +1192,6 @@ export const OrganizationsBook: React.FC = () => {
     }
   };
 
-  const runDemoBookQuery = (query: string): OrganizationQueryResponse => {
-    const lower = query.toLowerCase();
-    const memberMatch = query.match(/(?:groups?|organizations?)\s+(?:with|including|that include)\s+(.+?)\??$/i)
-      ?? query.match(/(?:what|which)\s+(?:groups?|organizations?)\s+(?:is|are)\s+(.+?)\s+(?:in|part of|connected to|associated with)\??$/i);
-    const memberName = memberMatch?.[1]?.trim();
-    const wantsMine = /\b(?:my groups?|am i in|i belong|part of)\b/i.test(query);
-    const wantsUnlinked = /\b(?:unlinked|unresolved|not linked|missing character)\b/i.test(query);
-    const typeMatch = GROUP_TYPES.find((type) =>
-      new RegExp(`\\b${type.replaceAll('_', '[ _-]?')}s?\\b`, 'i').test(query),
-    );
-    const ignoredWords = new Set([
-      'show', 'find', 'list', 'what', 'which', 'groups', 'group', 'organizations',
-      'organization', 'is', 'are', 'am', 'i', 'in', 'with', 'connected', 'to',
-      'unlinked', 'unresolved', 'my', 'part', 'of', 'include', 'including',
-      ...(memberName?.toLowerCase().split(/\s+/) ?? []),
-    ]);
-    const terms = lower.replace(/[^\p{L}\p{N}]+/gu, ' ').split(/\s+/)
-      .filter((word) => word && !ignoredWords.has(word) && word !== typeMatch);
-
-    const matches = organizations.filter((org) => {
-      if (wantsMine && resolveOrganizationStance(org) !== 'mine') return false;
-      if (wantsUnlinked && !(org.members ?? []).some((member) => !member.character_id)) return false;
-      if (typeMatch && org.group_type !== typeMatch) return false;
-      if (memberName && !(org.members ?? []).some((member) =>
-        member.character_name.toLowerCase().includes(memberName.toLowerCase()))) return false;
-      if (terms.length > 0) {
-        const searchable = [
-          org.name,
-          ...(org.aliases ?? []),
-          org.description ?? '',
-          ...(org.members ?? []).map((member) => member.character_name),
-          ...(org.locations ?? []).map((location) => location.location_name),
-        ].join(' ').toLowerCase();
-        if (!terms.every((term) => searchable.includes(term))) return false;
-      }
-      return true;
-    });
-
-    const results: OrganizationQueryResult[] = matches.map((org) => {
-      const members = org.members ?? [];
-      const linkedMemberCount = members.filter((member) => Boolean(member.character_id)).length;
-      const memberCount = members.length || org.member_count || 0;
-      const reasons = [
-        memberName && `Roster includes ${memberName}`,
-        wantsMine && 'Relationship: mine',
-        wantsUnlinked && `${memberCount - linkedMemberCount} unlinked roster member${memberCount - linkedMemberCount === 1 ? '' : 's'}`,
-        typeMatch && `Type: ${typeMatch.replaceAll('_', ' ')}`,
-      ].filter(Boolean) as string[];
-      return {
-        organizationId: org.id,
-        name: org.name,
-        aliases: org.aliases ?? [],
-        description: org.description ?? null,
-        groupType: org.group_type,
-        status: org.status,
-        userRelationship: org.user_relationship,
-        stance: resolveOrganizationStance(org),
-        memberCount,
-        linkedMemberCount,
-        unlinkedMemberCount: Math.max(0, memberCount - linkedMemberCount),
-        activityCount: (org.events?.length ?? 0) + (org.stories?.length ?? 0),
-        locationCount: org.locations?.length ?? 0,
-        updatedAt: org.updated_at,
-        score: reasons.length,
-        matchedReasons: reasons.length ? reasons : ['Matches your query'],
-        evidence: [],
-      };
-    });
-    const countFacet = (values: string[]) =>
-      [...new Set(values)].map((value) => ({ value, count: values.filter((item) => item === value).length }));
-    return {
-      query,
-      intent: memberName ? 'membership' : wantsUnlinked ? 'quality' : query.trim() ? 'find' : 'browse',
-      results: results.slice(0, 20),
-      total: results.length,
-      limit: 20,
-      offset: 0,
-      facets: {
-        stances: countFacet(results.map((item) => item.stance)),
-        groupTypes: countFacet(results.map((item) => item.groupType)),
-        statuses: countFacet(results.map((item) => item.status)),
-      },
-      appliedFilters: {
-        stances: wantsMine ? ['mine'] : [],
-        groupTypes: typeMatch ? [typeMatch] : [],
-        statuses: [],
-        memberNames: memberName ? [memberName] : [],
-        locationNames: [],
-        ...(wantsUnlinked ? { hasUnlinkedMembers: true } : {}),
-      },
-      warnings: [],
-    };
-  };
-
-  const handleBookQuery = async () => {
-    const query = bookQuery.trim();
-    if (!query) return;
-    setBookQueryLoading(true);
-    setBookQueryError(null);
-    try {
-      const result = isMockDataEnabled
-        ? runDemoBookQuery(query)
-        : (await fetchJson<{ success: boolean; result: OrganizationQueryResponse }>(
-            '/api/organizations/query',
-            {
-              method: 'POST',
-              body: JSON.stringify({ query, limit: 50, includeFacets: true }),
-            },
-          )).result;
-      setBookQueryResult(result);
-      setActiveStance('all');
-      setActiveCategory('all');
-      setSearchTerm('');
-      setCurrentPage(1);
-    } catch (err) {
-      setBookQueryError(err instanceof Error ? err.message : 'Could not query your groups right now.');
-    } finally {
-      setBookQueryLoading(false);
-    }
-  };
-
-  const clearBookQuery = () => {
-    setBookQuery('');
-    setBookQueryResult(null);
-    setBookQueryError(null);
-    setCurrentPage(1);
-  };
-
   const handleScan = async () => {
     if (isMockDataEnabled) {
       // Demo mode has no backend threads — suggestions are already seeded.
@@ -1433,11 +1297,6 @@ export const OrganizationsBook: React.FC = () => {
   const filteredOrganizations = useMemo(() => {
     let filtered = [...organizations];
 
-    if (bookQueryResult) {
-      const resultIds = new Set(bookQueryResult.results.map((result) => result.organizationId));
-      filtered = filtered.filter((org) => resultIds.has(org.id));
-    }
-
     // Hide event-groups from the main "all" view
     if (activeCategory === 'all') {
       filtered = filtered.filter((org) => isTopLevelGroup(org) && !isEventGroup(org));
@@ -1512,11 +1371,11 @@ export const OrganizationsBook: React.FC = () => {
     });
 
     return filtered;
-  }, [organizations, bookQueryResult, searchTerm, activeStance, activeCategory, sortBy, sharedSearchIds]);
+  }, [organizations, searchTerm, activeStance, activeCategory, sortBy, sharedSearchIds]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [bookQueryResult, searchTerm, activeStance, activeCategory, sortBy]);
+  }, [searchTerm, activeStance, activeCategory, sortBy]);
 
   useEffect(() => {
     if (!highlightOrgId) return;
@@ -1543,11 +1402,10 @@ export const OrganizationsBook: React.FC = () => {
           activeStance !== 'all' && `stance=${activeStance}`,
           activeCategory !== 'all' && `category=${activeCategory}`,
           searchTerm.trim() && `search="${searchTerm.trim()}"`,
-          bookQueryResult && `query="${bookQueryResult.query}"`,
           `sort=${sortBy}`,
         ]),
       }),
-    [filteredOrganizations, activeStance, activeCategory, searchTerm, bookQueryResult, sortBy],
+    [filteredOrganizations, activeStance, activeCategory, searchTerm, sortBy],
   );
 
   // Auto-open modal when navigated here from an entity chip (chat → organizations).
@@ -1853,37 +1711,7 @@ export const OrganizationsBook: React.FC = () => {
           </div>
         </div>
 
-        <BookQueryPanel
-          demoMode={isMockDataEnabled}
-          domains={['organization']}
-          title="Ask your Groups & Organizations Book"
-          description="Search relationships, rosters, locations, activity, or records that need cleanup."
-          placeholder='Try “Which groups is Marcus connected to?” or “Show unlinked bands”'
-          inputAriaLabel="Ask your Groups and Organizations Book"
-          submitLabel="Ask Book"
-          resultNoun="group"
-          compact
-          controller={{
-            query: bookQuery,
-            onQueryChange: setBookQuery,
-            onSubmit: handleBookQuery,
-            onClear: clearBookQuery,
-            loading: bookQueryLoading,
-            error: bookQueryError,
-            total: bookQueryResult?.total,
-            results: bookQueryResult?.results.map((result) => ({
-              id: result.organizationId,
-              title: result.name,
-              status: result.stance,
-              reason: result.matchedReasons[0] ?? `${result.memberCount} members`,
-            })),
-            warnings: bookQueryResult?.warnings,
-          }}
-          onSelectResult={(result) => {
-            const organization = organizations.find((item) => item.id === result.id);
-            if (organization) setSelectedOrganization(organization);
-          }}
-        />
+        <BookQueryPanel domains={['organization']} compact />
 
         {scanNote && (
           <p className="text-xs text-white/60 flex items-center gap-1.5">

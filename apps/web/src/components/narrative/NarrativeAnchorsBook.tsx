@@ -512,19 +512,7 @@ export function NarrativeAnchorsBook() {
           </div>
         </header>
 
-        <BookQueryPanel
-          demoMode={isDemoMode}
-          domains={['narrative']}
-          title="Ask Narrative Anchors"
-          description="Search durable eras, relationship arcs, communities, projects, places, and recurring themes."
-          placeholder='Try “Which chapters connect my creative work and friends?”'
-          compact
-          className="mt-5"
-          onSelectResult={(result) => {
-            setSearch(result.title);
-            setActiveType('all');
-          }}
-        />
+        <BookQueryPanel domains={['narrative']} compact className="mt-5" />
 
         <div className="sticky top-0 z-10 -mx-4 mt-5 border-y border-white/[0.06] bg-black/75 px-4 py-3 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           <div className="mx-auto flex max-w-[1500px] flex-col gap-3 lg:flex-row lg:items-center">

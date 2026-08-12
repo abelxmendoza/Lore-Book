@@ -25,7 +25,6 @@ import {
 } from '../ui/GridListViewToolbar';
 import { buildLocationBookClipboardText } from '../../lib/locationBookClipboard';
 import { clipboardFilterLines } from '../../lib/listClipboard';
-import { fetchJson } from '../../lib/api';
 import { fetchLocationById } from '../../lib/hydrateBookEntity';
 import { consumeHighlightItemId, resolveBookHighlightItem } from '../../lib/resolveBookHighlight';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
@@ -169,10 +168,6 @@ export const LocationBook = () => {
   const [viewMode, setViewMode] = useState<CardViewMode>(() =>
     readStoredCardViewMode(LOCATION_VIEW_STORAGE_KEY, 'grid'),
   );
-  const [bookQuery, setBookQuery] = useState('');
-  const [bookQueryResult, setBookQueryResult] = useState<LocationQueryResponse | null>(null);
-  const [bookQueryLoading, setBookQueryLoading] = useState(false);
-  const [bookQueryError, setBookQueryError] = useState<string | null>(null);
   const [deletedLocationIds, setDeletedLocationIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -240,15 +235,7 @@ export const LocationBook = () => {
   }, [selectedAdvancedFilter]);
 
   const filteredLocations = useMemo(() => {
-    const resultIds = bookQueryResult
-      ? new Set(bookQueryResult.results.map((result) => result.locationId))
-      : null;
-    // Book queries (e.g. "places inside Novara HQ") intentionally search across
-    // ALL locations, including nested/child ones — so results legitimately fall
-    // outside the top-level-only default browse population.
-    let locs = resultIds
-      ? locations.filter((location) => resultIds.has(location.id))
-      : locations.filter(isTopLevelPlace);
+    let locs = locations.filter(isTopLevelPlace);
 
     locs = locs.filter(loc => placeMatchesLifestyleFilter(loc, selectedLifestyle));
 
@@ -274,11 +261,11 @@ export const LocationBook = () => {
         loc.tagCounts.some((tag) => tag.tag.toLowerCase().includes(term)) ||
         loc.chapters.some((chapter) => chapter.title?.toLowerCase().includes(term))
     );
-  }, [locations, searchTerm, selectedLifestyle, selectedAdvancedFilter, selectedSubType, selectedKind, bookQueryResult]);
+  }, [locations, searchTerm, selectedLifestyle, selectedAdvancedFilter, selectedSubType, selectedKind]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedLifestyle, selectedAdvancedFilter, selectedSubType, selectedKind, bookQueryResult]);
+  }, [searchTerm, selectedLifestyle, selectedAdvancedFilter, selectedSubType, selectedKind]);
 
   const totalPages = Math.ceil(filteredLocations.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -295,7 +282,6 @@ export const LocationBook = () => {
           selectedAdvancedFilter && `advanced=${selectedAdvancedFilter}`,
           selectedSubType && `subtype=${selectedSubType}`,
           selectedKind && `kind=${selectedKind}`,
-          bookQueryResult && `book query="${bookQueryResult.query}"`,
         ]),
       }),
     [
@@ -305,33 +291,8 @@ export const LocationBook = () => {
       selectedAdvancedFilter,
       selectedSubType,
       selectedKind,
-      bookQueryResult,
     ],
   );
-
-  const runBookQuery = async () => {
-    if (!bookQuery.trim()) return;
-    setBookQueryLoading(true);
-    setBookQueryError(null);
-    try {
-      const result = isMockDataEnabled
-        ? demoLocationQuery(locations, bookQuery.trim())
-        : (await fetchJson<{ success: boolean; result: LocationQueryResponse }>('/api/locations/query', {
-            method: 'POST',
-            body: JSON.stringify({ query: bookQuery.trim(), limit: 100 }),
-          })).result;
-      setBookQueryResult(result);
-      setSearchTerm('');
-      setSelectedLifestyle('all');
-      setSelectedAdvancedFilter(null);
-      setSelectedSubType(null);
-      setSelectedKind(null);
-    } catch (error) {
-      setBookQueryError(error instanceof Error ? error.message : 'Could not query your Places Book.');
-    } finally {
-      setBookQueryLoading(false);
-    }
-  };
 
   const goToPage = (page: number) => {
     if (page >= 1 && page <= totalPages) {
@@ -519,11 +480,7 @@ export const LocationBook = () => {
         <div className="min-w-0">
           <h2 className="text-lg sm:text-xl font-bold text-white truncate">Places</h2>
           <p className="text-[11px] sm:text-xs text-white/40 mt-0.5">
-            {/* Book queries search across ALL locations (including nested/child
-                places), not just the default top-level browse set — the "of Y"
-                denominator must match whichever population filteredLocations was
-                actually drawn from, or a query result count can exceed it. */}
-            {filteredLocations.length} of {bookQueryResult ? locations.length : topLevelLocations.length} places
+            {filteredLocations.length} of {topLevelLocations.length} places
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -562,39 +519,7 @@ export const LocationBook = () => {
         emptyHint="No matching locations"
       />
 
-      <BookQueryPanel
-        demoMode={isMockDataEnabled}
-        domains={['location']}
-        title="Ask your Places Book"
-        description="Search visits, mentions, people, organizations, geography, nested places, or records that need cleanup."
-        placeholder='Try “places I visited with Marcus”'
-        resultNoun="place"
-        compact
-        controller={{
-          query: bookQuery,
-          onQueryChange: setBookQuery,
-          onSubmit: runBookQuery,
-          onClear: () => {
-            setBookQuery('');
-            setBookQueryResult(null);
-            setBookQueryError(null);
-          },
-          loading: bookQueryLoading,
-          error: bookQueryError,
-          total: bookQueryResult?.total,
-          results: bookQueryResult?.results.map((result) => ({
-            id: result.locationId,
-            title: result.name,
-            status: result.visitState,
-            reason: result.matchedReasons[0],
-          })),
-          warnings: bookQueryResult?.warnings,
-        }}
-        onSelectResult={(result) => {
-          const location = locations.find((item) => item.id === result.id);
-          if (location) setSelectedLocation(location);
-        }}
-      />
+      <BookQueryPanel domains={['location']} compact />
 
       {/* Lifestyle filters — horizontal scroll on mobile */}
       <div className="-mx-1 px-1 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
