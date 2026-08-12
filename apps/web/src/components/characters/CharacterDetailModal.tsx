@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { shortDisplayName } from '../../lib/displayName';
 import { EntityModalBottomNav } from '../common/EntityModalBottomNav';
 import { dedupeRelationshipsByPerson } from '../../lib/dedupeCharacterRelationships';
+import { isKinshipConnection } from '../../lib/characterKinshipGroups';
+import { CharacterKinshipLists } from './CharacterKinshipLists';
 import { CharacterPerceptionsTab } from '../perceptions/CharacterPerceptionsTab';
 import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2, RefreshCw, Loader2, ImageIcon, Shield, ChevronDown, MapPin, Plus, BookOpen, Pin } from 'lucide-react';
 import { XProvenanceBadge } from '../integrations/XProvenanceBadge';
@@ -2798,11 +2800,15 @@ export const CharacterDetailModal = ({
   )
     .sort((left, right) => (right.closeness_score ?? 0) - (left.closeness_score ?? 0))
     .slice(0, 5);
-  const uniqueConnections = dedupeRelationshipsByPerson(
+  const allConnections = dedupeRelationshipsByPerson(
     (editedCharacter.relationships ?? []).filter(
       (rel) => rel.character_name && rel.character_name !== 'You',
     ),
   );
+  const kinshipConnections = allConnections.filter(isKinshipConnection);
+  // Parents / children / pets get their own labelled lists, so keep them out of
+  // the flat list instead of listing every person twice.
+  const uniqueConnections = allConnections.filter((rel) => !isKinshipConnection(rel));
   const storyGroups = (isMockDataEnabled ? getMockOrganizations() : characterOrganizations);
 
   const resolvedRomanticRelationship = useMemo(() => {
@@ -3712,6 +3718,11 @@ export const CharacterDetailModal = ({
                     </CardContent>
                   </Card>
                 </div>
+
+                <CharacterKinshipLists
+                  relationships={kinshipConnections}
+                  onOpen={(rel) => void openCharacterByRelationship(rel)}
+                />
 
                 {/* Friends & Other Connections */}
                 {(

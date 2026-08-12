@@ -21,10 +21,10 @@ import { RelationshipAnalytics } from './RelationshipAnalytics';
 import { TheirConnectionsPanel } from './TheirConnectionsPanel';
 import { RelationshipFlagsPanel } from './RelationshipFlagsPanel';
 import { RelationshipLifeImpactPanel } from './RelationshipLifeImpactPanel';
-import { KidsTogetherPanel, type KidTogether } from './KidsTogetherPanel';
+import { KidsTogetherPanel, type KidTogether, type PetTogether } from './KidsTogetherPanel';
 import { getMockRelationshipInfluence } from '../../mocks/romanticLifeImpact';
 import type { MockRelationshipInfluence } from '../../mocks/romanticLifeImpact';
-import { getMockKidsTogether } from '../../mocks/romanticRelationships';
+import { getMockKidsTogether, getMockPetsTogether } from '../../mocks/romanticRelationships';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { openCharacterBookModal } from '../../lib/openCharacterBookModal';
 import {
@@ -120,7 +120,7 @@ type DateEvent = {
 const RELATIONSHIP_TABS = [
   { value: 'overview', label: 'Overview', shortLabel: 'Overview', icon: Heart },
   { value: 'chat', label: 'Chat', shortLabel: 'Chat', icon: MessageSquare },
-  { value: 'kids', label: 'Kids Together', shortLabel: 'Kids', icon: Baby },
+  { value: 'kids', label: 'Kids & Pets Together', shortLabel: 'Kids & Pets', icon: Baby },
   { value: 'timeline', label: 'Timeline', shortLabel: 'Time', icon: Clock },
   { value: 'pros-cons', label: 'Pros & Cons', shortLabel: 'Pros', icon: List },
   { value: 'analytics', label: 'Analytics', shortLabel: 'Stats', icon: BarChart3 },
@@ -166,6 +166,7 @@ export const RelationshipDetailModal = ({
   const [influenceLoading, setInfluenceLoading] = useState(false);
   const [influenceLoaded, setInfluenceLoaded] = useState(false);
   const [kids, setKids] = useState<KidTogether[]>([]);
+  const [pets, setPets] = useState<PetTogether[]>([]);
   const [kidsLoading, setKidsLoading] = useState(false);
   const [kidsLoaded, setKidsLoaded] = useState(false);
   const [crudBusy, setCrudBusy] = useState(false);
@@ -186,6 +187,7 @@ export const RelationshipDetailModal = ({
     setInfluence(null);
     setInfluenceLoaded(false);
     setKids([]);
+    setPets([]);
     setKidsLoaded(false);
   }, [relationshipId, shouldUseMockData]);
 
@@ -264,16 +266,18 @@ export const RelationshipDetailModal = ({
     try {
       if (shouldUseMockData) {
         setKids(getMockKidsTogether(relationshipId));
+        setPets(getMockPetsTogether(relationshipId));
         setKidsLoaded(true);
         return;
       }
-      const data = await fetchJson<{ success: boolean; kids?: KidTogether[] }>(
+      const data = await fetchJson<{ success: boolean; kids?: KidTogether[]; pets?: PetTogether[] }>(
         `/api/conversation/romantic-relationships/${relationshipId}/kids`
       ).catch(() => null);
       setKids(data?.success ? (data.kids ?? []) : []);
+      setPets(data?.success ? (data.pets ?? []) : []);
       setKidsLoaded(true);
     } catch {
-      // non-fatal — Kids Together tab shows empty state
+      // non-fatal — Kids & Pets Together tab shows empty state
     } finally {
       setKidsLoading(false);
     }
@@ -539,7 +543,12 @@ export const RelationshipDetailModal = ({
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="border-pink-500/30 bg-gradient-to-br from-black via-purple-950 to-black" onClose={onClose}>
+      {/* Stable height: short tabs (Kids Together) must not shrink the panel and
+          shift the tab strip out from under the pointer mid-click. */}
+      <DialogContent
+        className="border-pink-500/30 bg-gradient-to-br from-black via-purple-950 to-black sm:h-[90vh]"
+        onClose={onClose}
+      >
         <DialogHeader>
           <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
             <Heart className="w-5 h-5 sm:w-6 sm:h-6 text-pink-400 shrink-0" />
@@ -915,6 +924,7 @@ export const RelationshipDetailModal = ({
           <TabsContent value="kids" className={tabPanelClass}>
             <KidsTogetherPanel
               kids={kids}
+              pets={pets}
               loading={kidsLoading}
               partnerName={displayName}
               onOpenPeripheralCharacter={handleOpenPeripheralCharacter}
@@ -1142,7 +1152,11 @@ export const RelationshipDetailModal = ({
           </TabsContent>
           </div>
         </Tabs>
+        </div>
 
+        {/* Full-bleed sibling of the padded body (every other entity modal does
+            the same) so the bar covers the modal's bottom edge-to-edge instead
+            of floating inset with a gap under it. */}
         <EntityModalBottomNav
           tabs={RELATIONSHIP_TABS.map(({ value, label, shortLabel, icon }) => ({ key: value, label, shortLabel, icon }))}
           activeTab={activeTab}
@@ -1150,7 +1164,6 @@ export const RelationshipDetailModal = ({
           ariaLabel="Relationship sections"
           breakpoint="md"
         />
-        </div>
       </DialogContent>
     </Dialog>
   );

@@ -211,9 +211,229 @@ export const dummyCharacters: Character[] = [
       is_self: true,
       is_user: true,
       relationship_type: 'self',
+      relationships: {
+        'dummy-mother': { type: 'mother', closeness: 88 },
+        'dummy-father': { type: 'father', closeness: 72 },
+        'dummy-stepmother': { type: 'stepmother', closeness: 64 },
+        'dummy-adoptive-mother': { type: 'adoptive_mother', closeness: 91 },
+        'dummy-daughter': { type: 'daughter', closeness: 97 },
+        'dummy-stepson': { type: 'stepson', closeness: 70 },
+        'dummy-adopted-daughter': { type: 'adopted_daughter', closeness: 93 },
+        'dummy-pet-dog': { type: 'dog', closeness: 89 },
+        'dummy-pet-cat': { type: 'cat', closeness: 76 },
+      },
     },
     memory_count: 42,
     relationship_count: 12,
+  },
+  // Household cast — gives the Connections tab a populated parents / children /
+  // pets read (biological, step, and adoptive in each direction).
+  {
+    id: 'dummy-mother',
+    name: 'Elena Morgan',
+    first_name: 'Elena',
+    last_name: 'Morgan',
+    pronouns: 'she/her',
+    archetype: 'family',
+    role: 'Mother',
+    status: 'active',
+    importance_level: 'major',
+    importance_score: 92,
+    proximity_level: 'direct',
+    relationship_depth: 'close',
+    has_met: true,
+    is_nickname: false,
+    summary:
+      'Raised you in Sacramento and still calls every Sunday. Retired schoolteacher, relentless gardener, first person you told about leaving tech.',
+    tags: ['family', 'parent', 'support'],
+    metadata: {
+      relationship_type: 'mother',
+      closeness_score: 88,
+      kinship_label: 'Mother',
+      relationships: {
+        'dummy-4': { type: 'child', closeness: 90 },
+        'dummy-father': { type: 'ex_husband', closeness: 30 },
+      },
+    },
+    memory_count: 30,
+    relationship_count: 6,
+  },
+  {
+    id: 'dummy-father',
+    name: 'Ray Morgan',
+    first_name: 'Ray',
+    last_name: 'Morgan',
+    pronouns: 'he/him',
+    archetype: 'family',
+    role: 'Father',
+    status: 'active',
+    importance_level: 'major',
+    importance_score: 80,
+    proximity_level: 'direct',
+    relationship_depth: 'warm',
+    has_met: true,
+    is_nickname: false,
+    summary:
+      'Remarried and living in Reno. You talk mostly about music and cars — the easy topics you both reach for.',
+    tags: ['family', 'parent'],
+    metadata: { relationship_type: 'father', closeness_score: 72, kinship_label: 'Father' },
+    memory_count: 18,
+    relationship_count: 5,
+  },
+  {
+    id: 'dummy-stepmother',
+    name: 'Dana Whitfield',
+    first_name: 'Dana',
+    last_name: 'Whitfield',
+    pronouns: 'she/her',
+    archetype: 'family',
+    role: 'Stepmother',
+    status: 'active',
+    importance_level: 'supporting',
+    importance_score: 62,
+    proximity_level: 'direct',
+    relationship_depth: 'warm',
+    has_met: true,
+    is_nickname: false,
+    summary:
+      "Married your dad in 2019. Careful with your boundaries in a way that earned trust slowly and honestly.",
+    tags: ['family', 'step-parent'],
+    metadata: { relationship_type: 'stepmother', closeness_score: 64, kinship_label: 'Stepmother' },
+    memory_count: 9,
+    relationship_count: 4,
+  },
+  {
+    id: 'dummy-adoptive-mother',
+    name: 'Miriam Vance',
+    first_name: 'Miriam',
+    last_name: 'Vance',
+    pronouns: 'she/her',
+    archetype: 'family',
+    role: 'Adoptive mother',
+    status: 'active',
+    importance_level: 'major',
+    importance_score: 94,
+    proximity_level: 'direct',
+    relationship_depth: 'close',
+    has_met: true,
+    is_nickname: false,
+    summary:
+      'Took you in at sixteen and made it legal at eighteen. The person who taught you that chosen family counts twice.',
+    tags: ['family', 'adoptive parent', 'support'],
+    metadata: {
+      relationship_type: 'adoptive_mother',
+      closeness_score: 91,
+      kinship_label: 'Adoptive mother',
+    },
+    memory_count: 26,
+    relationship_count: 5,
+  },
+  {
+    id: 'dummy-daughter',
+    name: 'Mia Morgan',
+    first_name: 'Mia',
+    last_name: 'Morgan',
+    pronouns: 'she/her',
+    archetype: 'family',
+    role: 'Daughter',
+    status: 'active',
+    importance_level: 'protagonist',
+    importance_score: 99,
+    proximity_level: 'direct',
+    relationship_depth: 'close',
+    has_met: true,
+    is_nickname: false,
+    summary: 'Nine years old, fearless on a skateboard, negotiates bedtime like a lawyer.',
+    tags: ['family', 'child'],
+    metadata: { relationship_type: 'daughter', closeness_score: 97, kinship_label: 'Daughter' },
+    memory_count: 41,
+    relationship_count: 4,
+  },
+  {
+    id: 'dummy-stepson',
+    name: 'Theo Whitfield',
+    first_name: 'Theo',
+    last_name: 'Whitfield',
+    pronouns: 'he/him',
+    archetype: 'family',
+    role: 'Stepson',
+    status: 'active',
+    importance_level: 'supporting',
+    importance_score: 68,
+    proximity_level: 'direct',
+    relationship_depth: 'warm',
+    has_met: true,
+    is_nickname: false,
+    summary: 'Fourteen, deep into building keyboards. You bonded over soldering irons before conversation.',
+    tags: ['family', 'step-child'],
+    metadata: { relationship_type: 'stepson', closeness_score: 70, kinship_label: 'Stepson' },
+    memory_count: 12,
+    relationship_count: 3,
+  },
+  {
+    id: 'dummy-adopted-daughter',
+    name: 'Noor Vance',
+    first_name: 'Noor',
+    last_name: 'Vance',
+    pronouns: 'she/her',
+    archetype: 'family',
+    role: 'Adopted daughter',
+    status: 'active',
+    importance_level: 'major',
+    importance_score: 96,
+    proximity_level: 'direct',
+    relationship_depth: 'close',
+    has_met: true,
+    is_nickname: false,
+    summary: 'Adopted at seven, now twelve and the loudest laugh in the house.',
+    tags: ['family', 'adopted child'],
+    metadata: {
+      relationship_type: 'adopted_daughter',
+      closeness_score: 93,
+      kinship_label: 'Adopted daughter',
+    },
+    memory_count: 22,
+    relationship_count: 3,
+  },
+  {
+    id: 'dummy-pet-dog',
+    name: 'Waffles',
+    first_name: 'Waffles',
+    pronouns: 'he/him',
+    archetype: 'companion',
+    role: 'Dog',
+    status: 'active',
+    importance_level: 'supporting',
+    importance_score: 70,
+    proximity_level: 'direct',
+    relationship_depth: 'close',
+    has_met: true,
+    is_nickname: false,
+    summary: 'Golden retriever, six years old. Structures your mornings whether you like it or not.',
+    tags: ['pet', 'household'],
+    metadata: { relationship_type: 'dog', species: 'dog', closeness_score: 89 },
+    memory_count: 16,
+    relationship_count: 2,
+  },
+  {
+    id: 'dummy-pet-cat',
+    name: 'Pixel',
+    first_name: 'Pixel',
+    pronouns: 'she/her',
+    archetype: 'companion',
+    role: 'Cat',
+    status: 'active',
+    importance_level: 'minor',
+    importance_score: 55,
+    proximity_level: 'direct',
+    relationship_depth: 'warm',
+    has_met: true,
+    is_nickname: false,
+    summary: 'Tortoiseshell, adopted from the shelter the week you quit your job. Sits on the keyboard during demos.',
+    tags: ['pet', 'household'],
+    metadata: { relationship_type: 'cat', species: 'cat', closeness_score: 76 },
+    memory_count: 8,
+    relationship_count: 2,
   },
   {
     id: 'dummy-1',
@@ -412,7 +632,15 @@ export const dummyCharacters: Character[] = [
       relationship_type: 'family',
       closeness_score: 90,
       first_met: '1995-06-15',
-      social_standing: { score: 0.78, tier: 'inner_circle', degree: 3, connector: true, computed_at: new Date().toISOString() }
+      social_standing: { score: 0.78, tier: 'inner_circle', degree: 3, connector: true, computed_at: new Date().toISOString() },
+      relationships: {
+        'dummy-mother': { type: 'mother', closeness: 86 },
+        'dummy-father': { type: 'father', closeness: 68 },
+        'dummy-stepmother': { type: 'stepmother', closeness: 55 },
+        'dummy-adoptive-mother': { type: 'adoptive_mother', closeness: 84 },
+        'dummy-pet-dog': { type: 'dog', closeness: 60 },
+        'dummy-1': { type: 'friend', closeness: 62 },
+      },
     },
     memory_count: 32,
     relationship_count: 12
@@ -3347,8 +3575,169 @@ export const CharacterBook = () => {
     >
       <MyFamilyModal isOpen={showMyFamily} onClose={() => setShowMyFamily(false)} />
 
-      {/* Character Search Bar and Navigation Tabs — first so /demo/characters
-          opens on the book, not Ask/Detected chrome above the fold. */}
+      {/* People On Your Mind Lately */}
+      {(() => {
+        const displayNameForMindChip = (character: Character) => {
+          const structuredName = [character.first_name, character.last_name]
+            .filter((part): part is string => Boolean(part?.trim()))
+            .join(' ')
+            .trim();
+          return structuredName || character.name;
+        };
+
+        const recent = [...characters]
+          .filter(c => !isSelfCharacter(c))
+          .filter(c => (c.analytics?.recency_score ?? 0) > 0)
+          .sort((a, b) => (b.analytics?.recency_score ?? 0) - (a.analytics?.recency_score ?? 0))
+          .slice(0, 6);
+        if (recent.length === 0) return null;
+        return (
+          <div>
+            <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-2.5">
+              People On Your Mind Lately
+            </p>
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+              {recent.map(c => {
+                const closeness = c.analytics?.closeness_score ?? 0;
+                const displayName = displayNameForMindChip(c);
+                const phase = (() => {
+                  const r = c.analytics?.recency_score ?? 0;
+                  if (closeness >= 70 && r >= 0.6) return { label: 'Core',    cls: 'text-purple-300', icon: <Flame className="h-2.5 w-2.5" /> };
+                  if (closeness >= 45 || r >= 0.4) return { label: 'Active',  cls: 'text-cyan-300',   icon: <Zap className="h-2.5 w-2.5" /> };
+                  if (closeness >= 20 || r >= 0.2) return { label: 'Fading',  cls: 'text-amber-300',  icon: <Wind className="h-2.5 w-2.5" /> };
+                  return                            { label: 'Dormant', cls: 'text-gray-400',   icon: <Moon className="h-2.5 w-2.5" /> };
+                })();
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setSelectedCharacter(c)}
+                    className="flex-shrink-0 flex flex-col items-center gap-1.5 p-3 rounded-xl border border-white/10 bg-white/4 hover:bg-white/8 hover:border-white/20 transition-all w-28 text-center"
+                    title={displayName}
+                  >
+                    <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0">
+                      <CharacterAvatar
+                        url={c.avatar_url}
+                        characterId={c.id}
+                        archetype={c.archetype}
+                        role={c.role}
+                        name={displayName}
+                        size={36}
+                      />
+                    </div>
+                    <span className="text-[10px] text-white/80 leading-tight line-clamp-2 w-full">{displayName}</span>
+                    <span className={`flex items-center gap-0.5 text-[9px] ${phase.cls}`}>
+                      {phase.icon}{phase.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* User Profile */}
+      <div className="space-y-3 sm:space-y-4">
+        <UserProfile characters={characters} />
+      </div>
+
+      {/* Narrative onboarding re-prompt — shows until the user builds their profile */}
+      <OnboardingReprompt />
+
+      <FocusedEntityChatLauncher
+        options={characterChatOptions}
+        copy={FOCUSED_ENTITY_CHAT_PRESETS.characters.copy}
+        theme={FOCUSED_ENTITY_CHAT_PRESETS.characters.theme}
+        icon={FOCUSED_ENTITY_CHAT_PRESETS.characters.icon}
+        busy={focusedChatBusy}
+        error={focusedChatError}
+        onContinue={openCharacterFocusedChat}
+      />
+      <BookQueryPanel
+        demoMode={isMockDataEnabled}
+        domains={['character']}
+        title="Ask People & Characters"
+        description="Search names, aliases, roles, relationship context, and records that need review."
+        placeholder='Try “Who are my creative collaborators?”'
+        compact
+        onSelectResult={(result) => {
+          const match = characters.find((character) => character.id === result.id);
+          if (match) openCharacterDetail(match);
+          else setSearchTerm(result.title);
+        }}
+      />
+      <DetectedCharacterSuggestions
+        demoMode={isMockDataEnabled}
+        existingBookEntries={
+          isMockDataEnabled
+            ? getMockCharacterSuggestionBookNames('general').map((name) => ({ name }))
+            : characters
+                .filter(c => c.status !== 'archived' && c.status !== 'pending_deletion' && c.status !== 'reclassified')
+                .map(c => ({ id: c.id, name: c.name, aliases: c.alias ?? [] }))
+        }
+        existingCharacterNames={
+          isMockDataEnabled
+            ? getMockCharacterSuggestionBookNames('general')
+            : characters
+                .filter(c => c.status !== 'archived' && c.status !== 'pending_deletion' && c.status !== 'reclassified')
+                .flatMap(c => [c.name, ...(c.alias ?? [])])
+        }
+        onRescanComplete={() => {
+          void loadCharacters();
+        }}
+        onCharacterAdded={(payload) => {
+          if (payload.matchedCharacterId) {
+            setSearchTerm('');
+            setActiveCategory('all');
+            setImportanceFilter('all');
+            setCurrentPage(1);
+          }
+          void loadCharacters();
+        }}
+      />
+
+      {rescanNotice && (
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          {rescanNotice}
+        </div>
+      )}
+      {rescanError && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          {rescanError}
+        </div>
+      )}
+
+      <OntologyCompliancePanel book="characters" />
+
+      <CharacterAuditPanel
+        demoMode={isMockDataEnabled}
+        onChanged={() => {
+          void loadCharacters();
+          void loadRelationships();
+        }}
+      />
+
+      <CharacterMergePanel
+        characters={characters}
+        demoMode={isMockDataEnabled}
+        onConsolidated={(result) => {
+          if (result?.demoCharacters && isMockDataEnabled) {
+            setDemoCharacterOverride(result.demoCharacters.map(withDemoAnalytics));
+          } else {
+            void loadCharacters();
+            void loadRelationships();
+          }
+        }}
+        selectionMode={selectionMode}
+        onSelectionModeChange={setSelectionMode}
+        selectedForMerge={selectedForMerge}
+        onToggleSelected={toggleSelectedForMerge}
+        onClearSelection={() => setSelectedForMerge(new Set())}
+      />
+
+      {/* Search, filters and tabs sit directly above the grid they drive — the
+          cast chrome above them is the page's opening read. */}
       <div className="space-y-3 sm:space-y-4">
         <SearchWithAutocomplete<Character>
           value={searchTerm}
@@ -4079,167 +4468,6 @@ export const CharacterBook = () => {
           </div>
         </>
       )}
-
-      {/* People On Your Mind Lately */}
-      {(() => {
-        const displayNameForMindChip = (character: Character) => {
-          const structuredName = [character.first_name, character.last_name]
-            .filter((part): part is string => Boolean(part?.trim()))
-            .join(' ')
-            .trim();
-          return structuredName || character.name;
-        };
-
-        const recent = [...characters]
-          .filter(c => !isSelfCharacter(c))
-          .filter(c => (c.analytics?.recency_score ?? 0) > 0)
-          .sort((a, b) => (b.analytics?.recency_score ?? 0) - (a.analytics?.recency_score ?? 0))
-          .slice(0, 6);
-        if (recent.length === 0) return null;
-        return (
-          <div>
-            <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-2.5">
-              People On Your Mind Lately
-            </p>
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-              {recent.map(c => {
-                const closeness = c.analytics?.closeness_score ?? 0;
-                const displayName = displayNameForMindChip(c);
-                const phase = (() => {
-                  const r = c.analytics?.recency_score ?? 0;
-                  if (closeness >= 70 && r >= 0.6) return { label: 'Core',    cls: 'text-purple-300', icon: <Flame className="h-2.5 w-2.5" /> };
-                  if (closeness >= 45 || r >= 0.4) return { label: 'Active',  cls: 'text-cyan-300',   icon: <Zap className="h-2.5 w-2.5" /> };
-                  if (closeness >= 20 || r >= 0.2) return { label: 'Fading',  cls: 'text-amber-300',  icon: <Wind className="h-2.5 w-2.5" /> };
-                  return                            { label: 'Dormant', cls: 'text-gray-400',   icon: <Moon className="h-2.5 w-2.5" /> };
-                })();
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setSelectedCharacter(c)}
-                    className="flex-shrink-0 flex flex-col items-center gap-1.5 p-3 rounded-xl border border-white/10 bg-white/4 hover:bg-white/8 hover:border-white/20 transition-all w-28 text-center"
-                    title={displayName}
-                  >
-                    <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0">
-                      <CharacterAvatar
-                        url={c.avatar_url}
-                        characterId={c.id}
-                        archetype={c.archetype}
-                        role={c.role}
-                        name={displayName}
-                        size={36}
-                      />
-                    </div>
-                    <span className="text-[10px] text-white/80 leading-tight line-clamp-2 w-full">{displayName}</span>
-                    <span className={`flex items-center gap-0.5 text-[9px] ${phase.cls}`}>
-                      {phase.icon}{phase.label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* User Profile */}
-      <div className="space-y-3 sm:space-y-4">
-        <UserProfile characters={characters} />
-      </div>
-
-      {/* Narrative onboarding re-prompt — shows until the user builds their profile */}
-      <OnboardingReprompt />
-
-      <FocusedEntityChatLauncher
-        options={characterChatOptions}
-        copy={FOCUSED_ENTITY_CHAT_PRESETS.characters.copy}
-        theme={FOCUSED_ENTITY_CHAT_PRESETS.characters.theme}
-        icon={FOCUSED_ENTITY_CHAT_PRESETS.characters.icon}
-        busy={focusedChatBusy}
-        error={focusedChatError}
-        onContinue={openCharacterFocusedChat}
-      />
-      <BookQueryPanel
-        demoMode={isMockDataEnabled}
-        domains={['character']}
-        title="Ask People & Characters"
-        description="Search names, aliases, roles, relationship context, and records that need review."
-        placeholder='Try “Who are my creative collaborators?”'
-        compact
-        onSelectResult={(result) => {
-          const match = characters.find((character) => character.id === result.id);
-          if (match) openCharacterDetail(match);
-          else setSearchTerm(result.title);
-        }}
-      />
-      <DetectedCharacterSuggestions
-        demoMode={isMockDataEnabled}
-        existingBookEntries={
-          isMockDataEnabled
-            ? getMockCharacterSuggestionBookNames('general').map((name) => ({ name }))
-            : characters
-                .filter(c => c.status !== 'archived' && c.status !== 'pending_deletion' && c.status !== 'reclassified')
-                .map(c => ({ id: c.id, name: c.name, aliases: c.alias ?? [] }))
-        }
-        existingCharacterNames={
-          isMockDataEnabled
-            ? getMockCharacterSuggestionBookNames('general')
-            : characters
-                .filter(c => c.status !== 'archived' && c.status !== 'pending_deletion' && c.status !== 'reclassified')
-                .flatMap(c => [c.name, ...(c.alias ?? [])])
-        }
-        onRescanComplete={() => {
-          void loadCharacters();
-        }}
-        onCharacterAdded={(payload) => {
-          if (payload.matchedCharacterId) {
-            setSearchTerm('');
-            setActiveCategory('all');
-            setImportanceFilter('all');
-            setCurrentPage(1);
-          }
-          void loadCharacters();
-        }}
-      />
-
-      {rescanNotice && (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-          {rescanNotice}
-        </div>
-      )}
-      {rescanError && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-          {rescanError}
-        </div>
-      )}
-
-      <OntologyCompliancePanel book="characters" />
-
-      <CharacterAuditPanel
-        demoMode={isMockDataEnabled}
-        onChanged={() => {
-          void loadCharacters();
-          void loadRelationships();
-        }}
-      />
-
-      <CharacterMergePanel
-        characters={characters}
-        demoMode={isMockDataEnabled}
-        onConsolidated={(result) => {
-          if (result?.demoCharacters && isMockDataEnabled) {
-            setDemoCharacterOverride(result.demoCharacters.map(withDemoAnalytics));
-          } else {
-            void loadCharacters();
-            void loadRelationships();
-          }
-        }}
-        selectionMode={selectionMode}
-        onSelectionModeChange={setSelectionMode}
-        selectedForMerge={selectedForMerge}
-        onToggleSelected={toggleSelectedForMerge}
-        onClearSelection={() => setSelectedForMerge(new Set())}
-      />
 
       {mainCharacterModalOpen && (
         <MainCharacterDetailModal

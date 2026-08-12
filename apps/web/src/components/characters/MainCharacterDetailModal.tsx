@@ -31,6 +31,8 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { CharacterAvatar } from './CharacterAvatar';
 import { CharacterDetailModal } from './CharacterDetailModal';
+import { CharacterKinshipLists } from './CharacterKinshipLists';
+import { isKinshipConnection } from '../../lib/characterKinshipGroups';
 import { CharacterTitleSection } from './CharacterTitleSection';
 import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 import { CharacterKnowledgeBase, type CharacterKnowledgeBaseData } from './CharacterKnowledgeBase';
@@ -469,12 +471,22 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
     }
   };
 
-  const sortedRelationships = useMemo(
+  const allRelationships = useMemo(
     () =>
       [...(selfRelationships ?? profile.relationships)].sort(
         (a, b) => (b.closeness_score ?? 0) - (a.closeness_score ?? 0),
       ),
     [selfRelationships, profile.relationships],
+  );
+  const kinshipRelationships = useMemo(
+    () => allRelationships.filter(isKinshipConnection),
+    [allRelationships],
+  );
+  // Parents / children / pets are listed by role above, so the flat cast list
+  // below doesn't repeat them.
+  const sortedRelationships = useMemo(
+    () => allRelationships.filter((rel) => !isKinshipConnection(rel)),
+    [allRelationships],
   );
 
   const statItems = [
@@ -1133,6 +1145,19 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                     })}
                   </div>
                 )}
+
+                <CharacterKinshipLists
+                  relationships={kinshipRelationships}
+                  onOpen={(rel) =>
+                    setSelectedConnection({
+                      id: rel.character_id || rel.id || '',
+                      name: rel.character_name || 'Unknown',
+                      role: rel.relationship_type,
+                      summary: rel.summary,
+                      status: rel.status || 'active',
+                    } as Character)
+                  }
+                />
 
                 <div className={`${canEditWorld ? 'pt-2' : ''} space-y-2`}>
                   <div className="flex items-center gap-2 px-1">

@@ -523,6 +523,100 @@ class FamilyTreeService {
   }
 
   /**
+   * Pets shared with (or brought into) a romantic relationship — the animal
+   * half of the "Kids & Pets Together" tab. Ownership lives on the household
+   * edge (`owner_of` / `pet_of`), not the kinship tree, so this reads those
+   * edges directly rather than walking generations.
+   *
+   * A pet only one side owns is gated the same way step-kids are: without it,
+   * the user's own dog would surface under every crush they ever logged.
+   */
+  async getPetsTogetherForRelationship(
+    userId: string,
+    partnerCharacterId: string | null,
+    relationshipType?: string | null,
+  ): Promise<
+    Array<{
+      id: string;
+      name: string;
+      relation: 'together' | 'step';
+      belongsTo: 'both' | 'self' | 'partner';
+      species: string | null;
+    }>
+  > {
+    if (!partnerCharacterId) return [];
+    const tree = await this.getUserFamilyTree(userId);
+    const selfId = tree?.self_id;
+    if (!selfId || selfId === partnerCharacterId) return [];
+
+    const ownerType = normalizeFamilyEdgeType('owner');
+    const petType = normalizeFamilyEdgeType('pet');
+    const anchors = [selfId, partnerCharacterId];
+
+    try {
+      const [owned, owning] = await Promise.all([
+        supabaseAdmin
+          .from('character_relationships')
+          .select('source_character_id, target_character_id')
+          .eq('user_id', userId)
+          .eq('relationship_type', ownerType)
+          .in('source_character_id', anchors),
+        supabaseAdmin
+          .from('character_relationships')
+          .select('source_character_id, target_character_id')
+          .eq('user_id', userId)
+          .eq('relationship_type', petType)
+          .in('target_character_id', anchors),
+      ]);
+
+      const ownersByPet = new Map<string, Set<string>>();
+      const record = (petId: string, ownerId: string) => {
+        if (!petId || anchors.includes(petId)) return;
+        const owners = ownersByPet.get(petId) ?? new Set<string>();
+        owners.add(ownerId);
+        ownersByPet.set(petId, owners);
+      };
+      for (const row of owned.data ?? []) record(row.target_character_id, row.source_character_id);
+      for (const row of owning.data ?? []) record(row.source_character_id, row.target_character_id);
+
+      if (ownersByPet.size === 0) return [];
+
+      const canInferOneSided = isCommittedOrCoParentRelationshipType(relationshipType);
+      const petIds = [...ownersByPet.keys()].filter((petId) => {
+        const owners = ownersByPet.get(petId)!;
+        return (owners.has(selfId) && owners.has(partnerCharacterId)) || canInferOneSided;
+      });
+      if (petIds.length === 0) return [];
+
+      const { data: characters } = await supabaseAdmin
+        .from('characters')
+        .select('id, name, species')
+        .eq('user_id', userId)
+        .in('id', petIds);
+
+      const byId = new Map((characters ?? []).map((c) => [c.id as string, c]));
+
+      return petIds
+        .filter((petId) => byId.has(petId))
+        .map((petId) => {
+          const owners = ownersByPet.get(petId)!;
+          const shared = owners.has(selfId) && owners.has(partnerCharacterId);
+          const character = byId.get(petId)!;
+          return {
+            id: petId,
+            name: (character.name as string) ?? 'Unknown',
+            relation: shared ? ('together' as const) : ('step' as const),
+            belongsTo: shared ? ('both' as const) : owners.has(selfId) ? ('self' as const) : ('partner' as const),
+            species: (character.species as string | null) ?? null,
+          };
+        });
+    } catch (err) {
+      logger.debug({ err, userId, partnerCharacterId }, 'getPetsTogetherForRelationship failed (non-fatal)');
+      return [];
+    }
+  }
+
+  /**
    * Hierarchy fallback: family edges are often stored as a generic `related`
    * relationship, which collapses everyone to generation 0. Re-derive relation +
    * generation from kinship keywords — but ONLY when the name is TITLE-LEADING

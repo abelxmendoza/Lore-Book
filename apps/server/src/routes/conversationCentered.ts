@@ -4308,9 +4308,10 @@ router.get(
 /**
  * GET /api/conversation/romantic-relationships/:id/kids
  *
- * "Kids Together" tab — offspring shared with this partner, step-kids
- * belonging to just one of them, and any other co-parent on that same kid
- * (an ex, another baby mama/daddy) sourced from the user's family tree.
+ * "Kids & Pets Together" tab — offspring shared with this partner, step-kids
+ * belonging to just one of them, any other co-parent on that same kid (an ex,
+ * another baby mama/daddy) sourced from the user's family tree, plus the pets
+ * the two of them share or brought into the household.
  */
 router.get(
   '/romantic-relationships/:id/kids',
@@ -4337,13 +4338,20 @@ router.get(
     const partnerCharacterId =
       rel.character_id ?? linkedFromMeta ?? (rel.person_type === 'character' ? rel.person_id : null);
 
-    const kids = await familyTreeService.getKidsTogetherForRelationship(
-      userId,
-      partnerCharacterId,
-      rel.relationship_type as string | null,
-    );
+    const [kids, pets] = await Promise.all([
+      familyTreeService.getKidsTogetherForRelationship(
+        userId,
+        partnerCharacterId,
+        rel.relationship_type as string | null,
+      ),
+      familyTreeService.getPetsTogetherForRelationship(
+        userId,
+        partnerCharacterId,
+        rel.relationship_type as string | null,
+      ),
+    ]);
 
-    return res.json({ success: true, kids });
+    return res.json({ success: true, kids, pets });
   })
 );
 

@@ -68,6 +68,27 @@ describe('WelcomeSplash', () => {
     expect(screen.getByTestId('welcome-splash')).toBeInTheDocument();
   });
 
+  it('does not replay when demo/guest entry requests a splash mid-play', () => {
+    vi.useFakeTimers();
+    // Entering /demo/love by URL auto-shows the splash for the route, then the
+    // guest identity demo entry creates used to request a second one — nine
+    // seconds of near-black screen before the app appeared.
+    renderSplash('/demo/love');
+    expect(screen.getByTestId('welcome-splash')).toBeInTheDocument();
+
+    act(() => {
+      requestWelcomeSplash();
+    });
+    act(() => {
+      vi.advanceTimersByTime(3500);
+    });
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
+
+    expect(screen.queryByTestId('welcome-splash')).not.toBeInTheDocument();
+  });
+
   it('auto-dismisses after the visible window', () => {
     vi.useFakeTimers();
     renderSplash('/home');
