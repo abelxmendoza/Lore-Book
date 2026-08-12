@@ -10,6 +10,7 @@ import {
   getMockRelationshipAnalytics,
   getMockRankings,
   getMockKidsTogether,
+  getMockPetsTogether,
   type MockRomanticRelationship
 } from '../romanticRelationships';
 import { getMockRomanticBookCharacterById } from '../romanticPeripheralCharacters';
@@ -297,6 +298,25 @@ describe('Romantic Relationships Mock Data', () => {
           }
         }
       }
+    });
+
+    it('every pet id resolves to a real demo Character', () => {
+      for (const rel of generateMockRomanticRelationships()) {
+        for (const pet of getMockPetsTogether(rel.id)) {
+          expect(getMockRomanticBookCharacterById(pet.id), `pet ${pet.name} (${pet.id})`).toBeDefined();
+        }
+      }
+    });
+
+    it('returns shared and one-sided pets for the married relationship', () => {
+      const pets = getMockPetsTogether('rel-010');
+      expect(pets.map((p) => p.name)).toEqual(['Waffles', 'Pixel']);
+      expect(pets.find((p) => p.name === 'Waffles')?.relation).toBe('together');
+      expect(pets.find((p) => p.name === 'Pixel')?.belongsTo).toBe('partner');
+    });
+
+    it('returns no pets for a relationship without any', () => {
+      expect(getMockPetsTogether('rel-011')).toEqual([]);
     });
   });
 });
