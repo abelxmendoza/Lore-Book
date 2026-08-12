@@ -107,6 +107,67 @@ describe('romanticPeripheralService', () => {
     expect(mocks.resolveRomanticPartner).toHaveBeenCalledWith('u-1', 'Sam');
   });
 
+  it('adds chat stories to an ex without downgrading the ex role', async () => {
+    const chain = mocks.from();
+    const existingEx = {
+      ...mocks.peripheralRow,
+      role: 'ex',
+      source_message_ids: ['msg-old'],
+      metadata: {
+        lexical_evidence: 'Jamie said Jordan was her ex-husband.',
+        evidence_history: [
+          {
+            message_id: 'msg-old',
+            evidence: 'Jamie said Jordan was her ex-husband.',
+            recorded_at: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+      },
+    };
+    chain.maybeSingle.mockReset();
+    chain.maybeSingle
+      .mockResolvedValueOnce({ data: { id: 'rel-003' }, error: null })
+      .mockResolvedValueOnce({ data: existingEx, error: null });
+
+    await applyVicariousRelationshipHit(
+      'u-1',
+      {
+        domain: 'romantic',
+        subjectName: 'Sam',
+        objectName: null,
+        objectSurface: 'Marcus',
+        role: 'hookup',
+        tier: 'suspected',
+        confidence: 0.85,
+        evidence: 'Sam said they hooked up again after they split.',
+        cues: ['hooked up with'],
+        ontologyTags: ['ROMANTIC/VICARIOUS/SUSPECTED'],
+        hasMet: false,
+        proximity: 'third_party',
+        timeContext: 'after they split',
+      },
+      'msg-new',
+    );
+
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: 'ex',
+        source_message_ids: ['msg-old', 'msg-new'],
+        metadata: expect.objectContaining({
+          time_context: 'after they split',
+          evidence_history: expect.arrayContaining([
+            expect.objectContaining({ message_id: 'msg-old' }),
+            expect.objectContaining({
+              message_id: 'msg-new',
+              evidence: 'Sam said they hooked up again after they split.',
+              time_context: 'after they split',
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
   it('lists peripherals for character', async () => {
     const chain = mocks.from();
     chain.neq.mockResolvedValue({

@@ -343,10 +343,10 @@ export const RelationshipTimeline = ({
             <History className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />
             <div>
               <h3 className="text-sm font-semibold text-white">
-                Ex-partners in {personName}&apos;s history
+                Their dating history
               </h3>
               <p className="mt-0.5 text-xs text-white/45">
-                Prior partners connected to this dating arc. Dates stay unplaced until the story records them.
+                Ex-partners and the stories {personName} shared about those relationships. Time stays unplaced unless chat recorded it.
               </p>
             </div>
           </div>
@@ -357,6 +357,12 @@ export const RelationshipTimeline = ({
             <ul className="space-y-2">
               {exPartners.map((ex) => {
                 const name = ex.peripheral_name ?? ex.peripheral_surface;
+                const evidenceHistory =
+                  ex.metadata?.evidence_history?.length
+                    ? ex.metadata.evidence_history
+                    : ex.metadata?.lexical_evidence
+                      ? [{ evidence: ex.metadata.lexical_evidence, time_context: ex.metadata.time_context }]
+                      : [];
                 return (
                   <li key={ex.id}>
                     <button
@@ -382,11 +388,30 @@ export const RelationshipTimeline = ({
                           </Badge>
                         </span>
                         <span className="mt-0.5 block text-xs text-white/40">
-                          Date not recorded
-                          {ex.metadata?.lexical_evidence
-                            ? ` · ${ex.metadata.lexical_evidence.replace(/^…|…$/g, '')}`
-                            : ''}
+                          {ex.metadata?.time_context
+                            ? `Time context: ${ex.metadata.time_context}`
+                            : 'Date not recorded'}
                         </span>
+                        {evidenceHistory.length > 0 && (
+                          <span className="mt-2 block border-t border-white/10 pt-2">
+                            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-white/30">
+                              Stories & context ({evidenceHistory.length})
+                            </span>
+                            <span className="space-y-1.5">
+                              {evidenceHistory.map((story, index) => (
+                                <span
+                                  key={`${story.message_id ?? 'story'}-${index}`}
+                                  className="block text-xs leading-relaxed text-white/60"
+                                >
+                                  {story.time_context ? (
+                                    <span className="mr-1 text-pink-200/60">{story.time_context} ·</span>
+                                  ) : null}
+                                  {story.evidence.replace(/^…|…$/g, '')}
+                                </span>
+                              ))}
+                            </span>
+                          </span>
+                        )}
                       </span>
                     </button>
                   </li>

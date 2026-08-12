@@ -30,6 +30,8 @@ export interface VicariousRomanticHit {
   ontologyTags: string[];
   hasMet: boolean;
   proximity: 'direct' | 'indirect' | 'distant' | 'unmet' | 'third_party';
+  /** Verbatim temporal phrase from the message; never synthesized. */
+  timeContext?: string;
 }
 
 const JUNK = new Set(['me', 'myself', 'you', 'i', 'we', 'they', 'her', 'him', 'someone', 'somebody']);
@@ -41,6 +43,7 @@ const VICARIOUS_CUES = [
   'other guy', 'other girl', 'another man', 'another woman', 'some guy', 'some girl',
   'apparently they', 'i heard she', 'i heard he', 'she admitted', 'he admitted',
   'they are together', "they're together", 'dating someone', 'hooking up with',
+  'hooked up with', 'slept with', 'had sex with', 'one night stand with',
 ];
 
 const CONFIRM_CUES = [
@@ -64,6 +67,14 @@ const SUBJECT_OBJECT_PATTERNS: Array<{
     role: 'current_partner',
     tier: 'suspected',
     weight: 0.82,
+  },
+  {
+    re: /\b([A-ZÀ-Ý][a-zà-ÿ'’.-]+)\s+(?:hooked up with|slept with|had sex with|had a one night stand with)\s+([A-ZÀ-Ý][a-zà-ÿ'’.-]+)\b/gi,
+    subjectIdx: 1,
+    objectIdx: 2,
+    role: 'hookup',
+    tier: 'suspected',
+    weight: 0.84,
   },
   {
     re: /\b([A-ZÀ-Ý][a-zà-ÿ'’.-]+)'s\s+ex\b(?![\s-]+[A-ZÀ-Ý][a-zà-ÿ'’.-]+)/g,
@@ -116,6 +127,14 @@ const SUBJECT_OBJECT_PATTERNS: Array<{
     tier: 'suspected',
     weight: 0.8,
   },
+  {
+    re: /\b([A-ZÀ-Ý][a-zà-ÿ'’.-]+)\s+(?:(?:said|mentioned|told me)\s+)?(?:that\s+)?(?:her|his|their)\s+ex(?:\s+|-)([A-ZÀ-Ý][a-zà-ÿ'’.-]+)/gi,
+    subjectIdx: 1,
+    objectIdx: 2,
+    role: 'ex',
+    tier: 'suspected',
+    weight: 0.82,
+  },
 ];
 
 function inferProximity(text: string, objectName: string | null): VicariousRomanticHit['proximity'] {
@@ -138,6 +157,20 @@ function snippetAround(text: string, cue: string, maxLen = 160): string {
   const start = Math.max(0, idx - 40);
   const end = Math.min(text.length, idx + cue.length + 80);
   return (start > 0 ? '…' : '') + text.slice(start, end).trim() + (end < text.length ? '…' : '');
+}
+
+/** Keep the phrase the user supplied instead of turning it into a fake date. */
+function extractTimeContext(text: string): string | undefined {
+  const patterns = [
+    /\b(?:in|around|during|since|from)\s+(?:the\s+)?(?:spring|summer|fall|autumn|winter)\s+(?:of\s+)?(?:19|20)\d{2}\b/i,
+    /\b(?:in|around|during|since|from)\s+(?:19|20)\d{2}\b/i,
+    /\b(?:before we met|before they met|in college|in high school|when they were together|after they split|after the breakup|last summer|last winter)\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[0]) return match[0].trim();
+  }
+  return undefined;
 }
 
 export function hasVicariousRomanticSignals(text: string): boolean {
@@ -227,6 +260,7 @@ export function parseVicariousEpisode(
         ],
         hasMet: hasMet(text),
         proximity: inferProximity(text, objectName),
+        timeContext: extractTimeContext(text),
       });
     }
   }

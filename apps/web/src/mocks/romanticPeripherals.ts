@@ -467,7 +467,27 @@ export const MOCK_ROMANTIC_PERIPHERALS: RomanticPeripheral[] = [
     anchor_name: 'Jamie',
     peripheral_name: 'Jordan Ellis',
     metadata: {
-      lexical_evidence: "Jamie described Jordan Ellis as Eli's father and her ex-husband.",
+      lexical_evidence: 'Jamie said she and Jordan briefly reconnected physically after separating.',
+      time_context: 'after they split',
+      evidence_history: [
+        {
+          message_id: 'msg-jamie-jordan-college',
+          evidence: 'Jamie said she and Jordan dated in college before getting married.',
+          recorded_at: '2026-05-10T18:00:00.000Z',
+          time_context: 'in college',
+        },
+        {
+          message_id: 'msg-jamie-jordan-coparent',
+          evidence: "Jamie described Jordan Ellis as Eli's father and her ex-husband.",
+          recorded_at: '2026-06-14T18:00:00.000Z',
+        },
+        {
+          message_id: 'msg-jamie-jordan-reconnection',
+          evidence: 'Jamie said she and Jordan briefly reconnected physically after separating.',
+          recorded_at: '2026-07-02T18:00:00.000Z',
+          time_context: 'after they split',
+        },
+      ],
       glossary_cues: ['ex-husband', 'co-parent'],
       ontology_tags: ['ROMANTIC/VICARIOUS/CONFIRMED'],
       anchor_name: 'Jamie',

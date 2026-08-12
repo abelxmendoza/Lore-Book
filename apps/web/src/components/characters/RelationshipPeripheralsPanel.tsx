@@ -338,11 +338,30 @@ export function RelationshipPeripheralsPanel({
                 </div>
               </div>
 
-              {p.metadata?.lexical_evidence && (
+              {p.metadata?.evidence_history && p.metadata.evidence_history.length > 1 ? (
+                <div className="mt-3 rounded-lg border border-white/8 bg-black/20 p-2.5">
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/30">
+                    Stories & context ({p.metadata.evidence_history.length})
+                  </p>
+                  <div className="space-y-1.5">
+                    {p.metadata.evidence_history.slice(-4).map((story, index) => (
+                      <p
+                        key={`${story.message_id ?? 'story'}-${index}`}
+                        className="text-xs leading-relaxed text-white/65"
+                      >
+                        {story.time_context && (
+                          <span className="mr-1 text-pink-200/60">{story.time_context} ·</span>
+                        )}
+                        {story.evidence.replace(/^…|…$/g, '')}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ) : p.metadata?.lexical_evidence ? (
                 <blockquote className="mt-3 text-xs sm:text-sm text-white/70 border-l-2 border-primary/40 pl-3 italic break-words">
                   {p.metadata.lexical_evidence}
                 </blockquote>
-              )}
+              ) : null}
 
               <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 mt-3 sm:mt-4">
                 {p.tier === 'suspected' && (

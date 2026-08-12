@@ -18,6 +18,15 @@ export type RomanticPeripheral = {
   source_message_ids: string[];
   metadata?: {
     lexical_evidence?: string;
+    /** Multiple chat-sourced stories can accumulate around the same ex. */
+    evidence_history?: Array<{
+      message_id?: string;
+      evidence: string;
+      recorded_at?: string;
+      time_context?: string;
+    }>;
+    /** Evidence-backed wording such as "in 2019" / "before we met"; not a guessed date. */
+    time_context?: string;
     glossary_cues?: string[];
     ontology_tags?: string[];
     anchor_name?: string;

@@ -35,6 +35,8 @@ export interface VicariousRelationshipHit {
   ontologyTags: string[];
   hasMet: boolean;
   proximity: 'direct' | 'indirect' | 'distant' | 'unmet' | 'third_party';
+  /** Verbatim temporal phrase when the source message provided one. */
+  timeContext?: string;
 }
 
 const norm = (s: string) => (s ?? '').toLowerCase().replace(/['']/g, "'").replace(/\s+/g, ' ').trim();
@@ -241,6 +243,7 @@ function romanticToHit(hit: VicariousRomanticHit): VicariousRelationshipHit {
     ontologyTags: hit.ontologyTags,
     hasMet: hit.hasMet,
     proximity: hit.proximity,
+    timeContext: hit.timeContext,
   };
 }
 

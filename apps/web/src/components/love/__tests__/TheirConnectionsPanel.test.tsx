@@ -100,6 +100,9 @@ describe('TheirConnectionsPanel', () => {
     expect(exSection).toHaveTextContent('Jordan Ellis');
     expect(exSection).toHaveTextContent('Ex');
     expect(exSection).toHaveTextContent('Confirmed');
+    expect(exSection).toHaveTextContent('Stories & context (3)');
+    expect(exSection).toHaveTextContent(/dated in college/i);
+    expect(exSection).toHaveTextContent(/reconnected physically/i);
     expect(
       screen.getByTestId('peripheral-open-book-periph-jamie-ex-jordan-ellis'),
     ).toBeInTheDocument();

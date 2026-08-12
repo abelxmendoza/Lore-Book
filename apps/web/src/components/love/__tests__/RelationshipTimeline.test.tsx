@@ -74,7 +74,7 @@ describe('RelationshipTimeline', () => {
     );
 
     const section = await screen.findByTestId('romance-timeline-ex-partners');
-    expect(section).toHaveTextContent("Ex-partners in Alex's history");
+    expect(section).toHaveTextContent('Their dating history');
     expect(section).toHaveTextContent('Jamie');
     expect(section).toHaveTextContent('Confirmed ex');
     expect(section).toHaveTextContent('Date not recorded');
@@ -111,8 +111,11 @@ describe('RelationshipTimeline', () => {
     const ex = await screen.findByTestId('romance-timeline-ex-periph-jamie-ex-jordan-ellis');
     expect(ex).toHaveTextContent('Jordan Ellis');
     expect(ex).toHaveTextContent('Confirmed ex');
-    expect(ex).toHaveTextContent('Date not recorded');
+    expect(ex).toHaveTextContent('Time context: after they split');
+    expect(ex).toHaveTextContent('Stories & context (3)');
+    expect(ex).toHaveTextContent(/dated in college/i);
     expect(ex).toHaveTextContent(/ex-husband/i);
+    expect(ex).toHaveTextContent(/reconnected physically/i);
   });
 
   it('shows ongoing badge when no end date', () => {
