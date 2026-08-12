@@ -293,6 +293,48 @@ describe('CharacterDetailModal', () => {
     expect(screen.getAllByTestId('character-tab-connections').some((el) => el.getAttribute('aria-current') === 'page')).toBe(true);
   });
 
+  it('puts Archive at the end of the character navigation and keeps confirmation', async () => {
+    const user = userEvent.setup();
+    render(
+      <CharacterDetailModal
+        character={mockCharacter}
+        onClose={mockOnClose}
+        onUpdate={mockOnUpdate}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText('Loading character details...')).not.toBeInTheDocument();
+    });
+
+    const mobileTabs = screen.getAllByRole('tab');
+    expect(mobileTabs.at(-1)).toHaveAccessibleName('Archive');
+
+    await user.click(screen.getByRole('tab', { name: 'Archive' }));
+    expect(screen.getByTestId('character-archive-panel')).toHaveTextContent('Archive John Doe');
+    expect(screen.getByText(/Archiving is reversible/i)).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('character-archive-start'));
+    expect(screen.getByRole('heading', { name: 'Archive John Doe?' })).toBeInTheDocument();
+  });
+
+  it('does not show Archive for the main character', async () => {
+    render(
+      <CharacterDetailModal
+        character={mockCharacter}
+        onClose={mockOnClose}
+        onUpdate={mockOnUpdate}
+        isMainCharacter
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText('Loading character details...')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole('tab', { name: 'Archive' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /archive character/i })).not.toBeInTheDocument();
+  });
+
   it('keeps family-tree and kinship UI off a pet card', async () => {
     // A pet is an animal: the demo family tree falls back to the user's own
     // family, so a dog's card used to show somebody's grandparents.
