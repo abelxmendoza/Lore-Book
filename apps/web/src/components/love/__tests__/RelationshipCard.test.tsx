@@ -257,7 +257,8 @@ describe('RelationshipCard', () => {
     expect(coParentMale.getByText(/baby daddy/i)).toBeInTheDocument();
     coParentMale.unmount();
 
-    // Sex unknown/unconfirmed — stays neutral, matching the demo "Sage" case.
+    // Sex unknown/unconfirmed — falls back to "Kids together", matching the
+    // demo "Sage" case (no character_sex set).
     const coParentNeutral = render(
       <RelationshipCard
         relationship={{
@@ -270,7 +271,7 @@ describe('RelationshipCard', () => {
         onClick={onClick}
       />,
     );
-    expect(coParentNeutral.getByText(/co-parent/i)).toBeInTheDocument();
+    expect(coParentNeutral.getByText(/kids together/i)).toBeInTheDocument();
   });
 
   it('still shows the standalone "Kids together" badge for non-co-parent relationships (e.g. a current spouse)', () => {

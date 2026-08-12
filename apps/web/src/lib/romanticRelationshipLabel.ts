@@ -132,10 +132,10 @@ export function isRedundantRomanceIdentityLabel(
 }
 
 /**
- * Baby Mama / Baby Daddy / Co-parent — 'baby_mama'/'baby_daddy' are already
- * gendered by relationship_type; generic 'co_parent' falls back to the other
- * character's confirmed sex when known, or stays neutral when it isn't
- * (e.g. nonbinary or unconfirmed — matches the demo "neutral label" case).
+ * Baby Mama / Baby Daddy / Kids together — 'baby_mama'/'baby_daddy' are
+ * already gendered by relationship_type; generic 'co_parent' falls back to
+ * the other character's confirmed sex when known. Only falls back to the
+ * neutral "Kids together" label when sex is unknown/unconfirmed.
  */
 function composeCoParentLabel(type: string, characterSex?: string | null): string {
   if (type === 'baby_mama') return 'Baby Mama';
@@ -143,7 +143,7 @@ function composeCoParentLabel(type: string, characterSex?: string | null): strin
   const sex = (characterSex ?? '').toLowerCase();
   if (sex === 'female') return 'Baby Mama';
   if (sex === 'male') return 'Baby Daddy';
-  return 'Co-parent';
+  return 'Kids together';
 }
 
 /**
