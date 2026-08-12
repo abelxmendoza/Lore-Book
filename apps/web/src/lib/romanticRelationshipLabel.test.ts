@@ -57,12 +57,14 @@ describe('romanticRelationshipLabel', () => {
         status: 'ended',
       }),
     ).toBe('Divorced · Ended');
+    // 'baby_mama' / 'baby_daddy' already carry the gender, so they keep their
+    // own label instead of collapsing to the generic co-parent one.
     expect(
       composeRomanticRelationshipBadgeLabel({
         relationship_type: 'baby_mama',
         status: 'active',
       }),
-    ).toBe('Co-parent');
+    ).toBe('Baby Mama');
     expect(
       composeRomanticRelationshipBadgeLabel({
         id: 'rel-010',
