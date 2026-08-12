@@ -196,12 +196,14 @@ export function RelationshipPeripheralsPanel({
   const confirmedCount = peripherals.filter((p) => p.tier === 'confirmed').length;
   const isRomantic = variant === 'romantic';
   const romanticSections = (() => {
-    if (!isRomantic) return [{ key: 'all', label: null, rows: filtered }];
+    if (!isRomantic) return [{ key: 'all', label: null, rows: filtered, alwaysShow: false }];
     const { exPartners, otherConnections } = partitionRomanticPeripherals(filtered);
     return [
-      { key: 'ex-partners', label: 'Ex-partners', rows: exPartners },
-      { key: 'other-connections', label: 'Other romantic connections', rows: otherConnections },
-    ].filter((section) => section.rows.length > 0);
+      // Always show this slot in Dating & Romance. Hiding it when empty made
+      // the feature look absent on partners whose ex history is not known yet.
+      { key: 'ex-partners', label: 'Ex-partners', rows: exPartners, alwaysShow: true },
+      { key: 'other-connections', label: 'Other romantic connections', rows: otherConnections, alwaysShow: false },
+    ].filter((section) => section.rows.length > 0 || section.alwaysShow);
   })();
   const shellBorder = isRomantic ? 'border-pink-500/20 bg-pink-950/10' : 'border-white/10 bg-black/30';
   const accentIcon = isRomantic ? 'text-pink-400' : 'text-primary';
@@ -284,7 +286,7 @@ export function RelationshipPeripheralsPanel({
         ))}
       </div>
 
-      {filtered.length === 0 ? (
+      {filtered.length === 0 && !isRomantic ? (
         <div
           className="text-center text-white/50 py-10 rounded-xl border border-dashed border-white/10"
           data-testid="relationship-peripherals-empty"
@@ -302,6 +304,23 @@ export function RelationshipPeripheralsPanel({
                   {section.label} ({section.rows.length})
                 </h4>
               )}
+              {section.rows.length === 0 ? (
+                <div
+                  className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-center"
+                  data-testid={`peripheral-section-${section.key}-empty`}
+                >
+                  <p className="text-sm text-white/45">
+                    {section.key === 'ex-partners'
+                      ? `No ex-partners linked to ${anchorName} yet.`
+                      : 'No romantic connections in this group.'}
+                  </p>
+                  {section.key === 'ex-partners' && (
+                    <p className="mt-1 text-xs text-white/30">
+                      Stories about former partners appear here when you talk about them in chat.
+                    </p>
+                  )}
+                </div>
+              ) : (
               <ul className="space-y-3 sm:space-y-4">
           {section.rows.map((p) => (
             <li
@@ -422,6 +441,7 @@ export function RelationshipPeripheralsPanel({
             </li>
           ))}
               </ul>
+              )}
             </section>
           ))}
         </div>

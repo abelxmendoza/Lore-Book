@@ -130,6 +130,22 @@ describe('RelationshipTimeline', () => {
     expect(screen.getByText(/ongoing bond/i)).toBeInTheDocument();
   });
 
+  it('always shows the dating-history slot when no ex is known', async () => {
+    render(
+      <RelationshipTimeline
+        relationshipId="rel-003"
+        dates={[]}
+        relationship={{ ...mockRelationship, id: 'rel-003', person_name: 'Sam' }}
+        useMockData
+      />,
+    );
+
+    expect(await screen.findByTestId('romance-timeline-ex-partners')).toBeInTheDocument();
+    expect(screen.getByTestId('romance-timeline-ex-partners-empty')).toHaveTextContent(
+      'No ex-partners recorded for Sam yet.',
+    );
+  });
+
   it('shows end date when provided', () => {
     render(
       <RelationshipTimeline

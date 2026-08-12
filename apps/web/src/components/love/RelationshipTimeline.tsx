@@ -273,69 +273,11 @@ export const RelationshipTimeline = ({
         </CardContent>
       </Card>
 
-      {/* Current connection scores */}
-      {scores && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-3">
-          {[
-            { label: 'Affection', value: scores.affectionScore, color: 'text-pink-300', reason: scores.reasons?.affection },
-            { label: 'Connection', value: scores.intensityScore, color: 'text-rose-300', reason: scores.reasons?.intensity },
-            { label: 'Health', value: scores.healthScore, color: 'text-emerald-300', reason: scores.reasons?.health },
-            ...(scores.compatibilityScore != null
-              ? [{ label: 'Fit', value: scores.compatibilityScore, color: 'text-violet-300', reason: scores.reasons?.compatibility }]
-              : []),
-          ].map((s) => (
-            <div
-              key={s.label}
-              className="rounded-md border border-pink-500/15 bg-black/40 px-2 py-1.5 sm:p-3 text-center min-w-0"
-              title={s.reason}
-            >
-              <p className="text-[9px] sm:text-xs text-white/45 uppercase tracking-wide leading-none">{s.label}</p>
-              <p className={`text-sm sm:text-xl font-bold tabular-nums leading-tight mt-0.5 ${s.color}`}>{scorePct(s.value)}%</p>
-              {s.reason && (
-                <p className="mt-0.5 text-[9px] sm:text-[11px] leading-snug text-white/40 line-clamp-2 text-left sm:text-center">
-                  {s.reason}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Relationship period */}
-      <Card className="border-border/60 bg-black/40">
-        <CardContent className="p-3 sm:p-4">
-          <h3 className="text-xs sm:text-sm font-semibold text-white mb-2 flex items-center gap-2">
-            <Sparkles className="w-3.5 h-3.5 text-pink-400" />
-            Bond period
-          </h3>
-          <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-white/70">
-            {relationship.start_date && (
-              <div className="flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 shrink-0" />
-                <span>Connected since {new Date(relationship.start_date).toLocaleDateString()}</span>
-              </div>
-            )}
-            {relationship.end_date && (
-              <div className="flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 shrink-0" />
-                <span>Ended {new Date(relationship.end_date).toLocaleDateString()}</span>
-              </div>
-            )}
-            {!relationship.end_date && relationship.start_date && (
-              <Badge variant="outline" className="bg-green-500/15 text-green-300 border-green-500/30 text-[10px] sm:text-xs">
-                Ongoing bond
-              </Badge>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Ex-partners are relationship context, not fabricated dated events.
           Periphery extraction currently carries evidence/provenance but no
           trustworthy relationship date, so keep them in an explicit undated
           timeline section rather than inventing where they belong on the arc. */}
-      {(exPartnersLoading || exPartners.length > 0) && (
-        <section
+      <section
           className="rounded-xl border border-slate-500/20 bg-slate-950/20 p-3 sm:p-4"
           data-testid="romance-timeline-ex-partners"
         >
@@ -353,6 +295,16 @@ export const RelationshipTimeline = ({
 
           {exPartnersLoading ? (
             <p className="text-xs text-white/40">Loading prior partners…</p>
+          ) : exPartners.length === 0 ? (
+            <div
+              className="rounded-lg border border-dashed border-white/10 px-4 py-6 text-center"
+              data-testid="romance-timeline-ex-partners-empty"
+            >
+              <p className="text-sm text-white/45">No ex-partners recorded for {personName} yet.</p>
+              <p className="mt-1 text-xs text-white/30">
+                Stories about former partners and past experiences appear here when you share them in chat.
+              </p>
+            </div>
           ) : (
             <ul className="space-y-2">
               {exPartners.map((ex) => {
@@ -420,7 +372,63 @@ export const RelationshipTimeline = ({
             </ul>
           )}
         </section>
+
+      {/* Current connection scores */}
+      {scores && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-3">
+          {[
+            { label: 'Affection', value: scores.affectionScore, color: 'text-pink-300', reason: scores.reasons?.affection },
+            { label: 'Connection', value: scores.intensityScore, color: 'text-rose-300', reason: scores.reasons?.intensity },
+            { label: 'Health', value: scores.healthScore, color: 'text-emerald-300', reason: scores.reasons?.health },
+            ...(scores.compatibilityScore != null
+              ? [{ label: 'Fit', value: scores.compatibilityScore, color: 'text-violet-300', reason: scores.reasons?.compatibility }]
+              : []),
+          ].map((s) => (
+            <div
+              key={s.label}
+              className="rounded-md border border-pink-500/15 bg-black/40 px-2 py-1.5 sm:p-3 text-center min-w-0"
+              title={s.reason}
+            >
+              <p className="text-[9px] sm:text-xs text-white/45 uppercase tracking-wide leading-none">{s.label}</p>
+              <p className={`text-sm sm:text-xl font-bold tabular-nums leading-tight mt-0.5 ${s.color}`}>{scorePct(s.value)}%</p>
+              {s.reason && (
+                <p className="mt-0.5 text-[9px] sm:text-[11px] leading-snug text-white/40 line-clamp-2 text-left sm:text-center">
+                  {s.reason}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
       )}
+
+      {/* Relationship period */}
+      <Card className="border-border/60 bg-black/40">
+        <CardContent className="p-3 sm:p-4">
+          <h3 className="text-xs sm:text-sm font-semibold text-white mb-2 flex items-center gap-2">
+            <Sparkles className="w-3.5 h-3.5 text-pink-400" />
+            Bond period
+          </h3>
+          <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-white/70">
+            {relationship.start_date && (
+              <div className="flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 shrink-0" />
+                <span>Connected since {new Date(relationship.start_date).toLocaleDateString()}</span>
+              </div>
+            )}
+            {relationship.end_date && (
+              <div className="flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 shrink-0" />
+                <span>Ended {new Date(relationship.end_date).toLocaleDateString()}</span>
+              </div>
+            )}
+            {!relationship.end_date && relationship.start_date && (
+              <Badge variant="outline" className="bg-green-500/15 text-green-300 border-green-500/30 text-[10px] sm:text-xs">
+                Ongoing bond
+              </Badge>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Intimacy arc strip */}
       {arcPoints.length > 1 && (
