@@ -64,7 +64,6 @@ import { selfCharacterApi } from '../../api/selfCharacter';
 import { impactOnUserWithPublicFigureCap, isPublicFigureCharacter } from '../../lib/publicFigure';
 import { CharacterAvatar } from './CharacterAvatar';
 import { BookTrustSummary } from '../trust/BookTrustSummary';
-import { BookQueryPanel } from '../query/BookQueryPanel';
 
 // ── Demo filter-field normalization ──────────────────────────────────────────
 // Every category tab (proximity, mentioned, etc.) must have matches in demo
@@ -3653,19 +3652,6 @@ export const CharacterBook = () => {
         busy={focusedChatBusy}
         error={focusedChatError}
         onContinue={openCharacterFocusedChat}
-      />
-      <BookQueryPanel
-        demoMode={isMockDataEnabled}
-        domains={['character']}
-        title="Ask People & Characters"
-        description="Search names, aliases, roles, relationship context, and records that need review."
-        placeholder='Try “Who are my creative collaborators?”'
-        compact
-        onSelectResult={(result) => {
-          const match = characters.find((character) => character.id === result.id);
-          if (match) openCharacterDetail(match);
-          else setSearchTerm(result.title);
-        }}
       />
       <DetectedCharacterSuggestions
         demoMode={isMockDataEnabled}

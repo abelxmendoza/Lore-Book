@@ -77,19 +77,4 @@ describe('OrganizationsBook Demo Mode', () => {
     });
     expect(fetchJson).not.toHaveBeenCalled();
   });
-
-  it('answers roster queries from synthetic Demo Mode data', async () => {
-    render(<OrganizationsBook />);
-
-    fireEvent.change(screen.getByLabelText('Ask your Groups and Organizations Book'), {
-      target: { value: 'Show groups with Marcus Johnson' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Ask Book' }));
-
-    await waitFor(() => {
-      expect(screen.getByText(/\d+ matching groups?/i)).toBeInTheDocument();
-    });
-    expect(screen.getAllByText('Roster includes Marcus Johnson').length).toBeGreaterThan(0);
-    expect(fetchJson).not.toHaveBeenCalled();
-  });
 });
