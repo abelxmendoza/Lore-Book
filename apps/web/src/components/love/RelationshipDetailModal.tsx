@@ -1140,7 +1140,11 @@ export const RelationshipDetailModal = ({
           </TabsContent>
           </div>
         </Tabs>
+        </div>
 
+        {/* Full-bleed sibling of the padded body (every other entity modal does
+            the same) so the bar covers the modal's bottom edge-to-edge instead
+            of floating inset with a gap under it. */}
         <EntityModalBottomNav
           tabs={RELATIONSHIP_TABS.map(({ value, label, shortLabel, icon }) => ({ key: value, label, shortLabel, icon }))}
           activeTab={activeTab}
@@ -1148,7 +1152,6 @@ export const RelationshipDetailModal = ({
           ariaLabel="Relationship sections"
           breakpoint="md"
         />
-        </div>
       </DialogContent>
     </Dialog>
   );

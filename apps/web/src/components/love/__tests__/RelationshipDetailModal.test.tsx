@@ -147,6 +147,20 @@ describe('RelationshipDetailModal', () => {
     expect(screen.getAllByRole('tab', { name: /analytics/i })[0]).toBeInTheDocument();
   });
 
+  it('mounts the mobile bottom nav full-bleed, outside the padded body', async () => {
+    const onClose = vi.fn();
+    render(<RelationshipDetailModal relationshipId="rel-001" onClose={onClose} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Alex')).toBeInTheDocument();
+    });
+
+    // Nested inside the body's horizontal padding the bar floats inset with a
+    // gap under it instead of covering the modal's bottom edge-to-edge.
+    const nav = screen.getByRole('navigation', { name: 'Relationship sections' });
+    expect(nav.parentElement?.className ?? '').not.toMatch(/px-4|pb-4/);
+  });
+
   it('displays relationship scores in overview', async () => {
     const onClose = vi.fn();
     render(<RelationshipDetailModal relationshipId="rel-001" onClose={onClose} />);

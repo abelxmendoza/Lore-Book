@@ -188,9 +188,11 @@ export function OnboardingDemoSimulator() {
 
   return (
     <>
+      {/* z-40 keeps this nudge under modal layers (z-50 / z-[60]); above them
+          it covered entity modals' mobile bottom tab bar and ate those taps. */}
       {!open && !dismissed && (
         <aside
-          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 right-4 z-[64] rounded-xl border border-violet-400/25 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur sm:left-auto sm:right-6 sm:w-[380px]"
+          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 right-4 z-40 rounded-xl border border-violet-400/25 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur sm:left-auto sm:right-6 sm:w-[380px]"
           data-testid="onboarding-demo-launcher"
         >
           <div className="flex items-start gap-2">
