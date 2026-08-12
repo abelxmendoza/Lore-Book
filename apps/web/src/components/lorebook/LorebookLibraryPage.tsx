@@ -190,7 +190,12 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
           };
         });
 
-      setBooks(collapseLorebookVersions([...coreMapped, ...compiledMapped]));
+      const nextBooks = collapseLorebookVersions([...coreMapped, ...compiledMapped]);
+      setBooks(nextBooks);
+      setExpandedVersionsId((current) => {
+        if (current && nextBooks.some((book) => book.id === current)) return current;
+        return nextBooks.find((book) => (book.olderVersions?.length ?? 0) > 0)?.id ?? null;
+      });
       setLoadError(null);
       setLoading(readinessLoading);
       return;
@@ -238,7 +243,12 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
         };
       });
 
-      setBooks(collapseLorebookVersions(mapped));
+      const nextBooks = collapseLorebookVersions(mapped);
+      setBooks(nextBooks);
+      setExpandedVersionsId((current) => {
+        if (current && nextBooks.some((book) => book.id === current)) return current;
+        return nextBooks.find((book) => (book.olderVersions?.length ?? 0) > 0)?.id ?? null;
+      });
     } catch (error) {
       console.error('Failed to load compiled lorebooks:', error);
       setLoadError('Could not load your lorebook library. Try refreshing.');
@@ -574,14 +584,19 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
                           onClick={() =>
                             setExpandedVersionsId((current) => (current === book.id ? null : book.id))
                           }
-                          className="w-full flex items-center justify-center gap-1.5 text-[11px] font-medium text-white/40 hover:text-white/70 py-1.5 transition-colors"
+                          className={cn(
+                            'w-full flex items-center justify-center gap-1.5 rounded-lg border py-2 text-[11px] font-medium transition-colors',
+                            expandedVersionsId === book.id
+                              ? 'border-amber-500/30 bg-amber-500/10 text-amber-100/80'
+                              : 'border-white/10 bg-white/[0.03] text-white/55 hover:border-amber-500/25 hover:bg-amber-500/10 hover:text-amber-100/80',
+                          )}
                         >
                           <History className="h-3 w-3" />
                           {expandedVersionsId === book.id
                             ? 'Hide edition history'
                             : book.olderVersions && book.olderVersions.length > 0
-                              ? `${book.olderVersions.length} older version${book.olderVersions.length === 1 ? '' : 's'}`
-                              : 'Edition history'}
+                              ? `Show edition history · ${book.olderVersions.length + 1} versions`
+                              : 'Show edition history'}
                           <ChevronDown
                             className={cn('h-3 w-3 transition-transform', expandedVersionsId === book.id && 'rotate-180')}
                           />
