@@ -14,6 +14,15 @@ export type MockKidTogether = {
   coParents?: Array<{ id?: string; name: string; relation_label?: string }>;
 };
 
+export type MockPetTogether = {
+  id: string;
+  name: string;
+  /** 'together' = both own it; 'step' = one side brought it into the relationship. */
+  relation: 'together' | 'step';
+  belongsTo?: 'both' | 'self' | 'partner';
+  species?: string;
+};
+
 export type MockRomanticRelationship = {
   id: string;
   person_id: string;
@@ -677,6 +686,10 @@ export function generateMockRomanticRelationships(): MockRomanticRelationship[] 
       metadata: {
         has_kids_together: true,
         kids_names: ['Mia', 'Eli'],
+        pets_together: [
+          { id: 'pet-waffles', name: 'Waffles', relation: 'together', belongsTo: 'both', species: 'dog' },
+          { id: 'pet-pixel', name: 'Pixel', relation: 'step', belongsTo: 'partner', species: 'cat' },
+        ],
         kids_together: [
           { id: 'kid-mia', name: 'Mia', relation: 'together', belongsTo: 'both' },
           {
@@ -748,6 +761,9 @@ export function generateMockRomanticRelationships(): MockRomanticRelationship[] 
         has_kids_together: true,
         kids_names: ['Noah'],
         kids_together: [{ id: 'kid-noah', name: 'Noah', relation: 'together', belongsTo: 'both' }],
+        pets_together: [
+          { id: 'pet-biscuit', name: 'Biscuit', relation: 'step', belongsTo: 'self', species: 'dog' },
+        ],
       },
     },
     {
@@ -1392,6 +1408,16 @@ export function getMockKidsTogether(relationshipId: string): MockKidTogether[] {
     relation: 'together' as const,
     belongsTo: 'both' as const,
   }));
+}
+
+/**
+ * Pets shared with (or brought into) a relationship — the animal half of the
+ * Kids & Pets Together tab.
+ */
+export function getMockPetsTogether(relationshipId: string): MockPetTogether[] {
+  const relationship = getMockRomanticRelationshipById(relationshipId);
+  if (!relationship) return [];
+  return (relationship.metadata?.pets_together as MockPetTogether[] | undefined) ?? [];
 }
 
 /**

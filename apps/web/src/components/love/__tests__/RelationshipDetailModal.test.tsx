@@ -11,6 +11,7 @@ import {
   getMockDateEvents,
   getMockRelationshipAnalytics,
   getMockKidsTogether,
+  getMockPetsTogether,
 } from '../../../mocks/romanticRelationships';
 
 // Mock dependencies
@@ -27,6 +28,7 @@ vi.mock('../../../mocks/romanticRelationships', () => ({
   getMockDateEvents: vi.fn(),
   getMockRelationshipAnalytics: vi.fn(),
   getMockKidsTogether: vi.fn(),
+  getMockPetsTogether: vi.fn(),
 }));
 
 vi.mock('../../../lib/api', () => ({
@@ -108,6 +110,9 @@ describe('RelationshipDetailModal', () => {
     (getMockKidsTogether as any).mockReturnValue([
       { id: 'kid-mia', name: 'Mia', relation: 'together', belongsTo: 'both' },
     ]);
+    (getMockPetsTogether as any).mockReturnValue([
+      { id: 'pet-waffles', name: 'Waffles', relation: 'together', belongsTo: 'both', species: 'dog' },
+    ]);
     mockOpenChatWithFocus.mockClear();
   });
 
@@ -141,7 +146,7 @@ describe('RelationshipDetailModal', () => {
     // getAllByRole, not getByRole — the desktop TabsList and the mobile
     // EntityModalBottomNav (both real, both visible in jsdom with no CSS
     // media queries applied) render every tab twice with the same name.
-    expect(screen.getAllByRole('tab', { name: /kids together/i })[0]).toBeInTheDocument();
+    expect(screen.getAllByRole('tab', { name: /kids & pets together/i })[0]).toBeInTheDocument();
     expect(screen.getAllByRole('tab', { name: /timeline/i })[0]).toBeInTheDocument();
     expect(screen.getAllByRole('tab', { name: /pros & cons/i })[0]).toBeInTheDocument();
     expect(screen.getAllByRole('tab', { name: /analytics/i })[0]).toBeInTheDocument();
@@ -186,7 +191,7 @@ describe('RelationshipDetailModal', () => {
     });
   });
 
-  it('Kids Together tab uses mock data in demo mode and never calls the real API', async () => {
+  it('Kids & Pets Together tab uses mock data in demo mode and never calls the real API', async () => {
     const onClose = vi.fn();
     render(<RelationshipDetailModal relationshipId="rel-001" onClose={onClose} />);
 
@@ -195,13 +200,15 @@ describe('RelationshipDetailModal', () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getAllByRole('tab', { name: /kids together/i })[0]);
+    await user.click(screen.getAllByRole('tab', { name: /kids & pets together/i })[0]);
 
     await waitFor(() => {
       expect(screen.getByTestId('kids-together-panel')).toBeInTheDocument();
     });
     expect(screen.getByText('Mia')).toBeInTheDocument();
+    expect(screen.getByText('Waffles')).toBeInTheDocument();
     expect(getMockKidsTogether).toHaveBeenCalledWith('rel-001');
+    expect(getMockPetsTogether).toHaveBeenCalledWith('rel-001');
     expect(fetchJson).not.toHaveBeenCalledWith(expect.stringContaining('/kids'));
   });
 
@@ -354,7 +361,7 @@ describe('RelationshipDetailModal', () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getAllByRole('tab', { name: /kids together/i })[0]);
+    await user.click(screen.getAllByRole('tab', { name: /kids & pets together/i })[0]);
     await waitFor(() => {
       expect(screen.getByTestId('kids-together-panel')).toBeInTheDocument();
     });

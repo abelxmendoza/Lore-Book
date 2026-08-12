@@ -21,10 +21,10 @@ import { RelationshipAnalytics } from './RelationshipAnalytics';
 import { TheirConnectionsPanel } from './TheirConnectionsPanel';
 import { RelationshipFlagsPanel } from './RelationshipFlagsPanel';
 import { RelationshipLifeImpactPanel } from './RelationshipLifeImpactPanel';
-import { KidsTogetherPanel, type KidTogether } from './KidsTogetherPanel';
+import { KidsTogetherPanel, type KidTogether, type PetTogether } from './KidsTogetherPanel';
 import { getMockRelationshipInfluence } from '../../mocks/romanticLifeImpact';
 import type { MockRelationshipInfluence } from '../../mocks/romanticLifeImpact';
-import { getMockKidsTogether } from '../../mocks/romanticRelationships';
+import { getMockKidsTogether, getMockPetsTogether } from '../../mocks/romanticRelationships';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { openCharacterBookModal } from '../../lib/openCharacterBookModal';
 import {
@@ -120,7 +120,7 @@ type DateEvent = {
 const RELATIONSHIP_TABS = [
   { value: 'overview', label: 'Overview', shortLabel: 'Overview', icon: Heart },
   { value: 'chat', label: 'Chat', shortLabel: 'Chat', icon: MessageSquare },
-  { value: 'kids', label: 'Kids Together', shortLabel: 'Kids', icon: Baby },
+  { value: 'kids', label: 'Kids & Pets Together', shortLabel: 'Kids & Pets', icon: Baby },
   { value: 'timeline', label: 'Timeline', shortLabel: 'Time', icon: Clock },
   { value: 'pros-cons', label: 'Pros & Cons', shortLabel: 'Pros', icon: List },
   { value: 'analytics', label: 'Analytics', shortLabel: 'Stats', icon: BarChart3 },
@@ -166,6 +166,7 @@ export const RelationshipDetailModal = ({
   const [influenceLoading, setInfluenceLoading] = useState(false);
   const [influenceLoaded, setInfluenceLoaded] = useState(false);
   const [kids, setKids] = useState<KidTogether[]>([]);
+  const [pets, setPets] = useState<PetTogether[]>([]);
   const [kidsLoading, setKidsLoading] = useState(false);
   const [kidsLoaded, setKidsLoaded] = useState(false);
   const [crudBusy, setCrudBusy] = useState(false);
@@ -186,6 +187,7 @@ export const RelationshipDetailModal = ({
     setInfluence(null);
     setInfluenceLoaded(false);
     setKids([]);
+    setPets([]);
     setKidsLoaded(false);
   }, [relationshipId, shouldUseMockData]);
 
@@ -264,16 +266,18 @@ export const RelationshipDetailModal = ({
     try {
       if (shouldUseMockData) {
         setKids(getMockKidsTogether(relationshipId));
+        setPets(getMockPetsTogether(relationshipId));
         setKidsLoaded(true);
         return;
       }
-      const data = await fetchJson<{ success: boolean; kids?: KidTogether[] }>(
+      const data = await fetchJson<{ success: boolean; kids?: KidTogether[]; pets?: PetTogether[] }>(
         `/api/conversation/romantic-relationships/${relationshipId}/kids`
       ).catch(() => null);
       setKids(data?.success ? (data.kids ?? []) : []);
+      setPets(data?.success ? (data.pets ?? []) : []);
       setKidsLoaded(true);
     } catch {
-      // non-fatal — Kids Together tab shows empty state
+      // non-fatal — Kids & Pets Together tab shows empty state
     } finally {
       setKidsLoading(false);
     }
@@ -908,6 +912,7 @@ export const RelationshipDetailModal = ({
           <TabsContent value="kids" className={tabPanelClass}>
             <KidsTogetherPanel
               kids={kids}
+              pets={pets}
               loading={kidsLoading}
               partnerName={displayName}
               onOpenPeripheralCharacter={handleOpenPeripheralCharacter}
