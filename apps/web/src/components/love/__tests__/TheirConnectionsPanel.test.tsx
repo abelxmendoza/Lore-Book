@@ -26,6 +26,10 @@ describe('TheirConnectionsPanel', () => {
     expect(screen.getByTestId('peripheral-card-periph-sam-marcus')).toBeInTheDocument();
     expect(screen.getByText('Marcus')).toBeInTheDocument();
     expect(screen.getAllByTestId('peripheral-tier-suspected').length).toBeGreaterThan(0);
+    expect(screen.getByTestId('peripheral-section-ex-partners')).toBeInTheDocument();
+    expect(screen.getByTestId('peripheral-section-ex-partners-empty')).toHaveTextContent(
+      'No ex-partners linked to Sam yet.',
+    );
   });
 
   it('puts ex-partners in their own list before other romantic connections', async () => {
