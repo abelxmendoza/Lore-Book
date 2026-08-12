@@ -124,4 +124,23 @@ describe('LorebookLibraryPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /back/i }));
     expect(mockNavigate).toHaveBeenCalledWith('/lorebook');
   });
+
+  it('shows a new-content meter and regenerate nudge for a stale core edition', async () => {
+    render(
+      <MemoryRouter>
+        <LorebookLibraryPage />
+      </MemoryRouter>
+    );
+
+    // Seeded fixtures carry hand-authored snapshot hashes that never match a
+    // live 'rich' forge run, so the meter should surface for both of them.
+    const careerTitle = (await screen.findAllByText('Career at Vanguard Robotics'))[0];
+    const card = careerTitle.closest('article');
+    expect(card).not.toBeNull();
+
+    await waitFor(() => {
+      expect(within(card!).getByText(/new .* since v3 — a new edition is ready to generate/i)).toBeInTheDocument();
+    });
+    expect(within(card!).getByRole('button', { name: /regenerate with new memories/i })).toBeInTheDocument();
+  });
 });

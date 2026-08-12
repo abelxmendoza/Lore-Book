@@ -176,7 +176,7 @@ describe('useChatThreads', () => {
     expect(runtimeDiagnostics.recordTimed).toHaveBeenCalledWith(
       'backend_load_complete',
       'backend_load',
-      expect.objectContaining({ meta: { threadCount: 2 } })
+      expect.objectContaining({ meta: { threadCount: 2, quiet: false } })
     );
   });
 

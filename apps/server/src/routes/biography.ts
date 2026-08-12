@@ -27,6 +27,7 @@ import { mainLifestoryService } from '../services/mainLifestoryService';
 import { getLivingBiographyCard, getBiographyChanges } from '../services/livingBiographyService';
 import { getIdentitySnapshot } from '../services/identitySnapshot';
 import { recompileCoreLorebook } from '../services/biographyGeneration/recompileCoreLorebook';
+import { getRecompileHint } from '../services/biographyGeneration/recompileHint';
 import { omegaChatService } from '../services/omegaChatService';
 import {
   loreReadinessService,
@@ -637,6 +638,27 @@ router.post('/recompile-core', requireAuth, async (req: AuthenticatedRequest, re
       error: 'Failed to recompile core lorebook',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
+  }
+});
+
+/**
+ * GET /api/biography/recompile-hint
+ * How much new content has accumulated since a named Core Lorebook's latest
+ * edition, so the library can offer to regenerate it.
+ * Query params: ?lorebookName=...
+ */
+router.get('/recompile-hint', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const lorebookName = typeof req.query.lorebookName === 'string' ? req.query.lorebookName : '';
+    if (!lorebookName) {
+      return res.status(400).json({ error: 'lorebookName is required' });
+    }
+
+    const hint = await getRecompileHint(req.user!.id, lorebookName);
+    res.json({ hint });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to compute recompile hint');
+    res.status(500).json({ error: 'Failed to compute recompile hint' });
   }
 });
 

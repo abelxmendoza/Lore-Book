@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Menu, ChevronLeft, BookOpen, Edit3, Loader2, Download, Star, RefreshCw, History, ChevronDown,
+  Menu, ChevronLeft, BookOpen, Edit3, Loader2, Download, Star, RefreshCw, History, ChevronDown, Sparkles,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
@@ -13,6 +13,7 @@ import {
 import { DEMO_LOREBOOK_CATALOG } from '../../mocks/lorebooks';
 import { resolveDemoLorebookById } from '../../lib/storyForge/forgeDemoLibrary';
 import {
+  getDemoRecompileHint,
   listDemoCoreRecords,
   recompileDemoCoreLorebook,
   saveDemoCoreLorebook,
@@ -262,6 +263,67 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
   useEffect(() => {
     void loadBooks();
   }, [loadBooks]);
+
+  const [recompileHints, setRecompileHints] = useState<
+    Record<string, { available: boolean; nextVersion: number; newCount: number }>
+  >({});
+
+  const coreLorebookNames = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          books
+            .filter((book) => book.is_core_lorebook && book.lorebook_name)
+            .map((book) => book.lorebook_name as string)
+        )
+      ),
+    [books]
+  );
+
+  useEffect(() => {
+    if (coreLorebookNames.length === 0) {
+      setRecompileHints({});
+      return;
+    }
+
+    let cancelled = false;
+
+    if (useDemoLibrary) {
+      const forge = runForgeForPreset(simulation?.preset ?? 'rich');
+      const next: Record<string, { available: boolean; nextVersion: number; newCount: number }> = {};
+      for (const name of coreLorebookNames) {
+        const hint = getDemoRecompileHint(name, forge);
+        if (hint) next[name] = { available: hint.available, nextVersion: hint.nextVersion, newCount: hint.newTurns };
+      }
+      setRecompileHints(next);
+      return;
+    }
+
+    void (async () => {
+      const entries = await Promise.all(
+        coreLorebookNames.map(async (name) => {
+          try {
+            const result = await fetchJson<{ hint: { available: boolean; nextVersion: number; newAtoms: number } | null }>(
+              `/api/biography/recompile-hint?lorebookName=${encodeURIComponent(name)}`
+            );
+            return [name, result.hint] as const;
+          } catch {
+            return [name, null] as const;
+          }
+        })
+      );
+      if (cancelled) return;
+      const next: Record<string, { available: boolean; nextVersion: number; newCount: number }> = {};
+      for (const [name, hint] of entries) {
+        if (hint) next[name] = { available: hint.available, nextVersion: hint.nextVersion, newCount: hint.newAtoms };
+      }
+      setRecompileHints(next);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [coreLorebookNames, useDemoLibrary, simulation?.preset]);
 
   const filteredBooks = useMemo(() => {
     if (filter === 'core') return books.filter((b) => b.is_core_lorebook);
@@ -515,6 +577,15 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
                   </div>
 
                   <div className="mt-auto space-y-2">
+                    {book.is_core_lorebook && book.lorebook_name && recompileHints[book.lorebook_name] && (
+                      <div className="flex items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] text-emerald-200/85">
+                        <Sparkles className="h-3 w-3 shrink-0" />
+                        <span>
+                          +{recompileHints[book.lorebook_name].newCount} new {useDemoLibrary ? 'turns' : 'memories'} since v
+                          {recompileHints[book.lorebook_name].nextVersion - 1} — a new edition is ready to generate
+                        </span>
+                      </div>
+                    )}
                     <div className="grid grid-cols-3 gap-2">
                       <button
                         type="button"
@@ -551,14 +622,21 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
                             type="button"
                             onClick={() => void handleRecompileCore(book)}
                             disabled={recompilingId === book.id}
-                            className="rounded-lg border border-amber-500/25 bg-amber-500/10 text-amber-100/85 text-[11px] font-medium py-2 transition-colors hover:bg-amber-500/15 disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+                            className={cn(
+                              'rounded-lg border text-[11px] font-medium py-2 transition-colors disabled:opacity-50 inline-flex items-center justify-center gap-1.5',
+                              recompileHints[book.lorebook_name]
+                                ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-100 hover:bg-emerald-500/25'
+                                : 'border-amber-500/25 bg-amber-500/10 text-amber-100/85 hover:bg-amber-500/15'
+                            )}
                           >
                             {recompilingId === book.id ? (
                               <Loader2 className="h-3 w-3 animate-spin" />
                             ) : (
                               <RefreshCw className="h-3 w-3" />
                             )}
-                            Recompile from latest memory
+                            {recompileHints[book.lorebook_name]
+                              ? 'Regenerate with new memories'
+                              : 'Recompile from latest memory'}
                           </button>
                         ) : (
                           <button
