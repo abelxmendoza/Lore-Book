@@ -293,6 +293,55 @@ describe('CharacterDetailModal', () => {
     expect(screen.getAllByTestId('character-tab-connections').some((el) => el.getAttribute('aria-current') === 'page')).toBe(true);
   });
 
+  it('keeps family-tree and kinship UI off a pet card', async () => {
+    // A pet is an animal: the demo family tree falls back to the user's own
+    // family, so a dog's card used to show somebody's grandparents.
+    const pet: Character = {
+      ...mockCharacter,
+      id: 'char-pet',
+      name: 'Waffles',
+      role: 'Dog',
+      tags: ['pet', 'household'],
+      metadata: { relationship_type: 'dog', species: 'dog' },
+    };
+
+    render(
+      <CharacterDetailModal
+        character={pet}
+        onClose={mockOnClose}
+        onUpdate={mockOnUpdate}
+        initialTab="network"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText('Loading character details...')).not.toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('Family Tree')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('character-kinship-lists')).not.toBeInTheDocument();
+    // The rest of Connections still renders for a pet.
+    expect(screen.getByText('Wider network')).toBeInTheDocument();
+  });
+
+  it('still shows the family tree on a person card', async () => {
+    render(
+      <CharacterDetailModal
+        character={mockCharacter}
+        onClose={mockOnClose}
+        onUpdate={mockOnUpdate}
+        initialTab="network"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText('Loading character details...')).not.toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Family Tree')).toBeInTheDocument();
+    expect(screen.getByTestId('character-kinship-lists')).toBeInTheDocument();
+  });
+
   it('maps legacy history initialTab to Timelines and hides the old History tab', async () => {
     render(
       <MemoryRouter>
