@@ -4,6 +4,11 @@ import { MemoryRouter } from 'react-router-dom';
 import { LorebookLibraryPage } from './LorebookLibraryPage';
 
 const mockNavigate = vi.fn();
+const libraryMode = vi.hoisted(() => ({
+  useMock: true,
+  isSimulated: true,
+  simulationEnabled: true,
+}));
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
@@ -14,7 +19,7 @@ vi.mock('react-router-dom', async () => {
 });
 
 vi.mock('../../hooks/useShouldUseMockData', () => ({
-  useShouldUseMockData: () => true,
+  useShouldUseMockData: () => libraryMode.useMock,
 }));
 
 vi.mock('../../hooks/useLoreReadiness', () => ({
@@ -27,15 +32,40 @@ vi.mock('../../hooks/useLoreReadiness', () => ({
     refresh: async () => {},
     readiness: null,
     hasCompiledBook: true,
-    isSimulated: true,
+    isSimulated: libraryMode.isSimulated,
+  }),
+}));
+
+vi.mock('../../contexts/LoreReadinessSimulationContext', () => ({
+  useLoreReadinessSimulationOptional: () => ({
+    simulationEnabled: libraryMode.simulationEnabled,
+    preset: 'rich',
   }),
 }));
 
 describe('LorebookLibraryPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    libraryMode.useMock = true;
+    libraryMode.isSimulated = true;
+    libraryMode.simulationEnabled = true;
     localStorage.removeItem('demo_core_lorebooks_v2');
     localStorage.removeItem('demo_edition_fixtures_seeded_v1');
+  });
+
+  it('uses demo editions in unconfigured local dev when stored simulation is on', async () => {
+    libraryMode.useMock = false;
+    libraryMode.isSimulated = false;
+    libraryMode.simulationEnabled = true;
+
+    render(
+      <MemoryRouter>
+        <LorebookLibraryPage />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Career at Vanguard Robotics')).toBeInTheDocument();
+    expect(screen.getByText(/v3 · 3 versions/i)).toBeInTheDocument();
   });
 
   it('shows seeded edition history for selected demo subjects', async () => {
