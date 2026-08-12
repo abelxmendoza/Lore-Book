@@ -1,7 +1,7 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
 import { useState, useEffect, useCallback } from 'react';
-import { X, Heart, Calendar, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, MessageSquare, BarChart3, List, Clock, Activity, RefreshCw, Sparkles, GitBranch, Trash2, Baby } from 'lucide-react';
+import { X, Heart, Calendar, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, MessageSquare, BarChart3, List, Clock, Activity, RefreshCw, Sparkles, GitBranch, Trash2, Baby, History } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -35,6 +35,7 @@ import {
   type DemoMetricKey,
 } from '../../mocks/romanticDemoProfiles';
 import { pickMetricReason } from '../../lib/relationshipScoreReasons';
+import { useRomanticExPartners } from '../../hooks/useRomanticExPartners';
 import {
   composeRomanticRelationshipBadgeLabel,
 } from '../../lib/romanticRelationshipLabel';
@@ -182,6 +183,10 @@ export const RelationshipDetailModal = ({
   const [deleteReason, setDeleteReason] = useState('wrong_person_or_not_real');
   const [deleteReasonNote, setDeleteReasonNote] = useState('');
   const [scoresRefreshing, setScoresRefreshing] = useState(false);
+  const { exPartners, loading: exPartnersLoading } = useRomanticExPartners(
+    relationshipId,
+    shouldUseMockData,
+  );
   useEffect(() => {
     loadData();
     setInfluence(null);
@@ -653,6 +658,84 @@ export const RelationshipDetailModal = ({
               </div>
             )}
 
+            {/* Dating-history summary lives on Overview so the feature is
+                discoverable without already knowing to inspect Links/Timeline. */}
+            <div
+              className="rounded-xl border border-slate-500/20 bg-slate-950/20 p-3 sm:p-4"
+              data-testid="relationship-overview-dating-history"
+            >
+              <div className="flex items-start gap-2.5">
+                <History className="mt-0.5 h-4 w-4 shrink-0 text-pink-300/80" aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-semibold text-white">Their dating history</h3>
+                    {!exPartnersLoading && (
+                      <Badge
+                        variant="outline"
+                        className="border-pink-500/25 bg-pink-500/10 text-[10px] text-pink-200"
+                      >
+                        {exPartners.length} ex-partner{exPartners.length === 1 ? '' : 's'}
+                      </Badge>
+                    )}
+                  </div>
+                  {exPartnersLoading ? (
+                    <p className="mt-1 text-xs text-white/40">Loading prior relationship context…</p>
+                  ) : exPartners.length === 0 ? (
+                    <p className="mt-1 text-xs leading-relaxed text-white/45">
+                      No ex-partners recorded for {displayName} yet. Stories about former partners and past experiences appear here from chat.
+                    </p>
+                  ) : (
+                    <div className="mt-2 space-y-1.5">
+                      {exPartners.slice(0, 3).map((ex) => {
+                        const storyCount =
+                          ex.metadata?.evidence_history?.length ??
+                          (ex.metadata?.lexical_evidence ? 1 : 0);
+                        return (
+                          <div
+                            key={ex.id}
+                            className="flex items-center gap-2 text-xs"
+                            data-testid={`overview-ex-partner-${ex.id}`}
+                          >
+                            <span className="min-w-0 flex-1 truncate text-white/75">
+                              {ex.peripheral_name ?? ex.peripheral_surface}
+                            </span>
+                            <span className="shrink-0 text-white/35">
+                              {storyCount} stor{storyCount === 1 ? 'y' : 'ies'}
+                            </span>
+                            <span className={ex.tier === 'confirmed' ? 'text-emerald-300/70' : 'text-amber-300/70'}>
+                              {ex.tier}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActiveTab('their-connections')}
+                      className="h-8 border-pink-500/25 text-xs text-pink-200 hover:bg-pink-500/10"
+                      data-testid="overview-open-ex-partners"
+                    >
+                      View ex-partners
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActiveTab('timeline')}
+                      className="h-8 border-white/15 text-xs text-white/65 hover:bg-white/5"
+                      data-testid="overview-open-dating-history"
+                    >
+                      Open dating-history timeline
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {flagsFirst && (
               <RelationshipFlagsPanel
                 redFlags={currentAnalytics.redFlags}
@@ -967,7 +1050,8 @@ export const RelationshipDetailModal = ({
               }}
               onOpenPeripheralCharacter={handleOpenPeripheralCharacter}
               onCloseParentModal={onClose}
-              useMockData={shouldUseMockData}
+              exPartners={exPartners}
+              exPartnersLoading={exPartnersLoading}
             />
           </TabsContent>
 

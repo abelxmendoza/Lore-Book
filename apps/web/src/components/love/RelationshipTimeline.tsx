@@ -12,7 +12,7 @@ import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 import { EntityTimelinePanel } from '../common/EntityTimelinePanel';
 import type { SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
 import { RomanceTimelineMomentPanel } from './RomanceTimelineMomentPanel';
-import { useRomanticExPartners } from '../../hooks/useRomanticExPartners';
+import type { RomanticPeripheral } from '../../api/romanticPeripherals';
 import {
   buildRomanceTimelineMoment,
   buildRomanceTimelineMomentChatPrompt,
@@ -76,8 +76,9 @@ interface RelationshipTimelineProps {
   onOpenPeripheralCharacter?: (characterId: string) => void;
   /** Close the parent relationship modal before chat handoff. */
   onCloseParentModal?: () => void;
-  /** Use synthetic periphery for the public demo / mock runtime. */
-  useMockData?: boolean;
+  /** Loaded once by the parent so Overview and Timeline share one dating-history source. */
+  exPartners?: RomanticPeripheral[];
+  exPartnersLoading?: boolean;
 }
 
 const formatDateType = (type: string) =>
@@ -127,10 +128,10 @@ export const RelationshipTimeline = ({
   onOpenCharacterTimeline,
   onOpenPeripheralCharacter,
   onCloseParentModal,
-  useMockData = false,
+  exPartners = [],
+  exPartnersLoading = false,
 }: RelationshipTimelineProps) => {
   const [selectedMoment, setSelectedMoment] = useState<RomanceTimelineMoment | null>(null);
-  const { exPartners, loading: exPartnersLoading } = useRomanticExPartners(relationshipId, useMockData);
   const personName = relationship.person_name ?? 'this person';
   const characterBookId =
     relationship.character_id ??

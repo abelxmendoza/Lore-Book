@@ -179,6 +179,32 @@ describe('RelationshipDetailModal', () => {
     });
   });
 
+  it('shows dating history directly on Overview and links to both full views', async () => {
+    const onClose = vi.fn();
+    render(<RelationshipDetailModal relationshipId="rel-001" onClose={onClose} />);
+
+    const summary = await screen.findByTestId('relationship-overview-dating-history');
+    expect(summary).toHaveTextContent('Their dating history');
+    expect(summary).toHaveTextContent('1 ex-partner');
+    expect(summary).toHaveTextContent('Jamie');
+    expect(summary).toHaveTextContent('1 story');
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('overview-open-ex-partners'));
+    expect(screen.getAllByRole('tab', { name: /their connections/i })[0]).toHaveAttribute(
+      'data-state',
+      'active',
+    );
+
+    // Return to Overview and take the other direct path.
+    await user.click(screen.getAllByRole('tab', { name: /^overview$/i })[0]);
+    await user.click(screen.getByTestId('overview-open-dating-history'));
+    expect(screen.getAllByRole('tab', { name: /^timeline$/i })[0]).toHaveAttribute(
+      'data-state',
+      'active',
+    );
+  });
+
   it('shows short reasons under overview score percentages', async () => {
     const onClose = vi.fn();
     render(<RelationshipDetailModal relationshipId="rel-001" onClose={onClose} />);
