@@ -4,8 +4,8 @@
  */
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { LayoutTemplate, BookOpen, Search, Sparkles, Menu, CalendarDays, Calendar, X, Clock3 } from 'lucide-react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { LayoutTemplate, BookOpen, Search, Sparkles, Menu, CalendarDays, Calendar, X, Clock3, ChevronLeft } from 'lucide-react';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useLifeArcs, type LifeArc } from '../../hooks/useLifeArcs';
 import { useStitchedTimeline } from '../../hooks/useStitchedTimeline';
@@ -49,6 +49,7 @@ import type { LorebookForm } from '../../lib/lorebookTiers';
 import { openGeneratedTimelineChat } from '../../lib/generatedTimelineChat';
 import { findTimelineSubjectCharacter } from '../../lib/timelineCharacterSubject';
 import { mockDataService } from '../../services/mockDataService';
+import { useGoBack } from '../../hooks/useGoBack';
 import './OmniTimeline.css';
 
 type View = OmniTimelineView;
@@ -97,6 +98,12 @@ function viewFromSearchParams(params: URLSearchParams): View {
 export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { goBack } = useGoBack('/narrative-anchors');
+  const from = (location.state as { from?: string } | null)?.from;
+  const openedFromNarrativeAnchors = Boolean(
+    from && /^\/(?:demo\/)?narrative-anchors(?:\?|$)/.test(from),
+  );
   const urlQuery = searchParams.get('q') ?? '';
   const characterId = searchParams.get('characterId') ?? undefined;
   const calendarDateParam =
@@ -821,6 +828,16 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
           style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}
         >
           <div className="omni-timeline-header__row">
+            {openedFromNarrativeAnchors && (
+              <button
+                type="button"
+                onClick={goBack}
+                className="omni-timeline-icon-btn"
+                aria-label="Back to Narrative Anchors"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+            )}
             {onOpenAppSidebar && (
               <button
                 type="button"
@@ -876,6 +893,17 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
         >
           <div className="flex flex-row items-center justify-between gap-4 mt-1">
             <div className="min-w-0">
+              {openedFromNarrativeAnchors && (
+                <button
+                  type="button"
+                  onClick={goBack}
+                  className="mb-1.5 inline-flex items-center gap-1 text-xs font-medium text-white/45 transition-colors hover:text-white/80"
+                  aria-label="Back to Narrative Anchors"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                  Narrative Anchors
+                </button>
+              )}
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="omni-timeline-title omni-timeline-title--desktop">Timeline</h1>
                 {isDemoMode && (

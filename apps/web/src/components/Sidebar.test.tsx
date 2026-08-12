@@ -165,6 +165,27 @@ describe('Sidebar', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/demo/characters');
   });
 
+  it('opens the populated demo-1 interface from the Editor link in demo runtime', async () => {
+    demoRuntime.current = true;
+    const user = userEvent.setup();
+    render(<Sidebar {...defaultProps} />);
+
+    await user.click(screen.getAllByRole('button', { name: /open lorebook editor/i })[0]);
+
+    expect(mockNavigate).toHaveBeenCalledWith('/memoir?book=demo-1');
+    expect(defaultProps.onSurfaceChange).toHaveBeenCalledWith('memoir');
+  });
+
+  it('keeps the bare Editor route for real users so their default compiled book resolves', async () => {
+    demoRuntime.current = false;
+    const user = userEvent.setup();
+    render(<Sidebar {...defaultProps} />);
+
+    await user.click(screen.getAllByRole('button', { name: /open lorebook editor/i })[0]);
+
+    expect(mockNavigate).toHaveBeenCalledWith('/memoir');
+  });
+
   it('clears the demo session before navigating to login when Exit is clicked', async () => {
     // Regression test: this button used to navigate to /login without
     // clearing the demo flag, so a subsequent real sign-in in the same tab

@@ -12,6 +12,7 @@ import { useAccountAuthority } from '../hooks/useAccountAuthority';
 import { canAccessAdmin } from '../middleware/roleGuard';
 import { cn } from '../lib/cn';
 import { isDemoRuntimeActive, clearDemoSession } from '../lib/demoRuntime';
+import { lorebookEditUrl } from '../lib/lorebookLibrary';
 import { UserAvatarButton } from './UserAvatarButton';
 
 import { surfaceToRoute, type SurfaceKey } from '../utils/routeMapping';
@@ -54,6 +55,19 @@ const SidebarContent = ({
     onSurfaceChange?.(surface);
     // Close mobile drawer when navigating
     onMobileDrawerClose?.();
+  };
+
+  const openLorebookEditor = () => {
+    // The public/sample demo's canonical editor is the fully populated demo-1
+    // interface. Bare /memoir waits for readiness/default resolution and can
+    // flash the gate or select a different generated core edition.
+    if (demoRuntime) {
+      navigate(lorebookEditUrl('demo-1'));
+      onSurfaceChange?.('memoir');
+      onMobileDrawerClose?.();
+      return;
+    }
+    handleSurfaceChange('memoir');
   };
 
   const isActiveRoute = (path: string) => {
@@ -438,7 +452,7 @@ const SidebarContent = ({
             Create
           </button>
           <button
-            onClick={() => handleSurfaceChange('memoir')}
+            onClick={openLorebookEditor}
             aria-label="Open lorebook editor"
             aria-current={activeSurface === 'memoir' ? 'page' : undefined}
             className={cn(

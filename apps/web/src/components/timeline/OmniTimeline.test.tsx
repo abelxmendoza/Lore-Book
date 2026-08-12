@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { OmniTimeline } from './OmniTimeline';
 
 const entityModalMocks = vi.hoisted(() => ({
@@ -187,6 +187,11 @@ function renderOmniTimeline(initialRoute = '/timeline') {
   );
 }
 
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location-probe">{location.pathname + location.search}</output>;
+}
+
 describe('OmniTimeline layout and navigation', () => {
   beforeEach(() => {
     entityModalMocks.openMemory.mockReset();
@@ -264,6 +269,29 @@ describe('OmniTimeline layout and navigation', () => {
     expect(screen.getByTestId('timeline-swimlanes-view')).toBeInTheDocument();
     expect(screen.getByTestId('universal-timeline-search-desktop')).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: /^search$/i })).not.toBeInTheDocument();
+  });
+
+  it('offers a working back path when opened from Narrative Anchors', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/timeline',
+            search: '?view=search&q=The%20college%20years',
+            state: { from: '/narrative-anchors' },
+          },
+        ]}
+      >
+        <OmniTimeline />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+
+    const back = screen.getByRole('button', { name: /back to narrative anchors/i });
+    expect(back).toBeInTheDocument();
+    await user.click(back);
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/narrative-anchors');
   });
 
   it('opens a simulated subject in main chat without passing preview moments as evidence', async () => {
