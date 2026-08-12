@@ -9,10 +9,7 @@ import { RefreshCw, ChevronLeft, ChevronRight, BookOpen, SlidersHorizontal } fro
 import { useState, useEffect, useMemo, useRef } from 'react';
 
 import type { Skill, SkillCategory } from '../../types/skill';
-import { fetchJson } from '../../lib/api';
-import type { SkillQueryResponse } from '../../lib/api-contracts';
 import { readSkillProfile } from '../../lib/skillProfile';
-import { compileDemoSkillQuery } from '../../lib/skillQueryDemo';
 import { buildSkillBookClipboardText } from '../../lib/skillBookClipboard';
 import { clipboardFilterLines } from '../../lib/listClipboard';
 import { skillCategoryTheme, skillFilterChipActive } from '../../lib/skillCategoryTheme';
@@ -23,7 +20,6 @@ import { consumeHighlightItemId, resolveBookHighlightItem } from '../../lib/reso
 
 
 import { BookTrustSummary } from '../trust/BookTrustSummary';
-import { BookQueryPanel } from '../query/BookQueryPanel';
 import { mockDataService } from '../../services/mockDataService';
 import { skillBookDemoSkills } from '../../mocks/skillBookDemo';
 import {
@@ -181,10 +177,6 @@ export const SkillsBook: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [mockRegistryTick, setMockRegistryTick] = useState(0);
-  const [bookQuery, setBookQuery] = useState('');
-  const [bookQueryResult, setBookQueryResult] = useState<SkillQueryResponse | null>(null);
-  const [bookQueryLoading, setBookQueryLoading] = useState(false);
-  const [bookQueryError, setBookQueryError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<CardViewMode>(() =>
     readStoredCardViewMode(SKILLS_VIEW_STORAGE_KEY, 'grid'),
   );
@@ -272,11 +264,6 @@ export const SkillsBook: React.FC = () => {
     // Default Skills Book = durable skills only (cognition ontology)
     let filtered = primarySkills;
 
-    if (bookQueryResult) {
-      const matchingIds = new Set(bookQueryResult.results.map((result) => result.skillId));
-      filtered = filtered.filter((skill) => matchingIds.has(skill.id));
-    }
-
     if (activeCategory !== 'all') {
       filtered = filtered.filter(skill => skillMatchesCategory(skill, activeCategory));
     }
@@ -310,7 +297,7 @@ export const SkillsBook: React.FC = () => {
     });
 
     return filtered;
-  }, [primarySkills, activeCategory, searchTerm, filterLevelMin, filterLevelMax, filterConfidenceMin, filterConfidenceMax, filterProficiencyMin, bookQueryResult]);
+  }, [primarySkills, activeCategory, searchTerm, filterLevelMin, filterLevelMax, filterConfidenceMin, filterConfidenceMax, filterProficiencyMin]);
 
   const sortedSkills = useMemo(() => {
     const sorted = [...filteredSkills];
@@ -352,10 +339,9 @@ export const SkillsBook: React.FC = () => {
           searchTerm.trim() && `search="${searchTerm.trim()}"`,
           activeCategory !== 'all' && `category=${activeCategory}`,
           `sort=${sortBy}`,
-          bookQueryResult && `book query="${bookQueryResult.query}"`,
         ]),
       }),
-    [sortedSkills, searchTerm, activeCategory, sortBy, bookQueryResult],
+    [sortedSkills, searchTerm, activeCategory, sortBy],
   );
 
   const paginatedSkills = useMemo(() => {
@@ -425,31 +411,6 @@ export const SkillsBook: React.FC = () => {
         s.skill_name.toLowerCase().includes(needle),
     );
     if (match) setSelectedSkill(match);
-  };
-
-  const runBookQuery = async () => {
-    if (!bookQuery.trim()) return;
-    setBookQueryLoading(true);
-    setBookQueryError(null);
-    try {
-      const result = isMockDataEnabled
-        ? compileDemoSkillQuery(skills, bookQuery.trim())
-        : (await fetchJson<{ success: boolean; result: SkillQueryResponse }>(
-            '/api/skills/query',
-            {
-              method: 'POST',
-              body: JSON.stringify({ query: bookQuery.trim(), limit: 100 }),
-            },
-          )).result;
-      setBookQueryResult(result);
-      dispatch(resetSkillsFilters());
-    } catch (queryError) {
-      setBookQueryError(
-        queryError instanceof Error ? queryError.message : 'Could not query the Skills Book.',
-      );
-    } finally {
-      setBookQueryLoading(false);
-    }
   };
 
   useEffect(() => {
@@ -534,35 +495,6 @@ export const SkillsBook: React.FC = () => {
           </button>
         </div>
       </div>
-
-      <BookQueryPanel
-        demoMode={isMockDataEnabled}
-        domains={['skill']}
-        title="Ask Skills"
-        description="Search practice, growth, work use, related projects, proficiency, and evidence."
-        placeholder='Try “which skills do I use for Vanguard Robotics?”'
-        compact
-        controller={{
-          query: bookQuery,
-          onQueryChange: setBookQuery,
-          onSubmit: runBookQuery,
-          onClear: () => { setBookQuery(''); setBookQueryResult(null); },
-          loading: bookQueryLoading,
-          error: bookQueryError,
-          total: bookQueryResult?.total,
-          results: bookQueryResult?.results.map((result) => ({
-            id: result.skillId,
-            title: result.name,
-            status: result.active ? 'active' : 'inactive',
-            reason: result.matchedReasons[0],
-          })),
-          warnings: bookQueryResult?.warnings,
-        }}
-        onSelectResult={(result) => {
-          const skill = skills.find((item) => item.id === result.id);
-          if (skill) setSelectedSkill(skill);
-        }}
-      />
 
       <SearchWithAutocomplete<Skill>
         value={searchTerm}

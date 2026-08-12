@@ -14,11 +14,8 @@ import {
 } from '../ui/GridListViewToolbar';
 import { fetchCharacterList } from '../../api/characterList';
 import { useMockData } from '../../contexts/MockDataContext';
-import { fetchJson } from '../../lib/api';
 import { buildDatingRomanceClipboardText } from '../../lib/datingRomanceClipboard';
 import { clipboardFilterLines } from '../../lib/listClipboard';
-import type { RomanceQueryResponse } from '../../lib/api-contracts';
-import { compileDemoRomanceQuery } from '../../lib/romanceQueryDemo';
 import { isIndividualPersonName } from '../../lib/personNameValidation';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { 
@@ -61,7 +58,6 @@ import {
   useLinkRomanticRelationshipToCharacterMutation,
   useRescanRomanticRelationshipsMutation,
 } from '../../store/api/entitiesApi';
-import { BookQueryPanel } from '../query/BookQueryPanel';
 
 export type RomanticRelationship = {
   id: string;
@@ -206,10 +202,6 @@ export const LoveAndRelationshipsView = () => {
   const [viewMode, setViewMode] = useState<CardViewMode>(() =>
     readStoredCardViewMode(LOVE_VIEW_STORAGE_KEY, 'grid'),
   );
-  const [bookQuery, setBookQuery] = useState('');
-  const [bookQueryResult, setBookQueryResult] = useState<RomanceQueryResponse | null>(null);
-  const [bookQueryLoading, setBookQueryLoading] = useState(false);
-  const [bookQueryError, setBookQueryError] = useState<string | null>(null);
   const romanticRelationshipsQuery = useGetRomanticRelationshipsQuery(undefined, { skip: shouldUseMockData });
   const [linkRomanticRelationshipToCharacter] = useLinkRomanticRelationshipToCharacterMutation();
   const [rescanRomanticRelationships] = useRescanRomanticRelationshipsMutation();
@@ -679,44 +671,7 @@ export const LoveAndRelationshipsView = () => {
     }
   };
 
-  const runBookQuery = async () => {
-    if (!bookQuery.trim()) return;
-    setBookQueryLoading(true);
-    setBookQueryError(null);
-    try {
-      let result: RomanceQueryResponse;
-      if (shouldUseMockData) {
-        const allRelationships = getMockRomanticRelationships() as RomanticRelationship[];
-        setRelationships(allRelationships);
-        result = compileDemoRomanceQuery(allRelationships, bookQuery.trim());
-      } else {
-        result = (await fetchJson<{ success: boolean; result: RomanceQueryResponse }>(
-          '/api/conversation/romantic-relationships/query',
-          {
-            method: 'POST',
-            body: JSON.stringify({ query: bookQuery.trim(), limit: 100 }),
-          },
-        )).result;
-      }
-      setBookQueryResult(result);
-      setSearchTerm('');
-      setActiveFilter('all');
-    } catch (error) {
-      setBookQueryError(
-        error instanceof Error ? error.message : 'Could not query Dating & Romance.',
-      );
-    } finally {
-      setBookQueryLoading(false);
-    }
-  };
-
   const filteredRelationships = relationships.filter(rel => {
-    if (
-      bookQueryResult &&
-      !bookQueryResult.results.some((result) => result.relationshipId === rel.id)
-    ) {
-      return false;
-    }
     if (!searchTerm.trim()) return true;
     const term = searchTerm.toLowerCase();
     return (
@@ -785,7 +740,6 @@ export const LoveAndRelationshipsView = () => {
     filters: clipboardFilterLines([
       searchTerm.trim() && `search="${searchTerm.trim()}"`,
       `tab=${activeFilter}`,
-      bookQueryResult && `book query="${bookQueryResult.query}"`,
       activeFilter === 'rankings' &&
         'note=rankings_view_order_not_exported_using_filtered_relationships',
     ]),
@@ -986,37 +940,6 @@ export const LoveAndRelationshipsView = () => {
         busy={romanticInterestBusy}
         error={romanticInterestError}
         onContinue={openRomanticInterestChat}
-      />
-
-      <BookQueryPanel
-        demoMode={shouldUseMockData}
-        domains={['romance']}
-        title="Ask Dating & Romance"
-        description="Query current and past connections, one-sided or unrequited crushes, possible mutual interest, confirmed mutual interest, situationships, history, risk flags, evidence strength, or Character Book linkage."
-        placeholder='Try “show my past relationships”'
-        resultNoun="connection"
-        compact
-        controller={{
-          query: bookQuery,
-          onQueryChange: setBookQuery,
-          onSubmit: runBookQuery,
-          onClear: () => {
-            setBookQuery('');
-            setBookQueryResult(null);
-            setBookQueryError(null);
-          },
-          loading: bookQueryLoading,
-          error: bookQueryError,
-          total: bookQueryResult?.total,
-          results: bookQueryResult?.results.map((result) => ({
-            id: result.relationshipId,
-            title: result.personName,
-            status: result.status,
-            reason: result.matchedReasons[0],
-          })),
-          warnings: bookQueryResult?.warnings,
-        }}
-        onSelectResult={(result) => setSelectedRelationship(result.id)}
       />
 
       <DetectedCharacterSuggestions

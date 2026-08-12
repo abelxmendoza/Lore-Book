@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag, Zap, Flame, Wind, Moon, GitBranch, Star, Skull, HeartCrack, UserMinus } from 'lucide-react';
+import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag, Zap, Flame, Wind, Moon, GitBranch, Star, Skull, HeartCrack, UserMinus, PawPrint } from 'lucide-react';
 import { FamilyTreeView, createMockUserFamilyTree, createMockFamilyTreeForCharacter } from '../family/FamilyTreeView';
 import { FamilyTreePanel } from '../family/FamilyTreePanel';
 import { FamilyTreeCopyAllButton } from '../family/FamilyTreeCopyAllButton';
@@ -45,6 +45,7 @@ import { useGuest } from '../../contexts/GuestContext';
 import { getGuestCharacters } from '../../services/guestLoreStore';
 import { getMockRomanticRelationships } from '../../mocks/romanticRelationships';
 import { mergeRomanticDemoCharacters } from '../../mocks/romanticPeripheralCharacters';
+import { mergePetDemoCharacters } from '../../mocks/petCharacters';
 import {
   isCoParentRomanceType,
   isDivorcedRomanceType,
@@ -64,7 +65,6 @@ import { selfCharacterApi } from '../../api/selfCharacter';
 import { impactOnUserWithPublicFigureCap, isPublicFigureCharacter } from '../../lib/publicFigure';
 import { CharacterAvatar } from './CharacterAvatar';
 import { BookTrustSummary } from '../trust/BookTrustSummary';
-import { BookQueryPanel } from '../query/BookQueryPanel';
 
 // ── Demo filter-field normalization ──────────────────────────────────────────
 // Every category tab (proximity, mentioned, etc.) must have matches in demo
@@ -2694,7 +2694,8 @@ type CharacterCategory =
   | 'indirect'
   | 'distant'
   | 'unmet'
-  | 'third_party';
+  | 'third_party'
+  | 'pets';
 
 const isPublicFigure = isPublicFigureCharacter;
 
@@ -2922,7 +2923,7 @@ export const CharacterBook = () => {
       return;
     }
     const SEED_KEY = 'lk:demo-characters-seed-version';
-    const DEMO_CHARACTERS_SEED_VERSION = 'romance-identity-v3';
+    const DEMO_CHARACTERS_SEED_VERSION = 'pets-v1';
     let seedVersion: string | null = null;
     try {
       seedVersion = sessionStorage.getItem(SEED_KEY);
@@ -2932,7 +2933,7 @@ export const CharacterBook = () => {
     const current = mockDataService.get.characters();
     const needsFixtureRefresh = seedVersion !== DEMO_CHARACTERS_SEED_VERSION;
     const base = needsFixtureRefresh || current.length === 0 ? dummyCharacters : current;
-    const merged = mergeRomanticDemoCharacters(base);
+    const merged = mergePetDemoCharacters(mergeRomanticDemoCharacters(base));
     if (needsFixtureRefresh || current.length === 0 || merged.length !== current.length) {
       mockDataService.register.characters(merged);
       try {
@@ -3385,6 +3386,8 @@ export const CharacterBook = () => {
             return char.proximity_level === 'third_party';
           case 'romantic_peripheral':
             return char.tags?.includes('romantic-peripheral') ?? false;
+          case 'pets':
+            return Boolean(char.species);
           default:
             return true;
         }
@@ -3575,70 +3578,8 @@ export const CharacterBook = () => {
     >
       <MyFamilyModal isOpen={showMyFamily} onClose={() => setShowMyFamily(false)} />
 
-      {/* People On Your Mind Lately */}
-      {(() => {
-        const displayNameForMindChip = (character: Character) => {
-          const structuredName = [character.first_name, character.last_name]
-            .filter((part): part is string => Boolean(part?.trim()))
-            .join(' ')
-            .trim();
-          return structuredName || character.name;
-        };
-
-        const recent = [...characters]
-          .filter(c => !isSelfCharacter(c))
-          .filter(c => (c.analytics?.recency_score ?? 0) > 0)
-          .sort((a, b) => (b.analytics?.recency_score ?? 0) - (a.analytics?.recency_score ?? 0))
-          .slice(0, 6);
-        if (recent.length === 0) return null;
-        return (
-          <div>
-            <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-2.5">
-              People On Your Mind Lately
-            </p>
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-              {recent.map(c => {
-                const closeness = c.analytics?.closeness_score ?? 0;
-                const displayName = displayNameForMindChip(c);
-                const phase = (() => {
-                  const r = c.analytics?.recency_score ?? 0;
-                  if (closeness >= 70 && r >= 0.6) return { label: 'Core',    cls: 'text-purple-300', icon: <Flame className="h-2.5 w-2.5" /> };
-                  if (closeness >= 45 || r >= 0.4) return { label: 'Active',  cls: 'text-cyan-300',   icon: <Zap className="h-2.5 w-2.5" /> };
-                  if (closeness >= 20 || r >= 0.2) return { label: 'Fading',  cls: 'text-amber-300',  icon: <Wind className="h-2.5 w-2.5" /> };
-                  return                            { label: 'Dormant', cls: 'text-gray-400',   icon: <Moon className="h-2.5 w-2.5" /> };
-                })();
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setSelectedCharacter(c)}
-                    className="flex-shrink-0 flex flex-col items-center gap-1.5 p-3 rounded-xl border border-white/10 bg-white/4 hover:bg-white/8 hover:border-white/20 transition-all w-28 text-center"
-                    title={displayName}
-                  >
-                    <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0">
-                      <CharacterAvatar
-                        url={c.avatar_url}
-                        characterId={c.id}
-                        archetype={c.archetype}
-                        role={c.role}
-                        name={displayName}
-                        size={36}
-                      />
-                    </div>
-                    <span className="text-[10px] text-white/80 leading-tight line-clamp-2 w-full">{displayName}</span>
-                    <span className={`flex items-center gap-0.5 text-[9px] ${phase.cls}`}>
-                      {phase.icon}{phase.label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* User Profile */}
-      <div className="space-y-3 sm:space-y-4">
+      {/* The user's own story context leads the Character Book before the cast. */}
+      <div className="space-y-3 sm:space-y-4" data-testid="character-book-user-profile">
         <UserProfile characters={characters} />
       </div>
 
@@ -3653,19 +3594,6 @@ export const CharacterBook = () => {
         busy={focusedChatBusy}
         error={focusedChatError}
         onContinue={openCharacterFocusedChat}
-      />
-      <BookQueryPanel
-        demoMode={isMockDataEnabled}
-        domains={['character']}
-        title="Ask People & Characters"
-        description="Search names, aliases, roles, relationship context, and records that need review."
-        placeholder='Try “Who are my creative collaborators?”'
-        compact
-        onSelectResult={(result) => {
-          const match = characters.find((character) => character.id === result.id);
-          if (match) openCharacterDetail(match);
-          else setSearchTerm(result.title);
-        }}
       />
       <DetectedCharacterSuggestions
         demoMode={isMockDataEnabled}
@@ -3735,6 +3663,68 @@ export const CharacterBook = () => {
         onToggleSelected={toggleSelectedForMerge}
         onClearSelection={() => setSelectedForMerge(new Set())}
       />
+
+      {/* People On Your Mind Lately */}
+      {(() => {
+        const displayNameForMindChip = (character: Character) => {
+          const structuredName = [character.first_name, character.last_name]
+            .filter((part): part is string => Boolean(part?.trim()))
+            .join(' ')
+            .trim();
+          return structuredName || character.name;
+        };
+
+        const recent = [...characters]
+          .filter(c => !isSelfCharacter(c))
+          .filter(c => (c.analytics?.recency_score ?? 0) > 0)
+          .sort((a, b) => (b.analytics?.recency_score ?? 0) - (a.analytics?.recency_score ?? 0))
+          .slice(0, 6);
+        if (recent.length === 0) return null;
+        return (
+          <div>
+            <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-2.5">
+              People On Your Mind Lately
+            </p>
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+              {recent.map(c => {
+                const closeness = c.analytics?.closeness_score ?? 0;
+                const displayName = displayNameForMindChip(c);
+                const phase = (() => {
+                  const r = c.analytics?.recency_score ?? 0;
+                  if (closeness >= 70 && r >= 0.6) return { label: 'Core',    cls: 'text-purple-300', icon: <Flame className="h-2.5 w-2.5" /> };
+                  if (closeness >= 45 || r >= 0.4) return { label: 'Active',  cls: 'text-cyan-300',   icon: <Zap className="h-2.5 w-2.5" /> };
+                  if (closeness >= 20 || r >= 0.2) return { label: 'Fading',  cls: 'text-amber-300',  icon: <Wind className="h-2.5 w-2.5" /> };
+                  return                            { label: 'Dormant', cls: 'text-gray-400',   icon: <Moon className="h-2.5 w-2.5" /> };
+                })();
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setSelectedCharacter(c)}
+                    className="flex-shrink-0 flex flex-col items-center gap-1.5 p-3 rounded-xl border border-white/10 bg-white/4 hover:bg-white/8 hover:border-white/20 transition-all w-28 text-center"
+                    title={displayName}
+                  >
+                    <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0">
+                      <CharacterAvatar
+                        url={c.avatar_url}
+                        characterId={c.id}
+                        archetype={c.archetype}
+                        role={c.role}
+                        name={displayName}
+                        size={36}
+                      />
+                    </div>
+                    <span className="text-[10px] text-white/80 leading-tight line-clamp-2 w-full">{displayName}</span>
+                    <span className={`flex items-center gap-0.5 text-[9px] ${phase.cls}`}>
+                      {phase.icon}{phase.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Search, filters and tabs sit directly above the grid they drive — the
           cast chrome above them is the page's opening read. */}
@@ -3967,13 +3957,21 @@ export const CharacterBook = () => {
               <UserX className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>Unmet</span>
             </TabsTrigger>
-            <TabsTrigger 
+            <TabsTrigger
               value="third_party"
               className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-400 text-xs sm:text-sm flex-shrink-0"
             >
               <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
               <span className="hidden sm:inline">Third Party</span>
               <span className="sm:hidden">3rd</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="pets"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-amber-600/20 data-[state=active]:text-amber-300 text-xs sm:text-sm flex-shrink-0"
+              data-testid="character-filter-pets"
+            >
+              <PawPrint className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span>Pets</span>
             </TabsTrigger>
           </TabsList>
         </Tabs>

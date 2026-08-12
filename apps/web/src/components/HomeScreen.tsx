@@ -36,7 +36,6 @@ import type { Skill } from '../types/skill';
 import { LivingBiographyCard } from './biography/LivingBiographyCard';
 import { CareerHomeCard } from './career/CareerHomeCard';
 import type { Character } from './characters/CharacterProfileCard';
-import { BookQueryPanel } from './query/BookQueryPanel';
 
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -390,7 +389,7 @@ export const HomeScreen = () => {
   const hasSkills = topSkills.length > 0;
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="min-w-0 w-full">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 md:px-8 py-6 md:py-10 space-y-6">
 
         {/* ── 1. Compact greeting header ──────────────────────────────────── */}
@@ -427,8 +426,6 @@ export const HomeScreen = () => {
             </button>
           </div>
         </div>
-
-        <BookQueryPanel demoMode={isMock} compact />
 
         {/* ── 2. What Changed Since Last Time ─────────────────────────────── */}
         {userId && <WhatChangedHomeCard userId={userId} />}

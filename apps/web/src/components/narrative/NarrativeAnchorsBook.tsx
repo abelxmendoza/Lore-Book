@@ -38,7 +38,6 @@ import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { MOCK_NARRATIVE_ANCHORS } from '../../mocks/narrativeAnchors';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 import { LorebookContentMeter } from '../lorebook/LorebookContentMeter';
-import { BookQueryPanel } from '../query/BookQueryPanel';
 import { StorySurfaceLinks } from '../story/StorySurfaceLinks';
 import { Button } from '../ui/button';
 import {
@@ -507,20 +506,6 @@ export function NarrativeAnchorsBook() {
             <div className="flex items-center gap-3 rounded-xl border border-violet-400/10 bg-violet-400/[0.04] p-3.5"><Info className="h-4 w-4 shrink-0 text-violet-200/70" /><p className="text-xs leading-relaxed text-white/45">These are helpful interpretations, not permanent facts. They evolve as your story grows.</p></div>
           </div>
         </header>
-
-        <BookQueryPanel
-          demoMode={isDemoMode}
-          domains={['narrative']}
-          title="Ask Narrative Anchors"
-          description="Search durable eras, relationship arcs, communities, projects, places, and recurring themes."
-          placeholder='Try “Which chapters connect my creative work and friends?”'
-          compact
-          className="mt-5"
-          onSelectResult={(result) => {
-            setSearch(result.title);
-            setActiveType('all');
-          }}
-        />
 
         <div className="sticky top-0 z-10 -mx-4 mt-5 border-y border-white/[0.06] bg-black/75 px-4 py-3 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           <div className="mx-auto flex max-w-[1500px] flex-col gap-3 lg:flex-row lg:items-center">

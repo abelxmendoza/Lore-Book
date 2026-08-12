@@ -135,7 +135,7 @@ describe('QuestBoard layout and error handling', () => {
     expect(mockRefetch).toHaveBeenCalled();
   });
 
-  it('renders quest list inside a scrollable pane with proper shell height', async () => {
+  it('scrolls the full quest pane on mobile and only the quest list on larger screens', async () => {
     mockUseQuestBoard.mockReturnValue({
       data: sampleBoard,
       isLoading: false,
@@ -158,11 +158,21 @@ describe('QuestBoard layout and error handling', () => {
     expect(body.className).toMatch(/flex-1/);
     expect(body.className).toMatch(/min-h-0/);
 
+    const listPane = screen.getByTestId('quest-board-list-pane');
+    expect(listPane.className).toMatch(/overflow-y-auto/);
+    expect(listPane.className).toMatch(/overscroll-y-contain/);
+    expect(listPane.className).toMatch(/sm:overflow-hidden/);
+
     const list = screen.getByTestId('quest-board-list');
-    expect(list.className).toMatch(/overflow-y-auto/);
-    expect(list.className).toMatch(/flex-1/);
+    expect(list.className).toMatch(/flex-none/);
+    expect(list.className).toMatch(/overflow-y-visible/);
+    expect(list.className).toMatch(/sm:flex-1/);
+    expect(list.className).toMatch(/sm:overflow-y-auto/);
 
     const nav = screen.getByTestId('quest-category-nav');
+    expect(nav.className).toMatch(/sticky/);
+    expect(nav.className).toMatch(/top-0/);
+    expect(nav.className).toMatch(/sm:static/);
     expect(nav.querySelector('ul')).toBeTruthy();
     expect(nav.querySelector('ul')?.className).toMatch(/grid/);
     expect(nav.className).not.toMatch(/overflow-x-auto/);
@@ -175,9 +185,9 @@ describe('QuestBoard layout and error handling', () => {
     ).toBeTruthy();
 
     expect(screen.getByText('Launch MVP')).toBeInTheDocument();
+    expect(screen.getByText('Ship the first version of the product')).not.toHaveClass('line-clamp-2', 'truncate');
     expect(screen.getByText('Learn guitar basics')).toBeInTheDocument();
     expect(screen.getByTestId('quest-board-detail-pane')).toHaveTextContent('q1');
-    expect(screen.getByRole('textbox', { name: /ask your quest log/i })).toBeInTheDocument();
   });
 
   it('shows inline error banner when stale data exists but refresh failed', () => {

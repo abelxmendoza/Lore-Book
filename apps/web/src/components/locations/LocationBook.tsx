@@ -1,6 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { MapPin, RefreshCw, ChevronLeft, ChevronRight, SlidersHorizontal, X, BookOpen } from 'lucide-react';
-import type { LocationQueryResponse, LocationQueryResult } from '../../lib/api-contracts';
 import { classifyLocation, KIND_META, isTopLevelPlace, type LocationKind } from '../../lib/locationTaxonomy';
 import {
   PLACE_ADVANCED_FILTER_GROUPS,
@@ -25,7 +24,6 @@ import {
 } from '../ui/GridListViewToolbar';
 import { buildLocationBookClipboardText } from '../../lib/locationBookClipboard';
 import { clipboardFilterLines } from '../../lib/listClipboard';
-import { fetchJson } from '../../lib/api';
 import { fetchLocationById } from '../../lib/hydrateBookEntity';
 import { consumeHighlightItemId, resolveBookHighlightItem } from '../../lib/resolveBookHighlight';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
@@ -41,7 +39,6 @@ import { LocationMergePanel } from './LocationMergePanel';
 import { OntologyCompliancePanel } from '../ontology/OntologyCompliancePanel';
 import { useLocationsBookData } from '../../store/hooks/useEntityBooks';
 import { locationBookDemoLocations } from '../../mocks/locationBookDemo';
-import { BookQueryPanel } from '../query/BookQueryPanel';
 
 const LOCATION_VIEW_STORAGE_KEY = 'lk_location_view';
 
@@ -49,94 +46,6 @@ const LOCATION_VIEW_STORAGE_KEY = 'lk_location_view';
 export const dummyLocations = locationBookDemoLocations;
 
 const ITEMS_PER_PAGE = 12; // 2 columns × 6 rows on mobile
-
-export function demoLocationQuery(locations: LocationProfile[], query: string): LocationQueryResponse {
-  const normalized = query.toLowerCase().trim();
-  const personMatch = query.match(/\bwith\s+(.+?)\??$/i)?.[1]?.trim();
-  const wantsVisited = /\b(?:visited|went|been to)\b/i.test(query);
-  const wantsUnvisited = /\b(?:never visited|not visited|unvisited)\b/i.test(query);
-  const wantsMentionedOnly = /\b(?:mentioned only|only mentioned|mentioned but (?:never|not) visited)\b/i.test(query);
-  const missingCoordinates = /\b(?:without|missing|no)\s+(?:coordinates|map pin)\b/i.test(query);
-  const parentMatch = query.match(/\b(?:inside|within|under|nested in|part of)\s+(.+?)\??$/i)?.[1]?.trim();
-  const parent = parentMatch
-    ? locations.find((location) => location.name.toLowerCase().includes(parentMatch.toLowerCase()))
-    : null;
-  const commonWords = new Set(['which', 'what', 'where', 'show', 'find', 'list', 'places', 'place', 'locations', 'location', 'venues', 'venue', 'did', 'i', 'my', 'with', 'visited', 'went', 'been', 'have', 'to', 'in', 'near', 'without', 'missing', 'no', 'coordinates', 'map', 'pin', 'mentioned', 'only', 'never', 'not', 'unvisited', 'linked', 'associated', 'connected', 'organization', 'organizations', 'inside', 'within', 'under', 'nested', 'part', 'of']);
-  const parentTerms = new Set(parentMatch?.toLowerCase().split(/\W+/).filter(Boolean) ?? []);
-  const terms = normalized.split(/\W+/).filter(Boolean).filter((term) => !commonWords.has(term) && !parentTerms.has(term));
-  const results = locations.flatMap<LocationQueryResult>((location) => {
-    const aliases = Array.isArray(location.metadata?.aliases)
-      ? location.metadata.aliases.filter((value): value is string => typeof value === 'string')
-      : [];
-    const peopleNames = location.relatedPeople.map((person) => person.name);
-    const organizationNames = Array.isArray(location.metadata?.organizations)
-      ? location.metadata.organizations.filter((value): value is string => typeof value === 'string')
-      : [];
-    const visitState = location.visitCount > 0
-      ? 'visited' as const
-      : (location.mentionCount ?? 0) > 0
-        ? 'mentioned_only' as const
-        : 'unvisited' as const;
-    const searchable = [
-      location.name, ...aliases, location.description, location.type, location.address, location.city, location.region,
-      location.country, ...peopleNames, ...organizationNames,
-      ...location.tagCounts.map((tag) => tag.tag),
-      ...location.chapters.map((chapter) => chapter.title),
-    ].filter(Boolean).join(' ').toLowerCase();
-    if (personMatch && !peopleNames.some((name) => name.toLowerCase().includes(personMatch.toLowerCase()))) return [];
-    if (parentMatch && location.parent_location_id !== parent?.id) return [];
-    if (wantsMentionedOnly && visitState !== 'mentioned_only') return [];
-    if (wantsUnvisited && !wantsMentionedOnly && visitState !== 'unvisited') return [];
-    if (wantsVisited && !wantsUnvisited && !wantsMentionedOnly && visitState !== 'visited') return [];
-    if (missingCoordinates && location.coordinates) return [];
-    if (terms.some((term) => !searchable.includes(term))) return [];
-    const analytics = location.analytics;
-    const reasons = [
-      personMatch && `connected to ${personMatch}`,
-      wantsVisited && visitState === 'visited' && 'visited place',
-      wantsMentionedOnly && 'mentioned only',
-      wantsUnvisited && 'not yet visited',
-      missingCoordinates && 'missing coordinates',
-      parentMatch && parent && `inside ${parent.name}`,
-    ].filter((reason): reason is string => Boolean(reason));
-    return [{
-      locationId: location.id,
-      name: location.name,
-      aliases,
-      type: location.type,
-      kind: classifyLocation(location),
-      address: location.address,
-      city: location.city,
-      region: location.region,
-      country: location.country,
-      parentLocationId: location.parent_location_id,
-      visitState,
-      visitCount: location.visitCount,
-      mentionCount: location.mentionCount ?? 0,
-      attendanceCount: location.attendanceCount ?? 0,
-      lastVisited: location.lastVisited,
-      lastMentioned: location.lastMentioned,
-      hasCoordinates: Boolean(location.coordinates),
-      peopleNames,
-      organizationNames,
-      trend: analytics?.trend,
-      importanceScore: analytics?.importance_score,
-      needsReview: location.metadata?.needs_review === true,
-      score: terms.filter((term) => searchable.includes(term)).length * 10,
-      matchedReasons: reasons.length ? reasons : [`${location.visitCount} visits · ${location.mentionCount ?? 0} mentions`],
-    }];
-  });
-  return {
-    query,
-    intent: personMatch ? 'person' : parentMatch ? 'hierarchy' : missingCoordinates ? 'quality' : wantsVisited || wantsUnvisited || wantsMentionedOnly ? 'activity' : 'find',
-    results,
-    total: results.length,
-    limit: 100,
-    offset: 0,
-    facets: { types: [], kinds: [], cities: [], visitStates: [], trends: [] },
-    warnings: [],
-  };
-}
 
 export const LocationBook = () => {
   const { data, loading, refetch, invalidate, isMockEnabled: isMockDataEnabled } = useLocationsBookData();
@@ -169,10 +78,6 @@ export const LocationBook = () => {
   const [viewMode, setViewMode] = useState<CardViewMode>(() =>
     readStoredCardViewMode(LOCATION_VIEW_STORAGE_KEY, 'grid'),
   );
-  const [bookQuery, setBookQuery] = useState('');
-  const [bookQueryResult, setBookQueryResult] = useState<LocationQueryResponse | null>(null);
-  const [bookQueryLoading, setBookQueryLoading] = useState(false);
-  const [bookQueryError, setBookQueryError] = useState<string | null>(null);
   const [deletedLocationIds, setDeletedLocationIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -240,15 +145,7 @@ export const LocationBook = () => {
   }, [selectedAdvancedFilter]);
 
   const filteredLocations = useMemo(() => {
-    const resultIds = bookQueryResult
-      ? new Set(bookQueryResult.results.map((result) => result.locationId))
-      : null;
-    // Book queries (e.g. "places inside Novara HQ") intentionally search across
-    // ALL locations, including nested/child ones — so results legitimately fall
-    // outside the top-level-only default browse population.
-    let locs = resultIds
-      ? locations.filter((location) => resultIds.has(location.id))
-      : locations.filter(isTopLevelPlace);
+    let locs = locations.filter(isTopLevelPlace);
 
     locs = locs.filter(loc => placeMatchesLifestyleFilter(loc, selectedLifestyle));
 
@@ -274,11 +171,11 @@ export const LocationBook = () => {
         loc.tagCounts.some((tag) => tag.tag.toLowerCase().includes(term)) ||
         loc.chapters.some((chapter) => chapter.title?.toLowerCase().includes(term))
     );
-  }, [locations, searchTerm, selectedLifestyle, selectedAdvancedFilter, selectedSubType, selectedKind, bookQueryResult]);
+  }, [locations, searchTerm, selectedLifestyle, selectedAdvancedFilter, selectedSubType, selectedKind]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedLifestyle, selectedAdvancedFilter, selectedSubType, selectedKind, bookQueryResult]);
+  }, [searchTerm, selectedLifestyle, selectedAdvancedFilter, selectedSubType, selectedKind]);
 
   const totalPages = Math.ceil(filteredLocations.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -295,7 +192,6 @@ export const LocationBook = () => {
           selectedAdvancedFilter && `advanced=${selectedAdvancedFilter}`,
           selectedSubType && `subtype=${selectedSubType}`,
           selectedKind && `kind=${selectedKind}`,
-          bookQueryResult && `book query="${bookQueryResult.query}"`,
         ]),
       }),
     [
@@ -305,33 +201,8 @@ export const LocationBook = () => {
       selectedAdvancedFilter,
       selectedSubType,
       selectedKind,
-      bookQueryResult,
     ],
   );
-
-  const runBookQuery = async () => {
-    if (!bookQuery.trim()) return;
-    setBookQueryLoading(true);
-    setBookQueryError(null);
-    try {
-      const result = isMockDataEnabled
-        ? demoLocationQuery(locations, bookQuery.trim())
-        : (await fetchJson<{ success: boolean; result: LocationQueryResponse }>('/api/locations/query', {
-            method: 'POST',
-            body: JSON.stringify({ query: bookQuery.trim(), limit: 100 }),
-          })).result;
-      setBookQueryResult(result);
-      setSearchTerm('');
-      setSelectedLifestyle('all');
-      setSelectedAdvancedFilter(null);
-      setSelectedSubType(null);
-      setSelectedKind(null);
-    } catch (error) {
-      setBookQueryError(error instanceof Error ? error.message : 'Could not query your Places Book.');
-    } finally {
-      setBookQueryLoading(false);
-    }
-  };
 
   const goToPage = (page: number) => {
     if (page >= 1 && page <= totalPages) {
@@ -519,11 +390,7 @@ export const LocationBook = () => {
         <div className="min-w-0">
           <h2 className="text-lg sm:text-xl font-bold text-white truncate">Places</h2>
           <p className="text-[11px] sm:text-xs text-white/40 mt-0.5">
-            {/* Book queries search across ALL locations (including nested/child
-                places), not just the default top-level browse set — the "of Y"
-                denominator must match whichever population filteredLocations was
-                actually drawn from, or a query result count can exceed it. */}
-            {filteredLocations.length} of {bookQueryResult ? locations.length : topLevelLocations.length} places
+            {filteredLocations.length} of {topLevelLocations.length} places
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -560,40 +427,6 @@ export const LocationBook = () => {
         className="w-full"
         inputClassName="bg-black/40 border-white/10 text-white placeholder:text-white/30 text-sm"
         emptyHint="No matching locations"
-      />
-
-      <BookQueryPanel
-        demoMode={isMockDataEnabled}
-        domains={['location']}
-        title="Ask your Places Book"
-        description="Search visits, mentions, people, organizations, geography, nested places, or records that need cleanup."
-        placeholder='Try “places I visited with Marcus”'
-        resultNoun="place"
-        compact
-        controller={{
-          query: bookQuery,
-          onQueryChange: setBookQuery,
-          onSubmit: runBookQuery,
-          onClear: () => {
-            setBookQuery('');
-            setBookQueryResult(null);
-            setBookQueryError(null);
-          },
-          loading: bookQueryLoading,
-          error: bookQueryError,
-          total: bookQueryResult?.total,
-          results: bookQueryResult?.results.map((result) => ({
-            id: result.locationId,
-            title: result.name,
-            status: result.visitState,
-            reason: result.matchedReasons[0],
-          })),
-          warnings: bookQueryResult?.warnings,
-        }}
-        onSelectResult={(result) => {
-          const location = locations.find((item) => item.id === result.id);
-          if (location) setSelectedLocation(location);
-        }}
       />
 
       {/* Lifestyle filters — horizontal scroll on mobile */}
