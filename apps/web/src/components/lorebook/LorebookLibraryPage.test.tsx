@@ -75,20 +75,23 @@ describe('LorebookLibraryPage', () => {
       </MemoryRouter>
     );
 
-    const careerTitle = await screen.findByText('Career at Vanguard Robotics');
+    const careerTitle = (await screen.findAllByText('Career at Vanguard Robotics'))[0];
     const card = careerTitle.closest('article');
     expect(card).not.toBeNull();
     expect(within(card!).getByText(/v3 · 3 versions/i)).toBeInTheDocument();
     expect(screen.getByText('Relationships — Jamie & Marcus')).toBeInTheDocument();
 
-    fireEvent.click(within(card!).getByRole('button', { name: /2 older versions/i }));
     await waitFor(() => {
       expect(within(card!).getByText('Edition History')).toBeInTheDocument();
       expect(within(card!).getByText('v3')).toBeInTheDocument();
       expect(within(card!).getByText('v2')).toBeInTheDocument();
       expect(within(card!).getByText('v1')).toBeInTheDocument();
     });
+    expect(within(card!).getByRole('button', { name: /hide edition history/i })).toBeInTheDocument();
     expect(card).toHaveClass('xl:col-span-3');
+
+    fireEvent.click(within(card!).getByRole('button', { name: /hide edition history/i }));
+    expect(within(card!).getByRole('button', { name: /show edition history · 3 versions/i })).toBeInTheDocument();
   });
 
   it('renders compiled lorebooks heading and demo books', () => {
