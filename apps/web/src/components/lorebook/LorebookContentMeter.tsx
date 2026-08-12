@@ -44,12 +44,12 @@ export function LorebookContentMeter({
               }`}
             >
               <div
-                className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-300 ${
+                className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-300 bg-gradient-to-r from-amber-400 via-emerald-400 to-fuchsia-400 ${
                   seg >= 1
-                    ? 'bg-amber-400'
+                    ? 'shadow-[0_0_6px_1px_rgba(232,121,249,0.55)]'
                     : seg >= 0.6
-                      ? 'bg-amber-400/70'
-                      : 'bg-white/35'
+                      ? 'opacity-70'
+                      : 'opacity-40'
                 }`}
                 style={{ width: `${Math.round(clampPercent(seg) * 100)}%` }}
               />
@@ -67,12 +67,12 @@ export function LorebookContentMeter({
           aria-valuenow={pct}
         >
           <div
-            className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-300 ${
+            className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-300 bg-gradient-to-r from-amber-400 via-emerald-400 to-fuchsia-400 ${
               meter.ready
-                ? 'bg-amber-400'
+                ? 'shadow-[0_0_6px_1px_rgba(232,121,249,0.55)]'
                 : pct >= 60
-                  ? 'bg-amber-400/70'
-                  : 'bg-white/35'
+                  ? 'opacity-70'
+                  : 'opacity-40'
             }`}
             style={{ width: `${pct}%` }}
           />
@@ -81,7 +81,7 @@ export function LorebookContentMeter({
       <span
         className={`tabular-nums shrink-0 ${
           compact ? 'text-[10px]' : 'text-[11px]'
-        } ${meter.ready ? 'text-amber-200/90' : 'text-white/45'}`}
+        } ${meter.ready ? 'text-fuchsia-200/90' : 'text-white/45'}`}
       >
         {meter.counterLabel}
       </span>
