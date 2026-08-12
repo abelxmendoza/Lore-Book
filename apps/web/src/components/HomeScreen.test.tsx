@@ -95,6 +95,19 @@ describe('HomeScreen', () => {
     });
   });
 
+  it('does not render the Ask LoreBook query panel', async () => {
+    const { fetchJson } = await import('../lib/api');
+    vi.mocked(fetchJson).mockResolvedValue({ characters: [] });
+
+    wrap(<HomeScreen />);
+    await waitFor(() => {
+      expect(screen.getByText(/Good (morning|afternoon|evening)/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('region', { name: 'Ask LoreBook' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Ask LoreBook')).not.toBeInTheDocument();
+    expect(screen.queryByText(/What skills support my active quests/)).not.toBeInTheDocument();
+  });
+
   it('renders the LivingBiographyCard section', async () => {
     const { fetchJson } = await import('../lib/api');
     vi.mocked(fetchJson).mockResolvedValue({ characters: [] });
