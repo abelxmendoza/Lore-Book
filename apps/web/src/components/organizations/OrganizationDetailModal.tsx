@@ -45,6 +45,7 @@ import {
   useUpdateOrganizationMutation,
 } from '../../store/api/entitiesApi';
 import { OrganizationModalHeader } from './OrganizationModalHeader';
+import { EntityModalBottomNav } from '../common/EntityModalBottomNav';
 import {
   OrganizationModalNav,
   ORG_MODAL_BASE_TABS,
@@ -244,8 +245,14 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     list.push({ key: 'danger', label: 'Delete', shortLabel: 'Delete', icon: Trash2 });
     return list;
   }, [editedOrg.group_type]);
+  // Mobile bottom nav (EntityModalBottomNav) renders Delete as its own
+  // dangerAction chip at the end of the row, not as a regular tab.
+  const sectionTabs = useMemo(() => tabs.filter((t) => t.key !== 'danger'), [tabs]);
 
   const [activeTab, setActiveTabState] = useState<TabKey>('info');
+  // Mobile-only: header starts collapsed to leave room for tab content; the
+  // name row always stays visible, desktop (sm:+) always shows everything.
+  const [headerExpanded, setHeaderExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingIdentity, setEditingIdentity] = useState(false);
@@ -2048,6 +2055,8 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
             !isMockDataEnabled
           }
           onOpenChat={() => setActiveTab('chat')}
+          headerExpanded={headerExpanded}
+          onToggleHeaderExpanded={() => setHeaderExpanded((v) => !v)}
           reclassify={{
             busy: reclassifyBusy,
             success: reclassifySuccess,
@@ -3736,12 +3745,17 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
           </div>
         </Tabs>
 
-        <OrganizationModalNav
-          placement="bottom"
-          tabs={tabs}
+        <EntityModalBottomNav
+          tabs={sectionTabs}
           activeTab={activeTab}
           onTabChange={setActiveTab}
-          showFamilyTab={editedOrg.group_type === 'family'}
+          ariaLabel="Organization sections"
+          dangerAction={{
+            label: 'Delete group',
+            icon: Trash2,
+            onClick: () => setActiveTab('danger'),
+            active: activeTab === 'danger',
+          }}
         />
 
       </div>

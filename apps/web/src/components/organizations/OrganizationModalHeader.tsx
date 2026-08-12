@@ -159,6 +159,9 @@ type Props = {
   renameDisabled?: boolean;
   /** Wrong book? Lets the user move this group to Person, Place, Project, Skill, or Event. */
   reclassify?: ReclassifyState;
+  /** Mobile-only: when false, badges/description/stats collapse to save space. Desktop always shows everything. */
+  headerExpanded?: boolean;
+  onToggleHeaderExpanded?: () => void;
 };
 
 export function OrganizationModalHeader({
@@ -169,6 +172,8 @@ export function OrganizationModalHeader({
   onRename,
   renameDisabled = false,
   reclassify,
+  headerExpanded = true,
+  onToggleHeaderExpanded,
 }: Props) {
   const theme = getOrgCategoryTheme(organization);
   const since = formatSince(organization);
@@ -210,11 +215,26 @@ export function OrganizationModalHeader({
                 </div>
               )}
             </div>
+            {onToggleHeaderExpanded && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onToggleHeaderExpanded}
+                aria-label={headerExpanded ? 'Collapse group details' : 'Expand group details'}
+                aria-expanded={headerExpanded}
+                className="sm:hidden shrink-0 h-7 w-7 p-0"
+              >
+                <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', headerExpanded && 'rotate-180')} />
+              </Button>
+            )}
             <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close" className="shrink-0 h-7 w-7 p-0 -mr-1 -mt-0.5">
               <X className="h-3.5 w-3.5" />
             </Button>
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-1">
+          <div
+            data-testid="org-header-badges-row"
+            className={cn('mt-1 flex flex-wrap items-center gap-1', !headerExpanded && 'hidden sm:flex')}
+          >
             <Badge variant="outline" className={cn('text-[9px] px-1.5 py-0 leading-4', getOrgTypeColor(organization.type))}>
               {getOrgTypeLabel(organization.group_type ?? organization.type)}
             </Badge>
@@ -247,12 +267,15 @@ export function OrganizationModalHeader({
             )}
           </div>
           {organization.description && (
-            <p className="mt-1 text-[11px] sm:text-xs text-white/50 line-clamp-2 sm:line-clamp-1 leading-snug">{organization.description}</p>
+            <p className={cn('mt-1 text-[11px] sm:text-xs text-white/50 line-clamp-2 sm:line-clamp-1 leading-snug', !headerExpanded && 'hidden sm:block')}>{organization.description}</p>
           )}
         </div>
       </div>
 
-      <div className="mt-2 flex items-center gap-2">
+      <div
+        data-testid="org-header-stats-row"
+        className={cn('mt-2 flex items-center gap-2', !headerExpanded && 'hidden sm:flex')}
+      >
         <div className="flex flex-1 min-w-0 items-stretch gap-1.5 sm:gap-2">
           <StatPill label="Members" value={String(memberCount)} />
           {organization.usage_count > 0 && (
