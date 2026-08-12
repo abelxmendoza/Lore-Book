@@ -967,6 +967,7 @@ export const RelationshipDetailModal = ({
               }}
               onOpenPeripheralCharacter={handleOpenPeripheralCharacter}
               onCloseParentModal={onClose}
+              useMockData={shouldUseMockData}
             />
           </TabsContent>
 

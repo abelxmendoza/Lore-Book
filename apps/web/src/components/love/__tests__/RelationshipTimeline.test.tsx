@@ -63,6 +63,61 @@ describe('RelationshipTimeline', () => {
     expect(screen.getByText(/connected since/i)).toBeInTheDocument();
   });
 
+  it('shows ex-partners as undated timeline context', async () => {
+    render(
+      <RelationshipTimeline
+        relationshipId="rel-001"
+        dates={mockDates}
+        relationship={mockRelationship}
+        useMockData
+      />,
+    );
+
+    const section = await screen.findByTestId('romance-timeline-ex-partners');
+    expect(section).toHaveTextContent('Their dating history');
+    expect(section).toHaveTextContent('Jamie');
+    expect(section).toHaveTextContent('Confirmed ex');
+    expect(section).toHaveTextContent('Date not recorded');
+  });
+
+  it('opens an ex-partner Character Book card through the modal callback', async () => {
+    const onOpen = vi.fn();
+    const { default: userEvent } = await import('@testing-library/user-event');
+
+    render(
+      <RelationshipTimeline
+        relationshipId="rel-001"
+        dates={mockDates}
+        relationship={mockRelationship}
+        onOpenPeripheralCharacter={onOpen}
+        useMockData
+      />,
+    );
+
+    await userEvent.click(await screen.findByTestId('romance-timeline-ex-periph-alex-ex-jamie'));
+    expect(onOpen).toHaveBeenCalledWith('romantic-periph-jamie');
+  });
+
+  it("shows Jamie's ex-husband without inventing a date", async () => {
+    render(
+      <RelationshipTimeline
+        relationshipId="rel-010"
+        dates={[]}
+        relationship={{ ...mockRelationship, id: 'rel-010', person_name: 'Jamie' }}
+        useMockData
+      />,
+    );
+
+    const ex = await screen.findByTestId('romance-timeline-ex-periph-jamie-ex-jordan-ellis');
+    expect(ex).toHaveTextContent('Jordan Ellis');
+    expect(ex).toHaveTextContent('Confirmed ex');
+    expect(ex).toHaveTextContent('Time context: after they split');
+    expect(ex).toHaveTextContent('Stories & context (3)');
+    expect(ex).toHaveTextContent(/dated in college/i);
+    expect(ex).toHaveTextContent(/ex-husband/i);
+    expect(ex).toHaveTextContent(/reconnected physically/i);
+  });
+
   it('shows ongoing badge when no end date', () => {
     render(
       <RelationshipTimeline
