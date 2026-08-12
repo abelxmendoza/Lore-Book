@@ -293,6 +293,20 @@ const SidebarContent = ({
           {/* 4. Explore your story */}
           <p className="mt-4 mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40 px-1">Explore your story</p>
           <button
+            onClick={() => handleSurfaceChange('quests')}
+            aria-label="Open quests"
+            aria-current={activeSurface === 'quests' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
+              activeSurface === 'quests'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Target className="h-4 w-4 text-primary" aria-hidden="true" />
+            Quests
+          </button>
+          <button
             onClick={() => {
               navigate('/timeline');
               onSurfaceChange?.('timeline');
@@ -384,20 +398,6 @@ const SidebarContent = ({
           >
             <Compass className="h-4 w-4 text-primary" aria-hidden="true" />
             Discovery Hub
-          </button>
-          <button
-            onClick={() => handleSurfaceChange('quests')}
-            aria-label="Open quests"
-            aria-current={activeSurface === 'quests' ? 'page' : undefined}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
-              activeSurface === 'quests'
-                ? 'border-primary bg-primary/10 text-white'
-                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-            )}
-          >
-            <Target className="h-4 w-4 text-primary" aria-hidden="true" />
-            Quests
           </button>
 
           {/* 5. Your content */}
