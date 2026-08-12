@@ -34,6 +34,7 @@ vi.mock('../../hooks/useLoreReadiness', () => ({
 describe('LorebookLibraryPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
   });
 
   it('renders compiled lorebooks heading and demo books', () => {
@@ -65,5 +66,36 @@ describe('LorebookLibraryPage', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /back/i }));
     expect(mockNavigate).toHaveBeenCalledWith('/lorebook');
+  });
+
+  it('shows Save as core edition buttons in demo mode', () => {
+    render(
+      <MemoryRouter>
+        <LorebookLibraryPage />
+      </MemoryRouter>
+    );
+    expect(screen.getAllByRole('button', { name: /save as core edition/i }).length).toBeGreaterThan(0);
+  });
+
+  it('saving as core, then recompiling, produces real edition history in demo mode', async () => {
+    vi.spyOn(window, 'prompt').mockReturnValue('My Life Story');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(
+      <MemoryRouter>
+        <LorebookLibraryPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: /save as core edition/i })[0]);
+
+    const recompileButton = await screen.findByRole('button', { name: /recompile from latest memory/i });
+    fireEvent.click(recompileButton);
+
+    const olderVersionsButton = await screen.findByRole('button', { name: /older version/i });
+    expect(olderVersionsButton).toBeInTheDocument();
+
+    fireEvent.click(olderVersionsButton);
+    expect(await screen.findByText(/edition history/i)).toBeInTheDocument();
   });
 });

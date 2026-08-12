@@ -5,12 +5,19 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { useLoreReadiness } from '../../hooks/useLoreReadiness';
+import { useLoreReadinessSimulationOptional } from '../../contexts/LoreReadinessSimulationContext';
 import {
   lorebookEditUrl,
   lorebookReadUrl,
 } from '../../lib/lorebookLibrary';
 import { DEMO_LOREBOOK_CATALOG } from '../../mocks/lorebooks';
 import { resolveDemoLorebookById } from '../../lib/storyForge/forgeDemoLibrary';
+import { runForgeForPreset } from '../../lib/storyForge/forgeReadinessBridge';
+import {
+  listDemoCoreRecords,
+  recompileDemoCoreLorebook,
+  saveDemoCoreLorebook,
+} from '../../lib/storyForge/demoCoreLorebookStore';
 import { fetchJson } from '../../lib/api';
 import {
   biographyToPdfSections,
@@ -105,6 +112,10 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
   const navigate = useNavigate();
   const shouldUseMock = useShouldUseMockData();
   const { compiledBooks, loading: readinessLoading } = useLoreReadiness();
+  // Optional: LorebookLibraryPage is always mounted inside the provider in the
+  // real app, but tests render it standalone — fall back to the same default
+  // preset demoCoreLorebookStore itself uses when nothing has been saved yet.
+  const preset = useLoreReadinessSimulationOptional()?.preset ?? 'rich';
   const [books, setBooks] = useState<LibraryBook[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -121,26 +132,53 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
 
   const loadBooks = useCallback(async () => {
     if (shouldUseMock) {
-      setBooks(
-        compiledBooks.map((book, index) => {
-          const catalog = DEMO_LOREBOOK_CATALOG.find((entry) => entry.id === book.id);
-          const style = styleForIndex(index);
+      const catalogBooks = compiledBooks.map((book, index) => {
+        const catalog = DEMO_LOREBOOK_CATALOG.find((entry) => entry.id === book.id);
+        const style = styleForIndex(index);
+        return {
+          id: book.id,
+          title: book.title ?? catalog?.title ?? 'Untitled lorebook',
+          scope: book.is_core_lorebook ? 'Core edition' : book.lorebook_name ?? catalog?.scope ?? 'Compiled lorebook',
+          period: catalog?.period ?? formatDate(book.created_at),
+          created_at: book.created_at,
+          is_core_lorebook: book.is_core_lorebook,
+          lorebook_name: book.lorebook_name,
+          chapterCount: book.chapterCount ?? catalog?.chapters ?? 0,
+          pages: catalog?.pages ?? Math.max((book.chapterCount ?? 0) * 4, book.chapterCount ?? 0),
+          gradient: catalog?.gradient ?? style.gradient,
+          accent: catalog?.accent ?? style.accent,
+          border: catalog?.border ?? style.border,
+        };
+      });
+
+      // Saved/recompiled demo core editions — the actual edition-history data
+      // source (demoCoreLorebookStore), separate from the static demo catalog
+      // above. Only 'main' editions become library cards; collapseLorebookVersions
+      // (already used on the real-data path below) groups same-name saves into
+      // one card with olderVersions, exactly like real core lorebook recompiles.
+      const coreEditionBooks: LibraryBook[] = listDemoCoreRecords()
+        .filter((record) => record.edition === 'main')
+        .map((record, index) => {
+          const style = styleForIndex(catalogBooks.length + index);
+          const chapterCount = record.compiledBook.chapters.length;
           return {
-            id: book.id,
-            title: book.title ?? catalog?.title ?? 'Untitled lorebook',
-            scope: book.is_core_lorebook ? 'Core edition' : book.lorebook_name ?? catalog?.scope ?? 'Compiled lorebook',
-            period: catalog?.period ?? formatDate(book.created_at),
-            created_at: book.created_at,
-            is_core_lorebook: book.is_core_lorebook,
-            lorebook_name: book.lorebook_name,
-            chapterCount: book.chapterCount ?? catalog?.chapters ?? 0,
-            pages: catalog?.pages ?? Math.max((book.chapterCount ?? 0) * 4, book.chapterCount ?? 0),
-            gradient: catalog?.gradient ?? style.gradient,
-            accent: catalog?.accent ?? style.accent,
-            border: catalog?.border ?? style.border,
+            id: record.bookId,
+            title: record.compiledBook.title,
+            scope: 'Core edition',
+            period: formatDate(record.createdAt),
+            created_at: record.createdAt,
+            is_core_lorebook: true,
+            lorebook_name: record.lorebookName,
+            lorebook_version: record.lorebookVersion,
+            chapterCount,
+            pages: Math.max(chapterCount * 4, chapterCount),
+            gradient: style.gradient,
+            accent: style.accent,
+            border: style.border,
           };
-        }),
-      );
+        });
+
+      setBooks(collapseLorebookVersions([...catalogBooks, ...coreEditionBooks]));
       setLoadError(null);
       setLoading(readinessLoading);
       return;
@@ -212,11 +250,27 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
   }, [books, filter]);
 
   const handleSaveAsCore = async (book: LibraryBook) => {
-    if (savingCoreId || shouldUseMock) return;
+    if (savingCoreId) return;
     const name = window.prompt('Name this core edition (e.g. "My Full Life Story")', book.lorebook_name || book.title);
     if (!name?.trim()) return;
     setSavingCoreId(book.id);
     setActionError(null);
+
+    if (shouldUseMock) {
+      try {
+        const forge = runForgeForPreset(preset);
+        const record = saveDemoCoreLorebook(name.trim(), forge);
+        if (!record) throw new Error('No compiled memory available to save.');
+        await loadBooks();
+      } catch (error) {
+        console.error('Failed to save demo core edition:', error);
+        setActionError('Could not save as a core edition. Try again.');
+      } finally {
+        setSavingCoreId(null);
+      }
+      return;
+    }
+
     try {
       await fetchJson(`/api/biography/${book.id}/save-as-core`, {
         method: 'POST',
@@ -232,13 +286,28 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
   };
 
   const handleRecompileCore = async (book: LibraryBook) => {
-    if (recompilingId || shouldUseMock || !book.lorebook_name) return;
+    if (recompilingId || !book.lorebook_name) return;
     const ok = window.confirm(
       `Recompile “${book.lorebook_name}” from your latest memory? This creates a new version — the previous edition stays in your library.`,
     );
     if (!ok) return;
     setRecompilingId(book.id);
     setActionError(null);
+
+    if (shouldUseMock) {
+      try {
+        const forge = recompileDemoCoreLorebook(book.lorebook_name);
+        if (!forge) throw new Error('No saved core edition to recompile.');
+        await loadBooks();
+      } catch (error) {
+        console.error('Failed to recompile demo core edition:', error);
+        setActionError('Recompile failed. Chat more, then try again.');
+      } finally {
+        setRecompilingId(null);
+      }
+      return;
+    }
+
     try {
       await fetchJson('/api/biography/recompile-core', {
         method: 'POST',
@@ -473,39 +542,37 @@ export const LorebookLibraryPage = ({ onOpenAppSidebar }: LorebookLibraryPagePro
                         PDF
                       </button>
                     </div>
-                    {!shouldUseMock && (
-                      <div className="grid grid-cols-1 gap-2">
-                        {book.is_core_lorebook && book.lorebook_name ? (
-                          <button
-                            type="button"
-                            onClick={() => void handleRecompileCore(book)}
-                            disabled={recompilingId === book.id}
-                            className="rounded-lg border border-amber-500/25 bg-amber-500/10 text-amber-100/85 text-[11px] font-medium py-2 transition-colors hover:bg-amber-500/15 disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
-                          >
-                            {recompilingId === book.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <RefreshCw className="h-3 w-3" />
-                            )}
-                            Recompile from latest memory
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => void handleSaveAsCore(book)}
-                            disabled={savingCoreId === book.id}
-                            className="rounded-lg border border-white/10 bg-white/[0.03] text-white/55 text-[11px] font-medium py-2 transition-colors hover:bg-white/[0.06] hover:text-white/75 disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
-                          >
-                            {savingCoreId === book.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <Star className="h-3 w-3" />
-                            )}
-                            Save as core edition
-                          </button>
-                        )}
-                      </div>
-                    )}
+                    <div className="grid grid-cols-1 gap-2">
+                      {book.is_core_lorebook && book.lorebook_name ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleRecompileCore(book)}
+                          disabled={recompilingId === book.id}
+                          className="rounded-lg border border-amber-500/25 bg-amber-500/10 text-amber-100/85 text-[11px] font-medium py-2 transition-colors hover:bg-amber-500/15 disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+                        >
+                          {recompilingId === book.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-3 w-3" />
+                          )}
+                          Recompile from latest memory
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void handleSaveAsCore(book)}
+                          disabled={savingCoreId === book.id}
+                          className="rounded-lg border border-white/10 bg-white/[0.03] text-white/55 text-[11px] font-medium py-2 transition-colors hover:bg-white/[0.06] hover:text-white/75 disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+                        >
+                          {savingCoreId === book.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Star className="h-3 w-3" />
+                          )}
+                          Save as core edition
+                        </button>
+                      )}
+                    </div>
                     {book.olderVersions && book.olderVersions.length > 0 && (
                       <div className="pt-1">
                         <button

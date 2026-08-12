@@ -1,4 +1,4 @@
-import type { CompiledBookDraft } from './types';
+import type { CompiledBookChapter, CompiledBookDraft } from './types';
 import { compiledBookToDemoLorebook, filterBookEdition, registerForgeDemoBooks } from './forgeDemoLibrary';
 import type { ForgeReadinessSnapshot } from './forgeReadinessBridge';
 import { runForgeForPreset } from './forgeReadinessBridge';
@@ -274,4 +274,83 @@ export function getDemoRecompileHint(
 export function getLatestDemoCoreBookId(lorebookName: string, edition: DemoEdition = 'main'): string | null {
   const records = getDemoVersionsForName(lorebookName).filter((r) => r.edition === edition);
   return records[0]?.bookId ?? null;
+}
+
+export type ChapterChangeType = 'added' | 'removed' | 'changed' | 'reordered';
+
+export type DemoVersionComparison = {
+  baseId: string;
+  versionId: string;
+  differences: {
+    chapterId: string;
+    chapterTitle: string;
+    changeType: ChapterChangeType;
+    differences: { type: 'content' | 'filtering' | 'structure' | 'position'; description: string }[];
+  }[];
+  metadataChanges: string[];
+  sharedTimeline: {
+    chapters: CompiledBookChapter[];
+    timeSpan: { start: string; end: string };
+  };
+};
+
+/**
+ * Lightweight chapter-title diff between two demo compiled books — enough to
+ * demonstrate the Edition History compare view without porting the server's
+ * real diff engine (bookVersionManager.ts), which needs DB-backed context
+ * this client-side demo path doesn't have.
+ */
+export function compareDemoEditions(base: CompiledBookDraft, target: CompiledBookDraft): DemoVersionComparison {
+  const baseByTitle = new Map(base.chapters.map((ch) => [ch.title, ch]));
+  const targetByTitle = new Map(target.chapters.map((ch) => [ch.title, ch]));
+  const differences: DemoVersionComparison['differences'] = [];
+
+  for (const chapter of target.chapters) {
+    const prior = baseByTitle.get(chapter.title);
+    if (!prior) {
+      differences.push({
+        chapterId: chapter.id,
+        chapterTitle: chapter.title,
+        changeType: 'added',
+        differences: [{ type: 'structure', description: 'New chapter in this edition.' }],
+      });
+    } else if (prior.summary !== chapter.summary || prior.atomIds.length !== chapter.atomIds.length) {
+      differences.push({
+        chapterId: chapter.id,
+        chapterTitle: chapter.title,
+        changeType: 'changed',
+        differences: [{ type: 'content', description: 'Chapter content updated since the earlier edition.' }],
+      });
+    }
+  }
+  for (const chapter of base.chapters) {
+    if (!targetByTitle.has(chapter.title)) {
+      differences.push({
+        chapterId: chapter.id,
+        chapterTitle: chapter.title,
+        changeType: 'removed',
+        differences: [{ type: 'structure', description: 'Chapter not present in this edition.' }],
+      });
+    }
+  }
+
+  const metadataChanges: string[] = [];
+  if (base.title !== target.title) metadataChanges.push(`Title changed to "${target.title}".`);
+  if (base.chapters.length !== target.chapters.length) {
+    metadataChanges.push(`Chapter count changed from ${base.chapters.length} to ${target.chapters.length}.`);
+  }
+
+  return {
+    baseId: base.id,
+    versionId: target.id,
+    differences,
+    metadataChanges,
+    sharedTimeline: {
+      chapters: target.chapters,
+      timeSpan: {
+        start: base.latestVersion.compiledAt,
+        end: target.latestVersion.compiledAt,
+      },
+    },
+  };
 }

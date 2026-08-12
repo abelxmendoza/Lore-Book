@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
 import { FileText, GitBranch, Eye, Download, RefreshCw, Clock, Info, BookOpen } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import {
+  compareDemoEditions,
+  getDemoVersionsForName,
+  type ChapterChangeType,
+  type DemoVersionComparison,
+} from '../../lib/storyForge/demoCoreLorebookStore';
 
 interface BiographyVersion {
   id: string;
@@ -16,26 +23,7 @@ interface BiographyVersion {
   baseBiographyId?: string;
 }
 
-type ChapterChangeType = 'added' | 'removed' | 'changed' | 'reordered';
-
-interface VersionComparison {
-  baseId: string;
-  versionId: string;
-  differences: {
-    chapterId: string;
-    chapterTitle: string;
-    changeType: ChapterChangeType;
-    differences: {
-      type: 'content' | 'filtering' | 'structure' | 'position';
-      description: string;
-    }[];
-  }[];
-  metadataChanges: string[];
-  sharedTimeline: {
-    chapters: any[];
-    timeSpan: { start: string; end: string };
-  };
-}
+type VersionComparison = DemoVersionComparison;
 
 interface EditionManifest {
   editionId: string;
@@ -77,6 +65,7 @@ const CHANGE_TYPE_STYLE: Record<ChapterChangeType, { label: string; border: stri
 };
 
 export const VersionManager = ({ lorebookName, baseBiographyId, showGenerateVariants = false, onRead }: VersionManagerProps) => {
+  const shouldUseMock = useShouldUseMockData();
   const [versions, setVersions] = useState<BiographyVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,9 +80,33 @@ export const VersionManager = ({ lorebookName, baseBiographyId, showGenerateVari
     if (lorebookName) {
       loadVersions();
     }
-  }, [lorebookName]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lorebookName, shouldUseMock]);
 
   const loadVersions = async () => {
+    if (shouldUseMock) {
+      setLoading(true);
+      setError(null);
+      const records = getDemoVersionsForName(lorebookName);
+      const highestMainVersion = Math.max(
+        0,
+        ...records.filter((r) => r.edition === 'main').map((r) => r.lorebookVersion),
+      );
+      setVersions(
+        records.map((record) => ({
+          id: record.bookId,
+          version: record.edition,
+          lorebookVersion: record.lorebookVersion,
+          status: record.edition === 'main' && record.lorebookVersion === highestMainVersion ? 'published' : 'superseded',
+          title: record.compiledBook.title,
+          generatedAt: record.createdAt,
+          memorySnapshotAt: record.createdAt,
+          atomSnapshotHash: record.snapshotHash,
+        })),
+      );
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
@@ -135,6 +148,18 @@ export const VersionManager = ({ lorebookName, baseBiographyId, showGenerateVari
     const b = versions.find(v => v.id === idB);
     const [fromId, toId] =
       (a?.lorebookVersion ?? 0) <= (b?.lorebookVersion ?? 0) ? [idA, idB] : [idB, idA];
+
+    if (shouldUseMock) {
+      const records = getDemoVersionsForName(lorebookName);
+      const fromRecord = records.find((r) => r.bookId === fromId);
+      const toRecord = records.find((r) => r.bookId === toId);
+      if (!fromRecord || !toRecord) return;
+      setComparing({ id1: fromId, id2: toId });
+      setComparison(compareDemoEditions(fromRecord.compiledBook, toRecord.compiledBook));
+      setComparing(null);
+      return;
+    }
+
     try {
       setComparing({ id1: fromId, id2: toId });
       const result = await fetchJson<{ comparison: VersionComparison }>(
@@ -161,6 +186,36 @@ export const VersionManager = ({ lorebookName, baseBiographyId, showGenerateVari
     }
     setManifestFor(versionId);
     setManifest(null);
+
+    if (shouldUseMock) {
+      const record = getDemoVersionsForName(lorebookName).find((r) => r.bookId === versionId);
+      if (record) {
+        setManifest({
+          editionId: record.id,
+          publicationHandle: null,
+          lorebookVersion: record.lorebookVersion,
+          knowledgeSnapshot: {
+            atomCount: record.compiledBook.latestVersion.atomCount,
+            atomSnapshotHash: record.snapshotHash,
+            memorySnapshotAt: record.createdAt,
+          },
+          buildSettings: {
+            buildFlag: record.edition,
+            scope: null,
+            tone: null,
+            depth: null,
+            audience: null,
+          },
+          filtersApplied: record.edition === 'main' ? [] : [record.edition],
+          generatorVersion: null,
+          promptVersion: null,
+          modelVersion: null,
+          filterVersion: null,
+        });
+      }
+      return;
+    }
+
     setManifestLoading(true);
     try {
       const result = await fetchJson<{ manifest: EditionManifest }>(`/api/biography/${versionId}/manifest`);
