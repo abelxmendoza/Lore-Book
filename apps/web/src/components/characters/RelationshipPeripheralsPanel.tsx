@@ -29,6 +29,7 @@ import {
 } from '../../api/romanticPeripherals';
 import { getMockPeripheralsForCharacter } from '../../mocks/characterPeripherals';
 import { getMockPeripheralsForRelationship } from '../../mocks/romanticPeripherals';
+import { partitionRomanticPeripherals } from '../../lib/romanticExPartners';
 
 export type PeripheryAnchorKind = 'character' | 'romantic_relationship';
 
@@ -194,6 +195,16 @@ export function RelationshipPeripheralsPanel({
   const suspectedCount = peripherals.filter((p) => p.tier === 'suspected').length;
   const confirmedCount = peripherals.filter((p) => p.tier === 'confirmed').length;
   const isRomantic = variant === 'romantic';
+  const romanticSections = (() => {
+    if (!isRomantic) return [{ key: 'all', label: null, rows: filtered, alwaysShow: false }];
+    const { exPartners, otherConnections } = partitionRomanticPeripherals(filtered);
+    return [
+      // Always show this slot in Dating & Romance. Hiding it when empty made
+      // the feature look absent on partners whose ex history is not known yet.
+      { key: 'ex-partners', label: 'Ex-partners', rows: exPartners, alwaysShow: true },
+      { key: 'other-connections', label: 'Other romantic connections', rows: otherConnections, alwaysShow: false },
+    ].filter((section) => section.rows.length > 0 || section.alwaysShow);
+  })();
   const shellBorder = isRomantic ? 'border-pink-500/20 bg-pink-950/10' : 'border-white/10 bg-black/30';
   const accentIcon = isRomantic ? 'text-pink-400' : 'text-primary';
 
@@ -275,7 +286,7 @@ export function RelationshipPeripheralsPanel({
         ))}
       </div>
 
-      {filtered.length === 0 ? (
+      {filtered.length === 0 && !isRomantic ? (
         <div
           className="text-center text-white/50 py-10 rounded-xl border border-dashed border-white/10"
           data-testid="relationship-peripherals-empty"
@@ -285,8 +296,33 @@ export function RelationshipPeripheralsPanel({
           <p className="text-xs mt-2">Mention their family, friends, or coworkers in chat to surface links.</p>
         </div>
       ) : (
-        <ul className="space-y-3 sm:space-y-4">
-          {filtered.map((p) => (
+        <div className="space-y-5">
+          {romanticSections.map((section) => (
+            <section key={section.key} data-testid={`peripheral-section-${section.key}`}>
+              {section.label && (
+                <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-pink-200/70">
+                  {section.label} ({section.rows.length})
+                </h4>
+              )}
+              {section.rows.length === 0 ? (
+                <div
+                  className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-center"
+                  data-testid={`peripheral-section-${section.key}-empty`}
+                >
+                  <p className="text-sm text-white/45">
+                    {section.key === 'ex-partners'
+                      ? `No ex-partners linked to ${anchorName} yet.`
+                      : 'No romantic connections in this group.'}
+                  </p>
+                  {section.key === 'ex-partners' && (
+                    <p className="mt-1 text-xs text-white/30">
+                      Stories about former partners appear here when you talk about them in chat.
+                    </p>
+                  )}
+                </div>
+              ) : (
+              <ul className="space-y-3 sm:space-y-4">
+          {section.rows.map((p) => (
             <li
               key={p.id}
               className="rounded-xl border border-white/10 bg-gradient-to-br from-black/40 to-black/20 p-3 sm:p-4 min-w-0 overflow-hidden"
@@ -321,11 +357,30 @@ export function RelationshipPeripheralsPanel({
                 </div>
               </div>
 
-              {p.metadata?.lexical_evidence && (
+              {p.metadata?.evidence_history && p.metadata.evidence_history.length > 1 ? (
+                <div className="mt-3 rounded-lg border border-white/8 bg-black/20 p-2.5">
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/30">
+                    Stories & context ({p.metadata.evidence_history.length})
+                  </p>
+                  <div className="space-y-1.5">
+                    {p.metadata.evidence_history.slice(-4).map((story, index) => (
+                      <p
+                        key={`${story.message_id ?? 'story'}-${index}`}
+                        className="text-xs leading-relaxed text-white/65"
+                      >
+                        {story.time_context && (
+                          <span className="mr-1 text-pink-200/60">{story.time_context} ·</span>
+                        )}
+                        {story.evidence.replace(/^…|…$/g, '')}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ) : p.metadata?.lexical_evidence ? (
                 <blockquote className="mt-3 text-xs sm:text-sm text-white/70 border-l-2 border-primary/40 pl-3 italic break-words">
                   {p.metadata.lexical_evidence}
                 </blockquote>
-              )}
+              ) : null}
 
               <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 mt-3 sm:mt-4">
                 {p.tier === 'suspected' && (
@@ -385,7 +440,11 @@ export function RelationshipPeripheralsPanel({
               )}
             </li>
           ))}
-        </ul>
+              </ul>
+              )}
+            </section>
+          ))}
+        </div>
       )}
     </div>
   );

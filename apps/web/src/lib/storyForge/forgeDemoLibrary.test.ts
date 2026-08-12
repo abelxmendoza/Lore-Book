@@ -60,6 +60,28 @@ describe('demoCoreLorebookStore', () => {
     const versions = groupDemoCoreByName()['My Life Story']?.filter((r) => r.edition === 'main') ?? [];
     expect(versions.length).toBe(2);
     expect(versions[0].lorebookVersion).toBe(2);
+    expect(versions[0].compiledBook.title).toBe('My Life Story');
+    expect(versions[0].compiledBook.chapters).toHaveLength(
+      versions[1].compiledBook.chapters.length + 1,
+    );
+    expect(versions[0].compiledBook.subtitle).toContain('Regenerated after adding new content');
+    expect(versions[0].snapshotHash).not.toBe(versions[1].snapshotHash);
+  });
+
+  it('keeps a subject book focused when regeneration adds content', () => {
+    const { forge } = buildForgeLibraryCatalog('building', 'one');
+    if (!forge.mainBook) return;
+
+    saveDemoCoreLorebook('Career at Vanguard Robotics', forge);
+    recompileDemoCoreLorebook('Career at Vanguard Robotics');
+
+    const [latest, prior] = groupDemoCoreByName()['Career at Vanguard Robotics']
+      .filter((r) => r.edition === 'main');
+    expect(latest.compiledBook.title).toBe('Career at Vanguard Robotics');
+    expect(latest.compiledBook.chapters.at(-1)?.title).toBe(
+      'What the latest work stories changed',
+    );
+    expect(latest.compiledBook.chapters.slice(0, -1)).toEqual(prior.compiledBook.chapters);
   });
 
   it('generates demo edition variants', () => {

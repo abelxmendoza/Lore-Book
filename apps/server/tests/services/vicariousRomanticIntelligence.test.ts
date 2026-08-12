@@ -29,6 +29,33 @@ describe('vicariousRomanticIntelligence', () => {
     expect(hits.some((h) => h.subjectName === 'Morgan' && h.role === 'ex')).toBe(true);
   });
 
+  it('keeps an unnamed possessive ex as an ex, not a current partner', () => {
+    const hits = parseVicariousEpisode("Alex's ex still texts on birthdays.", ['Alex']);
+    const hit = hits.find((candidate) => candidate.subjectName === 'Alex');
+    expect(hit?.role).toBe('ex');
+    expect(hit?.objectSurface).toBe('ex partner');
+  });
+
+  it('captures a partner sexual-history story with its explicit time context', () => {
+    const hits = parseVicariousEpisode(
+      'Jamie hooked up with Jordan after they split.',
+      ['Jamie'],
+    );
+    const hit = hits.find((candidate) => candidate.objectName === 'Jordan');
+    expect(hit?.role).toBe('hookup');
+    expect(hit?.evidence).toMatch(/hooked up with Jordan/i);
+    expect(hit?.timeContext).toBe('after they split');
+  });
+
+  it('captures a dated prior-partner story without converting it to a fake date', () => {
+    const hits = parseVicariousEpisode(
+      "Jamie said her ex Jordan was still around in summer 2019.",
+      ['Jamie'],
+    );
+    const hit = hits.find((candidate) => candidate.role === 'ex');
+    expect(hit?.timeContext).toBe('in summer 2019');
+  });
+
   it('parses confirmed together pattern', () => {
     const hits = parseVicariousEpisode(
       'Taylor and Jordan are together now — I heard from the art studio.',

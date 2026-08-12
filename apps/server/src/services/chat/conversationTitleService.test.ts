@@ -208,6 +208,11 @@ describe('ConversationTitleService', () => {
         metadata: expect.objectContaining({ titleSource: 'user' }),
       })
     );
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        updated_at: expect.anything(),
+      })
+    );
   });
 
   it('renameTitle preserves existing metadata keys while setting titleSource', async () => {
@@ -224,6 +229,34 @@ describe('ConversationTitleService', () => {
           someKey: 'someValue',
           titleSource: 'user',
         }),
+      })
+    );
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        updated_at: expect.anything(),
+      })
+    );
+  });
+
+  it('generateTitle does not bump conversation updated_at (list order)', async () => {
+    const chain = makeSupabaseChain({ id: 't1', title: 'New chat', metadata: {} });
+    mockFrom.mockReturnValue(chain);
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: JSON.stringify({ title: 'Focus Work', subtitle: 'Deep Work' }) } }],
+    });
+
+    await conversationTitleService.generateTitle({
+      userId: 'u1',
+      threadId: 't1',
+      messages: [
+        { role: 'user', content: 'Help me plan a deep work block this morning' },
+        { role: 'assistant', content: 'Sure — start with a 90-minute focus block.' },
+      ],
+    });
+
+    expect(chain.update).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        updated_at: expect.anything(),
       })
     );
   });

@@ -171,20 +171,62 @@ export function recompileDemoCoreLorebook(lorebookName: string): ForgeReadinessS
   if (!forge.mainBook) return null;
 
   const nextVersion = Math.max(...versions.map((v) => v.lorebookVersion)) + 1;
+  const latest = [...versions].sort((a, b) => b.lorebookVersion - a.lorebookVersion)[0];
+  const latestBook = latest.compiledBook;
+  const compiledAt = new Date().toISOString();
+  const subjectSlug = lorebookName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const addedChapter: CompiledBookChapter = {
+    id: `demo-added-${subjectSlug}-v${nextVersion}`,
+    title:
+      /career|work|vanguard/i.test(lorebookName)
+        ? 'What the latest work stories changed'
+        : /relationship|jamie|marcus/i.test(lorebookName)
+          ? 'What recent conversations added'
+          : 'New material from recent chats',
+    summary:
+      /career|work|vanguard/i.test(lorebookName)
+        ? 'New conversations added context about the work, the people involved, and how this chapter feels in hindsight.'
+        : /relationship|jamie|marcus/i.test(lorebookName)
+          ? 'Recent conversations added another layer to the relationship — new context, clearer boundaries, and details that were not in the prior edition.'
+          : `Recent conversations added new material specifically about ${lorebookName}.`,
+    domain: latestBook.chapters[0]?.domain ?? 'identity',
+    atomIds: [`demo-added-atom-${subjectSlug}-v${nextVersion}`],
+  };
+  const snapshotHash = `${latest.snapshotHash}-added-v${nextVersion}`;
   const record: DemoCoreLorebookRecord = {
     id: `demo-core-${lorebookName}-${nextVersion}`,
     lorebookName,
     lorebookVersion: nextVersion,
     edition: 'main',
-    bookId: `${forge.mainBook.id}-v${nextVersion}`,
+    bookId: `${latestBook.id.replace(/-v\d+$/, '')}-v${nextVersion}`,
     compiledBook: {
-      ...forge.mainBook,
-      id: `${forge.mainBook.id}-v${nextVersion}`,
+      ...latestBook,
+      id: `${latestBook.id.replace(/-v\d+$/, '')}-v${nextVersion}`,
       title: lorebookName,
-      latestVersion: { ...forge.mainBook.latestVersion, version: nextVersion },
+      subtitle: `Regenerated after adding new content about ${lorebookName}`,
+      chapters: [...latestBook.chapters, addedChapter],
+      versions: [
+        ...latestBook.versions,
+        {
+          ...latestBook.latestVersion,
+          version: nextVersion,
+          compiledAt,
+          atomCount: latestBook.latestVersion.atomCount + 3,
+          sourceTurns: latestBook.latestVersion.sourceTurns + 4,
+          snapshotHash,
+        },
+      ],
+      latestVersion: {
+        ...latestBook.latestVersion,
+        version: nextVersion,
+        compiledAt,
+        atomCount: latestBook.latestVersion.atomCount + 3,
+        sourceTurns: latestBook.latestVersion.sourceTurns + 4,
+        snapshotHash,
+      },
     },
-    createdAt: new Date().toISOString(),
-    snapshotHash: forge.mainBook.latestVersion.snapshotHash,
+    createdAt: compiledAt,
+    snapshotHash,
   };
 
   store.records.push(record);
@@ -276,81 +318,3 @@ export function getLatestDemoCoreBookId(lorebookName: string, edition: DemoEditi
   return records[0]?.bookId ?? null;
 }
 
-export type ChapterChangeType = 'added' | 'removed' | 'changed' | 'reordered';
-
-export type DemoVersionComparison = {
-  baseId: string;
-  versionId: string;
-  differences: {
-    chapterId: string;
-    chapterTitle: string;
-    changeType: ChapterChangeType;
-    differences: { type: 'content' | 'filtering' | 'structure' | 'position'; description: string }[];
-  }[];
-  metadataChanges: string[];
-  sharedTimeline: {
-    chapters: CompiledBookChapter[];
-    timeSpan: { start: string; end: string };
-  };
-};
-
-/**
- * Lightweight chapter-title diff between two demo compiled books — enough to
- * demonstrate the Edition History compare view without porting the server's
- * real diff engine (bookVersionManager.ts), which needs DB-backed context
- * this client-side demo path doesn't have.
- */
-export function compareDemoEditions(base: CompiledBookDraft, target: CompiledBookDraft): DemoVersionComparison {
-  const baseByTitle = new Map(base.chapters.map((ch) => [ch.title, ch]));
-  const targetByTitle = new Map(target.chapters.map((ch) => [ch.title, ch]));
-  const differences: DemoVersionComparison['differences'] = [];
-
-  for (const chapter of target.chapters) {
-    const prior = baseByTitle.get(chapter.title);
-    if (!prior) {
-      differences.push({
-        chapterId: chapter.id,
-        chapterTitle: chapter.title,
-        changeType: 'added',
-        differences: [{ type: 'structure', description: 'New chapter in this edition.' }],
-      });
-    } else if (prior.summary !== chapter.summary || prior.atomIds.length !== chapter.atomIds.length) {
-      differences.push({
-        chapterId: chapter.id,
-        chapterTitle: chapter.title,
-        changeType: 'changed',
-        differences: [{ type: 'content', description: 'Chapter content updated since the earlier edition.' }],
-      });
-    }
-  }
-  for (const chapter of base.chapters) {
-    if (!targetByTitle.has(chapter.title)) {
-      differences.push({
-        chapterId: chapter.id,
-        chapterTitle: chapter.title,
-        changeType: 'removed',
-        differences: [{ type: 'structure', description: 'Chapter not present in this edition.' }],
-      });
-    }
-  }
-
-  const metadataChanges: string[] = [];
-  if (base.title !== target.title) metadataChanges.push(`Title changed to "${target.title}".`);
-  if (base.chapters.length !== target.chapters.length) {
-    metadataChanges.push(`Chapter count changed from ${base.chapters.length} to ${target.chapters.length}.`);
-  }
-
-  return {
-    baseId: base.id,
-    versionId: target.id,
-    differences,
-    metadataChanges,
-    sharedTimeline: {
-      chapters: target.chapters,
-      timeSpan: {
-        start: base.latestVersion.compiledAt,
-        end: target.latestVersion.compiledAt,
-      },
-    },
-  };
-}

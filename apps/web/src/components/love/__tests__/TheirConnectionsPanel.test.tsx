@@ -26,6 +26,29 @@ describe('TheirConnectionsPanel', () => {
     expect(screen.getByTestId('peripheral-card-periph-sam-marcus')).toBeInTheDocument();
     expect(screen.getByText('Marcus')).toBeInTheDocument();
     expect(screen.getAllByTestId('peripheral-tier-suspected').length).toBeGreaterThan(0);
+    expect(screen.getByTestId('peripheral-section-ex-partners')).toBeInTheDocument();
+    expect(screen.getByTestId('peripheral-section-ex-partners-empty')).toHaveTextContent(
+      'No ex-partners linked to Sam yet.',
+    );
+  });
+
+  it('puts ex-partners in their own list before other romantic connections', async () => {
+    render(
+      <TheirConnectionsPanel relationshipId="rel-001" anchorName="Alex" />
+    );
+
+    const exSection = await screen.findByTestId('peripheral-section-ex-partners');
+    expect(exSection).toHaveTextContent('Ex-partners (1)');
+    expect(exSection).toHaveTextContent('Jamie');
+    expect(exSection).toHaveTextContent('Ex');
+
+    const otherSection = screen.getByTestId('peripheral-section-other-connections');
+    expect(otherSection).toHaveTextContent('Other romantic connections (1)');
+    expect(otherSection).toHaveTextContent('Dana');
+
+    expect(
+      exSection.compareDocumentPosition(otherSection) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('filters confirmed only', async () => {
@@ -70,6 +93,23 @@ describe('TheirConnectionsPanel', () => {
     await screen.findByTestId('peripheral-open-book-periph-elena-college-friend');
     fireEvent.click(screen.getByTestId('peripheral-open-book-periph-elena-college-friend'));
     expect(onOpen).toHaveBeenCalledWith('romantic-periph-maya');
+  });
+
+  it("includes Jamie's ex-husband in periphery", async () => {
+    render(
+      <TheirConnectionsPanel relationshipId="rel-010" anchorName="Jamie" />
+    );
+
+    const exSection = await screen.findByTestId('peripheral-section-ex-partners');
+    expect(exSection).toHaveTextContent('Jordan Ellis');
+    expect(exSection).toHaveTextContent('Ex');
+    expect(exSection).toHaveTextContent('Confirmed');
+    expect(exSection).toHaveTextContent('Stories & context (3)');
+    expect(exSection).toHaveTextContent(/dated in college/i);
+    expect(exSection).toHaveTextContent(/reconnected physically/i);
+    expect(
+      screen.getByTestId('peripheral-open-book-periph-jamie-ex-jordan-ellis'),
+    ).toBeInTheDocument();
   });
 
   it('covers every demo relationship with at least one peripheral', () => {

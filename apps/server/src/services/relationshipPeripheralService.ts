@@ -183,6 +183,46 @@ async function upsertPeripheral(
   const sourceIds = new Set<string>(existing?.source_message_ids ?? []);
   if (messageId) sourceIds.add(messageId);
 
+  type EvidenceHistoryItem = {
+    message_id?: string;
+    evidence: string;
+    recorded_at: string;
+    time_context?: string;
+  };
+  const existingMetadata =
+    typeof existing?.metadata === 'object' && existing.metadata
+      ? (existing.metadata as Record<string, unknown>)
+      : {};
+  const evidenceHistory = Array.isArray(existingMetadata.evidence_history)
+    ? (existingMetadata.evidence_history as EvidenceHistoryItem[]).filter(
+        (item) => item && typeof item.evidence === 'string',
+      )
+    : [];
+  const evidenceKey = `${messageId ?? ''}:${hit.evidence.trim()}`;
+  const hasEvidence = evidenceHistory.some(
+    (item) => `${item.message_id ?? ''}:${item.evidence.trim()}` === evidenceKey,
+  );
+  if (hit.evidence.trim() && !hasEvidence) {
+    evidenceHistory.push({
+      ...(messageId ? { message_id: messageId } : {}),
+      evidence: hit.evidence.trim(),
+      recorded_at: new Date().toISOString(),
+      ...(hit.timeContext ? { time_context: hit.timeContext } : {}),
+    });
+  }
+  // Keep a useful but bounded story trail on the peripheral row. Message ids
+  // remain the durable provenance; these snippets make the history readable.
+  const boundedEvidenceHistory = evidenceHistory.slice(-20);
+
+  // Once somebody is known as an ex, a later story about a past hookup with
+  // that same person should deepen the ex's history, not reclassify the row as
+  // a current side partner. A confirmed current-partner statement may still
+  // move the role forward.
+  const preservedRole =
+    existing?.role === 'ex' && (hit.role === 'hookup' || hit.role === 'side_partner')
+      ? 'ex'
+      : hit.role;
+
   const payload = {
     user_id: userId,
     domain: hit.domain,
@@ -192,7 +232,7 @@ async function upsertPeripheral(
     peripheral_person_id: peripheral.personId,
     peripheral_person_type: peripheral.personType,
     peripheral_surface: hit.objectSurface,
-    role: hit.role,
+    role: preservedRole,
     tier: hit.tier,
     confidence: Math.max(existing?.confidence ?? 0, hit.confidence),
     has_met: hit.hasMet || Boolean(existing?.has_met),
@@ -200,8 +240,10 @@ async function upsertPeripheral(
     associated_via: 'chat_extract',
     source_message_ids: [...sourceIds],
     metadata: {
-      ...(typeof existing?.metadata === 'object' && existing.metadata ? existing.metadata : {}),
+      ...existingMetadata,
       lexical_evidence: hit.evidence,
+      evidence_history: boundedEvidenceHistory,
+      ...(hit.timeContext ? { time_context: hit.timeContext } : {}),
       glossary_cues: hit.cues,
       ontology_tags: hit.ontologyTags,
       anchor_name: anchor.name,

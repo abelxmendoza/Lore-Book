@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { LorebookLibraryPage } from './LorebookLibraryPage';
 
 const mockNavigate = vi.fn();
+const libraryMode = vi.hoisted(() => ({
+  useMock: true,
+  isSimulated: true,
+  simulationEnabled: true,
+}));
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
@@ -14,7 +19,7 @@ vi.mock('react-router-dom', async () => {
 });
 
 vi.mock('../../hooks/useShouldUseMockData', () => ({
-  useShouldUseMockData: () => true,
+  useShouldUseMockData: () => libraryMode.useMock,
 }));
 
 vi.mock('../../hooks/useLoreReadiness', () => ({
@@ -27,14 +32,66 @@ vi.mock('../../hooks/useLoreReadiness', () => ({
     refresh: async () => {},
     readiness: null,
     hasCompiledBook: true,
-    isSimulated: true,
+    isSimulated: libraryMode.isSimulated,
+  }),
+}));
+
+vi.mock('../../contexts/LoreReadinessSimulationContext', () => ({
+  useLoreReadinessSimulationOptional: () => ({
+    simulationEnabled: libraryMode.simulationEnabled,
+    preset: 'rich',
   }),
 }));
 
 describe('LorebookLibraryPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.clear();
+    libraryMode.useMock = true;
+    libraryMode.isSimulated = true;
+    libraryMode.simulationEnabled = true;
+    localStorage.removeItem('demo_core_lorebooks_v2');
+    localStorage.removeItem('demo_edition_fixtures_seeded_v1');
+  });
+
+  it('uses demo editions in unconfigured local dev when stored simulation is on', async () => {
+    libraryMode.useMock = false;
+    libraryMode.isSimulated = false;
+    libraryMode.simulationEnabled = true;
+
+    render(
+      <MemoryRouter>
+        <LorebookLibraryPage />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Career at Vanguard Robotics')).toBeInTheDocument();
+    expect(screen.getByText(/v3 · 3 versions/i)).toBeInTheDocument();
+  });
+
+  it('shows seeded edition history for selected demo subjects', async () => {
+    render(
+      <MemoryRouter>
+        <LorebookLibraryPage />
+      </MemoryRouter>
+    );
+
+    const careerTitle = (await screen.findAllByText('Career at Vanguard Robotics'))[0];
+    const card = careerTitle.closest('article');
+    expect(card).not.toBeNull();
+    expect(within(card!).getByText(/v3 · 3 versions/i)).toBeInTheDocument();
+    expect(screen.getByText('Relationships — Jamie & Marcus')).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(within(card!).getByText('Edition History')).toBeInTheDocument();
+      expect(within(card!).getByText('v3')).toBeInTheDocument();
+      expect(within(card!).getByText('v2')).toBeInTheDocument();
+      expect(within(card!).getByText('v1')).toBeInTheDocument();
+    });
+    expect(within(card!).getByRole('button', { name: /hide edition history/i })).toBeInTheDocument();
+    expect(card).toHaveClass('xl:col-span-3');
+
+    fireEvent.click(within(card!).getByRole('button', { name: /hide edition history/i }));
+    expect(within(card!).getByRole('button', { name: /show edition history · 3 versions/i })).toBeInTheDocument();
   });
 
   it('renders compiled lorebooks heading and demo books', () => {
@@ -66,36 +123,5 @@ describe('LorebookLibraryPage', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /back/i }));
     expect(mockNavigate).toHaveBeenCalledWith('/lorebook');
-  });
-
-  it('shows Save as core edition buttons in demo mode', () => {
-    render(
-      <MemoryRouter>
-        <LorebookLibraryPage />
-      </MemoryRouter>
-    );
-    expect(screen.getAllByRole('button', { name: /save as core edition/i }).length).toBeGreaterThan(0);
-  });
-
-  it('saving as core, then recompiling, produces real edition history in demo mode', async () => {
-    vi.spyOn(window, 'prompt').mockReturnValue('My Life Story');
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-
-    render(
-      <MemoryRouter>
-        <LorebookLibraryPage />
-      </MemoryRouter>
-    );
-
-    fireEvent.click(screen.getAllByRole('button', { name: /save as core edition/i })[0]);
-
-    const recompileButton = await screen.findByRole('button', { name: /recompile from latest memory/i });
-    fireEvent.click(recompileButton);
-
-    const olderVersionsButton = await screen.findByRole('button', { name: /older version/i });
-    expect(olderVersionsButton).toBeInTheDocument();
-
-    fireEvent.click(olderVersionsButton);
-    expect(await screen.findByText(/edition history/i)).toBeInTheDocument();
   });
 });

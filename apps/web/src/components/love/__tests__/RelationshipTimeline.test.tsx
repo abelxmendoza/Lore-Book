@@ -3,6 +3,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '../../../test/utils';
 import { RelationshipTimeline } from '../RelationshipTimeline';
+import { getMockPeripheralsForRelationship } from '../../../mocks/romanticPeripherals';
+import { isExPartnerPeripheral } from '../../../lib/romanticExPartners';
+
+const mockExes = (relationshipId: string) =>
+  getMockPeripheralsForRelationship(relationshipId).filter(isExPartnerPeripheral);
 
 vi.mock('../../../lib/openChatWithFocus', () => ({
   openChatWithFocus: vi.fn(),
@@ -63,6 +68,61 @@ describe('RelationshipTimeline', () => {
     expect(screen.getByText(/connected since/i)).toBeInTheDocument();
   });
 
+  it('shows ex-partners as undated timeline context', async () => {
+    render(
+      <RelationshipTimeline
+        relationshipId="rel-001"
+        dates={mockDates}
+        relationship={mockRelationship}
+        exPartners={mockExes('rel-001')}
+      />,
+    );
+
+    const section = await screen.findByTestId('romance-timeline-ex-partners');
+    expect(section).toHaveTextContent('Their dating history');
+    expect(section).toHaveTextContent('Jamie');
+    expect(section).toHaveTextContent('Confirmed ex');
+    expect(section).toHaveTextContent('Date not recorded');
+  });
+
+  it('opens an ex-partner Character Book card through the modal callback', async () => {
+    const onOpen = vi.fn();
+    const { default: userEvent } = await import('@testing-library/user-event');
+
+    render(
+      <RelationshipTimeline
+        relationshipId="rel-001"
+        dates={mockDates}
+        relationship={mockRelationship}
+        onOpenPeripheralCharacter={onOpen}
+        exPartners={mockExes('rel-001')}
+      />,
+    );
+
+    await userEvent.click(await screen.findByTestId('romance-timeline-ex-periph-alex-ex-jamie'));
+    expect(onOpen).toHaveBeenCalledWith('romantic-periph-jamie');
+  });
+
+  it("shows Jamie's ex-husband without inventing a date", async () => {
+    render(
+      <RelationshipTimeline
+        relationshipId="rel-010"
+        dates={[]}
+        relationship={{ ...mockRelationship, id: 'rel-010', person_name: 'Jamie' }}
+        exPartners={mockExes('rel-010')}
+      />,
+    );
+
+    const ex = await screen.findByTestId('romance-timeline-ex-periph-jamie-ex-jordan-ellis');
+    expect(ex).toHaveTextContent('Jordan Ellis');
+    expect(ex).toHaveTextContent('Confirmed ex');
+    expect(ex).toHaveTextContent('Time context: after they split');
+    expect(ex).toHaveTextContent('Stories & context (3)');
+    expect(ex).toHaveTextContent(/dated in college/i);
+    expect(ex).toHaveTextContent(/ex-husband/i);
+    expect(ex).toHaveTextContent(/reconnected physically/i);
+  });
+
   it('shows ongoing badge when no end date', () => {
     render(
       <RelationshipTimeline
@@ -73,6 +133,22 @@ describe('RelationshipTimeline', () => {
     );
 
     expect(screen.getByText(/ongoing bond/i)).toBeInTheDocument();
+  });
+
+  it('always shows the dating-history slot when no ex is known', async () => {
+    render(
+      <RelationshipTimeline
+        relationshipId="rel-003"
+        dates={[]}
+        relationship={{ ...mockRelationship, id: 'rel-003', person_name: 'Sam' }}
+        exPartners={mockExes('rel-003')}
+      />,
+    );
+
+    expect(await screen.findByTestId('romance-timeline-ex-partners')).toBeInTheDocument();
+    expect(screen.getByTestId('romance-timeline-ex-partners-empty')).toHaveTextContent(
+      'No ex-partners recorded for Sam yet.',
+    );
   });
 
   it('shows end date when provided', () => {

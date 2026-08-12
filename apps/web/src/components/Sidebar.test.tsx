@@ -181,6 +181,22 @@ describe('Sidebar', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/login');
   });
 
+  it('lists Quests above Omni Timeline under Explore your story', () => {
+    render(<Sidebar {...defaultProps} />);
+
+    const exploreButtons = screen
+      .getAllByRole('button')
+      .map((btn) => btn.getAttribute('aria-label') ?? '')
+      .filter((label) => ['Open quests', 'Open timeline view', 'Open Timelines Library'].includes(label));
+
+    // Desktop + mobile drawers both render the cluster; assert the first one.
+    expect(exploreButtons.slice(0, 3)).toEqual([
+      'Open quests',
+      'Open timeline view',
+      'Open Timelines Library',
+    ]);
+  });
+
   it('nests Timelines Library under Omni Timeline and deep-links to the library view', async () => {
     const user = userEvent.setup();
     render(<Sidebar {...defaultProps} />);

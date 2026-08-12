@@ -4,6 +4,7 @@ import { shortDisplayName } from '../../lib/displayName';
 import { EntityModalBottomNav } from '../common/EntityModalBottomNav';
 import { dedupeRelationshipsByPerson } from '../../lib/dedupeCharacterRelationships';
 import { isKinshipConnection } from '../../lib/characterKinshipGroups';
+import { isPetCharacter } from '../../lib/isPetCharacter';
 import { CharacterKinshipLists } from './CharacterKinshipLists';
 import { CharacterPerceptionsTab } from '../perceptions/CharacterPerceptionsTab';
 import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2, RefreshCw, Loader2, ImageIcon, Shield, ChevronDown, MapPin, Plus, BookOpen, Pin } from 'lucide-react';
@@ -2805,6 +2806,10 @@ export const CharacterDetailModal = ({
       (rel) => rel.character_name && rel.character_name !== 'You',
     ),
   );
+  // Pets are animals — human kinship UI (family tree, parents, children) has no
+  // meaning on their card, and the demo tree even falls back to the user's own
+  // family, so a dog's card would show somebody's grandparents.
+  const isPet = isPetCharacter(editedCharacter);
   const kinshipConnections = allConnections.filter(isKinshipConnection);
   // Parents / children / pets get their own labelled lists, so keep them out of
   // the flat list instead of listing every person twice.
@@ -3658,7 +3663,8 @@ export const CharacterDetailModal = ({
                   </Card>
                 </div>
 
-                {/* Family Tree */}
+                {/* Family Tree — people only */}
+                {!isPet && (
                 <div className="pt-8 border-t border-white/[0.06]">
                   <ConnectionSectionHeader icon={TreePine} title="Family Tree" />
                   <Card className="bg-black/40 border-border/50">
@@ -3718,11 +3724,14 @@ export const CharacterDetailModal = ({
                     </CardContent>
                   </Card>
                 </div>
+                )}
 
-                <CharacterKinshipLists
-                  relationships={kinshipConnections}
-                  onOpen={(rel) => void openCharacterByRelationship(rel)}
-                />
+                {!isPet && (
+                  <CharacterKinshipLists
+                    relationships={kinshipConnections}
+                    onOpen={(rel) => void openCharacterByRelationship(rel)}
+                  />
+                )}
 
                 {/* Friends & Other Connections */}
                 {(
