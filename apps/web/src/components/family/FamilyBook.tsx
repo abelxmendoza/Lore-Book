@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { TreePine, Home, Users, BarChart3, Loader2, GitBranch, Check, X } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
 import { booksApi, type PossibleFamilyMatch } from '../../api/books';
@@ -17,7 +17,6 @@ import { useToast } from '../ui/toast';
 import { RelationshipEditor, type RelationshipEdit } from './RelationshipEditor';
 import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
 import type { Character } from '../characters/CharacterProfileCard';
-import type { FamilyQueryResponse, FamilyQueryResult } from '../../lib/api-contracts';
 import { BookQueryPanel } from '../query/BookQueryPanel';
 
 type Tab = 'tree' | 'households' | 'groups' | 'analytics' | 'extended';
@@ -40,10 +39,6 @@ export function FamilyBook() {
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [viewMode, setViewMode] = useState<'hierarchical' | 'visual'>('visual');
   const [editorMember, setEditorMember] = useState<FamilyMember | null>(null);
-  const [familyQuery, setFamilyQuery] = useState('');
-  const [familyQueryResult, setFamilyQueryResult] = useState<FamilyQueryResponse | null>(null);
-  const [familyQueryLoading, setFamilyQueryLoading] = useState(false);
-  const [familyQueryError, setFamilyQueryError] = useState<string | null>(null);
   const { success, error: toastError, ToastContainer } = useToast();
 
   const load = useCallback(async () => {
@@ -73,127 +68,6 @@ export function FamilyBook() {
   useEffect(() => onStoryDataUpdated(() => { void load(); }, 'family'), [load]);
 
   const activeTree = demoTree || summary?.tree || null;
-  const visibleTree = useMemo(() => {
-    if (!activeTree || !familyQueryResult) return activeTree;
-    const ids = new Set(familyQueryResult.results.map((result) => result.characterId));
-    return {
-      ...activeTree,
-      members: activeTree.members.filter((member) => member.is_self || ids.has(member.id)),
-    };
-  }, [activeTree, familyQueryResult]);
-
-  const runDemoFamilyQuery = (query: string): FamilyQueryResponse => {
-    const relationMap: Record<string, FamilyMember['relation']> = {
-      mom: 'parent', mother: 'parent', dad: 'parent', father: 'parent', parent: 'parent',
-      sister: 'sibling', brother: 'sibling', sibling: 'sibling', cousin: 'cousin',
-      aunt: 'aunt', uncle: 'uncle', grandma: 'grandparent', grandpa: 'grandparent',
-      grandparent: 'grandparent', child: 'child', daughter: 'child', son: 'child',
-    };
-    const relation = Object.entries(relationMap).find(([word]) =>
-      new RegExp(`\\b${word}s?\\b`, 'i').test(query))?.[1];
-    const side = /\bmaternal|mom'?s side\b/i.test(query)
-      ? 'maternal'
-      : /\bpaternal|dad'?s side\b/i.test(query)
-        ? 'paternal'
-        : undefined;
-    const person = query.match(/\bhow is\s+(.+?)\s+related to me\??$/i)?.[1]?.trim();
-    const wantsInferred = /\binferred|unconfirmed\b/i.test(query);
-    const wantsReview = /\breview|uncertain|questionable\b/i.test(query);
-    const household = (summary?.households ?? []).filter((item) =>
-      /\bhousehold|who lives|residents?|head of household\b/i.test(query)
-      && (!person || [...item.residents, ...item.visitors]
-        .some((member) => member.name.toLowerCase().includes(person.toLowerCase())))
-    );
-    const analyticsById = new Map((summary?.analytics ?? []).map((item) => [item.characterId, item]));
-    const results: FamilyQueryResult[] = (activeTree?.members ?? [])
-      .filter((member) => !member.is_self)
-      .filter((member) => !relation || member.relation === relation || (relation === 'sibling' && member.relation.includes('sibling')))
-      .filter((member) => !side || member.side === side)
-      .filter((member) => !person || member.name.toLowerCase().includes(person.toLowerCase()))
-      .filter((member) => !wantsInferred || member.inference_status === 'inferred')
-      .filter((member) => !wantsReview || member.needs_review)
-      .map((member) => {
-        const analytic = analyticsById.get(member.id);
-        const householdNames = (summary?.households ?? [])
-          .filter((item) => [...item.residents, ...item.visitors]
-            .some((personItem) => personItem.characterId === member.id))
-          .map((item) => item.name);
-        return {
-          characterId: member.id,
-          name: member.name,
-          relation: member.relation,
-          relationLabel: member.relation_label,
-          generation: member.generation,
-          side: member.side ?? null,
-          inferenceStatus: member.inference_status ?? null,
-          closeness: member.closeness ?? null,
-          confidence: member.inference_status === 'asserted' ? 0.95 : 0.8,
-          evidenceCount: analytic?.evidenceCount ?? 0,
-          mentionCount: analytic?.mentionCount ?? 0,
-          trend: analytic?.trend ?? null,
-          householdNames,
-          hasCard: member.has_card !== false && !member.is_placeholder,
-          needsReview: member.needs_review === true,
-          matchedReasons: [
-            relation && `Relationship: ${member.relation_label}`,
-            side && `Branch: ${side}`,
-            person && `Name matches ${person}`,
-            wantsInferred && 'Status: inferred',
-          ].filter(Boolean) as string[],
-        };
-      });
-    const countFacet = (values: string[]) => [...new Set(values)]
-      .map((value) => ({ value, count: values.filter((item) => item === value).length }));
-    return {
-      query,
-      intent: household.length ? 'household' : relation ? 'kinship' : side ? 'branch' : wantsReview ? 'quality' : 'person',
-      results,
-      households: household.map((item) => ({
-        householdId: item.id,
-        name: item.name,
-        locationName: item.locationName ?? null,
-        headOfHousehold: item.headOfHousehold ?? null,
-        residentCount: item.residentCount,
-        matchedMemberNames: [...item.residents, ...item.visitors]
-          .map((member) => member.name),
-        confidence: item.confidence,
-      })),
-      total: results.length,
-      limit: 100,
-      offset: 0,
-      facets: {
-        relations: countFacet(results.map((item) => item.relation)),
-        sides: countFacet(results.map((item) => item.side ?? '').filter(Boolean)),
-        generations: countFacet(results.map((item) => String(item.generation))),
-        inferenceStatuses: countFacet(results.map((item) => item.inferenceStatus ?? '').filter(Boolean)),
-        trends: countFacet(results.map((item) => item.trend ?? '').filter(Boolean)),
-      },
-      warnings: [],
-    };
-  };
-
-  const submitFamilyQuery = async () => {
-    const query = familyQuery.trim();
-    if (!query) return;
-    setFamilyQueryLoading(true);
-    setFamilyQueryError(null);
-    try {
-      const result = shouldUseMock
-        ? runDemoFamilyQuery(query)
-        : (await fetchJson<{ success: boolean; result: FamilyQueryResponse }>('/api/family/query', {
-            method: 'POST',
-            body: JSON.stringify({ query, limit: 100, includeFacets: true }),
-          })).result;
-      setFamilyQueryResult(result);
-      if (result.households.length && result.results.length === 0) setTab('households');
-      else setTab('tree');
-    } catch (queryError) {
-      setFamilyQueryError(queryError instanceof Error ? queryError.message : 'Could not query your family right now.');
-    } finally {
-      setFamilyQueryLoading(false);
-    }
-  };
-
   const openCharacter = async (characterId: string, name: string) => {
     if (characterId.startsWith('head-') || characterId.startsWith('group-') || characterId.startsWith('__')) return;
 
@@ -428,38 +302,7 @@ export function FamilyBook() {
         </p>
       </header>
 
-      <BookQueryPanel
-        demoMode={shouldUseMock}
-        domains={['family']}
-        title="Ask your Family & Family Tree"
-        description="Search relatives, branches, generations, households, evidence, closeness, or records needing review."
-        placeholder='Try “Show my maternal cousins” or “Who lives in the Solenne House?”'
-        inputAriaLabel="Ask your Family and Family Tree"
-        submitLabel="Ask Family"
-        resultNoun="relative"
-        compact
-        controller={{
-          query: familyQuery,
-          onQueryChange: setFamilyQuery,
-          onSubmit: submitFamilyQuery,
-          onClear: () => {
-            setFamilyQuery('');
-            setFamilyQueryResult(null);
-            setFamilyQueryError(null);
-          },
-          loading: familyQueryLoading,
-          error: familyQueryError,
-          total: familyQueryResult?.total,
-          results: familyQueryResult?.results.map((result) => ({
-            id: result.characterId,
-            title: result.name,
-            status: result.needsReview ? 'needs_review' : result.inferenceStatus,
-            reason: result.matchedReasons[0] ?? result.relationLabel,
-          })),
-          warnings: familyQueryResult?.warnings,
-        }}
-        onSelectResult={(result) => void openCharacter(result.id, result.title)}
-      />
+      <BookQueryPanel domains={['family']} compact />
 
       {!!summary?.possibleFamilyMatches?.length && (
         <div className="space-y-2">
@@ -549,7 +392,7 @@ export function FamilyBook() {
                 </button>
                 <div className="ml-auto">
                   <FamilyTreeCopyAllButton
-                    tree={visibleTree}
+                    tree={activeTree}
                     title="Your family tree"
                     filters={[`view=${viewMode}`, shouldUseMock ? 'mode=demo' : 'mode=live']}
                     size="md"
@@ -557,15 +400,15 @@ export function FamilyBook() {
                   />
                 </div>
               </div>
-              {viewMode === 'hierarchical' && visibleTree?.members?.length ? (
+              {viewMode === 'hierarchical' && activeTree?.members?.length ? (
                 <HierarchicalFamilyTree
-                  tree={visibleTree}
+                  tree={activeTree}
                   onMemberClick={(m) => void openCharacter(m.id, m.name)}
                 />
-              ) : viewMode === 'visual' && shouldUseMock && visibleTree?.members?.length ? (
+              ) : viewMode === 'visual' && shouldUseMock && activeTree?.members?.length ? (
                 <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
                   <FamilyTreeView
-                    tree={visibleTree}
+                    tree={activeTree}
                     onMemberClick={(m) => void openCharacter(m.id, m.name)}
                     {...editHandlers}
                   />

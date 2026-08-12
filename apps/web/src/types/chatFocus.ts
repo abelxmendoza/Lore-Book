@@ -13,6 +13,7 @@ export type ChatFocusSourceSurface =
   | 'quests'
   | 'family'
   | 'events'
+  | 'documents'
   | 'perceptions'
   | 'lorebook'
   | 'timeline'
@@ -82,6 +83,7 @@ export const CHAT_FOCUS_SOURCE_LABELS: Record<ChatFocusSourceSurface, string> = 
   quests: 'Quests',
   family: 'Family',
   events: 'Life Log',
+  documents: 'Documents',
   perceptions: 'Perceptions',
   lorebook: 'Lorebooks',
   timeline: 'Omni Timeline',

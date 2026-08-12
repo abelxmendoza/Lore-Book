@@ -428,7 +428,7 @@ export const HomeScreen = () => {
           </div>
         </div>
 
-        <BookQueryPanel demoMode={isMock} compact />
+        <BookQueryPanel compact />
 
         {/* ── 2. What Changed Since Last Time ─────────────────────────────── */}
         {userId && <WhatChangedHomeCard userId={userId} />}

@@ -177,7 +177,7 @@ describe('QuestBoard layout and error handling', () => {
     expect(screen.getByText('Launch MVP')).toBeInTheDocument();
     expect(screen.getByText('Learn guitar basics')).toBeInTheDocument();
     expect(screen.getByTestId('quest-board-detail-pane')).toHaveTextContent('q1');
-    expect(screen.getByRole('textbox', { name: /ask your quest log/i })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /ask in chat/i })).toBeInTheDocument();
   });
 
   it('shows inline error banner when stale data exists but refresh failed', () => {

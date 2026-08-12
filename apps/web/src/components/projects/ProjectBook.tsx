@@ -2,11 +2,9 @@ import { Briefcase, Plus, GitMerge, Search as SearchIcon, ChevronLeft, ChevronRi
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { fetchJson } from '../../lib/api';
-import type { ProjectQueryResponse } from '../../lib/api-contracts';
 import { fetchProjectById } from '../../lib/hydrateBookEntity';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { openFocusedEntityChat } from '../../lib/openFocusedEntityChat';
-import { compileDemoProjectQuery } from '../../lib/projectQueryDemo';
 import { buildProjectBookClipboardText } from '../../lib/projectBookClipboard';
 import { clipboardFilterLines } from '../../lib/listClipboard';
 import { consumeHighlightItemId, resolveBookHighlightItem } from '../../lib/resolveBookHighlight';
@@ -176,10 +174,6 @@ export const ProjectBook = () => {
   const [focusedChatError, setFocusedChatError] = useState<string | null>(null);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
   const [demoProjects, setDemoProjects] = useState<ProjectCardData[]>(() => [...DEMO_PROJECTS]);
-  const [bookQuery, setBookQuery] = useState('');
-  const [bookQueryResult, setBookQueryResult] = useState<ProjectQueryResponse | null>(null);
-  const [bookQueryLoading, setBookQueryLoading] = useState(false);
-  const [bookQueryError, setBookQueryError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<CardViewMode>(() =>
     readStoredCardViewMode(PROJECTS_VIEW_STORAGE_KEY, 'grid'),
   );
@@ -232,18 +226,12 @@ export const ProjectBook = () => {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return projects.filter((p) => {
-      if (
-        bookQueryResult &&
-        !bookQueryResult.results.some((result) => result.projectId === p.id)
-      ) {
-        return false;
-      }
       if (statusFilter !== 'all' && (p.status ?? 'active').toLowerCase() !== statusFilter) return false;
       if (typeFilter !== 'all' && (p.type ?? 'project').toLowerCase() !== typeFilter) return false;
       if (!q) return true;
       return p.name.toLowerCase().includes(q) || (p.description ?? '').toLowerCase().includes(q);
     });
-  }, [projects, search, statusFilter, typeFilter, bookQueryResult]);
+  }, [projects, search, statusFilter, typeFilter]);
 
   const clipboardText = useMemo(
     () =>
@@ -252,10 +240,9 @@ export const ProjectBook = () => {
           search.trim() && `search="${search.trim()}"`,
           statusFilter !== 'all' && `status=${statusFilter}`,
           typeFilter !== 'all' && `type=${typeFilter}`,
-          bookQueryResult && `book query="${bookQueryResult.query}"`,
         ]),
       }),
-    [filtered, search, statusFilter, typeFilter, bookQueryResult],
+    [filtered, search, statusFilter, typeFilter],
   );
 
   useEffect(() => {
@@ -280,7 +267,7 @@ export const ProjectBook = () => {
   }, [projects]);
 
   // Reset to the first page whenever the result set changes.
-  useEffect(() => { setPage(1); }, [search, statusFilter, typeFilter, bookQueryResult]);
+  useEffect(() => { setPage(1); }, [search, statusFilter, typeFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -298,33 +285,6 @@ export const ProjectBook = () => {
   };
   const goToPrevious = () => goToPage(currentPage - 1);
   const goToNext = () => goToPage(currentPage + 1);
-
-  const runBookQuery = async () => {
-    if (!bookQuery.trim()) return;
-    setBookQueryLoading(true);
-    setBookQueryError(null);
-    try {
-      const result = isMockDataEnabled
-        ? compileDemoProjectQuery(projects, bookQuery.trim())
-        : (await fetchJson<{ success: boolean; result: ProjectQueryResponse }>(
-            '/api/projects/query',
-            {
-              method: 'POST',
-              body: JSON.stringify({ query: bookQuery.trim(), limit: 100 }),
-            },
-          )).result;
-      setBookQueryResult(result);
-      setSearch('');
-      setStatusFilter('all');
-      setTypeFilter('all');
-    } catch (queryError) {
-      setBookQueryError(
-        queryError instanceof Error ? queryError.message : 'Could not query the Projects Book.',
-      );
-    } finally {
-      setBookQueryLoading(false);
-    }
-  };
 
   const createProject = async () => {
     const name = newName.trim();
@@ -597,35 +557,7 @@ export const ProjectBook = () => {
         </div>
       </div>
 
-      <BookQueryPanel
-        demoMode={isMockDataEnabled}
-        domains={['project']}
-        title="Ask Projects"
-        description="Search status, type, tags, dates, importance, and records that need review."
-        placeholder='Try “show my active software projects”'
-        compact
-        className="mb-5 sm:mb-6"
-        controller={{
-          query: bookQuery,
-          onQueryChange: setBookQuery,
-          onSubmit: runBookQuery,
-          onClear: () => { setBookQuery(''); setBookQueryResult(null); },
-          loading: bookQueryLoading,
-          error: bookQueryError,
-          total: bookQueryResult?.total,
-          results: bookQueryResult?.results.map((result) => ({
-            id: result.projectId,
-            title: result.name,
-            status: result.status,
-            reason: result.matchedReasons[0],
-          })),
-          warnings: bookQueryResult?.warnings,
-        }}
-        onSelectResult={(result) => {
-          const project = projects.find((item) => item.id === result.id);
-          if (project) setActive(project);
-        }}
-      />
+      <BookQueryPanel domains={['project']} compact className="mb-5 sm:mb-6" />
 
       {/* Status + type filters (derived from your projects) */}
       {(statusOptions.length > 1 || typeOptions.length > 1) && (

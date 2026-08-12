@@ -78,18 +78,22 @@ describe('OrganizationsBook Demo Mode', () => {
     expect(fetchJson).not.toHaveBeenCalled();
   });
 
-  it('answers roster queries from synthetic Demo Mode data', async () => {
+  it('sends roster questions into focused main chat', () => {
+    const handler = vi.fn();
+    window.addEventListener('lorebook:open-chat-focus', handler);
+
     render(<OrganizationsBook />);
 
-    fireEvent.change(screen.getByLabelText('Ask your Groups and Organizations Book'), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Ask in chat' }), {
       target: { value: 'Show groups with Marcus Johnson' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Ask Book' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ask in chat' }));
 
-    await waitFor(() => {
-      expect(screen.getByText(/\d+ matching groups?/i)).toBeInTheDocument();
-    });
-    expect(screen.getAllByText('Roster includes Marcus Johnson').length).toBeGreaterThan(0);
+    expect(handler).toHaveBeenCalledTimes(1);
+    const detail = handler.mock.calls[0][0].detail;
+    expect(detail.entityId).toBe('book:organization');
+    expect(detail.sourceSurface).toBe('organizations');
+    expect(detail.initialPrompt).toBe('Show groups with Marcus Johnson');
     expect(fetchJson).not.toHaveBeenCalled();
   });
 });

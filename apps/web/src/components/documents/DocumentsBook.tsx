@@ -218,18 +218,7 @@ export function DocumentsBook() {
         </div>
       </header>
 
-      <BookQueryPanel
-        demoMode={isDemoMode}
-        domains={['document']}
-        title="Ask Documents"
-        description="Find uploaded sources by filename, type, processing state, and the lore derived from them."
-        placeholder='Try “Which files created career facts?”'
-        compact
-        onSelectResult={(result) => {
-          const match = files.find((file) => file.id === result.id);
-          if (match) void openDetail(match.id);
-        }}
-      />
+      <BookQueryPanel domains={['document']} compact />
 
       {uploading && uploadProgress ? (
         <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">

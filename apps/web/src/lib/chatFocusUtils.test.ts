@@ -55,4 +55,18 @@ describe('chatFocusUtils', () => {
       }),
     ]);
   });
+
+  it('keeps whole-book asks as chat focus only, without a fake entity chip', () => {
+    const focus: ChatFocus = {
+      entityId: 'book:location',
+      entityName: 'Places Book',
+      entityType: 'memory',
+      sourceSurface: 'locations',
+      sourceLabel: 'Locations',
+      sessionStats: emptyChatFocusSessionStats(),
+    };
+
+    expect(focusToEntityContext(focus)).toBeUndefined();
+    expect(focusToComposerEntities(focus)).toEqual([]);
+  });
 });

@@ -835,8 +835,12 @@ class OmegaChatService {
       chatFocus.sourceSurface === 'timeline'
         ? ' The user opened chat from a stitched Omni Timeline chapter. Treat the focus name and knowledge scope as the chapter’s working knowledge base: help them explore scenes, ask clarifying questions, and connect people/places/projects/skills that belong to this arc. Prefer evidence from their memories over invention. Call out gaps that would unlock a vignette or LoreBook compile, and propose durable connections when the user affirms them (Living Memory review before canon for high-risk claims).'
         : '';
+    const bookQueryNote =
+      typeof chatFocus.entityId === 'string' && chatFocus.entityId.startsWith('book:')
+        ? ' BOOK QUERY MODE: The user is asking about this whole book, not a single record. Answer from Living Memory and this book’s records. Do not invent people, places, or facts. Cite what you know and ask clarifying questions when the query is ambiguous. Do not create a canonical entity from the book name itself.'
+        : '';
     return `\n\n**USER NAVIGATION FOCUS**
-The user opened chat from **${chatFocus.sourceLabel}** (${chatFocus.sourceSurface}), actively focusing on **${chatFocus.entityName}**.${relationshipLine}${scopeLine}${deepening}${loveNote}${organizationNote}${eventNote}${perceptionNote}${timelineNote}
+The user opened chat from **${chatFocus.sourceLabel}** (${chatFocus.sourceSurface}), actively focusing on **${chatFocus.entityName}**.${relationshipLine}${scopeLine}${deepening}${loveNote}${organizationNote}${eventNote}${perceptionNote}${timelineNote}${bookQueryNote}
 When updating relationship analytics or emotional signals from this thread, weight this focus context heavily.`;
   }
 
