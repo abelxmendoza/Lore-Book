@@ -81,6 +81,7 @@ describe('NarrativeAnchorsBook', () => {
     expect(window.location.pathname + window.location.search).toBe(
       '/timeline?view=search&q=The%20college%20years',
     );
+    expect(window.history.state?.usr?.from).toBe('/narrative-anchors');
   });
 
   it('does not repeat equivalent evidence labels', async () => {

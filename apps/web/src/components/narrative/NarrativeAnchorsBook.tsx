@@ -25,7 +25,7 @@ import {
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { fetchJson } from '../../lib/api';
@@ -367,6 +367,7 @@ function LoadingState() {
 
 export function NarrativeAnchorsBook() {
   const navigate = useNavigate();
+  const location = useLocation();
   const sharedDemoMode = useShouldUseMockData();
   // Authenticated users are intentionally prevented from enabling global mock
   // data. A scoped query flag allows safe visual QA of this surface without
@@ -463,8 +464,11 @@ export function NarrativeAnchorsBook() {
   }, []);
 
   const openAnchorTimeline = useCallback((anchor: NarrativeAnchor) => {
-    navigate(`/timeline?view=search&q=${encodeURIComponent(anchor.title)}`);
-  }, [navigate]);
+    navigate(
+      `/timeline?view=search&q=${encodeURIComponent(anchor.title)}`,
+      { state: { from: `${location.pathname}${location.search}` } },
+    );
+  }, [location.pathname, location.search, navigate]);
 
   const clipboardText = useMemo(
     () =>

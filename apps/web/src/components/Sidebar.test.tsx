@@ -115,6 +115,19 @@ describe('Sidebar', () => {
     expect(screen.getAllByText('Account & help').length).toBeGreaterThanOrEqual(1);
   });
 
+  it('locks the mobile drawer to vertical scrolling only', () => {
+    render(<Sidebar {...defaultProps} isMobileDrawerOpen />);
+
+    const drawer = screen.getByTestId('mobile-sidebar-drawer');
+    expect(drawer).toHaveClass('overflow-x-hidden', 'overscroll-x-none', 'touch-pan-y');
+
+    // Desktop + mobile instances both render SidebarContent; every vertical
+    // scroller must explicitly suppress the computed x-axis auto overflow.
+    for (const scroller of screen.getAllByTestId('sidebar-scroll')) {
+      expect(scroller).toHaveClass('overflow-x-hidden', 'overflow-y-auto', 'max-w-full');
+    }
+  });
+
   it('renders story-entity nav: Characters, Family, Dating & Romance, then Groups', () => {
     render(<Sidebar {...defaultProps} />);
     expect(screen.getAllByRole('button', { name: /Open chat interface/i }).length).toBeGreaterThanOrEqual(1);
@@ -163,6 +176,27 @@ describe('Sidebar', () => {
     await user.click(characterButtons[0]);
 
     expect(mockNavigate).toHaveBeenCalledWith('/demo/characters');
+  });
+
+  it('opens the populated demo-1 interface from the Editor link in demo runtime', async () => {
+    demoRuntime.current = true;
+    const user = userEvent.setup();
+    render(<Sidebar {...defaultProps} />);
+
+    await user.click(screen.getAllByRole('button', { name: /open lorebook editor/i })[0]);
+
+    expect(mockNavigate).toHaveBeenCalledWith('/memoir?book=demo-1');
+    expect(defaultProps.onSurfaceChange).toHaveBeenCalledWith('memoir');
+  });
+
+  it('keeps the bare Editor route for real users so their default compiled book resolves', async () => {
+    demoRuntime.current = false;
+    const user = userEvent.setup();
+    render(<Sidebar {...defaultProps} />);
+
+    await user.click(screen.getAllByRole('button', { name: /open lorebook editor/i })[0]);
+
+    expect(mockNavigate).toHaveBeenCalledWith('/memoir');
   });
 
   it('clears the demo session before navigating to login when Exit is clicked', async () => {
