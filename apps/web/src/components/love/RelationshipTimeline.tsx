@@ -1,7 +1,7 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
 import { useMemo, useState } from 'react';
-import { Calendar, Heart, MapPin, TrendingUp, TrendingDown, Link2, Sparkles, Flame } from 'lucide-react';
+import { Calendar, Heart, MapPin, TrendingUp, TrendingDown, Link2, Sparkles, Flame, History, UserRound } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -12,6 +12,7 @@ import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 import { EntityTimelinePanel } from '../common/EntityTimelinePanel';
 import type { SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
 import { RomanceTimelineMomentPanel } from './RomanceTimelineMomentPanel';
+import { useRomanticExPartners } from '../../hooks/useRomanticExPartners';
 import {
   buildRomanceTimelineMoment,
   buildRomanceTimelineMomentChatPrompt,
@@ -75,6 +76,8 @@ interface RelationshipTimelineProps {
   onOpenPeripheralCharacter?: (characterId: string) => void;
   /** Close the parent relationship modal before chat handoff. */
   onCloseParentModal?: () => void;
+  /** Use synthetic periphery for the public demo / mock runtime. */
+  useMockData?: boolean;
 }
 
 const formatDateType = (type: string) =>
@@ -124,8 +127,10 @@ export const RelationshipTimeline = ({
   onOpenCharacterTimeline,
   onOpenPeripheralCharacter,
   onCloseParentModal,
+  useMockData = false,
 }: RelationshipTimelineProps) => {
   const [selectedMoment, setSelectedMoment] = useState<RomanceTimelineMoment | null>(null);
+  const { exPartners, loading: exPartnersLoading } = useRomanticExPartners(relationshipId, useMockData);
   const personName = relationship.person_name ?? 'this person';
   const characterBookId =
     relationship.character_id ??
@@ -164,6 +169,15 @@ export const RelationshipTimeline = ({
   };
 
   const canOpenCharacterTimeline = Boolean(characterBookId || onOpenCharacterTimeline);
+
+  const openExPartner = (characterId: string) => {
+    if (onOpenPeripheralCharacter) {
+      onOpenPeripheralCharacter(characterId);
+      return;
+    }
+    onCloseParentModal?.();
+    openCharacterBookModal({ characterId, tab: 'info' });
+  };
 
   const continueInChat = (prompt?: string) => {
     if (!selectedMoment) return;
@@ -315,6 +329,73 @@ export const RelationshipTimeline = ({
           </div>
         </CardContent>
       </Card>
+
+      {/* Ex-partners are relationship context, not fabricated dated events.
+          Periphery extraction currently carries evidence/provenance but no
+          trustworthy relationship date, so keep them in an explicit undated
+          timeline section rather than inventing where they belong on the arc. */}
+      {(exPartnersLoading || exPartners.length > 0) && (
+        <section
+          className="rounded-xl border border-slate-500/20 bg-slate-950/20 p-3 sm:p-4"
+          data-testid="romance-timeline-ex-partners"
+        >
+          <div className="mb-3 flex items-start gap-2.5">
+            <History className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />
+            <div>
+              <h3 className="text-sm font-semibold text-white">
+                Ex-partners in {personName}&apos;s history
+              </h3>
+              <p className="mt-0.5 text-xs text-white/45">
+                Prior partners connected to this dating arc. Dates stay unplaced until the story records them.
+              </p>
+            </div>
+          </div>
+
+          {exPartnersLoading ? (
+            <p className="text-xs text-white/40">Loading prior partners…</p>
+          ) : (
+            <ul className="space-y-2">
+              {exPartners.map((ex) => {
+                const name = ex.peripheral_name ?? ex.peripheral_surface;
+                return (
+                  <li key={ex.id}>
+                    <button
+                      type="button"
+                      disabled={!ex.peripheral_person_id}
+                      onClick={() => ex.peripheral_person_id && openExPartner(ex.peripheral_person_id)}
+                      className="flex w-full items-start gap-2.5 rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-left transition-colors enabled:hover:border-pink-500/30 enabled:hover:bg-pink-950/15 disabled:cursor-default"
+                      data-testid={`romance-timeline-ex-${ex.id}`}
+                    >
+                      <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-pink-300/70" aria-hidden="true" />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium text-white">{name}</span>
+                          <Badge
+                            variant="outline"
+                            className={
+                              ex.tier === 'confirmed'
+                                ? 'border-green-500/30 bg-green-500/10 text-green-300'
+                                : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                            }
+                          >
+                            {ex.tier === 'confirmed' ? 'Confirmed ex' : 'Suspected ex'}
+                          </Badge>
+                        </span>
+                        <span className="mt-0.5 block text-xs text-white/40">
+                          Date not recorded
+                          {ex.metadata?.lexical_evidence
+                            ? ` · ${ex.metadata.lexical_evidence.replace(/^…|…$/g, '')}`
+                            : ''}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
 
       {/* Intimacy arc strip */}
       {arcPoints.length > 1 && (

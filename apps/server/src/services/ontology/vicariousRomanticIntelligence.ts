@@ -58,12 +58,20 @@ const SUBJECT_OBJECT_PATTERNS: Array<{
   weight: number;
 }> = [
   {
-    re: /\b([A-ZÀ-Ý][a-zà-ÿ'’.-]+)'s\s+(?:new\s+)?(?:boyfriend|girlfriend|partner|lover|ex)\b/gi,
+    re: /\b([A-ZÀ-Ý][a-zà-ÿ'’.-]+)'s\s+(?:new\s+)?(?:boyfriend|girlfriend|partner|lover)\b/gi,
     subjectIdx: 1,
     objectFallback: 'unnamed partner',
     role: 'current_partner',
     tier: 'suspected',
     weight: 0.82,
+  },
+  {
+    re: /\b([A-ZÀ-Ý][a-zà-ÿ'’.-]+)'s\s+ex\b(?![\s-]+[A-ZÀ-Ý][a-zà-ÿ'’.-]+)/g,
+    subjectIdx: 1,
+    objectFallback: 'ex partner',
+    role: 'ex',
+    tier: 'suspected',
+    weight: 0.8,
   },
   {
     re: /\b([A-ZÀ-Ý][a-zà-ÿ'’.-]+)\s+(?:was|is)\s+(?:texting|seeing|dating|hooking up with)\s+([A-ZÀ-Ý][a-zà-ÿ'’.-]+)\b/gi,
@@ -100,7 +108,7 @@ const SUBJECT_OBJECT_PATTERNS: Array<{
     weight: 0.86,
   },
   {
-    re: /\b([A-ZÀ-Ý][a-zà-ÿ'’.-]+)'s\s+ex(?:\s+|-)([A-ZÀ-Ý][a-zà-ÿ'’.-]+)?/gi,
+    re: /\b([A-ZÀ-Ý][a-zà-ÿ'’.-]+)'s\s+ex(?:\s+|-)([A-ZÀ-Ý][a-zà-ÿ'’.-]+)?/g,
     subjectIdx: 1,
     objectIdx: 2,
     objectFallback: 'ex partner',

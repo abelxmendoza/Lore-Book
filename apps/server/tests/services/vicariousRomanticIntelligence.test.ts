@@ -29,6 +29,13 @@ describe('vicariousRomanticIntelligence', () => {
     expect(hits.some((h) => h.subjectName === 'Morgan' && h.role === 'ex')).toBe(true);
   });
 
+  it('keeps an unnamed possessive ex as an ex, not a current partner', () => {
+    const hits = parseVicariousEpisode("Alex's ex still texts on birthdays.", ['Alex']);
+    const hit = hits.find((candidate) => candidate.subjectName === 'Alex');
+    expect(hit?.role).toBe('ex');
+    expect(hit?.objectSurface).toBe('ex partner');
+  });
+
   it('parses confirmed together pattern', () => {
     const hits = parseVicariousEpisode(
       'Taylor and Jordan are together now — I heard from the art studio.',

@@ -448,6 +448,31 @@ export const MOCK_ROMANTIC_PERIPHERALS: RomanticPeripheral[] = [
       anchor_name: 'Elena',
     },
   }),
+
+  // Jamie (rel-010) — prior marriage also surfaced as Eli's co-parent.
+  peripheral({
+    id: 'periph-jamie-ex-jordan-ellis',
+    anchor_relationship_id: 'rel-010',
+    anchor_person_id: 'char-jamie-spouse',
+    anchor_person_type: 'character',
+    peripheral_person_id: 'romantic-periph-jordan-ellis',
+    peripheral_person_type: 'character',
+    peripheral_surface: 'Jordan Ellis',
+    role: 'ex',
+    tier: 'confirmed',
+    confidence: 0.94,
+    has_met: true,
+    proximity: 'indirect',
+    source_message_ids: ['msg-jamie-jordan-ellis'],
+    anchor_name: 'Jamie',
+    peripheral_name: 'Jordan Ellis',
+    metadata: {
+      lexical_evidence: "Jamie described Jordan Ellis as Eli's father and her ex-husband.",
+      glossary_cues: ['ex-husband', 'co-parent'],
+      ontology_tags: ['ROMANTIC/VICARIOUS/CONFIRMED'],
+      anchor_name: 'Jamie',
+    },
+  }),
 ];
 
 export function getMockPeripheralsForRelationship(relationshipId: string): RomanticPeripheral[] {
@@ -470,4 +495,5 @@ export const DEMO_RELATIONSHIP_IDS_WITH_PERIPHERY = [
   'rel-007',
   'rel-008',
   'rel-009',
+  'rel-010',
 ] as const;
