@@ -200,8 +200,95 @@ describe('RelationshipCard', () => {
         onClick={onClick}
       />,
     );
-    expect(screen.getByText(/co-parent/i)).toBeInTheDocument();
-    expect(screen.getByText(/kids together/i)).toBeInTheDocument();
+    // Gendered label already conveys "kids together" — the standalone badge
+    // is suppressed for co-parent types to avoid saying it twice.
+    expect(screen.getByText(/baby mama/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('kids-together-badge')).not.toBeInTheDocument();
+  });
+
+  it('derives Baby Mama / Baby Daddy from relationship_type or character_sex, never duplicating "Kids together"', () => {
+    const onClick = vi.fn();
+
+    const babyDaddy = render(
+      <RelationshipCard
+        relationship={{
+          ...mockRelationship,
+          id: 'rel-bd',
+          person_name: 'Daniel',
+          relationship_type: 'baby_daddy',
+          metadata: { has_kids_together: true },
+        }}
+        onClick={onClick}
+      />,
+    );
+    expect(babyDaddy.getByText(/baby daddy/i)).toBeInTheDocument();
+    expect(babyDaddy.queryByTestId('kids-together-badge')).not.toBeInTheDocument();
+    babyDaddy.unmount();
+
+    const coParentFemale = render(
+      <RelationshipCard
+        relationship={{
+          ...mockRelationship,
+          id: 'rel-cp-f',
+          person_name: 'Harper',
+          relationship_type: 'co_parent',
+          character_sex: 'female',
+          metadata: { has_kids_together: true },
+        }}
+        onClick={onClick}
+      />,
+    );
+    expect(coParentFemale.getByText(/baby mama/i)).toBeInTheDocument();
+    coParentFemale.unmount();
+
+    const coParentMale = render(
+      <RelationshipCard
+        relationship={{
+          ...mockRelationship,
+          id: 'rel-cp-m',
+          person_name: 'Sam',
+          relationship_type: 'co_parent',
+          character_sex: 'male',
+          metadata: { has_kids_together: true },
+        }}
+        onClick={onClick}
+      />,
+    );
+    expect(coParentMale.getByText(/baby daddy/i)).toBeInTheDocument();
+    coParentMale.unmount();
+
+    // Sex unknown/unconfirmed — stays neutral, matching the demo "Sage" case.
+    const coParentNeutral = render(
+      <RelationshipCard
+        relationship={{
+          ...mockRelationship,
+          id: 'rel-cp-n',
+          person_name: 'Sage',
+          relationship_type: 'co_parent',
+          metadata: { has_kids_together: true },
+        }}
+        onClick={onClick}
+      />,
+    );
+    expect(coParentNeutral.getByText(/co-parent/i)).toBeInTheDocument();
+  });
+
+  it('still shows the standalone "Kids together" badge for non-co-parent relationships (e.g. a current spouse)', () => {
+    const onClick = vi.fn();
+    render(
+      <RelationshipCard
+        relationship={{
+          ...mockRelationship,
+          id: 'rel-wife',
+          person_name: 'Jamie',
+          relationship_type: 'wife',
+          metadata: { has_kids_together: true },
+        }}
+        onClick={onClick}
+      />,
+    );
+    expect(screen.getByText(/married/i)).toBeInTheDocument();
+    expect(screen.getByTestId('kids-together-badge')).toBeInTheDocument();
   });
 
   it('gives co-parents a cyan badge and divorced a stone badge', () => {
