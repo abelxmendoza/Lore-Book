@@ -60,6 +60,24 @@ vi.mock('../../src/services/achievements/achievementService', () => ({
   },
 }));
 
+vi.mock('../../src/services/projects/projectSuggestionService', () => ({
+  projectSuggestionService: {
+    getPendingSuggestions: vi.fn().mockResolvedValue([]),
+  },
+}));
+
+vi.mock('../../src/services/skills/skillSuggestionService', () => ({
+  skillSuggestionService: {
+    getPendingSuggestions: vi.fn().mockResolvedValue([]),
+  },
+}));
+
+vi.mock('../../src/services/quests/questSuggestionService', () => ({
+  questSuggestionService: {
+    getPendingSuggestions: vi.fn().mockResolvedValue([]),
+  },
+}));
+
 vi.mock('../../src/services/essenceProfileService', () => ({
   essenceProfileService: {
     extractEssence: vi.fn().mockResolvedValue({ hopes: [{ text: 'grow' }] }),

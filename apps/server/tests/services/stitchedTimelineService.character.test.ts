@@ -23,13 +23,18 @@ const TIMELINE_EVENTS = [
 ];
 
 function makeChain(data: unknown) {
+  const result = Promise.resolve({ data, error: null }) as Promise<{
+    data: unknown;
+    error: null;
+  }> & { limit: () => Promise<{ data: unknown; error: null }> };
+  result.limit = () => result;
   const chain: any = {
     select: () => chain,
     eq: () => chain,
     gte: () => chain,
     lte: () => chain,
     in: () => chain,
-    order: () => Promise.resolve({ data, error: null }),
+    order: () => result,
   };
   return chain;
 }
