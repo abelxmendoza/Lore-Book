@@ -150,4 +150,31 @@ describe('TimelineCalendarView', () => {
     render(<TimelineCalendarView initialDate="2024-06-15" />);
     expect(screen.getByText(/June 2024/i)).toBeInTheDocument();
   });
+
+  it('shows fuzzy historical periods as parallel tracks instead of day cards', () => {
+    const data = monthResult({
+      historicalNeighborhoods: [{
+        id: 'year:2026', label: '2026',
+        start: '2026-01-01T00:00:00.000Z', end: '2026-12-31T23:59:59.999Z',
+        precision: 'year', relationIds: ['relation-1'],
+        tracks: [
+          { id: 'martial_arts', label: 'Martial arts', itemIds: ['tillis'] },
+          { id: 'relationships', label: 'Relationships', itemIds: ['kiley'] },
+        ],
+      }],
+    });
+    useCalendarMonthMock.mockReturnValue({
+      data,
+      dayMap: new Map(data.days.map((day) => [day.date, day])),
+      loading: false,
+      error: null,
+      reload: reloadMock,
+      isDemoMode: false,
+    });
+    render(<TimelineCalendarView initialDate={FIXED_DATE} />);
+    const neighborhood = screen.getByTestId('calendar-historical-neighborhood');
+    expect(neighborhood).toHaveTextContent('overlapping chapters');
+    expect(neighborhood).toHaveTextContent('Martial arts');
+    expect(neighborhood).toHaveTextContent('Relationships');
+  });
 });

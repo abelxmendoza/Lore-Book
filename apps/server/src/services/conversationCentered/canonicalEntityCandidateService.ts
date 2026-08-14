@@ -1,6 +1,10 @@
 import type { EntityType } from '../../types/omegaMemory';
 import { normalizeDuplicateKey } from '../../utils/nameNormalization';
-import { isPollutingPersonLabel, isPollutingPlaceLabel } from '../actors/entityLabelPollution';
+import {
+  isPollutingPersonLabel,
+  isPollutingPlaceLabel,
+  sanitizePersonLabel,
+} from '../actors/entityLabelPollution';
 import type { MessageEntityChip } from '../chat/messageEntityDisplayService';
 
 type CandidateEntity = {
@@ -42,7 +46,13 @@ export function mergeCanonicalEntityCandidates(
   extracted: CandidateEntity[],
   bookMatches: MessageEntityChip[],
 ): CandidateEntity[] {
-  const accepted = extracted.filter((candidate) => {
+  const normalized = extracted.map((candidate) => {
+    const type = String(candidate.type).toUpperCase();
+    return type === 'PERSON' || type === 'CHARACTER'
+      ? { ...candidate, name: sanitizePersonLabel(candidate.name) }
+      : candidate;
+  });
+  const accepted = normalized.filter((candidate) => {
     const key = normalizeDuplicateKey(candidate.name);
     if (!key || PRONOUN_CANDIDATES.has(key)) return false;
     const type = String(candidate.type).toUpperCase();

@@ -39,6 +39,15 @@ export type CalendarMonthResult = {
   year: number;
   month: number;
   days: CalendarDay[];
+  historicalNeighborhoods?: Array<{
+    id: string;
+    label: string;
+    start: string;
+    end: string;
+    precision: 'year';
+    tracks: Array<{ id: string; label: string; itemIds: string[] }>;
+    relationIds: string[];
+  }>;
 };
 
 export const calendarMonthApi = {

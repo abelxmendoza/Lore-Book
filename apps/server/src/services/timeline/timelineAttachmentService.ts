@@ -60,6 +60,31 @@ const ATTACHMENT_PATTERNS: Array<{
     type: 'work_period',
     labelFrom: (m) => `${m[1]} Era`,
   },
+  {
+    pattern: /\b(Johnny(?:\s+Esparza)?)\b[^.!?]*(?:got me|encouraged me|brought me)[^.!?]*(?:back|return)/i,
+    type: 'relationship',
+    labelFrom: () => 'Johnny Esparza',
+  },
+  {
+    pattern: /\b(Tillis\s+(?:BJJ(?:\s*\/\s*MMA)?|MMA))\b/i,
+    type: 'place_visit',
+    labelFrom: (m) => m[1].replace(/bjj/gi, 'BJJ').replace(/mma/gi, 'MMA').trim(),
+  },
+  {
+    pattern: /\b(Kiley(?:\s+Tafur)?)\b[^.!?]*(?:got\s+(?:together|with)|relationship|dated|dating|broke\s+up)/i,
+    type: 'relationship_arc',
+    labelFrom: () => 'Kiley Tafur',
+  },
+  {
+    pattern: /\b(?:got\s+(?:together|with)|started\s+(?:dating|a\s+relationship\s+with)|dated|(?:in\s+)?a?\s*relationship\s+with)\s+(Kiley(?:\s+Tafur)?)\b/i,
+    type: 'relationship_arc',
+    labelFrom: () => 'Kiley Tafur',
+  },
+  {
+    pattern: /\b(Kru\s+Valdez)\b/i,
+    type: 'relationship',
+    labelFrom: (m) => m[1].trim(),
+  },
 ];
 
 function titleCase(s: string): string {
@@ -98,7 +123,16 @@ export function pickNearestAttachment(
   let bestDistance = Infinity;
 
   for (const candidate of candidates) {
-    const idx = text.toLowerCase().indexOf(candidate.attachedToLabel.toLowerCase());
+    const lowerText = text.toLowerCase();
+    const lowerLabel = candidate.attachedToLabel.toLowerCase();
+    let idx = lowerText.indexOf(lowerLabel);
+    if (idx < 0) {
+      const meaningfulParts = lowerLabel.split(/\s+/).filter((part) => part.length >= 4);
+      idx = meaningfulParts
+        .map((part) => lowerText.indexOf(part))
+        .filter((position) => position >= 0)
+        .sort((a, b) => a - b)[0] ?? -1;
+    }
     const phraseIdx = text.toLowerCase().indexOf(phrase.toLowerCase());
     if (idx < 0) continue;
     const distance = Math.abs(idx - phraseIdx);

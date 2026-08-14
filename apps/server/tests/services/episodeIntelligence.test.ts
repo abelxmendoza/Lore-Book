@@ -131,6 +131,25 @@ describe('Episode Segmentation — splits a thread into episodes', () => {
   it('empty input → no episodes', () => {
     expect(segmentEpisodes([])).toHaveLength(0);
   });
+
+  it('branches a martial-arts tangent away from a relationship episode', () => {
+    const eps = segmentEpisodes([
+      msg('1', 'My relationship with Kiley lasted from 2015 to 2019 and changed a lot', 12, ['kiley']),
+      msg('2', 'Kiley and I were dating through those years in that relationship', 12, ['kiley']),
+      msg('3', 'Johnny brought me back to MMA training at Tillis BJJ in 2015', 13, ['johnny', 'noah']),
+    ]);
+    expect(eps).toHaveLength(2);
+    expect(eps[1].boundaryReason).toContain('domain-branch');
+  });
+
+  it('branches a new historical period without inventing an exact date', () => {
+    const eps = segmentEpisodes([
+      msg('1', 'In 2015 I returned to martial arts training and joined Tillis BJJ', 12, ['johnny']),
+      msg('2', 'By 2022 my career work had shifted toward robotics engineering projects', 13, ['robotics']),
+    ]);
+    expect(eps).toHaveLength(2);
+    expect(eps[1].boundaryReason).toContain('temporal-branch');
+  });
 });
 
 describe('Thread Intelligence — incremental metadata (Phase 2)', () => {

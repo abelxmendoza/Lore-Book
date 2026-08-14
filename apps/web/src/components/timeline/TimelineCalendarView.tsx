@@ -84,7 +84,8 @@ export const TimelineCalendarView = ({
 
   const year = month.getFullYear();
   const monthNum = month.getMonth() + 1;
-  const { dayMap, loading, error, reload, isDemoMode } = useCalendarMonth(year, monthNum);
+  const { data, dayMap, loading, error, reload, isDemoMode } = useCalendarMonth(year, monthNum);
+  const historicalNeighborhood = data?.historicalNeighborhoods?.[0];
 
   const days = useMemo(
     () =>
@@ -383,6 +384,27 @@ export const TimelineCalendarView = ({
 
       <div className="flex-1 min-h-0 flex flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] overflow-hidden">
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-2 sm:p-4 lg:p-5">
+          {historicalNeighborhood && historicalNeighborhood.tracks.length > 0 && (
+            <section
+              className="mb-3 rounded-xl border border-violet-400/20 bg-violet-500/[0.07] px-3 py-2"
+              aria-label={`Parallel life tracks in ${historicalNeighborhood.label}`}
+              data-testid="calendar-historical-neighborhood"
+            >
+              <p className="text-[10px] font-bold uppercase tracking-wider text-violet-200/75">
+                Around {historicalNeighborhood.label} · overlapping chapters
+              </p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {historicalNeighborhood.tracks.map((track) => (
+                  <span
+                    key={track.id}
+                    className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs text-white/80"
+                  >
+                    {track.label} · {track.itemIds.length}
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
           <div
             className="grid grid-cols-7 gap-1 sm:gap-1.5 text-center text-[10px] sm:text-[11px] uppercase font-bold text-primary/80 mb-2 tracking-wider"
             aria-hidden

@@ -1,5 +1,8 @@
-import type { TemporalExpression, TimePrecision } from './timelineStitchingTypes';
-import { STANDALONE_TIME_PHRASES } from './timelineStitchingTypes';
+import {
+  STANDALONE_TIME_PHRASES,
+  type TemporalExpression,
+  type TimePrecision,
+} from './timelineStitchingTypes';
 
 const RELATIVE_RE =
   /\b(yesterday|last\s+night|today|tonight|last\s+summer|last\s+week|last\s+year|last\s+month|before\s+covid|a\s+(?:few|couple)\s+weeks?\s+ago)\b/gi;
@@ -39,6 +42,42 @@ export function extractTemporalExpressions(text: string): TemporalExpression[] {
   };
 
   let match: RegExpExecArray | null;
+
+  const occupiedYearRanges: Array<[number, number]> = [];
+  const yearRangeRe = /\b(?:from\s+)?((?:19|20)\d{2})\s*(?:-|\u2013|\u2014|to|through)\s*((?:19|20)\d{2})\b/gi;
+  while ((match = yearRangeRe.exec(text)) !== null) {
+    occupiedYearRanges.push([match.index, match.index + match[0].length]);
+    add({
+      phrase: match[0].trim(),
+      rawSpan: match[0],
+      kind: 'calendar_range',
+      precision: 'year',
+      isStandaloneOnly: false,
+    });
+  }
+
+  const ageRangeRe = /\b(?:at\s+)?ages?\s+(\d{1,2})\s*(?:-|\u2013|\u2014|to|through)\s*(\d{1,2})\b|\b(?:when\s+I\s+was\s+)?(\d{1,2})\s*(?:-|\u2013|\u2014|to)\s*(\d{1,2})\s+years?\s+old\b/gi;
+  while ((match = ageRangeRe.exec(text)) !== null) {
+    add({
+      phrase: match[0].trim(),
+      rawSpan: match[0],
+      kind: 'age_range',
+      precision: 'relative',
+      isStandaloneOnly: false,
+    });
+  }
+
+  const yearRe = /\b(?:(around|about|circa|approximately)\s+)?((?:19|20)\d{2})\b/gi;
+  while ((match = yearRe.exec(text)) !== null) {
+    if (occupiedYearRanges.some(([start, end]) => match!.index >= start && match!.index < end)) continue;
+    add({
+      phrase: match[0].trim(),
+      rawSpan: match[0],
+      kind: match[1] ? 'fuzzy' : 'calendar_range',
+      precision: match[1] ? 'approximate' : 'year',
+      isStandaloneOnly: false,
+    });
+  }
 
   const groupedRe = new RegExp(GROUPED_WINDOW_RE.source, 'gi');
   while ((match = groupedRe.exec(text)) !== null) {

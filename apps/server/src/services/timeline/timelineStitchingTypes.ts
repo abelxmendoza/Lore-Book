@@ -37,6 +37,31 @@ export type NormalizedTime = {
   timeOfDay?: string;
   durationHint?: string;
   startHint?: string;
+  endHint?: string;
+};
+
+export type TemporalRelationType =
+  | 'BEFORE'
+  | 'AFTER'
+  | 'OVERLAPS'
+  | 'DURING'
+  | 'CONTAINS'
+  | 'STARTS_NEAR'
+  | 'ENDS_NEAR'
+  | 'SAME_PERIOD_AS';
+
+/** Evidence-backed ordering between two subjects; neither side needs an exact date. */
+export type TimelineTemporalRelation = {
+  id: string;
+  userId: string;
+  source: StitchAttachmentTarget;
+  target: StitchAttachmentTarget;
+  relation: TemporalRelationType;
+  confidence: number;
+  evidencePhrase: string;
+  sourceMessageId: string;
+  sourceAssertionIds: string[];
+  inferredNotConfirmed: boolean;
 };
 
 export type RecurrencePattern = {
@@ -65,7 +90,16 @@ export type TimelineAnchor = {
 export type TemporalExpression = {
   phrase: string;
   rawSpan: string;
-  kind: 'relative' | 'recurring' | 'era' | 'duration' | 'school_day' | 'time_of_day' | 'fuzzy';
+  kind:
+    | 'relative'
+    | 'recurring'
+    | 'era'
+    | 'duration'
+    | 'school_day'
+    | 'time_of_day'
+    | 'fuzzy'
+    | 'calendar_range'
+    | 'age_range';
   precision: TimePrecision;
   isStandaloneOnly: boolean;
 };
@@ -100,6 +134,7 @@ export type TimelineStitchingResult = {
   rejectedStandaloneTime: Array<{ phrase: string; reason: string }>;
   contradictions: TimelineContradictionReview[];
   stitchLinks: Array<{ fromLabel: string; toLabel: string; linkType: string }>;
+  temporalRelations: TimelineTemporalRelation[];
 };
 
 /** Phrases that must NEVER become book/card suggestions. */

@@ -8,6 +8,7 @@ import {
   queueTimelineContradictionReviews,
 } from './timelineStitchingPersistenceService';
 import { stitchTimelineFromMessage } from './timelineStitchingService';
+import { persistTemporalRelations } from './temporalRelationPersistenceService';
 import type { StitchAttachmentTarget, TimelineStitchingResult } from './timelineStitchingTypes';
 
 export type TimelineStitchingRunSummary = {
@@ -15,6 +16,7 @@ export type TimelineStitchingRunSummary = {
   rejectedStandalone: number;
   contradictionsQueued: number;
   stitchLinks: number;
+  temporalRelations: number;
 };
 
 function buildInferenceAttachmentCandidates(
@@ -63,7 +65,7 @@ export async function runTimelineStitchingForMessage(
   messageTimestamp?: string,
 ): Promise<TimelineStitchingRunSummary> {
   if (!text.trim() || text.trim().length < 8) {
-    return { anchorsCreated: 0, rejectedStandalone: 0, contradictionsQueued: 0, stitchLinks: 0 };
+    return { anchorsCreated: 0, rejectedStandalone: 0, contradictionsQueued: 0, stitchLinks: 0, temporalRelations: 0 };
   }
 
   try {
@@ -88,6 +90,7 @@ export async function runTimelineStitchingForMessage(
     );
 
     const anchorsCreated = await persistTimelineAnchors(userId, result.anchors);
+    const temporalRelations = await persistTemporalRelations(userId, result.temporalRelations);
     const contradictionsQueued = await queueTimelineContradictionReviews(
       userId,
       result.contradictions,
@@ -103,6 +106,7 @@ export async function runTimelineStitchingForMessage(
           rejectedStandalone: result.rejectedStandaloneTime.length,
           contradictionsQueued,
           stitchLinks: result.stitchLinks.length,
+          temporalRelations,
         },
         'Timeline stitching applied',
       );
@@ -113,10 +117,11 @@ export async function runTimelineStitchingForMessage(
       rejectedStandalone: result.rejectedStandaloneTime.length,
       contradictionsQueued,
       stitchLinks: result.stitchLinks.length,
+      temporalRelations,
     };
   } catch (err) {
     logger.warn({ err, userId, sourceMessageId }, 'Timeline stitching failed (non-blocking)');
-    return { anchorsCreated: 0, rejectedStandalone: 0, contradictionsQueued: 0, stitchLinks: 0 };
+    return { anchorsCreated: 0, rejectedStandalone: 0, contradictionsQueued: 0, stitchLinks: 0, temporalRelations: 0 };
   }
 }
 
@@ -128,6 +133,7 @@ export async function rescanTimelineStitching(
   let rejectedStandalone = 0;
   let contradictionsQueued = 0;
   let stitchLinks = 0;
+  let temporalRelations = 0;
 
   for (const episode of episodes) {
     const summary = await runTimelineStitchingForMessage(
@@ -140,7 +146,8 @@ export async function rescanTimelineStitching(
     rejectedStandalone += summary.rejectedStandalone;
     contradictionsQueued += summary.contradictionsQueued;
     stitchLinks += summary.stitchLinks;
+    temporalRelations += summary.temporalRelations;
   }
 
-  return { anchorsCreated, rejectedStandalone, contradictionsQueued, stitchLinks };
+  return { anchorsCreated, rejectedStandalone, contradictionsQueued, stitchLinks, temporalRelations };
 }

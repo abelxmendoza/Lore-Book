@@ -15,6 +15,9 @@ function mapPrecision(precision?: string): TimePrecision {
     case 'year':
       return 'year';
     case 'approximate':
+    case 'fuzzy':
+    case 'relative':
+    case 'era':
     case 'unknown':
       return 'approximate';
     default:
@@ -44,7 +47,7 @@ export function stitchedItemsToChronology(
       user_id: userId,
       journal_entry_id: item.sourceKind === 'journal_entry' ? item.sourceId : '',
       start_time: item.temporal?.occurred.start ?? item.sortTime,
-      end_time: null,
+      end_time: item.temporal?.occurred.end ?? null,
       time_precision: mapPrecision(item.timePrecision),
       time_confidence: timeConfidence,
       content: [item.title, item.body]

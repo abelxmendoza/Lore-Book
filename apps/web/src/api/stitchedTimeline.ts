@@ -112,6 +112,27 @@ export type StitchedTimelineResult = {
   /** Temporally unresolved items for the Omni tray. */
   unresolved_items?: StitchedTimelineItem[];
   evidence_hidden_count?: number;
+  temporal_relations?: Array<{
+    id: string;
+    sourceId: string | null;
+    sourceLabel: string;
+    targetId: string | null;
+    targetLabel: string;
+    relation: 'BEFORE' | 'AFTER' | 'OVERLAPS' | 'DURING' | 'CONTAINS' | 'STARTS_NEAR' | 'ENDS_NEAR' | 'SAME_PERIOD_AS';
+    confidence: number;
+    evidencePhrase: string;
+    sourceMessageId: string;
+    sourceAssertionIds: string[];
+  }>;
+  historical_neighborhoods?: Array<{
+    id: string;
+    label: string;
+    start: string;
+    end: string;
+    precision: 'year';
+    tracks: Array<{ id: string; label: string; itemIds: string[] }>;
+    relationIds: string[];
+  }>;
 };
 
 export const stitchedTimelineApi = {

@@ -36,7 +36,7 @@ const PERSON_OR_PRONOUN =
 const ORGANIZATION_ONLY = /^(?:amazon|antler|rlh|venture capital firm)$/i;
 
 const SKILL_OR_DISCIPLINE =
-  /^(?:electrical\s+engineering|computer\s+science|mechanical\s+engineering|software\s+engineering|ui(?:\s*\/\s*ux)?|ux\s+design)$/i;
+  /^(?:electrical\s+engineering|computer\s+science|mechanical\s+engineering|software\s+engineering|ui(?:\s*\/\s*ux)?|ux\s+design|mma|bjj|muay thai|boxing|kickboxing|martial arts)$/i;
 
 const COMMUNITY_OR_SCENE =
   /^(?:goth\s+scene|.+?\s+scene|.+?\s+vibes|weeb\s+city)$/i;

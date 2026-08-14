@@ -48,6 +48,7 @@ export type ProjectableTimelineItem = {
   timeConfidence?: number;
   temporalSource?: string;
   occurredAt?: string | null;
+  occurredEnd?: string | null;
   mentionedAt?: string | null;
   recordedAt?: string | null;
   knownFrom?: string | null;
@@ -109,7 +110,7 @@ function honestTemporal(item: ProjectableTimelineItem): {
 
   const capped = applyTemporalConfidenceCeiling({
     start: occurrence || null,
-    end: null,
+    end: item.occurredEnd ?? null,
     timezone: null,
     precision: recovered ? 'unknown' : rawPrecision,
     source: recovered ? 'recording_fallback' : rawSource,
@@ -127,7 +128,12 @@ function honestTemporal(item: ProjectableTimelineItem): {
     tags,
   });
 
-  if (contradiction || recovered || capped.source === 'recording_fallback' || capped.precision === 'year') {
+  if (
+    contradiction
+    || recovered
+    || capped.source === 'recording_fallback'
+    || (capped.precision === 'year' && !capped.end)
+  ) {
     return {
       precision: capped.precision === 'exact' ? 'unknown' : capped.precision,
       confidence: Math.min(capped.confidence, TEMPORAL_CONFIDENCE_CEILINGS.IMPORT_RECOVERY),
@@ -142,6 +148,7 @@ function honestTemporal(item: ProjectableTimelineItem): {
     || capped.precision === 'season'
     || capped.precision === 'quarter'
     || capped.precision === 'approximate'
+    || (capped.precision === 'year' && Boolean(capped.end))
     || capped.status === 'approximate'
   ) {
     return {
@@ -194,6 +201,7 @@ export function projectCanonicalTimeline(items: ProjectableTimelineItem[]): {
       occurredAt: temporal.occurrenceStatus === 'unresolved' && item.occurredAt === null
         ? null
         : (item.occurredAt === undefined ? item.sortTime : item.occurredAt),
+      occurredEnd: item.occurredEnd,
       mentionedAt: item.mentionedAt,
       recordedAt: item.recordedAt,
       knownFrom: item.knownFrom,

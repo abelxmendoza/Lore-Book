@@ -64,6 +64,28 @@ describe('stitchedItemsToChronology', () => {
     expect(entry.time_confidence).toBe(0.5);
   });
 
+  it('preserves a fuzzy historical range instead of flattening it to one date', () => {
+    const item: StitchedTimelineItem = {
+      id: 'event:kiley', kind: 'event', sourceId: 'kiley', sourceIds: ['kiley'],
+      sourceKind: 'resolved_event', sourceType: 'chat',
+      sortTime: '2015-01-01T00:00:00.000Z', userSortIndex: null,
+      title: 'Relationship with Kiley', body: '2015–2019', timePrecision: 'year',
+      temporal: {
+        occurred: {
+          start: '2015-01-01T00:00:00.000Z', end: '2019-12-31T23:59:59.999Z',
+          precision: 'year', source: 'user_stated', status: 'approximate', confidence: 0.9,
+          expression: '2015–2019', timezone: null,
+        },
+        mentionedAt: null, recordedAt: null, knownFrom: 'message-1',
+        validFrom: null, validUntil: null, provenance: [],
+      },
+    };
+    const [entry] = stitchedItemsToChronology([item]);
+    expect(entry.start_time).toBe('2015-01-01T00:00:00.000Z');
+    expect(entry.end_time).toBe('2019-12-31T23:59:59.999Z');
+    expect(entry.time_precision).toBe('year');
+  });
+
   it('finds every canonical source on the selected calendar day', () => {
     const entries = stitchedItemsToChronology([
       {

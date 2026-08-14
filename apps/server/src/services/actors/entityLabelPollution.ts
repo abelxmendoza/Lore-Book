@@ -38,6 +38,21 @@ const PLACE_JUNK_KEYS = new Set([
 const DATE_LABEL_RE =
   /^(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?$/i;
 
+const SENTENCE_PRONOUN_BLEED_RE = /[.!?]\s*(?:he|she|they|we|i|it)\b/i;
+const PERSON_COLLECTIVE_RE =
+  /\b(?:clubs?|communities|scenes?|majors?|students?|departments?|classes|programs?)$/i;
+const ACADEMIC_SUBJECT_RE =
+  /^(?:computer science|software engineering|electrical engineering|mechanical engineering|data science|mathematics|psychology|biology|chemistry)$/i;
+const APP_SURFACE_OR_CONTRACTION_RE = /^(?:relationships?|i['’]?ve)$/i;
+
+/** Keep a valid leading name when an extractor leaks the next sentence. */
+export function sanitizePersonLabel(name: string): string {
+  return name
+    .replace(/^(?:yeah|yes|okay|ok|well)\s+/i, '')
+    .replace(/[.!?]\s*(?:he|she|they|we|i|it)\b.*$/i, '')
+    .trim();
+}
+
 /**
  * True when a candidate person label must not appear on People / Actors /
  * Recent mentions (and must not be used in episode participant titles).
@@ -49,6 +64,15 @@ export function isPollutingPersonLabel(name: string | null | undefined): boolean
 
   if (PERSONA_ROLE_KEYS.has(key)) return true;
   if (DATE_LABEL_RE.test(trimmed)) return true;
+  if (SENTENCE_PRONOUN_BLEED_RE.test(trimmed)) return true;
+  // Keep a named person with an appositive origin (for example,
+  // "Neon Pixie from the Underground Scene"). The trailing collective is
+  // context for the person, not the candidate itself.
+  if (PERSON_COLLECTIVE_RE.test(trimmed) && !/\bfrom\s+(?:the\s+)?[^,]+$/i.test(trimmed)) {
+    return true;
+  }
+  if (ACADEMIC_SUBJECT_RE.test(trimmed)) return true;
+  if (APP_SURFACE_OR_CONTRACTION_RE.test(trimmed)) return true;
 
   const actor = classifyActorLabel(trimmed);
   if (actor.action === 'reject' || actor.action === 'group' || actor.action === 'anonymous') {
@@ -77,6 +101,8 @@ export function isPollutingPlaceLabel(name: string | null | undefined): boolean 
   const key = normalizeNameKey(trimmed);
   if (PLACE_JUNK_KEYS.has(key)) return true;
   if (DATE_LABEL_RE.test(trimmed)) return true;
+  if (ACADEMIC_SUBJECT_RE.test(trimmed)) return true;
+  if (/^(?:mma|bjj|muay thai|boxing|kickboxing|martial arts)$/i.test(trimmed)) return true;
   if (/^(?:this|last|next)\s+(?:weekend|week|month|year|morning|afternoon|evening|night)$/i.test(key)) {
     return true;
   }
@@ -129,7 +155,10 @@ export function unionThreadMetaLabels(
   const order: string[] = [];
 
   const consider = (raw: string) => {
-    const trimmed = raw?.trim();
+    const rawTrimmed = raw?.trim();
+    const trimmed = opts.kind === 'people' && rawTrimmed
+      ? sanitizePersonLabel(rawTrimmed)
+      : rawTrimmed;
     if (!trimmed || isJunk(trimmed)) return;
     const key = normalizeDuplicateKey(trimmed);
     if (!key) return;
@@ -152,6 +181,6 @@ export function unionThreadMetaLabels(
 /** Filter episode participant display names before composing titles. */
 export function filterEpisodeParticipantNames(names: Array<string | null | undefined>): string[] {
   return names
-    .map((n) => (n == null ? '' : String(n).trim()))
+    .map((n) => (n == null ? '' : sanitizePersonLabel(String(n).trim())))
     .filter((n) => n.length > 0 && !isPollutingPersonLabel(n));
 }

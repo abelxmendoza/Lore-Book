@@ -33,6 +33,7 @@ const OBJECT_OR_VEHICLE =
   /^(?:phone|vape|car|bike|ring\s+doorbell|(?:my\s+|our\s+)?mom'?s\s+car)$/i;
 
 const GROUP_ONLY = /^(?:family|crowd|people|computer\s+science\s+majors)$/i;
+const MARTIAL_ART_DISCIPLINE_ONLY = /^(?:mma|bjj|muay thai|boxing|kickboxing|martial arts)$/i;
 
 const RELATIVE_ONLY =
   /^(?:here|there|home|around\s+the\s+corner|pit|inside|outside|near\s+the\s+stage)$/i;
@@ -138,6 +139,10 @@ export function guardPlaceCandidate(
 
   if (GROUP_ONLY.test(text)) {
     return { allowed: false, rejectedAs: 'GROUP', confidenceBoost: 0, rulesFired: ['group_not_place'] };
+  }
+
+  if (MARTIAL_ART_DISCIPLINE_ONLY.test(text)) {
+    return { allowed: false, rejectedAs: 'SKILL', confidenceBoost: 0, rulesFired: ['martial_art_skill_not_place'] };
   }
 
   if (RELATIVE_ONLY.test(text)) {

@@ -15,6 +15,11 @@ import {
 } from './narrativeCohesion';
 import { projectCanonicalTimeline } from '../chronologyAuthority/canonicalTimelineProjector';
 import type { CanonicalTemporalModel } from '../temporal/canonicalTemporalModel';
+import {
+  buildHistoricalNeighborhoods,
+  type HistoricalNeighborhood,
+  type ProjectedTemporalRelation,
+} from './temporalParallelProjection';
 
 export type StitchedItemKind = 'moment' | 'event';
 export type ChronologyScopeType = 'global' | 'life_arc';
@@ -55,6 +60,7 @@ export type StitchedTimelineItem = {
   canonicalEventType?: string;
   speechAct?: string;
   occurredAt?: string | null;
+  occurredEnd?: string | null;
   mentionedAt?: string | null;
   recordedAt?: string | null;
   knownFrom?: string | null;
@@ -99,7 +105,35 @@ export type StitchedTimelineResult = {
   unresolved_items?: StitchedTimelineItem[];
   /** Journal evidence collapsed under canonical resolved events. */
   evidence_hidden_count?: number;
+  /** Projection-only parallel lanes; canonical records remain the source of truth. */
+  historical_neighborhoods?: HistoricalNeighborhood[];
+  temporal_relations?: ProjectedTemporalRelation[];
 };
+
+async function loadTemporalRelations(userId: string): Promise<ProjectedTemporalRelation[]> {
+  const { data, error } = await supabaseAdmin
+    .from('canonical_temporal_relations')
+    .select('id, source_ref_id, source_label, target_ref_id, target_label, relation_type, confidence, evidence_phrase, source_message_id, source_assertion_ids')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+    .limit(500);
+  if (error) {
+    logger.debug({ error, userId }, 'Temporal relation projection unavailable');
+    return [];
+  }
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    sourceId: (row.source_ref_id as string | null) ?? null,
+    sourceLabel: row.source_label as string,
+    targetId: (row.target_ref_id as string | null) ?? null,
+    targetLabel: row.target_label as string,
+    relation: row.relation_type as ProjectedTemporalRelation['relation'],
+    confidence: Number(row.confidence ?? 0.5),
+    evidencePhrase: (row.evidence_phrase as string) ?? '',
+    sourceMessageId: (row.source_message_id as string) ?? '',
+    sourceAssertionIds: (row.source_assertion_ids as string[]) ?? [],
+  }));
+}
 
 function momentTitle(content: string): string {
   const line = content.replace(/\s+/g, ' ').trim();
@@ -418,7 +452,7 @@ export class StitchedTimelineService {
       }
     }
 
-    const [moments, timelineEventsRes, resolvedEventsRes, orderMap] = await Promise.all([
+    const [moments, timelineEventsRes, resolvedEventsRes, orderMap, temporalRelations] = await Promise.all([
       chronologyService.getChronologicalOrder(userId, startTime, endTime),
       (async () => {
         let query = supabaseAdmin
@@ -432,13 +466,17 @@ export class StitchedTimelineService {
       (async () => {
         let query = supabaseAdmin
           .from('resolved_events')
-          .select('id, title, summary, start_time, confidence, metadata, people, locations, activities, tags, temporal_precision, temporal_source, temporal_status, temporal_confidence, temporal_expression, created_at')
+          .select('id, title, summary, start_time, end_time, confidence, metadata, people, locations, activities, tags, temporal_precision, temporal_source, temporal_status, temporal_confidence, temporal_expression, created_at')
           .eq('user_id', userId);
-        if (startTime) query = query.gte('start_time', `${startTime}T00:00:00.000Z`);
+        if (startTime) {
+          const lowerBound = `${startTime}T00:00:00.000Z`;
+          query = query.or(`start_time.gte.${lowerBound},end_time.gte.${lowerBound}`);
+        }
         if (endTime) query = query.lte('start_time', `${endTime}T23:59:59.999Z`);
         return query.order('start_time', { ascending: true, nullsFirst: false });
       })(),
       loadUserOrder(userId, scopeType, scopeId),
+      loadTemporalRelations(userId),
     ]);
 
     const { data: eventRows, error: eventsError } = timelineEventsRes;
@@ -697,6 +735,7 @@ export class StitchedTimelineService {
           timeConfidence: row.temporal_confidence ?? confidence,
           temporalSource: row.temporal_source ?? 'context_inferred',
           occurredAt: cluster.time,
+          occurredEnd: (canonical.row as { end_time?: string | null }).end_time ?? null,
           mentionedAt: (temporalMeta.mentioned_at as string | undefined) ?? null,
           recordedAt: row.created_at ?? null,
           knownFrom: (temporalMeta.known_from as string | undefined) ?? row.created_at ?? null,
@@ -795,6 +834,7 @@ export class StitchedTimelineService {
           timeConfidence: item.timeConfidence,
           temporalSource: item.temporalSource,
           occurredAt: item.occurredAt,
+          occurredEnd: item.occurredEnd,
           mentionedAt: item.mentionedAt,
           recordedAt: item.recordedAt,
           knownFrom: item.knownFrom,
@@ -823,6 +863,7 @@ export class StitchedTimelineService {
         canonicalEventType: p.canonicalEventType,
         speechAct: p.speechAct,
         occurredAt: p.temporal.occurred.start,
+        occurredEnd: p.temporal.occurred.end,
         mentionedAt: p.temporal.mentionedAt,
         recordedAt: p.temporal.recordedAt,
         knownFrom: p.temporal.knownFrom,
@@ -837,6 +878,7 @@ export class StitchedTimelineService {
       const sorted = sortItems(projected.canonical.map(toStitched));
       const capped = opts.limit != null ? sorted.slice(0, opts.limit) : sorted;
       const unresolved = sortItems(projected.unresolved.map(toStitched));
+      const historicalNeighborhoods = buildHistoricalNeighborhoods(capped, temporalRelations);
       return {
         scope_type: scopeType,
         scope_id: scopeId,
@@ -846,6 +888,8 @@ export class StitchedTimelineService {
         unresolved_items: unresolved,
         evidence_hidden_count: projected.evidenceHidden,
         excluded_count: projected.excluded.length,
+        historical_neighborhoods: historicalNeighborhoods,
+        temporal_relations: temporalRelations,
         ...(chapterBackground.length ? { background: sortItems(chapterBackground) } : {}),
         ...(chapter ? { chapter } : {}),
         ...(mergeLog?.length ? { merge_log: mergeLog } : {}),

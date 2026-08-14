@@ -15,6 +15,7 @@ export interface SegMessage {
   created_at: string;
   entityIds?: string[];   // entities mentioned in this message
   locationIds?: string[]; // locations mentioned
+  domains?: string[];     // optional upstream domain classification
 }
 
 export interface Episode {
@@ -48,12 +49,35 @@ function topicTokens(text: string): Set<string> {
   return new Set(text.toLowerCase().split(/[^a-záéíóúñ0-9]+/).filter((w) => w.length > 3 && !STOP.has(w)).slice(0, 30));
 }
 
+function inferredDomains(msg: SegMessage): Set<string> {
+  if (msg.domains?.length) return new Set(msg.domains.map((domain) => domain.toLowerCase()));
+  const text = msg.content.toLowerCase();
+  const domains = new Set<string>();
+  if (/\b(muay thai|bjj|mma|martial arts|boxing|kickboxing|sparring|training|fight record|gym)\b/.test(text)) domains.add('martial_arts');
+  if (/\b(dating|relationship|girlfriend|boyfriend|partner|romance|breakup|crush|got with)\b/.test(text)) domains.add('relationships');
+  if (/\b(work|job|career|interview|employer|hired)\b/.test(text)) domains.add('career');
+  if (/\b(school|college|class|university|degree)\b/.test(text)) domains.add('education');
+  if (/\b(family|mother|father|mom|dad|sister|brother|abuela|t[ií]o)\b/.test(text)) domains.add('family');
+  return domains;
+}
+
+function temporalNeighborhoods(text: string): Set<string> {
+  return new Set(text.match(/\b(?:19|20)\d{2}\b/g) ?? []);
+}
+
 /**
  * Compute the boundary signal (0..1) between the running episode and the next
  * message. Higher = more likely a new episode starts.
  */
 export function boundaryScore(
-  prev: { lastAt: string; entities: Set<string>; locations: Set<string>; tokens: Set<string> },
+  prev: {
+    lastAt: string;
+    entities: Set<string>;
+    locations: Set<string>;
+    tokens: Set<string>;
+    domains?: Set<string>;
+    temporalNeighborhoods?: Set<string>;
+  },
   msg: SegMessage,
   opts: Required<SegmentOptions>
 ): { score: number; reasons: string[] } {
@@ -77,6 +101,22 @@ export function boundaryScore(
   const sim = jaccard(prev.tokens, topicTokens(msg.content));
   if (sim < 0.05 && prev.tokens.size > 3) { score += 0.15; reasons.push('topic-shift'); }
 
+  const msgDomains = inferredDomains(msg);
+  if ((prev.domains?.size ?? 0) > 0 && msgDomains.size > 0 && jaccard(prev.domains!, msgDomains) === 0) {
+    score += 0.45;
+    reasons.push('domain-branch');
+  }
+
+  const msgNeighborhoods = temporalNeighborhoods(msg.content);
+  if (
+    (prev.temporalNeighborhoods?.size ?? 0) > 0
+    && msgNeighborhoods.size > 0
+    && jaccard(prev.temporalNeighborhoods!, msgNeighborhoods) === 0
+  ) {
+    score += 0.35;
+    reasons.push('temporal-branch');
+  }
+
   return { score: Number(score.toFixed(3)), reasons };
 }
 
@@ -87,7 +127,14 @@ export function segmentEpisodes(messages: SegMessage[], options: SegmentOptions 
 
   const episodes: Episode[] = [];
   let current: SegMessage[] = [];
-  let running = { lastAt: messages[0].created_at, entities: new Set<string>(), locations: new Set<string>(), tokens: new Set<string>() };
+  let running = {
+    lastAt: messages[0].created_at,
+    entities: new Set<string>(),
+    locations: new Set<string>(),
+    tokens: new Set<string>(),
+    domains: new Set<string>(),
+    temporalNeighborhoods: new Set<string>(),
+  };
   let boundaryReason = 'thread-start';
 
   const flush = () => {
@@ -115,7 +162,14 @@ export function segmentEpisodes(messages: SegMessage[], options: SegmentOptions 
       if (score >= opts.boundaryThreshold) {
         flush();
         current = [];
-        running = { lastAt: msg.created_at, entities: new Set(), locations: new Set(), tokens: new Set() };
+        running = {
+          lastAt: msg.created_at,
+          entities: new Set(),
+          locations: new Set(),
+          tokens: new Set(),
+          domains: new Set(),
+          temporalNeighborhoods: new Set(),
+        };
         boundaryReason = reasons.join('+') || 'shift';
       }
     }
@@ -124,6 +178,11 @@ export function segmentEpisodes(messages: SegMessage[], options: SegmentOptions 
     (msg.entityIds ?? []).forEach((e) => running.entities.add(e));
     (msg.locationIds ?? []).forEach((l) => running.locations.add(l));
     for (const tok of topicTokens(msg.content)) running.tokens.add(tok);
+    // Compare against the most recent branch, not the union of every domain
+    // ever mentioned in the episode. That union caused relationship episodes
+    // to absorb later martial-arts/career tangents indefinitely.
+    running.domains = inferredDomains(msg);
+    running.temporalNeighborhoods = temporalNeighborhoods(msg.content);
   }
   flush();
   return episodes;

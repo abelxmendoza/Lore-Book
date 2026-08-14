@@ -11,6 +11,10 @@ const evidencePolicy = readFileSync(
   new URL('20260807040300_optimize_assertion_evidence_rls.sql', migrationsUrl),
   'utf8',
 );
+const temporalParallelism = readFileSync(
+  new URL('20260814043224_temporal_parallelism.sql', migrationsUrl),
+  'utf8',
+);
 
 test('active migration chain starts from the production schema baseline', () => {
   const files = readdirSync(migrationsUrl)
@@ -23,7 +27,16 @@ test('active migration chain starts from the production schema baseline', () => 
     '20260807040200_knowledge_kernel_foundation.sql',
     '20260807040300_optimize_assertion_evidence_rls.sql',
     '20260807093500_system_knowledge_content_tracking_explanation.sql',
+    '20260814043224_temporal_parallelism.sql',
   ]);
+});
+
+test('temporal relations are tenant-isolated and explicitly granted', () => {
+  assert.match(temporalParallelism, /ALTER TABLE public\.canonical_temporal_relations ENABLE ROW LEVEL SECURITY/i);
+  assert.match(temporalParallelism, /TO authenticated\s+USING \(\(select auth\.uid\(\)\) = user_id\)/i);
+  assert.match(temporalParallelism, /REVOKE ALL ON TABLE public\.canonical_temporal_relations FROM anon/i);
+  assert.match(temporalParallelism, /GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public\.canonical_temporal_relations TO authenticated/i);
+  assert.match(temporalParallelism, /GRANT ALL ON TABLE public\.canonical_temporal_relations TO service_role/i);
 });
 
 test('baseline is replayable SQL without data or psql-only commands', () => {

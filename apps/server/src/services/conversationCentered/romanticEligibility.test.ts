@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   assessRomanticPartnerEligibility,
+  hasNonRomanticWithCue,
   hasThirdPartyPartnerCue,
   isRelationshipRoleLabel,
 } from './romanticEligibility';
@@ -28,6 +29,22 @@ describe('hasThirdPartyPartnerCue', () => {
     expect(hasThirdPartyPartnerCue('I was seeing Sol for a couple weeks')).toBe(false);
     expect(hasThirdPartyPartnerCue('we had a one night stand')).toBe(false);
     expect(hasThirdPartyPartnerCue('')).toBe(false);
+  });
+});
+
+describe('hasNonRomanticWithCue', () => {
+  it('keeps training-with language out of Dating & Romance', () => {
+    expect(hasNonRomanticWithCue('Kru Valdez', 'when I was training with Kru Valdez')).toBe(true);
+    expect(
+      assessRomanticPartnerEligibility({
+        name: 'Kru Valdez',
+        evidence: 'when I was training with Kru Valdez in Muay Thai',
+      }),
+    ).toEqual({ eligible: false, reason: 'non_romantic_participation_context' });
+  });
+
+  it('does not suppress explicit romance', () => {
+    expect(hasNonRomanticWithCue('Kiley', 'I trained a lot while I was dating Kiley')).toBe(false);
   });
 });
 

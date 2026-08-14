@@ -76,6 +76,22 @@ export function hasThirdPartyPartnerCue(evidence: string | null | undefined): bo
 
 export type RomanticEligibility = { eligible: boolean; reason?: string };
 
+const TRAINING_OR_PROFESSIONAL_CONTEXT =
+  /\b(?:train(?:ed|ing)?|practice(?:d|ing)?|sparr(?:ed|ing)?|coach(?:ed|ing)?|instructor|teacher|mentor|muay thai|bjj|mma|martial arts|boxing|kickboxing|gym|dojo|academy|work(?:ed|ing)?|coworker|manager)\b/i;
+const EXPLICIT_ROMANTIC_CONTEXT =
+  /\b(?:date[ds]?|dating|girlfriend|boyfriend|partner|romantic|relationship|crush|kiss(?:ed|ing)?|hook(?:ed|ing)?\s+up|in\s+love|got\s+with)\b/i;
+
+/** "with my coach" is participation context, not evidence of romance. */
+export function hasNonRomanticWithCue(
+  name: string | null | undefined,
+  evidence: string | null | undefined,
+): boolean {
+  if (!name || !evidence || EXPLICIT_ROMANTIC_CONTEXT.test(evidence)) return false;
+  const escaped = name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  return TRAINING_OR_PROFESSIONAL_CONTEXT.test(evidence)
+    && new RegExp(`\\bwith\\s+(?:my\\s+)?${escaped}\\b`, 'i').test(evidence);
+}
+
 /**
  * Decide whether a detected romantic partner should be stored as one of the
  * user's romantic relationships.
@@ -103,6 +119,9 @@ export function assessRomanticPartnerEligibility(input: {
   }
   if (hasThirdPartyPartnerCue(input.evidence)) {
     return { eligible: false, reason: 'third_party_partner' };
+  }
+  if (hasNonRomanticWithCue(name, input.evidence)) {
+    return { eligible: false, reason: 'non_romantic_participation_context' };
   }
 
   // ── Cross-reference the Groups & Organizations book ──────────────────────

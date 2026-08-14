@@ -5,6 +5,7 @@ import { inferActivityFromText, stitchRecurringPattern } from './recurringPatter
 import { extractTemporalExpressions, isStandaloneTimePhrase } from './temporalExpressionExtractor';
 import { normalizeTemporalExpression, preservesFuzzyPrecision } from './temporalNormalizer';
 import { findAttachmentTargets, pickNearestAttachment } from './timelineAttachmentService';
+import { extractTemporalRelations } from './temporalRelationExtractor';
 import {
   applyContradictionPolicy,
   detectTimelineContradictions,
@@ -32,6 +33,12 @@ export function stitchTimelineFromMessage(
   const expressions = extractTemporalExpressions(text);
   const inferredTargets = findAttachmentTargets(text);
   const allCandidates = [...attachmentCandidates, ...inferredTargets];
+  const temporalRelations = extractTemporalRelations({
+    text,
+    userId,
+    sourceMessageId,
+    candidates: allCandidates,
+  });
 
   for (const expr of expressions) {
     if (expr.isStandaloneOnly && isStandaloneTimePhrase(expr.phrase)) {
@@ -143,6 +150,7 @@ export function stitchTimelineFromMessage(
     rejectedStandaloneTime,
     contradictions,
     stitchLinks,
+    temporalRelations,
   };
 }
 

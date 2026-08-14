@@ -14,7 +14,7 @@ import {
 } from '../romance/romanceReciprocity';
 import { supabaseAdmin } from '../supabaseClient';
 
-import { assessRomanticPartnerEligibility } from './romanticEligibility';
+import { assessRomanticPartnerEligibility, hasNonRomanticWithCue } from './romanticEligibility';
 import { persistThirdPartyRomances } from './thirdPartyRelationshipService';
 
 export type RomanticRelationshipType =
@@ -82,7 +82,9 @@ export class RomanticRelationshipDetector {
         return [];
       }
 
-      const individualEntities = mentionedEntities.filter((e) => isIndividualPersonName(e.name));
+      const individualEntities = mentionedEntities.filter(
+        (e) => isIndividualPersonName(e.name) && !hasNonRomanticWithCue(e.name, message),
+      );
       if (individualEntities.length === 0) {
         return [];
       }

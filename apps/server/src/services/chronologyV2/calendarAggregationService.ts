@@ -5,6 +5,7 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { stitchedTimelineService } from './stitchedTimelineService';
+import type { HistoricalNeighborhood } from './temporalParallelProjection';
 
 export type CalendarPresence = 'attended' | 'heard_about' | 'unknown';
 
@@ -45,6 +46,8 @@ export type CalendarMonthResult = {
   year: number;
   month: number;
   days: CalendarDay[];
+  /** Fuzzy/year-scale ranges are lanes, never fake day cards. */
+  historicalNeighborhoods?: HistoricalNeighborhood[];
 };
 
 function monthBounds(year: number, month: number): { start: string; end: string } {
@@ -144,6 +147,7 @@ export class CalendarAggregationService {
     }
 
     for (const item of stitched.items) {
+      if (item.occurrenceStatus === 'range' || item.timePrecision === 'year') continue;
       const link = links.find((candidate) => {
         const linkedId = item.sourceKind === 'journal_entry'
           ? candidate.journal_entry_id
@@ -185,7 +189,14 @@ export class CalendarAggregationService {
 
     const days = [...daysMap.values()].sort((a, b) => a.date.localeCompare(b.date));
 
-    return { year, month, days };
+    return {
+      year,
+      month,
+      days,
+      historicalNeighborhoods: stitched.historical_neighborhoods?.filter(
+        (neighborhood) => neighborhood.label === String(year),
+      ),
+    };
   }
 }
 

@@ -9,9 +9,17 @@ import {
 
 describe('entityLabelPollution', () => {
   it('rejects truncated kinship and discourse bleed as people', () => {
-    for (const label of ['Cousin in', 'Sibling those', 'Also Obscurios', 'Uncle', 'Mom', 'her house']) {
+    for (const label of ['Cousin in', 'Sibling those', 'Also Obscurios', 'Uncle', 'Mom', 'her house', 'Yuli. She']) {
       expect(isPollutingPersonLabel(label), label).toBe(true);
     }
+  });
+
+  it('rejects academic and community collectives as individual people', () => {
+    expect(isPollutingPersonLabel('Computer Science majors')).toBe(true);
+    expect(isPollutingPersonLabel('Goth Clubs')).toBe(true);
+    expect(isPollutingPlaceLabel('Computer Science')).toBe(true);
+    expect(isPollutingPersonLabel("I've")).toBe(true);
+    expect(isPollutingPersonLabel('Relationships')).toBe(true);
   });
 
   it('rejects tools, personas, dates, holidays, and games as people', () => {
@@ -34,7 +42,14 @@ describe('entityLabelPollution', () => {
   });
 
   it('keeps real named people', () => {
-    for (const label of ['Marcus', 'Tía Grace', 'James', 'Jerry', 'Abuela']) {
+    for (const label of [
+      'Marcus',
+      'Tía Grace',
+      'James',
+      'Jerry',
+      'Abuela',
+      'Neon Pixie from the Underground Scene',
+    ]) {
       expect(isPollutingPersonLabel(label), label).toBe(false);
     }
   });
@@ -43,8 +58,13 @@ describe('entityLabelPollution', () => {
     expect(isPollutingPlaceLabel('this weekend')).toBe(true);
     expect(isPollutingPlaceLabel('current event')).toBe(true);
     expect(isPollutingPlaceLabel('Memorial Day')).toBe(true);
+    expect(isPollutingPlaceLabel('MMA')).toBe(true);
     expect(isPollutingPlaceLabel("Abuela's house")).toBe(false);
     expect(isPollutingPlaceLabel('Northwind Club')).toBe(false);
+  });
+
+  it('removes a discourse prefix without dropping the person', () => {
+    expect(unionThreadMetaLabels([], ['Yeah Johnny'], { kind: 'people' })).toEqual(['Johnny']);
   });
 
   it('dedupes Abuela house variants and prefers apostrophe spelling', () => {
@@ -60,9 +80,15 @@ describe('entityLabelPollution', () => {
     expect(merged).toContain('Northwind Club');
   });
 
+  it('repairs sentence-boundary bleed while merging thread people', () => {
+    expect(unionThreadMetaLabels(['Yuli. She', 'Goth Clubs'], ['Elvis'], { kind: 'people' }))
+      .toEqual(['Yuli', 'Elvis']);
+  });
+
   it('filters episode participant names', () => {
-    expect(filterEpisodeParticipantNames(['Tía Grace', 'Cousin in', 'James'])).toEqual([
+    expect(filterEpisodeParticipantNames(['Tía Grace', 'Cousin in', 'Yuli. She', 'James'])).toEqual([
       'Tía Grace',
+      'Yuli',
       'James',
     ]);
   });

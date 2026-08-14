@@ -219,4 +219,30 @@ describe('chronologyAuthority', () => {
     expect(result.canonical).toHaveLength(0);
     expect(result.excluded[0]?.speechAct).toBe('RECAP_REQUEST');
   });
+
+  it('keeps a user-stated year range canonical and preserves both endpoints', () => {
+    const result = projectCanonicalTimeline([{
+      id: 'relationship-range',
+      kind: 'event',
+      sourceId: 'relationship-range',
+      sortTime: '2015-01-01T00:00:00.000Z',
+      title: 'Relationship with Kiley',
+      body: 'I was dating Kiley from 2015 through 2019.',
+      sourceKind: 'resolved_event',
+      sourceIds: ['relationship-range'],
+      sourceType: 'chat',
+      occurredAt: '2015-01-01T00:00:00.000Z',
+      occurredEnd: '2019-12-31T23:59:59.999Z',
+      timePrecision: 'year',
+      timeConfidence: 0.9,
+      temporalSource: 'user_stated',
+    }]);
+    expect(result.canonical).toHaveLength(1);
+    expect(result.canonical[0].occurrenceStatus).toBe('range');
+    expect(result.canonical[0].temporal.occurred).toMatchObject({
+      start: '2015-01-01T00:00:00.000Z',
+      end: '2019-12-31T23:59:59.999Z',
+      precision: 'year',
+    });
+  });
 });

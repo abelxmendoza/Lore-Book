@@ -26,6 +26,44 @@ export function normalizeTemporalExpression(
     };
   }
 
+  if (expr.kind === 'calendar_range') {
+    const years = [...expr.phrase.matchAll(/(?:19|20)\d{2}/g)].map((match) => Number(match[0]));
+    const startYear = years[0];
+    const endYear = years[1] ?? years[0];
+    if (startYear && endYear) {
+      return {
+        precision: expr.precision,
+        startDate: `${startYear}-01-01T00:00:00.000Z`,
+        endDate: `${endYear}-12-31T23:59:59.999Z`,
+        startHint: String(startYear),
+        endHint: String(endYear),
+        relativeLabel: expr.phrase,
+      };
+    }
+  }
+
+  if (expr.kind === 'age_range') {
+    const ages = [...expr.phrase.matchAll(/\d{1,2}/g)].map((match) => match[0]);
+    return {
+      precision: 'relative',
+      startHint: ages[0] ? `age ${ages[0]}` : undefined,
+      endHint: ages[1] ? `age ${ages[1]}` : undefined,
+      relativeLabel: expr.phrase,
+    };
+  }
+
+  if (expr.kind === 'fuzzy') {
+    const year = expr.phrase.match(/(?:19|20)\d{2}/)?.[0];
+    return {
+      precision: 'approximate',
+      startDate: year ? `${year}-01-01T00:00:00.000Z` : undefined,
+      endDate: year ? `${year}-12-31T23:59:59.999Z` : undefined,
+      startHint: year,
+      endHint: year,
+      relativeLabel: expr.phrase,
+    };
+  }
+
   if (expr.kind === 'recurring') {
     const dayMatch = phrase.match(/every\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i);
     return {
