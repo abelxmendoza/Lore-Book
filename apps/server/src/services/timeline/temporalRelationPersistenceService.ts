@@ -1,13 +1,36 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import type { TimelineTemporalRelation } from './timelineStitchingTypes';
+import { mergeRelationProvenance } from './relationProvenance';
 
 export async function persistTemporalRelations(
   userId: string,
   relations: TimelineTemporalRelation[],
-): Promise<number> {
-  if (relations.length === 0) return 0;
+): Promise<{ written: number; reused: number; sourceThreadsSeen: number }> {
+  if (relations.length === 0) return { written: 0, reused: 0, sourceThreadsSeen: 0 };
+  const ids = relations.map((relation) => relation.id);
+  const { data: existing } = await supabaseAdmin
+    .from('canonical_temporal_relations')
+    .select('id, source_message_id, source_message_ids, source_thread_ids, source_assertion_ids, evidence_phrase')
+    .eq('user_id', userId)
+    .in('id', ids);
+  const existingById = new Map((existing ?? []).map((row) => [row.id as string, row]));
   const rows = relations.map((relation) => ({
+    ...(() => {
+      const prior = existingById.get(relation.id);
+      const merged = mergeRelationProvenance(prior, {
+        sourceMessageIds: relation.sourceMessageIds,
+        sourceThreadIds: relation.sourceThreadIds,
+        sourceAssertionIds: relation.sourceAssertionIds,
+        evidencePhrase: relation.evidencePhrase,
+      });
+      return {
+        source_message_ids: merged.sourceMessageIds,
+        source_thread_ids: merged.sourceThreadIds,
+        source_assertion_ids: merged.sourceAssertionIds,
+        evidence_phrase: merged.evidencePhrase,
+      };
+    })(),
     id: relation.id,
     user_id: userId,
     source_ref_type: relation.source.attachedToType,
@@ -18,9 +41,9 @@ export async function persistTemporalRelations(
     target_label: relation.target.attachedToLabel,
     relation_type: relation.relation,
     confidence: relation.confidence,
-    evidence_phrase: relation.evidencePhrase,
     source_message_id: relation.sourceMessageId,
-    source_assertion_ids: relation.sourceAssertionIds,
+    conversation_time: relation.conversationTime ?? null,
+    knowledge_time: relation.knowledgeTime,
     inferred_not_confirmed: relation.inferredNotConfirmed,
     updated_at: new Date().toISOString(),
   }));
@@ -31,7 +54,11 @@ export async function persistTemporalRelations(
   if (error) {
     // The app must keep working before the additive migration reaches every environment.
     logger.warn({ error, userId, count: rows.length }, 'Temporal relation persistence unavailable');
-    return 0;
+    return { written: 0, reused: 0, sourceThreadsSeen: 0 };
   }
-  return rows.length;
+  return {
+    written: rows.length,
+    reused: relations.filter((relation) => existingById.has(relation.id)).length,
+    sourceThreadsSeen: new Set(rows.flatMap((row) => row.source_thread_ids)).size,
+  };
 }

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildMessageLexicalSignals } from '../../src/services/ontology/messageLexicalMetadataService';
+import {
+  buildMessageLexicalSignals,
+  withCurrentLexicalSignals,
+} from '../../src/services/ontology/messageLexicalMetadataService';
 
 describe('messageLexicalMetadataService', () => {
   it('returns null for empty text', () => {
@@ -24,5 +27,19 @@ describe('messageLexicalMetadataService', () => {
     expect(signals!.romantic_signals.some((r) => r.status === 'ghosted')).toBe(true);
     expect(signals!.narrative_stages.length).toBeGreaterThanOrEqual(2);
     expect(signals!.is_story_block).toBe(true);
+  });
+
+  it('clears stale romantic signals instead of leaking them across thread text', () => {
+    const prior = { detector: 'lexical', romantic_signals: [{ cue: 'my ex' }] };
+
+    const current = withCurrentLexicalSignals(
+      { lexical_signals: prior, source_thread_id: 'thread-a' },
+      'What was my experience with karate?',
+    );
+
+    expect(current.metadata.source_thread_id).toBe('thread-a');
+    expect(current.metadata.lexical_signals).toBe(current.signals);
+    expect(current.signals?.romantic_signals ?? []).toEqual([]);
+    expect(JSON.stringify(current.metadata)).not.toContain('my ex');
   });
 });

@@ -1,6 +1,7 @@
 import { normalizeNameKey } from '../../utils/nameNormalization';
 import type { TemporalWindow } from '../../utils/temporalAnchorResolver';
 import { stitchedTimelineService } from '../chronologyV2/stitchedTimelineService';
+import { isCanonicalLifeEpisode } from '../conversationCentered/episodeProjectionPolicy';
 import {
   buildContextAssemblyPlan,
   evaluateContextCandidate,
@@ -1183,7 +1184,7 @@ async function loadPersistedEpisodeCandidates(
   if (!rows?.length) return [];
 
   const targetKey = normalizeNameKey(target ?? '');
-  let filtered = rows as PersistedEpisodeRow[];
+  let filtered = (rows as PersistedEpisodeRow[]).filter(isCanonicalLifeEpisode);
 
   if (entityIds.personId) {
     const byParticipant = filtered.filter(

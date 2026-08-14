@@ -50,6 +50,14 @@ export type TemporalRelationType =
   | 'ENDS_NEAR'
   | 'SAME_PERIOD_AS';
 
+export type NarrativeRelationType =
+  | 'CONSIDERED_BEGINNING_OF'
+  | 'TURNING_POINT_IN'
+  | 'END_OF_CHAPTER'
+  | 'DEFINING_PERIOD_OF'
+  | 'RETURN_TO'
+  | 'RESTART_OF';
+
 /** Evidence-backed ordering between two subjects; neither side needs an exact date. */
 export type TimelineTemporalRelation = {
   id: string;
@@ -60,7 +68,29 @@ export type TimelineTemporalRelation = {
   confidence: number;
   evidencePhrase: string;
   sourceMessageId: string;
+  sourceMessageIds: string[];
+  sourceThreadIds: string[];
   sourceAssertionIds: string[];
+  conversationTime?: string;
+  knowledgeTime: string;
+  inferredNotConfirmed: boolean;
+};
+
+/** Subjective autobiographical meaning. This never rewrites objective event order. */
+export type TimelineNarrativeRelation = {
+  id: string;
+  userId: string;
+  source: StitchAttachmentTarget;
+  target: StitchAttachmentTarget;
+  relation: NarrativeRelationType;
+  confidence: number;
+  evidencePhrase: string;
+  sourceMessageId: string;
+  sourceMessageIds: string[];
+  sourceThreadIds: string[];
+  sourceAssertionIds: string[];
+  conversationTime?: string;
+  knowledgeTime: string;
   inferredNotConfirmed: boolean;
 };
 
@@ -83,6 +113,10 @@ export type TimelineAnchor = {
   confidence: number;
   evidencePhrase: string;
   sourceMessageId: string;
+  sourceMessageIds: string[];
+  sourceThreadIds: string[];
+  conversationTime?: string;
+  knowledgeTime: string;
   inferredNotConfirmed: boolean;
   requiresReview: boolean;
 };
@@ -116,6 +150,8 @@ export type TimelineStitchingInput = {
   sourceMessageId: string;
   userId: string;
   messageTimestamp?: string;
+  sourceThreadId?: string;
+  knowledgeTimestamp?: string;
   /** Nearby entity/event/skill labels to attach time to. */
   attachmentCandidates?: StitchAttachmentTarget[];
 };
@@ -135,6 +171,7 @@ export type TimelineStitchingResult = {
   contradictions: TimelineContradictionReview[];
   stitchLinks: Array<{ fromLabel: string; toLabel: string; linkType: string }>;
   temporalRelations: TimelineTemporalRelation[];
+  narrativeRelations: TimelineNarrativeRelation[];
 };
 
 /** Phrases that must NEVER become book/card suggestions. */

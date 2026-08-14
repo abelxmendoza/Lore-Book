@@ -72,7 +72,7 @@ export async function persistTimelineAnchors(userId: string, anchors: TimelineAn
   let written = 0;
   for (const anchor of anchors) {
     const key = consolidationKey(anchor);
-    const evidence = [
+    const incomingEvidence = [
       {
         id: anchor.sourceMessageId,
         label: anchor.evidencePhrase,
@@ -82,6 +82,24 @@ export async function persistTimelineAnchors(userId: string, anchors: TimelineAn
       },
     ];
 
+    const { data: existing } = await supabaseAdmin
+      .from('narrative_anchors')
+      .select('id, evidence, metadata, provenance')
+      .eq('user_id', userId)
+      .eq('consolidation_key', key)
+      .maybeSingle();
+    const priorMetadata = (existing?.metadata ?? {}) as Record<string, unknown>;
+    const priorAnchor = priorMetadata.timeline_anchor as TimelineAnchor | undefined;
+    const mergedAnchor: TimelineAnchor = {
+      ...anchor,
+      sourceMessageIds: [...new Set([...(priorAnchor?.sourceMessageIds ?? (priorAnchor?.sourceMessageId ? [priorAnchor.sourceMessageId] : [])), ...anchor.sourceMessageIds])],
+      sourceThreadIds: [...new Set([...(priorAnchor?.sourceThreadIds ?? []), ...anchor.sourceThreadIds])],
+      knowledgeTime: anchor.knowledgeTime,
+    };
+    const priorEvidence = Array.isArray(existing?.evidence) ? existing.evidence : [];
+    const evidence = [...priorEvidence, ...incomingEvidence].filter((item, index, list) =>
+      list.findIndex((candidate) => candidate?.id === item?.id) === index,
+    );
     const row = {
       user_id: userId,
       title: `${anchor.attachedToLabel} — ${anchor.phrase}`,
@@ -98,7 +116,7 @@ export async function persistTimelineAnchors(userId: string, anchors: TimelineAn
       },
       metadata: {
         timeline_stitching: true,
-        timeline_anchor: anchor,
+        timeline_anchor: mergedAnchor,
         normalized_time: anchor.normalizedTime,
         recurrence: anchor.recurrence,
         requires_review: anchor.requiresReview,
@@ -106,13 +124,6 @@ export async function persistTimelineAnchors(userId: string, anchors: TimelineAn
       consolidation_key: key,
       updated_at: new Date().toISOString(),
     };
-
-    const { data: existing } = await supabaseAdmin
-      .from('narrative_anchors')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('consolidation_key', key)
-      .maybeSingle();
 
     if (existing?.id) {
       const { error } = await supabaseAdmin.from('narrative_anchors').update(row).eq('id', existing.id);
@@ -153,8 +164,8 @@ export async function queueTimelineContradictionReviews(
   for (const review of contradictions) {
     const labelKey = normalizeNameKey(review.attachedToLabel);
     const entity =
-      entities.find((e) => normalizeNameKey(e.name) === labelKey) ??
-      entities.find((e) => normalizeNameKey(e.name).includes(labelKey));
+      entities.find((e) => normalizeNameKey(e.primary_name) === labelKey) ??
+      entities.find((e) => normalizeNameKey(e.primary_name).includes(labelKey));
     const entityId = entity?.id ?? fallbackEntityId;
     if (!entityId) continue;
 

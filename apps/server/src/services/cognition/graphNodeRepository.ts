@@ -130,6 +130,43 @@ export async function upsertGraphNodeBySource(
   return data as GraphNodeRow;
 }
 
+export async function upsertGraphNodeByMachineKey(
+  userId: string,
+  input: UpsertGraphNodeInput & { machineKey: string },
+): Promise<GraphNodeRow | null> {
+  const { data: existing } = await supabaseAdmin
+    .from('graph_nodes')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('node_kind', input.nodeKind)
+    .eq('machine_key', input.machineKey)
+    .is('valid_to', null)
+    .maybeSingle();
+
+  if (existing?.id) {
+    const { data, error } = await supabaseAdmin
+      .from('graph_nodes')
+      .update(toRow(userId, input))
+      .eq('id', existing.id)
+      .eq('user_id', userId)
+      .select('*')
+      .single();
+    if (error) return null;
+    return data as GraphNodeRow;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('graph_nodes')
+    .insert(toRow(userId, input))
+    .select('*')
+    .single();
+  if (error) {
+    logger.warn({ error, userId, machineKey: input.machineKey }, 'graphNodeRepository: machine-key upsert failed');
+    return null;
+  }
+  return data as GraphNodeRow;
+}
+
 export async function listGraphNodes(
   userId: string,
   opts?: { nodeKind?: GraphNodeKind; limit?: number },

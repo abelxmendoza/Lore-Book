@@ -18,6 +18,7 @@ import type { CanonicalTemporalModel } from '../temporal/canonicalTemporalModel'
 import {
   buildHistoricalNeighborhoods,
   type HistoricalNeighborhood,
+  type ProjectedNarrativeRelation,
   type ProjectedTemporalRelation,
 } from './temporalParallelProjection';
 
@@ -108,6 +109,8 @@ export type StitchedTimelineResult = {
   /** Projection-only parallel lanes; canonical records remain the source of truth. */
   historical_neighborhoods?: HistoricalNeighborhood[];
   temporal_relations?: ProjectedTemporalRelation[];
+  /** Autobiographical meaning, kept separate from objective chronology. */
+  narrative_relations?: ProjectedNarrativeRelation[];
 };
 
 async function loadTemporalRelations(userId: string): Promise<ProjectedTemporalRelation[]> {
@@ -133,6 +136,49 @@ async function loadTemporalRelations(userId: string): Promise<ProjectedTemporalR
     sourceMessageId: (row.source_message_id as string) ?? '',
     sourceAssertionIds: (row.source_assertion_ids as string[]) ?? [],
   }));
+}
+
+async function loadNarrativeRelations(userId: string): Promise<ProjectedNarrativeRelation[]> {
+  const { data, error } = await supabaseAdmin
+    .from('graph_edges')
+    .select('id, from_node_id, to_node_id, relation_kind, confidence, meta, valid_to')
+    .eq('user_id', userId)
+    .in('relation_kind', [
+      'CONSIDERED_BEGINNING_OF', 'TURNING_POINT_IN', 'END_OF_CHAPTER',
+      'DEFINING_PERIOD_OF', 'RETURN_TO', 'RESTART_OF',
+    ])
+    .order('created_at', { ascending: true })
+    .limit(500);
+  if (error) {
+    logger.debug({ error, userId }, 'Narrative relation projection unavailable');
+    return [];
+  }
+  const activeRows = (data ?? []).filter((row) => !row.valid_to);
+  const nodeIds = [...new Set(activeRows.flatMap((row) => [row.from_node_id, row.to_node_id]))];
+  const { data: nodes } = nodeIds.length
+    ? await supabaseAdmin.from('graph_nodes').select('id, display_name').eq('user_id', userId).in('id', nodeIds)
+    : { data: [] };
+  const labelById = new Map((nodes ?? []).map((node) => [node.id as string, node.display_name as string]));
+
+  return activeRows.map((row) => {
+    const meta = (row.meta ?? {}) as Record<string, unknown>;
+    return {
+      id: row.id as string,
+      sourceId: (row.from_node_id as string | null) ?? null,
+      sourceLabel: labelById.get(row.from_node_id as string) ?? 'Unknown subject',
+      targetId: (row.to_node_id as string | null) ?? null,
+      targetLabel: labelById.get(row.to_node_id as string) ?? 'Unknown chapter',
+      relation: row.relation_kind as ProjectedNarrativeRelation['relation'],
+      confidence: Number(row.confidence ?? 0.5),
+      evidencePhrase: (meta.evidence_phrase as string) ?? '',
+      sourceMessageId: (meta.source_message_id as string) ?? '',
+      sourceMessageIds: (meta.source_message_ids as string[]) ?? [],
+      sourceThreadIds: (meta.source_thread_ids as string[]) ?? [],
+      sourceAssertionIds: (meta.source_assertion_ids as string[]) ?? [],
+      conversationTime: (meta.conversation_time as string | null) ?? null,
+      knowledgeTime: (meta.knowledge_time as string) ?? '',
+    };
+  });
 }
 
 function momentTitle(content: string): string {
@@ -452,7 +498,7 @@ export class StitchedTimelineService {
       }
     }
 
-    const [moments, timelineEventsRes, resolvedEventsRes, orderMap, temporalRelations] = await Promise.all([
+    const [moments, timelineEventsRes, resolvedEventsRes, orderMap, temporalRelations, narrativeRelations] = await Promise.all([
       chronologyService.getChronologicalOrder(userId, startTime, endTime),
       (async () => {
         let query = supabaseAdmin
@@ -477,6 +523,7 @@ export class StitchedTimelineService {
       })(),
       loadUserOrder(userId, scopeType, scopeId),
       loadTemporalRelations(userId),
+      loadNarrativeRelations(userId),
     ]);
 
     const { data: eventRows, error: eventsError } = timelineEventsRes;
@@ -890,6 +937,7 @@ export class StitchedTimelineService {
         excluded_count: projected.excluded.length,
         historical_neighborhoods: historicalNeighborhoods,
         temporal_relations: temporalRelations,
+        narrative_relations: narrativeRelations,
         ...(chapterBackground.length ? { background: sortItems(chapterBackground) } : {}),
         ...(chapter ? { chapter } : {}),
         ...(mergeLog?.length ? { merge_log: mergeLog } : {}),
@@ -906,6 +954,8 @@ export class StitchedTimelineService {
       scope_label: scopeLabel,
       items: capped,
       has_user_order: hasUserOrder,
+      temporal_relations: temporalRelations,
+      narrative_relations: narrativeRelations,
       ...(chapterBackground.length ? { background: sortItems(chapterBackground) } : {}),
       ...(chapter ? { chapter } : {}),
       ...(mergeLog?.length ? { merge_log: mergeLog } : {}),

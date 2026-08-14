@@ -6,6 +6,7 @@ import { extractTemporalExpressions, isStandaloneTimePhrase } from './temporalEx
 import { normalizeTemporalExpression, preservesFuzzyPrecision } from './temporalNormalizer';
 import { findAttachmentTargets, pickNearestAttachment } from './timelineAttachmentService';
 import { extractTemporalRelations } from './temporalRelationExtractor';
+import { extractNarrativeRelations } from './narrativeRelationExtractor';
 import {
   applyContradictionPolicy,
   detectTimelineContradictions,
@@ -23,7 +24,7 @@ export function stitchTimelineFromMessage(
     Pick<TimelineAnchor, 'id' | 'phrase' | 'attachedToLabel' | 'attachedToType' | 'normalizedTime'>
   > = [],
 ): TimelineStitchingResult {
-  const { text, sourceMessageId, userId, messageTimestamp, attachmentCandidates = [] } = input;
+  const { text, sourceMessageId, userId, messageTimestamp, sourceThreadId, knowledgeTimestamp, attachmentCandidates = [] } = input;
 
   const anchors: TimelineAnchor[] = [];
   const rejectedStandaloneTime: Array<{ phrase: string; reason: string }> = [];
@@ -37,6 +38,18 @@ export function stitchTimelineFromMessage(
     text,
     userId,
     sourceMessageId,
+    sourceThreadId,
+    conversationTime: messageTimestamp,
+    knowledgeTime: knowledgeTimestamp,
+    candidates: allCandidates,
+  });
+  const narrativeRelations = extractNarrativeRelations({
+    text,
+    userId,
+    sourceMessageId,
+    sourceThreadId,
+    conversationTime: messageTimestamp,
+    knowledgeTime: knowledgeTimestamp,
     candidates: allCandidates,
   });
 
@@ -63,7 +76,7 @@ export function stitchTimelineFromMessage(
       normalizedTime.endDate = undefined;
     }
 
-    let recurrence = undefined;
+    let recurrence: TimelineAnchor['recurrence'];
     if (expr.kind === 'recurring') {
       const activity = inferActivityFromText(text) ?? target.attachedToLabel;
       const stitched = stitchRecurringPattern(text, activity);
@@ -82,6 +95,10 @@ export function stitchTimelineFromMessage(
       confidence: target.confidence,
       evidencePhrase: text.slice(0, 280),
       sourceMessageId,
+      sourceMessageIds: [sourceMessageId],
+      sourceThreadIds: sourceThreadId ? [sourceThreadId] : [],
+      conversationTime: messageTimestamp,
+      knowledgeTime: knowledgeTimestamp ?? messageTimestamp ?? new Date().toISOString(),
       inferredNotConfirmed: true,
       requiresReview: false,
     };
@@ -113,6 +130,10 @@ export function stitchTimelineFromMessage(
         confidence: link.confidence,
         evidencePhrase: text.slice(0, 280),
         sourceMessageId,
+        sourceMessageIds: [sourceMessageId],
+        sourceThreadIds: sourceThreadId ? [sourceThreadId] : [],
+        conversationTime: messageTimestamp,
+        knowledgeTime: knowledgeTimestamp ?? messageTimestamp ?? new Date().toISOString(),
         inferredNotConfirmed: true,
         requiresReview: false,
       };
@@ -138,6 +159,10 @@ export function stitchTimelineFromMessage(
         confidence: 0.86,
         evidencePhrase: text.slice(0, 280),
         sourceMessageId,
+        sourceMessageIds: [sourceMessageId],
+        sourceThreadIds: sourceThreadId ? [sourceThreadId] : [],
+        conversationTime: messageTimestamp,
+        knowledgeTime: knowledgeTimestamp ?? messageTimestamp ?? new Date().toISOString(),
         inferredNotConfirmed: true,
         requiresReview: false,
       };
@@ -151,6 +176,7 @@ export function stitchTimelineFromMessage(
     contradictions,
     stitchLinks,
     temporalRelations,
+    narrativeRelations,
   };
 }
 

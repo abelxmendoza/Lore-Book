@@ -9,6 +9,7 @@ import {
 } from './timelineStitchingPersistenceService';
 import { stitchTimelineFromMessage } from './timelineStitchingService';
 import { persistTemporalRelations } from './temporalRelationPersistenceService';
+import { persistNarrativeRelations } from './narrativeRelationPersistenceService';
 import type { StitchAttachmentTarget, TimelineStitchingResult } from './timelineStitchingTypes';
 
 export type TimelineStitchingRunSummary = {
@@ -17,6 +18,9 @@ export type TimelineStitchingRunSummary = {
   contradictionsQueued: number;
   stitchLinks: number;
   temporalRelations: number;
+  narrativeRelations: number;
+  canonicalReused: number;
+  sourceThreadsSeen: number;
 };
 
 function buildInferenceAttachmentCandidates(
@@ -63,9 +67,11 @@ export async function runTimelineStitchingForMessage(
   text: string,
   sourceMessageId: string,
   messageTimestamp?: string,
+  sourceThreadId?: string,
+  knowledgeTimestamp?: string,
 ): Promise<TimelineStitchingRunSummary> {
   if (!text.trim() || text.trim().length < 8) {
-    return { anchorsCreated: 0, rejectedStandalone: 0, contradictionsQueued: 0, stitchLinks: 0, temporalRelations: 0 };
+    return { anchorsCreated: 0, rejectedStandalone: 0, contradictionsQueued: 0, stitchLinks: 0, temporalRelations: 0, narrativeRelations: 0, canonicalReused: 0, sourceThreadsSeen: 0 };
   }
 
   try {
@@ -78,6 +84,8 @@ export async function runTimelineStitchingForMessage(
         sourceMessageId,
         userId,
         messageTimestamp,
+        sourceThreadId,
+        knowledgeTimestamp,
         attachmentCandidates,
       },
       existing.map((a) => ({
@@ -90,7 +98,12 @@ export async function runTimelineStitchingForMessage(
     );
 
     const anchorsCreated = await persistTimelineAnchors(userId, result.anchors);
-    const temporalRelations = await persistTemporalRelations(userId, result.temporalRelations);
+    const temporalPersistence = await persistTemporalRelations(userId, result.temporalRelations);
+    const narrativePersistence = await persistNarrativeRelations(userId, result.narrativeRelations);
+    const temporalRelations = temporalPersistence.written;
+    const narrativeRelations = narrativePersistence.written;
+    const canonicalReused = temporalPersistence.reused + narrativePersistence.reused;
+    const sourceThreadsSeen = Math.max(temporalPersistence.sourceThreadsSeen, narrativePersistence.sourceThreadsSeen);
     const contradictionsQueued = await queueTimelineContradictionReviews(
       userId,
       result.contradictions,
@@ -107,6 +120,9 @@ export async function runTimelineStitchingForMessage(
           contradictionsQueued,
           stitchLinks: result.stitchLinks.length,
           temporalRelations,
+          narrativeRelations,
+          canonicalReused,
+          sourceThreadsSeen,
         },
         'Timeline stitching applied',
       );
@@ -118,10 +134,13 @@ export async function runTimelineStitchingForMessage(
       contradictionsQueued,
       stitchLinks: result.stitchLinks.length,
       temporalRelations,
+      narrativeRelations,
+      canonicalReused,
+      sourceThreadsSeen,
     };
   } catch (err) {
     logger.warn({ err, userId, sourceMessageId }, 'Timeline stitching failed (non-blocking)');
-    return { anchorsCreated: 0, rejectedStandalone: 0, contradictionsQueued: 0, stitchLinks: 0, temporalRelations: 0 };
+    return { anchorsCreated: 0, rejectedStandalone: 0, contradictionsQueued: 0, stitchLinks: 0, temporalRelations: 0, narrativeRelations: 0, canonicalReused: 0, sourceThreadsSeen: 0 };
   }
 }
 
@@ -134,6 +153,9 @@ export async function rescanTimelineStitching(
   let contradictionsQueued = 0;
   let stitchLinks = 0;
   let temporalRelations = 0;
+  let narrativeRelations = 0;
+  let canonicalReused = 0;
+  let sourceThreadsSeen = 0;
 
   for (const episode of episodes) {
     const summary = await runTimelineStitchingForMessage(
@@ -147,7 +169,10 @@ export async function rescanTimelineStitching(
     contradictionsQueued += summary.contradictionsQueued;
     stitchLinks += summary.stitchLinks;
     temporalRelations += summary.temporalRelations;
+    narrativeRelations += summary.narrativeRelations;
+    canonicalReused += summary.canonicalReused;
+    sourceThreadsSeen += summary.sourceThreadsSeen;
   }
 
-  return { anchorsCreated, rejectedStandalone, contradictionsQueued, stitchLinks, temporalRelations };
+  return { anchorsCreated, rejectedStandalone, contradictionsQueued, stitchLinks, temporalRelations, narrativeRelations, canonicalReused, sourceThreadsSeen };
 }

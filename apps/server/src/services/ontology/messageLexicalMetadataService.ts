@@ -1,8 +1,7 @@
 /**
  * Compact lexical signals for chat_messages.metadata.lexical_signals.
  */
-import { detectDiscourseMoves } from '../ontology/discourseStance';
-import { detectNarrativeStages } from '../ontology/discourseStance';
+import { detectDiscourseMoves, detectNarrativeStages } from '../ontology/discourseStance';
 import { parseSocialRoles } from '../ontology/socialRelationshipIntelligence';
 import { parseRomanticEpisode } from '../ontology/romanticIntelligence';
 
@@ -113,6 +112,17 @@ export function buildMessageLexicalSignals(text: string): MessageLexicalSignals 
   };
 }
 
+export function withCurrentLexicalSignals(
+  existing: Record<string, unknown> | null | undefined,
+  text: string,
+): { metadata: Record<string, unknown>; signals: MessageLexicalSignals | null } {
+  const signals = buildMessageLexicalSignals(text);
+  return {
+    metadata: { ...(existing ?? {}), lexical_signals: signals },
+    signals,
+  };
+}
+
 /** Merge lexical_signals into existing chat_messages metadata (non-destructive). */
 export async function attachLexicalSignalsToMessage(
   messageId: string,
@@ -120,8 +130,6 @@ export async function attachLexicalSignalsToMessage(
   text: string,
 ): Promise<MessageLexicalSignals | null> {
   const signals = buildMessageLexicalSignals(text);
-  if (!signals) return null;
-
   const { supabaseAdmin } = await import('../supabaseClient');
   const { data: existing } = await supabaseAdmin
     .from('chat_messages')
@@ -130,10 +138,10 @@ export async function attachLexicalSignalsToMessage(
     .eq('user_id', userId)
     .maybeSingle();
 
-  const metadata = {
-    ...(existing?.metadata as Record<string, unknown> ?? {}),
-    lexical_signals: signals,
-  };
+  const { metadata } = withCurrentLexicalSignals(
+    existing?.metadata as Record<string, unknown> | null,
+    text,
+  );
 
   await supabaseAdmin
     .from('chat_messages')

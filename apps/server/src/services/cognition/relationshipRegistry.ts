@@ -28,7 +28,13 @@ export type RelationKind =
   | 'MENTORS'
   | 'PARTICIPATED_IN'
   | 'CAUSED'
-  | 'LED_TO';
+  | 'LED_TO'
+  | 'CONSIDERED_BEGINNING_OF'
+  | 'TURNING_POINT_IN'
+  | 'END_OF_CHAPTER'
+  | 'DEFINING_PERIOD_OF'
+  | 'RETURN_TO'
+  | 'RESTART_OF';
 
 export type RelationSpec = {
   kind: RelationKind;
@@ -39,6 +45,22 @@ export type RelationSpec = {
   inverse?: RelationKind;
   minEvidenceForLikely: number;
 };
+
+const NARRATIVE_NODE_KINDS: GraphNodeKind[] = [
+  'person', 'place', 'organization', 'event', 'relationship', 'skill',
+  'artifact', 'goal', 'decision', 'concept', 'group',
+];
+
+function narrativeRelationSpec(kind: RelationKind): RelationSpec {
+  return {
+    kind,
+    subjectKinds: NARRATIVE_NODE_KINDS,
+    objectKinds: NARRATIVE_NODE_KINDS,
+    symmetric: false,
+    temporal: false,
+    minEvidenceForLikely: 1,
+  };
+}
 
 export const RELATION_REGISTRY: Record<RelationKind, RelationSpec> = {
   WORKS_AT: {
@@ -165,6 +187,12 @@ export const RELATION_REGISTRY: Record<RelationKind, RelationSpec> = {
     temporal: false,
     minEvidenceForLikely: 1,
   },
+  CONSIDERED_BEGINNING_OF: narrativeRelationSpec('CONSIDERED_BEGINNING_OF'),
+  TURNING_POINT_IN: narrativeRelationSpec('TURNING_POINT_IN'),
+  END_OF_CHAPTER: narrativeRelationSpec('END_OF_CHAPTER'),
+  DEFINING_PERIOD_OF: narrativeRelationSpec('DEFINING_PERIOD_OF'),
+  RETURN_TO: narrativeRelationSpec('RETURN_TO'),
+  RESTART_OF: narrativeRelationSpec('RESTART_OF'),
 };
 
 /** Map legacy ER / detector relations to registry kinds. */

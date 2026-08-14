@@ -97,9 +97,12 @@ function inferUserPresence(unitGroup: ExtractedUnit[]): UserPresence {
   return 'unknown';
 }
 
-function canonicalEventKey(title: string, reason: string, when: AssembledWhen | null, threadId?: string): string {
+function canonicalEventKey(title: string, reason: string, when: AssembledWhen | null): string | null {
   const normalizedTitle = title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  const temporalBucket = when?.start ? when.start.slice(0, 10) : `thread:${threadId ?? 'unknown'}`;
+  // Conversation/thread identity is not event identity. Unanchored material is
+  // replay-deduped by source fingerprint and waits for stronger evidence.
+  if (!when?.start) return null;
+  const temporalBucket = when.start.slice(0, 10);
   return `${reason}:${normalizedTitle}:${temporalBucket}`;
 }
 
@@ -613,19 +616,20 @@ export class EventAssemblyService {
       title,
       eligibility.reason,
       when,
-      threadId ?? unitGroup[0]?.created_at?.slice(0, 10),
     );
 
     // Canonical identity is independent of extractor replay identity: multiple
     // source messages can support one event while retaining every unit link.
-    const { data: canonicalMatch } = await supabaseAdmin
-      .from('resolved_events')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('metadata->>canonical_event_key', eventKey)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
+    const { data: canonicalMatch } = eventKey
+      ? await supabaseAdmin
+          .from('resolved_events')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('metadata->>canonical_event_key', eventKey)
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
     if (canonicalMatch?.id) {
       const priorMetadata = (canonicalMatch.metadata ?? {}) as Record<string, unknown>;
       const priorUnits = (priorMetadata.assembled_from_units as string[] | undefined) ?? [];

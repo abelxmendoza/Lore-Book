@@ -1,5 +1,5 @@
 import type { StitchedTimelineItem } from './stitchedTimelineService';
-import type { TemporalRelationType } from '../timeline/timelineStitchingTypes';
+import type { NarrativeRelationType, TemporalRelationType } from '../timeline/timelineStitchingTypes';
 
 export type ProjectedTemporalRelation = {
   id: string;
@@ -12,6 +12,14 @@ export type ProjectedTemporalRelation = {
   evidencePhrase: string;
   sourceMessageId: string;
   sourceAssertionIds: string[];
+};
+
+export type ProjectedNarrativeRelation = Omit<ProjectedTemporalRelation, 'relation'> & {
+  relation: NarrativeRelationType;
+  sourceMessageIds: string[];
+  sourceThreadIds: string[];
+  conversationTime: string | null;
+  knowledgeTime: string;
 };
 
 export type HistoricalTrack = {

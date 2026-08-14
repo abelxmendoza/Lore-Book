@@ -35,13 +35,13 @@ function candidatePosition(text: string, candidate: StitchAttachmentTarget): num
 }
 
 function relationId(
-  sourceMessageId: string,
+  userId: string,
   source: StitchAttachmentTarget,
   target: StitchAttachmentTarget,
   relation: TemporalRelationType,
 ): string {
   return createHash('sha256')
-    .update(`${sourceMessageId}|${source.attachedToLabel}|${relation}|${target.attachedToLabel}`.toLowerCase())
+    .update(`${userId}|${source.attachedToId ?? source.attachedToLabel}|${relation}|${target.attachedToId ?? target.attachedToLabel}`.toLowerCase())
     .digest('hex')
     .slice(0, 32);
 }
@@ -50,6 +50,9 @@ export function extractTemporalRelations(input: {
   text: string;
   userId: string;
   sourceMessageId: string;
+  sourceThreadId?: string;
+  conversationTime?: string;
+  knowledgeTime?: string;
   candidates: StitchAttachmentTarget[];
 }): TimelineTemporalRelation[] {
   const positioned = input.candidates
@@ -70,7 +73,7 @@ export function extractTemporalRelations(input: {
 
     for (const relation of rule.relations) {
       output.push({
-        id: relationId(input.sourceMessageId, before.candidate, after.candidate, relation),
+        id: relationId(input.userId, before.candidate, after.candidate, relation),
         userId: input.userId,
         source: before.candidate,
         target: after.candidate,
@@ -78,7 +81,11 @@ export function extractTemporalRelations(input: {
         confidence: Math.min(rule.confidence, before.candidate.confidence, after.candidate.confidence),
         evidencePhrase: input.text.slice(0, 500),
         sourceMessageId: input.sourceMessageId,
+        sourceMessageIds: [input.sourceMessageId],
+        sourceThreadIds: input.sourceThreadId ? [input.sourceThreadId] : [],
         sourceAssertionIds: [],
+        conversationTime: input.conversationTime,
+        knowledgeTime: input.knowledgeTime ?? input.conversationTime ?? new Date().toISOString(),
         inferredNotConfirmed: true,
       });
     }

@@ -32,4 +32,9 @@ describe('relationshipRegistry', () => {
     expect(RELATION_REGISTRY.WORKS_AT).toBeDefined();
     expect(RELATION_REGISTRY.CAUSED).toBeDefined();
   });
+
+  it('accepts autobiographical milestone edges without treating them as chronology', () => {
+    expect(assertValidEdge('CONSIDERED_BEGINNING_OF', 'skill', 'concept').valid).toBe(true);
+    expect(RELATION_REGISTRY.CONSIDERED_BEGINNING_OF.temporal).toBe(false);
+  });
 });

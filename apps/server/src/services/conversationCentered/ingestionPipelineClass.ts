@@ -374,7 +374,8 @@ export class ConversationIngestionPipeline {
       const shouldUpdateMeta =
         result.resolvedEntityIds.length > 0 ||
         result.resolvedLocationIds.length > 0 ||
-        lexicalSignals != null;
+        lexicalSignals != null ||
+        Object.prototype.hasOwnProperty.call(existingMeta, 'lexical_signals');
 
       if (shouldUpdateMeta) {
         await supabaseAdmin
@@ -384,7 +385,7 @@ export class ConversationIngestionPipeline {
               ...existingMeta,
               ...(result.resolvedEntityIds.length > 0 ? { entity_ids: result.resolvedEntityIds } : {}),
               ...(result.resolvedLocationIds.length > 0 ? { location_ids: result.resolvedLocationIds } : {}),
-              ...(lexicalSignals ? { lexical_signals: lexicalSignals } : {}),
+              lexical_signals: lexicalSignals,
             },
           })
           .eq('id', chatMessageId)
@@ -3099,6 +3100,8 @@ export class ConversationIngestionPipeline {
               userId,
               rawText,
               ingestOptions?.chatMessageId ?? messageId,
+              ingestOptions?.sourceCreatedAt ?? new Date().toISOString(),
+              threadId,
               new Date().toISOString(),
             ),
           )
