@@ -107,6 +107,7 @@ import {
 } from './chat/chatPersistenceService';
 import { ChatPersonaRL } from './reinforcementLearning/chatPersonaRL';
 import { supabaseAdmin } from './supabaseClient';
+import { bumpThreadActivity } from './conversationCentered/threadActivity';
 import { taskEngineService } from './taskEngineService';
 import { parseMessageTimestamp, resolveChronoInText } from '../utils/temporalResolver';
 import { timelineManager } from './timelineManager';
@@ -1180,11 +1181,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         logger.warn({ error: saveError, userId, sessionId }, 'Failed to persist trivial user message');
         return undefined;
       }
-      await supabaseAdmin
-        .from('conversation_sessions')
-        .update({ updated_at: new Date().toISOString() })
-        .eq('id', sessionId)
-        .eq('user_id', userId);
+      await bumpThreadActivity(userId, sessionId);
       incMetric('messages_persisted');
       timer.flush({ path: 'trivial' });
       return savedMessage.id ? { messageId: savedMessage.id } : undefined;
@@ -1248,11 +1245,7 @@ When updating relationship analytics or emotional signals from this thread, weig
     const messageId = savedMessage.id;
     incMetric('messages_persisted');
 
-    await supabaseAdmin
-      .from('conversation_sessions')
-      .update({ updated_at: new Date().toISOString() })
-      .eq('id', sessionId)
-      .eq('user_id', userId);
+    await bumpThreadActivity(userId, sessionId);
     timer.mark('session_touch');
 
     // Image turns: defer ingestion until vision summary enriches content
@@ -3711,11 +3704,7 @@ When updating relationship analytics or emotional signals from this thread, weig
       } else if (assistantRow?.id) {
         logger.debug({ userId, sessionId }, 'Saved assistant response');
 
-        await supabaseAdmin
-          .from('conversation_sessions')
-          .update({ updated_at: new Date().toISOString() })
-          .eq('id', sessionId)
-          .eq('user_id', userId);
+        await bumpThreadActivity(userId, sessionId);
 
         if (!entityContext) {
           ingestionQueue.enqueue({

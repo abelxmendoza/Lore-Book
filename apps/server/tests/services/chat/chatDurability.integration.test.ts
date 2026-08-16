@@ -37,7 +37,7 @@ vi.mock('../../../src/services/supabaseClient', () => {
     if (table === 'conversation_sessions') {
       return {
         update: () => ({
-          eq: () => ({ eq: async () => ({ error: null }) }),
+          eq: () => ({ eq: () => ({ lt: async () => ({ error: null }) }) }),
         }),
         insert: () => ({
           select: () => ({

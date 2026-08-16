@@ -21,6 +21,7 @@ import {
 import { getWhatChangedSinceLastVisit, formatWhatChangedLines } from '../services/chat/whatChangedService';
 import { confidenceTrackingService } from '../services/confidenceTrackingService';
 import { affectionCalculator } from '../services/conversationCentered/affectionCalculator';
+import { bumpThreadActivity } from '../services/conversationCentered/threadActivity';
 import { breakupDetector } from '../services/conversationCentered/breakupDetector';
 import { characterTimelineBuilder } from '../services/conversationCentered/characterTimelineBuilder';
 import { correctionResolutionService } from '../services/conversationCentered/correctionResolutionService';
@@ -4432,20 +4433,21 @@ router.patch(
     const body = schema.parse(req.body);
 
     const updatePayload: Record<string, unknown> = {};
-    if (body.touchActivity) {
-      updatePayload.updated_at = new Date().toISOString();
-    }
     if (body.title !== undefined) updatePayload.title = body.title;
     // messages in PATCH body are ignored — chat_messages is the canonical store (P2).
-    // touchActivity still bumps sidebar ordering via updated_at.
 
-    const { error } = await supabaseAdmin
-      .from('conversation_sessions')
-      .update(updatePayload)
-      .eq('id', id)
-      .eq('user_id', userId);
-
-    if (error) throw error;
+    if (Object.keys(updatePayload).length > 0) {
+      const { error } = await supabaseAdmin
+        .from('conversation_sessions')
+        .update(updatePayload)
+        .eq('id', id)
+        .eq('user_id', userId);
+      if (error) throw error;
+    }
+    // touchActivity bumps sidebar ordering — monotonic, never regresses updated_at.
+    if (body.touchActivity) {
+      await bumpThreadActivity(userId, id);
+    }
     res.json({ success: true });
   })
 );

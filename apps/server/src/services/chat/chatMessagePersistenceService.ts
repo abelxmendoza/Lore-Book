@@ -13,6 +13,7 @@
  */
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { bumpThreadActivity } from '../conversationCentered/threadActivity';
 
 export type PersistRole = 'user' | 'assistant';
 
@@ -159,11 +160,7 @@ export async function finalizeAssistantMessage(
       input.assistantRowId = data.id;
     }
 
-    await supabaseAdmin
-      .from('conversation_sessions')
-      .update({ updated_at: new Date().toISOString() })
-      .eq('id', input.sessionId)
-      .eq('user_id', input.userId);
+    await bumpThreadActivity(input.userId, input.sessionId);
 
     return { saved: true, id: input.assistantRowId ?? undefined, role: 'assistant' };
   } catch (err) {

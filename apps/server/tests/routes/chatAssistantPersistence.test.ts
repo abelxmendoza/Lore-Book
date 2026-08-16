@@ -76,7 +76,9 @@ vi.mock('../../src/services/supabaseClient', () => ({
       if (table === 'conversation_sessions') {
         chain.update = vi.fn().mockReturnValue({
           eq: () => ({
-            eq: async () => ({ error: null }),
+            eq: () => ({
+              lt: async () => ({ error: null }),
+            }),
           }),
         });
       }
