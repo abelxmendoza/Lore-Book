@@ -87,6 +87,49 @@ export function namesOverlapByContainment(aNorm: string, bNorm: string): boolean
   return nameContained(aNorm, bNorm) || nameContained(bNorm, aNorm);
 }
 
+/** Stopwords dropped before deriving an acronym — "University of Southern
+ *  California" → initials of University/Southern/California, not "of". */
+const ACRONYM_STOPWORDS = new Set(['of', 'the', 'and', 'for', 'at', 'in']);
+
+/**
+ * Derive the acronym a multi-word organization name would produce ("University
+ * of Southern California" → "USC"), so a bare acronym mentioned separately can
+ * be recognized as the same organization. Returns '' for single-word names or
+ * names that don't look like a formal multi-word title (avoids false acronyms
+ * on casual names like "the goth crew").
+ */
+export function deriveAcronym(name: string): string {
+  const words = (name ?? '')
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w.length > 0 && !ACRONYM_STOPWORDS.has(w.toLowerCase()));
+  if (words.length < 2) return '';
+  // Only formal, capitalized multi-word titles ("University of Southern
+  // California") produce an acronym — a casual lowercase phrase ("the goth
+  // crew") isn't a name an acronym would ever stand in for.
+  if (!words.every((w) => /^[A-ZÀ-Ý]/.test(w))) return '';
+  const initials = words
+    .map((w) => w.replace(/[^A-Za-zÀ-ÿ]/g, '').charAt(0))
+    .filter(Boolean)
+    .join('');
+  return initials.length >= 2 ? initials.toUpperCase() : '';
+}
+
+/**
+ * True when one name is a short all-caps/initialism form of the other's
+ * derived acronym ("USC" vs. "University of Southern California"). Directional
+ * check on whichever side is short enough to plausibly be an acronym (<=6
+ * letters, no spaces) so long names are never misread as acronyms of each other.
+ */
+export function namesMatchAsAcronym(a: string, b: string): boolean {
+  const isAcronymShaped = (s: string) => /^[A-Za-zÀ-ÿ]{2,6}$/.test(s.trim());
+  const aTrim = a.trim();
+  const bTrim = b.trim();
+  if (isAcronymShaped(aTrim) && deriveAcronym(bTrim) === aTrim.toUpperCase()) return true;
+  if (isAcronymShaped(bTrim) && deriveAcronym(aTrim) === bTrim.toUpperCase()) return true;
+  return false;
+}
+
 /**
  * True when the longer name uses the shorter name possessively
  * ("kelly's meeting colleague" for "kelly") — grammatically that describes a

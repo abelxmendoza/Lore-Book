@@ -47,6 +47,7 @@ export type GroupType =
   | 'event_group'
   | 'care_team'
   | 'support_network'
+  | 'software'
   | 'other';
 
 // ── Membership model ──────────────────────────────────────────────────
@@ -94,7 +95,26 @@ export type UserRelationship =
   | 'fan'
   | 'aware_of'
   | 'referenced'
-  | 'alumnus';
+  | 'alumnus'
+  | 'employee'
+  | 'former_employee'
+  | 'applicant'
+  | 'interview_candidate'
+  | 'recruiter'
+  | 'hiring_manager'
+  | 'customer'
+  | 'volunteer'
+  | 'contractor'
+  | 'investor'
+  | 'advisor'
+  | 'mentor'
+  | 'vendor'
+  | 'client'
+  | 'sponsor'
+  | 'organizer'
+  | 'moderator'
+  | 'performer'
+  | 'student';
 
 // ── Backward-compat alias (legacy type column) ────────────────────────
 export type OrganizationType =
@@ -269,9 +289,17 @@ export interface Organization {
   group_type: GroupType;
   membership_model: MembershipModel;
   user_relationship: UserRelationship;
+  /** When the CURRENT user_relationship began/ended — distinct from the
+   *  organization's own founded_date/dissolved_year. See
+   *  organization_relationship_history for the full transition log. */
+  user_relationship_started_at?: string | null;
+  user_relationship_ended_at?: string | null;
   is_public_entity: boolean;
   founded_year?: number;
   dissolved_year?: number;
+  /** Parent organization for department/team/lab hierarchy (e.g. a "Failure
+   *  Analysis Team" nested under "Amazon"). */
+  parent_group_id?: string;
 
   description?: string;
   location?: string;
@@ -770,6 +798,9 @@ export class OrganizationService {
           founded_date: data.founded_date,
           status: data.status || 'active',
           metadata: data.metadata || {},
+          parent_group_id: data.parent_group_id ?? null,
+          user_relationship_started_at: data.user_relationship_started_at ?? null,
+          user_relationship_ended_at: data.user_relationship_ended_at ?? null,
         })
         .select()
         .single();
@@ -869,6 +900,12 @@ export class OrganizationService {
       if (updates.group_type !== undefined) patch.group_type = updates.group_type;
       if (updates.membership_model !== undefined) patch.membership_model = updates.membership_model;
       if (updates.user_relationship !== undefined) patch.user_relationship = updates.user_relationship;
+      if (updates.user_relationship_started_at !== undefined) {
+        patch.user_relationship_started_at = updates.user_relationship_started_at;
+      }
+      if (updates.user_relationship_ended_at !== undefined) {
+        patch.user_relationship_ended_at = updates.user_relationship_ended_at;
+      }
       if (updates.is_public_entity !== undefined) patch.is_public_entity = updates.is_public_entity;
       if (updates.founded_year !== undefined) patch.founded_year = updates.founded_year;
       if (updates.dissolved_year !== undefined) patch.dissolved_year = updates.dissolved_year;

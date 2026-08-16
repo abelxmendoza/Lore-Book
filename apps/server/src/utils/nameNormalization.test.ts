@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   containmentIsPossessive,
+  deriveAcronym,
   isTrailingPossessiveVariant,
   nameContained,
+  namesMatchAsAcronym,
   namesOverlapByContainment,
   normalizeDuplicateKey,
   normalizeNameKey,
@@ -84,6 +86,29 @@ describe('nameNormalization', () => {
     // correctly does NOT treat this pair as a possessive-suffix variant.
     it('does not confuse a normalizeDuplicateKey match with a possessive-suffix variant', () => {
       expect(isTrailingPossessiveVariant("Mom's House", 'Moms House')).toBe(false);
+    });
+  });
+
+  describe('deriveAcronym / namesMatchAsAcronym', () => {
+    it('derives the acronym from a multi-word title, dropping stopwords', () => {
+      expect(deriveAcronym('University of Southern California')).toBe('USC');
+      expect(deriveAcronym('California State University Fullerton')).toBe('CSUF');
+    });
+
+    it('returns empty for single-word or non-title names', () => {
+      expect(deriveAcronym('Amazon')).toBe('');
+      expect(deriveAcronym('the goth crew')).toBe('');
+    });
+
+    it('matches a bare acronym against the full name it was derived from', () => {
+      expect(namesMatchAsAcronym('USC', 'University of Southern California')).toBe(true);
+      expect(namesMatchAsAcronym('University of Southern California', 'USC')).toBe(true);
+      expect(namesMatchAsAcronym('CSUF', 'California State University Fullerton')).toBe(true);
+    });
+
+    it('does not match unrelated short names', () => {
+      expect(namesMatchAsAcronym('USC', 'University of California Los Angeles')).toBe(false);
+      expect(namesMatchAsAcronym('Amazon', 'Apple')).toBe(false);
     });
   });
 });

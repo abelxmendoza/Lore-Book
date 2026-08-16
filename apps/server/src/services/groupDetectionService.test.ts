@@ -8,8 +8,14 @@ vi.mock('./supabaseClient', () => ({
   supabaseAdmin: { from: vi.fn() },
 }));
 
+vi.mock('./organizationService', async () => {
+  const actual = await vi.importActual<typeof import('./organizationService')>('./organizationService');
+  return { ...actual, organizationService: { getOrganization: vi.fn() } };
+});
+
 import { groupDetectionService } from './groupDetectionService';
 import { supabaseAdmin } from './supabaseClient';
+import { organizationService } from './organizationService';
 
 const mockFrom = supabaseAdmin.from as ReturnType<typeof vi.fn>;
 
@@ -222,5 +228,105 @@ describe('groupDetectionService', () => {
     expect(groups.find(group => group.name === 'Japanese Class')).toMatchObject({
       group_type: 'club',
     });
+  });
+
+  it('does not leak members or relationship words from an unrelated conversation turn into an org candidate', async () => {
+    // Regression test for a conversation-level scan (see
+    // groupCandidateService.processConversation) where an org mentioned in
+    // one turn was picking up members and "leader" language from a totally
+    // unrelated turn elsewhere in the same session, because the whole
+    // session text was being treated as a single scoping "line".
+    const orgTurn = 'I worked at Vanguard Robotics.';
+    const unrelatedTurn = 'Mr. Chino leads the trip. Daisy is coming too.';
+
+    const groups = await groupDetectionService.detectGroupsInMessage(
+      'user-1',
+      '',
+      [orgTurn, unrelatedTurn]
+    );
+
+    const org = groups.find(group => group.name === 'Vanguard Robotics Organization');
+    expect(org).toBeDefined();
+    expect(org?.members).toEqual([]);
+    expect(org?.user_relationship).toBe('member');
+  });
+
+  it('does not attach members from an unrelated turn to an EXISTING org via session-wide co-mention', async () => {
+    // Regression test for the residual leak in findExistingGroupsByMembers:
+    // the new-candidate line-scoping fix (test above) doesn't cover attaching
+    // members to an org that already exists — that path used to scan the
+    // whole session's detected member list instead of one line.
+    const mockGetOrganization = organizationService.getOrganization as ReturnType<typeof vi.fn>;
+    mockGetOrganization.mockResolvedValue({
+      id: 'rivian-1',
+      name: 'Rivian',
+      group_type: 'company',
+      membership_model: 'strict',
+      user_relationship: 'member',
+      is_public_entity: false,
+      metadata: {},
+      members: [
+        { character_name: 'Connor', status: 'active' },
+        { character_name: 'Priya', status: 'active' },
+      ],
+    });
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'characters') {
+        return chain([
+          { id: 'connor', name: 'Connor', alias: [] },
+          { id: 'priya', name: 'Priya', alias: [] },
+          { id: 'daisy', name: 'Daisy', alias: ['Velvet Hour'] },
+          { id: 'mr-chino', name: 'Mr. Chino', alias: ['Chino'] },
+        ]);
+      }
+      if (table === 'organizations') {
+        return chain([{ id: 'rivian-1' }]);
+      }
+      if (table === 'organization_members') {
+        return chain([
+          { organization_id: 'rivian-1', character_name: 'Connor' },
+          { organization_id: 'rivian-1', character_name: 'Priya' },
+        ]);
+      }
+      return chain([]);
+    });
+
+    const orgTurn = 'Connor and Priya talked about Rivian recruiting.';
+    const unrelatedTurn = 'Mr. Chino leads the trip. Daisy is coming too.';
+
+    const groups = await groupDetectionService.detectGroupsInMessage(
+      'user-1',
+      '',
+      [orgTurn, unrelatedTurn]
+    );
+
+    const rivianAttachment = groups.find(group => group.name === 'Rivian');
+    expect(rivianAttachment).toBeUndefined();
+  });
+
+  it('links a department/team candidate to its parent company by name', async () => {
+    const groups = await groupDetectionService.detectGroupsInMessage(
+      'user-1',
+      "Amazon's Failure Analysis Team is where I work now."
+    );
+
+    const team = groups.find(group => group.name === 'Amazon Failure Analysis Team');
+    expect(team).toBeDefined();
+    expect(team?.group_type).toBe('team');
+    expect(team?.metadata?.parent_group_name).toBe('Amazon');
+  });
+
+  it('classifies AI coding assistants as software, not company', () => {
+    const type = groupDetectionService.suggestGroupType(
+      'I used Cursor, my AI coding assistant, to fix the bug at work today.',
+      []
+    );
+    expect(type).toBe('software');
+  });
+
+  it('classifies a known dev tool name as software even without explicit signal phrasing', () => {
+    const type = groupDetectionService.suggestGroupType('', [], 'Cursor');
+    expect(type).toBe('software');
   });
 });

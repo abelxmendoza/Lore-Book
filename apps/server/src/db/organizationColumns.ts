@@ -9,7 +9,8 @@ export const ORG_COLS =
   'id, user_id, name, aliases, type, description, location, founded_date, status, metadata, ' +
   'created_at, updated_at, group_type, membership_model, user_relationship, is_public_entity, ' +
   'founded_year, dissolved_year, importance_score, root_type, social_category, social_subcategory, ' +
-  'parent_group_id, identity_strength_score, identity_strength';
+  'parent_group_id, identity_strength_score, identity_strength, ' +
+  'user_relationship_started_at, user_relationship_ended_at';
 
 /** Fields consumed by OrganizationMember on list/detail cards. */
 export const ORG_MEMBER_COLS =

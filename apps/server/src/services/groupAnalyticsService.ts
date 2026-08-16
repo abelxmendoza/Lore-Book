@@ -47,12 +47,23 @@ export interface GroupAnalytics {
 
 // ── Relationship tiers ────────────────────────────────────────────────────────
 // Determines what level of analytics is meaningful for a given relationship.
-const FULL_ANALYTICS_RELS = new Set(['founder', 'leader', 'member']);
-const HISTORICAL_RELS     = new Set(['former_member', 'alumnus']);
-const CULTURAL_RELS       = new Set(['adjacent', 'fan', 'collaborator']);
+// Kept in sync with UserRelationship (organizationService.ts) — a new
+// relationship value with no tier assignment here silently falls to 'none'
+// (zero analytics), so every value added there needs a tier here too.
+const FULL_ANALYTICS_RELS = new Set([
+  'founder', 'leader', 'member',
+  'employee', 'recruiter', 'hiring_manager', 'volunteer', 'contractor',
+  'moderator', 'organizer', 'performer', 'student',
+]);
+const HISTORICAL_RELS = new Set(['former_member', 'alumnus', 'former_employee']);
+const CULTURAL_RELS = new Set([
+  'adjacent', 'fan', 'collaborator',
+  'customer', 'client', 'vendor', 'sponsor', 'investor', 'advisor', 'mentor',
+  'applicant', 'interview_candidate',
+]);
 // aware_of | referenced → no analytics
 
-function getAnalyticsTier(rel: string | undefined): 'full' | 'historical' | 'cultural' | 'none' {
+export function getAnalyticsTier(rel: string | undefined): 'full' | 'historical' | 'cultural' | 'none' {
   if (!rel) return 'full'; // legacy orgs without relationship field
   if (FULL_ANALYTICS_RELS.has(rel)) return 'full';
   if (HISTORICAL_RELS.has(rel))     return 'historical';

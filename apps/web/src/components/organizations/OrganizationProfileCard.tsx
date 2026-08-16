@@ -2,7 +2,7 @@ import {
   Building2, Users, ChevronRight, BookOpen, CalendarDays,
   Star, Heart,
   Music, Shield, Zap, Globe, GraduationCap, Layers,
-  Calendar, MapPin, Tag, Truck,
+  Calendar, MapPin, Tag, Truck, Code2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { resolveOrganizationStance } from '../../lib/organizationStance';
@@ -13,13 +13,17 @@ export type GroupType =
   | 'friend_group' | 'band' | 'sports_team' | 'company' | 'club' | 'nonprofit'
   | 'family' | 'household' | 'martial_arts' | 'scene' | 'crew' | 'collective'
   | 'community' | 'institution' | 'public_entity' | 'brand' | 'vendor'
-  | 'team' | 'project' | 'event_group' | 'other';
+  | 'team' | 'project' | 'event_group' | 'software' | 'other';
 
 export type MembershipModel = 'strict' | 'fuzzy' | 'none';
 
 export type UserRelationship =
   | 'founder' | 'leader' | 'member' | 'former_member' | 'collaborator'
-  | 'adjacent' | 'fan' | 'aware_of' | 'referenced' | 'alumnus';
+  | 'adjacent' | 'fan' | 'aware_of' | 'referenced' | 'alumnus'
+  | 'employee' | 'former_employee' | 'applicant' | 'interview_candidate'
+  | 'recruiter' | 'hiring_manager' | 'customer' | 'volunteer' | 'contractor'
+  | 'investor' | 'advisor' | 'mentor' | 'vendor' | 'client' | 'sponsor'
+  | 'organizer' | 'moderator' | 'performer' | 'student';
 
 export type OrgRelationshipType =
   | 'part_of' | 'affiliated_with' | 'rival_of' | 'spawned_from'
@@ -83,6 +87,8 @@ export type Organization = {
   group_type: GroupType;
   membership_model: MembershipModel;
   user_relationship: UserRelationship;
+  user_relationship_started_at?: string | null;
+  user_relationship_ended_at?: string | null;
   is_public_entity: boolean;
   founded_year?: number;
   dissolved_year?: number;
@@ -262,6 +268,11 @@ const TYPE_VISUALS: Record<GroupType, VisualConfig> = {
     icon: Zap,
     iconCls: 'text-pink-400/60 group-hover:text-pink-400',
   },
+  software: {
+    grad: 'from-sky-500/20 via-blue-600/20 to-sky-500/20',
+    icon: Code2,
+    iconCls: 'text-sky-400/60 group-hover:text-sky-400',
+  },
   other: {
     grad: 'from-gray-500/20 via-gray-600/20 to-gray-500/20',
     icon: Building2,
@@ -281,6 +292,25 @@ const REL_LABELS: Record<UserRelationship, string> = {
   aware_of: 'Aware of',
   referenced: 'Referenced',
   alumnus: 'Alumnus',
+  employee: 'Employee',
+  former_employee: 'Former employee',
+  applicant: 'Applicant',
+  interview_candidate: 'Interview candidate',
+  recruiter: 'Recruiter',
+  hiring_manager: 'Hiring manager',
+  customer: 'Customer',
+  volunteer: 'Volunteer',
+  contractor: 'Contractor',
+  investor: 'Investor',
+  advisor: 'Advisor',
+  mentor: 'Mentor',
+  vendor: 'Vendor',
+  client: 'Client',
+  sponsor: 'Sponsor',
+  organizer: 'Organizer',
+  moderator: 'Moderator',
+  performer: 'Performer',
+  student: 'Student',
 };
 
 function relBadgeCls(rel: UserRelationship): string {

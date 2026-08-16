@@ -10,6 +10,10 @@
 
 import { logger } from '../logger';
 import { normalizeNameKey } from '../utils/nameNormalization';
+import {
+  ORG_CANDIDATE_NOISE_MEMBER_NAMES,
+  isGenericOrganizationPhrase,
+} from './lorebook/quality/organizationCandidateGuard';
 
 import { characterRegistry } from './characterRegistry';
 import {
@@ -83,6 +87,15 @@ const VENDOR_SIGNALS =
 const BRAND_SIGNALS =
   /\b(brand|product line|label|merch|merchandise|sponsor(?:ed|ship)?|wear(?:s|ing)?|shop(?:s|ping)? at|customer of|loyalty program|subscription box)\b/i;
 
+// Software / developer tools — AI coding assistants, IDEs, frameworks. These
+// get mentioned in work-adjacent sentences ("I use Cursor at work") and would
+// otherwise fall into WORK_SIGNALS and become a fabricated "Company", so this
+// check runs before WORK_SIGNALS in suggestGroupType.
+const KNOWN_SOFTWARE_TOOL_NAMES =
+  /\b(Cursor|Claude Code|Codex|ChatGPT|GitHub Copilot|Copilot|Windsurf|Replit|VS ?Code|Visual Studio Code|JetBrains|IntelliJ|PyCharm|WebStorm|Xcode|Vim|Neovim|Sublime Text)\b/;
+const SOFTWARE_TOOL_SIGNALS =
+  /\b(ide|coding assistant|ai (?:tool|assistant)|dev tool|developer tool|code editor|text editor|framework|library|npm package|cli tool)\b/i;
+
 // Workplace / staffing vocabulary
 // staffing firm, or hiring/employment language all point at a company, not a
 // friend group. This is what tells the app that "Sam the recruiter and Kelly
@@ -115,12 +128,8 @@ const MEMBER_STOPWORDS = new Set([
   'Pool', 'Billiards', 'Billiard',
 ]);
 
-const KNOWN_ORG_MEMBER_FALSE_POSITIVES = new Set([
-  'Amazon', 'Google', 'Microsoft', 'Apple', 'Meta', 'Netflix',
-  'Tesla', 'OpenAI', 'Anthropic', 'San Diego', 'Smith Rock',
-  'First Street', 'First Street Pool', 'First Street Pool Billiards',
-  'Pool Group', 'Billiards Group',
-]);
+// Shared with groupCandidateService.ts — see organizationCandidateGuard.ts.
+const KNOWN_ORG_MEMBER_FALSE_POSITIVES = ORG_CANDIDATE_NOISE_MEMBER_NAMES;
 
 const FABRICATED_TEST_TERMS = /\b(zephyrine|zephyrne|quillborne?|quillborn|quintessa|vexworth|smith rock)\b/i;
 const NON_PERSON_MEMBER_TERMS = /\b(?:pool|billiards?|street|venue|club|bar|show|event|party|anniversary|night|first street)\b/i;
@@ -160,6 +169,9 @@ type StructuralGroupCandidate = {
   parentName?: string;
   requiresReview?: boolean;
   includeMembers?: boolean;
+  /** The specific message/line this candidate was matched from — used to scope
+   *  which detected members actually belong to it (see membersNearText). */
+  sourceText?: string;
 };
 
 const OWNER_RESIDENCE_PATTERN =
@@ -180,11 +192,28 @@ const STANDALONE_SUBGROUP_PATTERN =
 // Single-token org name segments — single spaces only (no \s+; CodeQL js/polynomial-redos).
 // Case-sensitive [A-Z] after the verb — no /i (lowercase would join the capture).
 // No bare '.' in the token class so "Robotics." stops at sentence end.
+// NOTE: bare "for X" is intentionally excluded as a trigger — "made this for
+// Kali Uchis", "bought this for Abuela" match "for <Capitalized Name>" just as
+// well as real employment phrasing, and this pattern scans the whole recent
+// conversation window (not just one message), so a stray "for <name>" far
+// from any org context can misfire into a fabricated "founder of an
+// Organization" candidate for a person who was never discussed as one.
 const ORGANIZATION_NAME_PATTERN =
-  /\b(?:[Ww]orked at|[Ww]orks? at|[Ee]mployee at|[Cc]oworker at|[Tt]eam at|[Dd]epartment at|[Ff]or) ([A-Z][A-Za-zÀ-ÿ0-9'’-]{0,40}(?: [A-Z][A-Za-zÀ-ÿ0-9'’-]{0,40}){0,4})(?: (?:[Oo]rganization|[Cc]ompany|[Tt]eam|[Dd]epartment))?\b/g;
+  /\b(?:[Ww]orked at|[Ww]orks? at|[Ee]mployee at|[Cc]oworker at|[Tt]eam at|[Dd]epartment at) ([A-Z][A-Za-zÀ-ÿ0-9'’-]{0,40}(?: [A-Z][A-Za-zÀ-ÿ0-9'’-]{0,40}){0,4})(?: (?:[Oo]rganization|[Cc]ompany|[Tt]eam|[Dd]epartment))?\b/g;
 
 const EXPLICIT_ORGANIZATION_PATTERN =
   /\b([A-Z][A-Za-zÀ-ÿ'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÿ'’.-]+){0,4})\s+(Organization|Company|Team|Department)\b/g;
+
+// Internal department/team/lab nested under a parent company — "Amazon's
+// Failure Analysis Team", "Amazon's Prototyping Lab". Distinct from
+// EXPLICIT_ORGANIZATION_PATTERN above, which creates a standalone top-level
+// org; this resolves a parent org name so the child can be linked via
+// parent_group_id instead of becoming its own unrelated organization.
+const DEPARTMENT_TEAM_POSSESSIVE_PATTERN =
+  /\b([A-Z][A-Za-zÀ-ÿ0-9&'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÿ0-9&'’.-]+){0,3})'s\s+([A-Z][A-Za-zÀ-ÿ0-9&'’.-]+(?:\s+[A-Za-zÀ-ÿ0-9&'’.-]+){0,4}\s+(?:Team|Department|Lab))\b/g;
+
+const DEPARTMENT_TEAM_AT_PATTERN =
+  /\b([A-Z][A-Za-zÀ-ÿ0-9&'’.-]+(?:\s+[A-Za-zÀ-ÿ0-9&'’.-]+){0,4}\s+(?:Team|Department|Lab))\s+at\s+([A-Z][A-Za-zÀ-ÿ0-9&'’.-]+(?:\s+[A-Z][A-Za-zÀ-ÿ0-9&'’.-]+){0,3})\b/g;
 
 const MUSIC_SCENE_PATTERN =
   /\b((?:LA|L\.A\.|OC|Orange County|Goth|Punk|Metal|Rave|Ska)(?:\s+(?:ska|goth|punk|metal|rave))?\s+scene)\b/gi;
@@ -229,18 +258,32 @@ export class GroupDetectionService {
         /(?:with|together with|along with)\s{1,40}([A-Z][a-z]{1,40}(?:\s{1,40}[A-Z][a-z]{1,40})?)(?:\s{0,40},\s{0,40}([A-Z][a-z]{1,40}(?:\s{1,40}[A-Z][a-z]{1,40})?)){1,40}/gi,
       ];
 
-      const groupNames = new Set<string>();
-      for (const pattern of groupPatterns) {
-        for (const match of message.matchAll(pattern)) {
-          if (match[1]) groupNames.add(match[1].trim());
+      // name → the specific line it was found in, so member attachment can be
+      // scoped to that line instead of the whole message + context window.
+      const groupNames = new Map<string, string>();
+      const addGroupName = (name: string, sourceText: string) => {
+        const trimmed = name.trim();
+        if (trimmed && !groupNames.has(trimmed)) groupNames.set(trimmed, sourceText);
+      };
+      // Scan each line (message + every conversation-context entry)
+      // separately — never a pre-joined blob — so a match is always
+      // attributed to the one line it actually came from. Callers that scan
+      // a whole conversation (see groupCandidateService.processConversation)
+      // pass the individual turns via conversationContext instead of folding
+      // them into `message`, for exactly this reason.
+      const scanLines = [message, ...(conversationContext ?? [])].filter(line => line.length > 0);
+      for (const line of scanLines) {
+        for (const pattern of groupPatterns) {
+          for (const match of line.matchAll(pattern)) {
+            if (match[1]) addGroupName(match[1], line);
+          }
         }
-      }
-
-      for (const match of message.matchAll(/\b([A-Z][A-Za-z]+(?:\/[A-Z][A-Za-z]+)?(?:\s+[A-Z][A-Za-z]+){0,2}\s+Family)\b/g)) {
-        groupNames.add(match[1].trim());
-      }
-      if (/\b(?:my|our|the)\s+family\b/i.test(message)) {
-        groupNames.add('My Family');
+        for (const match of line.matchAll(/\b([A-Z][A-Za-z]+(?:\/[A-Z][A-Za-z]+)?(?:\s+[A-Z][A-Za-z]+){0,2}\s+Family)\b/g)) {
+          addGroupName(match[1], line);
+        }
+        if (/\b(?:my|our|the)\s+family\b/i.test(line)) {
+          addGroupName('My Family', line);
+        }
       }
 
       // Employer / agency names ("the agency K-force", "work for Acme") become
@@ -248,31 +291,38 @@ export class GroupDetectionService {
       // actual workplace instead of an anonymous friend group.
       const employerNames = new Set<string>();
       for (const employer of this.extractEmployerNames(message)) {
-        groupNames.add(employer);
+        addGroupName(employer, message);
         employerNames.add(employer);
       }
       for (const ctx of conversationContext ?? []) {
         for (const employer of this.extractEmployerNames(ctx)) {
-          groupNames.add(employer);
+          addGroupName(employer, ctx);
           employerNames.add(employer);
         }
       }
 
       const detectedMembers = await this.extractMemberNames(userId, message, conversationContext);
-      const memberNames = detectedMembers.map(member => member.name);
-      const memberIds = detectedMembers.map(member => member.id);
 
       for (const structural of this.inferStructuralGroups(message, conversationContext)) {
         const existingGroup = await this.findGroupByName(userId, structural.name);
-        const members = structural.includeMembers === false ? [] : memberNames;
-        const ids = structural.includeMembers === false ? [] : memberIds;
+        // Scope members to the line this candidate actually matched from —
+        // otherwise anyone mentioned anywhere in the recent conversation
+        // window gets attached to every group found in it (e.g. a cousin
+        // mentioned two messages earlier becoming a "founder" of an
+        // unrelated org named in this one).
+        const scoped =
+          structural.includeMembers === false
+            ? []
+            : this.membersNearText(structural.sourceText ?? message, detectedMembers);
+        const members = scoped.map(m => m.name);
+        const ids = scoped.map(m => m.id);
 
         if (!existingGroup) {
           detectedGroups.push({
             name: structural.name,
             members,
             member_ids: ids,
-            context: message.substring(0, 200),
+            context: (structural.sourceText ?? message).substring(0, 200),
             confidence: structural.confidence,
             group_type: structural.groupType,
             membership_model: structural.membershipModel,
@@ -317,11 +367,12 @@ export class GroupDetectionService {
       for (const known of KNOWN_GROUPS) {
         if (!known.pattern.test(message)) continue;
         const existingGroup = await this.findGroupByName(userId, known.name);
+        const knownScoped = known.is_public_entity ? [] : this.membersNearText(message, detectedMembers);
         if (!existingGroup) {
           detectedGroups.push({
             name: known.name,
-            members: known.is_public_entity ? [] : memberNames,
-            member_ids: known.is_public_entity ? [] : memberIds,
+            members: knownScoped.map(m => m.name),
+            member_ids: knownScoped.map(m => m.id),
             context: message.substring(0, 200),
             confidence: known.confidence,
             group_type: known.group_type,
@@ -336,12 +387,21 @@ export class GroupDetectionService {
       // Co-mentions reinforce the people graph elsewhere, but do not create
       // groups. Groups require shared structure: household, school, workplace,
       // club/team/class, scene, community, or repeated membership evidence.
-      if (memberNames.length >= 2) {
-        const existingGroups = await this.findExistingGroupsByMembers(userId, memberNames);
+      //
+      // Scoped per line (like the named-group loop above), not to every
+      // detected member across the whole scanned window — otherwise a name
+      // mentioned anywhere else in the conversation (e.g. a recruiter's
+      // unrelated aside) could get attached to an EXISTING org just because
+      // some other two names elsewhere in the window happen to overlap that
+      // org's roster.
+      for (const line of scanLines) {
+        const lineMemberNames = this.membersNearText(line, detectedMembers).map(m => m.name);
+        if (lineMemberNames.length < 2) continue;
+        const existingGroups = await this.findExistingGroupsByMembers(userId, lineMemberNames);
 
         if (existingGroups.length > 0) {
           for (const group of existingGroups) {
-            const newMembers = memberNames.filter(m =>
+            const newMembers = lineMemberNames.filter(m =>
               !group.members?.some(gm =>
                 gm.character_name.toLowerCase() === m.toLowerCase()
               )
@@ -351,7 +411,7 @@ export class GroupDetectionService {
                 name: group.name,
                 members: newMembers,
                 member_ids: this.memberIdsForNames(newMembers, detectedMembers),
-                context: message.substring(0, 200),
+                context: line.substring(0, 200),
                 confidence: 0.80,
                 group_type: group.group_type,
                 membership_model: group.membership_model,
@@ -365,39 +425,45 @@ export class GroupDetectionService {
       }
 
       // Named group detection
-      for (let groupName of groupNames) {
-        if (!this.isValidProposedGroupName(groupName, memberNames)) continue;
+      for (let [groupName, groupSourceText] of groupNames) {
+        // Members scoped to the specific line this group name was found in —
+        // not everyone mentioned anywhere in the conversation window.
+        const scopedMembers = this.membersNearText(groupSourceText, detectedMembers);
+        const scopedNames = scopedMembers.map(m => m.name);
+        const scopedIds = scopedMembers.map(m => m.id);
+
+        if (!this.isValidProposedGroupName(groupName, scopedNames)) continue;
         const isEmployer = employerNames.has(groupName);
         // An employer/agency the user works through is a company, never a
         // public-fan entity — even if a famous client (e.g. Amazon) is named in
         // the same sentence.
-        const isPublic = isEmployer ? false : this.isPublicEntity(groupName, message);
-        const groupType = isEmployer ? 'company' : this.suggestGroupType(message, memberNames, groupName);
-        if (groupType === 'family' && memberNames.length >= 2 && /^my family$/i.test(groupName)) {
-          groupName = nameHousehold(memberNames.map(name => ({ name }))) ?? groupName;
+        const isPublic = isEmployer ? false : this.isPublicEntity(groupName, groupSourceText);
+        const groupType = isEmployer ? 'company' : this.suggestGroupType(groupSourceText, scopedNames, groupName);
+        if (groupType === 'family' && scopedNames.length >= 2 && /^my family$/i.test(groupName)) {
+          groupName = nameHousehold(scopedNames.map(name => ({ name }))) ?? groupName;
         }
         const existingGroup = await this.findGroupByName(userId, groupName);
         const familyAliases = groupType === 'family' && /\//.test(groupName)
-          ? groupName.replace(/\s{1,40}Family$/i, '').split('/').map(part => `${part.trim()} Family`)
+          ? groupName.replace(/\s{1,40}Family$/i, '').split('/').map((part: string) => `${part.trim()} Family`)
           : [];
 
         if (!existingGroup) {
           detectedGroups.push({
             name: groupName,
-            members: isPublic ? [] : memberNames,
-            member_ids: isPublic ? [] : memberIds,
-            context: message.substring(0, 200),
+            members: isPublic ? [] : scopedNames,
+            member_ids: isPublic ? [] : scopedIds,
+            context: groupSourceText.substring(0, 200),
             confidence: isPublic ? 0.95 : 0.85,
             group_type: isPublic ? 'public_entity' : groupType,
             membership_model: isPublic ? 'none' : this.suggestMembershipModel(groupType),
             user_relationship: isPublic
-              ? this.suggestPublicEntityRelationship(message)
-              : this.suggestUserRelationship(message, memberNames.length > 0),
+              ? this.suggestPublicEntityRelationship(groupSourceText)
+              : this.suggestUserRelationship(groupSourceText, scopedNames.length > 0),
             is_public_entity: isPublic,
             metadata: familyAliases.length > 0 ? { aliases: familyAliases } : {},
           });
         } else {
-          const newMembers = memberNames.filter(m =>
+          const newMembers = scopedNames.filter(m =>
             !existingGroup.members?.some(gm =>
               gm.character_name.toLowerCase() === m.toLowerCase()
             )
@@ -450,6 +516,22 @@ export class GroupDetectionService {
     return this.extractEmployerNames(text);
   }
 
+  /**
+   * Scope an already-resolved members list down to only the names that
+   * literally appear in a given span of text. `detectedMembers` is extracted
+   * once, up front, from the full message + conversation window — but a
+   * specific group match should only pull in the people actually mentioned
+   * near it, not everyone mentioned anywhere in that window. Reuses the
+   * already-canonicalized id/name pairs rather than re-resolving.
+   */
+  private membersNearText(
+    sourceText: string,
+    detectedMembers: Array<{ id: string; name: string }>,
+  ): Array<{ id: string; name: string }> {
+    const key = sourceText.toLowerCase();
+    return detectedMembers.filter((m) => key.includes(m.name.toLowerCase()));
+  }
+
   // ── Group type inference ─────────────────────────────────────────────────
 
   suggestGroupType(message: string, _members: string[], groupName?: string): GroupType {
@@ -469,6 +551,9 @@ export class GroupDetectionService {
     if (CREW_SIGNALS.test(m)) return 'crew';
     if (/\b(basketball|football|soccer|baseball|tennis|volleyball|game|match|tournament|league)\b/i.test(m)) {
       return 'sports_team';
+    }
+    if (KNOWN_SOFTWARE_TOOL_NAMES.test(groupName ?? '') || SOFTWARE_TOOL_SIGNALS.test(m) || SOFTWARE_TOOL_SIGNALS.test(n)) {
+      return 'software';
     }
     if (WORK_SIGNALS.test(m) || WORK_SIGNALS.test(n)) {
       return 'company';
@@ -494,7 +579,8 @@ export class GroupDetectionService {
   }
 
   private inferStructuralGroups(message: string, conversationContext?: string[]): StructuralGroupCandidate[] {
-    const text = [message, ...(conversationContext ?? [])].join('\n');
+    const lines = [message, ...(conversationContext ?? [])];
+    const text = lines.join('\n');
     const groups: StructuralGroupCandidate[] = [];
     const seen = new Set<string>();
     const add = (group: StructuralGroupCandidate) => {
@@ -502,6 +588,18 @@ export class GroupDetectionService {
       if (!key || seen.has(key) || !this.isValidProposedGroupName(group.name, [])) return;
       seen.add(key);
       groups.push(group);
+    };
+    // Which individual message a character offset in the joined `text` falls
+    // in — so a candidate matched from one line only pulls in members
+    // mentioned in that same line, not the whole joined window.
+    const lineForIndex = (idx: number): string => {
+      let offset = 0;
+      for (const line of lines) {
+        const end = offset + line.length;
+        if (idx <= end) return line;
+        offset = end + 1; // +1 for the '\n' joiner
+      }
+      return lines[lines.length - 1] ?? message;
     };
 
     for (const match of text.matchAll(OWNER_RESIDENCE_PATTERN)) {
@@ -516,12 +614,14 @@ export class GroupDetectionService {
         confidence: 0.9,
         anchorName: owner,
         rulesFired: ['household_owner_residence'],
+        sourceText: lineForIndex(match.index ?? 0),
       });
     }
 
     if (COHABITATION_PATTERN.test(text)) {
       const kinshipOwner = this.extractKinshipOwner(text);
       if (kinshipOwner) {
+        const cohabIdx = text.search(COHABITATION_PATTERN);
         add({
           name: `${kinshipOwner} Household`,
           groupType: 'household',
@@ -531,6 +631,7 @@ export class GroupDetectionService {
           confidence: 0.86,
           anchorName: kinshipOwner,
           rulesFired: ['household_cohabitation'],
+          sourceText: lineForIndex(cohabIdx >= 0 ? cohabIdx : 0),
         });
       }
     }
@@ -548,6 +649,7 @@ export class GroupDetectionService {
         confidence: 0.88,
         anchorName: school,
         rulesFired: ['school_community'],
+        sourceText: lineForIndex(match.index ?? 0),
       });
     }
 
@@ -565,6 +667,7 @@ export class GroupDetectionService {
         anchorName: subgroup,
         parentName: `${school} Community`,
         rulesFired: ['school_subgroup'],
+        sourceText: lineForIndex(match.index ?? 0),
       });
     }
 
@@ -580,6 +683,7 @@ export class GroupDetectionService {
         confidence: school ? 0.86 : 0.82,
         parentName: school ? `${school} Community` : undefined,
         requiresReview: !school,
+        sourceText: lineForIndex(match.index ?? 0),
         rulesFired: school ? ['standalone_school_subgroup_with_context'] : ['standalone_activity_group'],
       });
     }
@@ -587,15 +691,17 @@ export class GroupDetectionService {
     for (const match of text.matchAll(ORGANIZATION_NAME_PATTERN)) {
       const org = this.titleCaseGroupName(match[1]).replace(/\s+(Organization|Company|Team|Department)$/i, '');
       if (!this.isLikelyOrganizationName(org)) continue;
+      const orgLine = lineForIndex(match.index ?? 0);
       add({
         name: `${org} Organization`,
         groupType: 'company',
         lexicalGroupType: 'organization',
         membershipModel: 'strict',
-        userRelationship: this.suggestUserRelationship(text, true),
+        userRelationship: this.suggestUserRelationship(orgLine, true),
         confidence: 0.88,
         anchorName: org,
         rulesFired: ['work_organization'],
+        sourceText: orgLine,
       });
     }
 
@@ -612,6 +718,43 @@ export class GroupDetectionService {
         confidence: 0.88,
         anchorName: base,
         rulesFired: ['explicit_organization_name'],
+        sourceText: lineForIndex(match.index ?? 0),
+      });
+    }
+
+    for (const match of text.matchAll(DEPARTMENT_TEAM_POSSESSIVE_PATTERN)) {
+      const parent = this.titleCaseGroupName(match[1]);
+      const child = this.titleCaseGroupName(match[2]);
+      if (!this.isLikelyOrganizationName(parent)) continue;
+      add({
+        name: `${parent} ${child}`,
+        groupType: 'team',
+        lexicalGroupType: 'work_team',
+        membershipModel: 'strict',
+        userRelationship: 'member',
+        confidence: 0.87,
+        anchorName: child,
+        parentName: parent,
+        rulesFired: ['department_team_possessive'],
+        sourceText: lineForIndex(match.index ?? 0),
+      });
+    }
+
+    for (const match of text.matchAll(DEPARTMENT_TEAM_AT_PATTERN)) {
+      const child = this.titleCaseGroupName(match[1]);
+      const parent = this.titleCaseGroupName(match[2]);
+      if (!this.isLikelyOrganizationName(parent)) continue;
+      add({
+        name: `${parent} ${child}`,
+        groupType: 'team',
+        lexicalGroupType: 'work_team',
+        membershipModel: 'strict',
+        userRelationship: 'member',
+        confidence: 0.85,
+        anchorName: child,
+        parentName: parent,
+        rulesFired: ['department_team_at_parent'],
+        sourceText: lineForIndex(match.index ?? 0),
       });
     }
 
@@ -730,6 +873,7 @@ export class GroupDetectionService {
   private isValidProposedGroupName(groupName: string, members: string[]): boolean {
     const name = groupName.trim();
     if (!name) return false;
+    if (isGenericOrganizationPhrase(name)) return false;
     if (PERSON_PAIR_GROUP_NAME.test(name)) return false;
     if (BARE_TITLE_GROUP_NAME.test(name)) return false;
     if (/^(?:Mom|Dad|Tio|Tia|Tía|Abuela|Abuelo|Brother|Sister)\s+Family$/i.test(name)) return false;

@@ -5,10 +5,10 @@
 // Shows only when occurrence_count >= 2 (threshold met).
 // =====================================================
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { shortDisplayName } from '../../lib/displayName';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
-import { Users, X, Check, ChevronDown, ChevronUp, Sparkles, Loader2 } from 'lucide-react';
+import { Users, X, Check, ChevronDown, ChevronUp, Sparkles, Loader2, Copy } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { useToast } from '../ui/toast';
@@ -16,11 +16,15 @@ import { fetchJson } from '../../lib/api';
 import type { Organization, OrganizationMember } from '../organizations/OrganizationProfileCard';
 import { deriveOrganizationProfile } from '../../lib/organizationProfile';
 import {
+  CANONICAL_GROUP_TYPES,
   GROUP_TYPE_LABELS,
   groupTypeMatchesCategory,
   type OrganizationCategory,
 } from '../../lib/groupTypes';
 import type { GroupType, UserRelationship } from '../organizations/OrganizationProfileCard';
+import { buildGroupSuggestionsClipboardText } from '../../lib/groupSuggestionsClipboard';
+import { copyTextToClipboard } from '../../lib/listClipboard';
+import { cn } from '../../lib/cn';
 
 const ADD_TOAST_MS = 4500;
 const EXIT_ANIMATION_MS = 360;
@@ -94,6 +98,7 @@ const TYPE_COLORS: Record<GroupType, string> = {
   public_entity:'bg-yellow-600/20 text-yellow-300 border-yellow-600/30',
   brand:        'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30',
   vendor:       'bg-lime-500/20 text-lime-300 border-lime-500/30',
+  software:     'bg-sky-500/20 text-sky-300 border-sky-500/30',
   other:        'bg-gray-500/20 text-gray-300 border-gray-500/30',
 };
 const typeColor = (t: GroupType): string => TYPE_COLORS[t] ?? 'bg-gray-500/20 text-gray-300 border-gray-500/30';
@@ -236,6 +241,16 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
   const [mergeOpenFor, setMergeOpenFor] = useState<string | null>(null);
   const [orgOptions, setOrgOptions] = useState<OrgOption[]>([]);
   const [exiting, setExiting] = useState<Set<string>>(new Set());
+  // User-selected type override per candidate, keyed by candidate id — lets a
+  // suggestion's type be corrected (e.g. "Company" → "Software") before
+  // accepting, instead of only being able to accept the auto-suggested type.
+  const [typeOverride, setTypeOverride] = useState<Record<string, GroupType>>({});
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+  }, []);
 
   const loadOrgOptions = async () => {
     if (demoMode || orgOptions.length > 0) return;
@@ -314,24 +329,37 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
 
   const handleAccept = async (candidateId: string) => {
     const candidate = candidates.find(c => c.id === candidateId);
+    const overriddenType = typeOverride[candidateId];
+    // Apply the user's type correction (if any) to the candidate used for
+    // local rendering, so the card reflects it immediately rather than only
+    // after a round trip.
+    const effectiveCandidate =
+      candidate && overriddenType && overriddenType !== candidate.suggested_group_type
+        ? { ...candidate, suggested_group_type: overriddenType }
+        : candidate;
     setProcessing(candidateId);
     try {
       if (demoMode) {
-        const created = candidate ? candidateToOrganization(cleanCandidate(candidate)) : undefined;
+        const created = effectiveCandidate ? candidateToOrganization(cleanCandidate(effectiveCandidate)) : undefined;
         await finishAccept(candidateId, created);
         return;
       }
 
+      const acceptBody =
+        overriddenType && overriddenType !== candidate?.suggested_group_type
+          ? { group_type: overriddenType }
+          : {};
+
       const res = await fetchJson<{ success: boolean; organization_id?: string }>(
         `/api/group-candidates/${candidateId}/accept`,
-        { method: 'POST', body: JSON.stringify({}) }
+        { method: 'POST', body: JSON.stringify(acceptBody) }
       );
 
       // Always build a local card from the candidate as the floor — it carries
       // the detected members + a profile, so a card ALWAYS renders with at least
       // the detected characters even if the backend dropped members.
-      const local = candidate
-        ? candidateToOrganization(cleanCandidate(candidate), res.organization_id)
+      const local = effectiveCandidate
+        ? candidateToOrganization(cleanCandidate(effectiveCandidate), res.organization_id)
         : undefined;
 
       let created: Organization | undefined = local;
@@ -393,6 +421,14 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
     setDismissed(prev => new Set([...prev, candidateId]));
   };
 
+  const handleCopyAll = async () => {
+    const ok = await copyTextToClipboard(buildGroupSuggestionsClipboardText(visible, displayGroupName));
+    if (!ok) return;
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
+  };
+
   const visible = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
 
@@ -418,12 +454,12 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
     <>
     <div className="mx-auto w-full min-w-0 max-w-full overflow-hidden rounded-lg border border-purple-500/35 bg-gradient-to-br from-purple-950/35 via-black/50 to-black/60">
       {/* Header */}
-      <button
-        type="button"
-        onClick={() => setCollapsed(v => !v)}
-        className="flex w-full items-center justify-between gap-2 px-2.5 py-2 sm:px-3 hover:bg-white/5 transition-colors"
-      >
-        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+      <div className="flex w-full items-center justify-between gap-2 px-2.5 py-2 sm:px-3">
+        <button
+          type="button"
+          onClick={() => setCollapsed(v => !v)}
+          className="flex min-w-0 flex-1 items-center gap-1.5 rounded text-left transition-colors hover:opacity-90"
+        >
           <Sparkles className="h-3.5 w-3.5 shrink-0 text-purple-300" />
           <span className="truncate text-xs sm:text-sm font-semibold text-white">
             Groups detected in your chats
@@ -436,12 +472,34 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
               Demo
             </span>
           )}
+        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          {visible.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleCopyAll()}
+              className={cn(
+                'flex h-7 w-7 items-center justify-center rounded transition-colors',
+                copied ? 'text-emerald-300' : 'text-white/40 hover:bg-purple-500/10 hover:text-purple-300',
+              )}
+              title="Copy all suggested groups as plain text"
+              aria-label="Copy all suggested groups"
+            >
+              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setCollapsed(v => !v)}
+            className="flex h-7 w-7 items-center justify-center rounded text-white/40 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            {collapsed
+              ? <ChevronDown className="h-4 w-4" />
+              : <ChevronUp className="h-4 w-4" />
+            }
+          </button>
         </div>
-        {collapsed
-          ? <ChevronDown className="h-4 w-4 shrink-0 text-white/40" />
-          : <ChevronUp className="h-4 w-4 shrink-0 text-white/40" />
-        }
-      </button>
+      </div>
 
       {/* Candidate cards — compact horizontal bars */}
       {!collapsed && (
@@ -490,9 +548,22 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
                   </p>
 
                   <div className="mt-1 flex flex-wrap items-center gap-1">
-                    <Badge variant="outline" className={`h-5 px-1.5 py-0 text-[9px] ${typeColor(c.suggested_group_type)}`}>
-                      {typeLabel(c.suggested_group_type)}
-                    </Badge>
+                    <select
+                      value={typeOverride[c.id] ?? c.suggested_group_type}
+                      onChange={(e) => {
+                        const next = e.target.value as GroupType;
+                        setTypeOverride(prev => ({ ...prev, [c.id]: next }));
+                      }}
+                      title="Change organization type"
+                      aria-label="Organization type"
+                      className={`h-5 rounded border px-1 py-0 text-[9px] font-medium ${typeColor(typeOverride[c.id] ?? c.suggested_group_type)}`}
+                    >
+                      {CANONICAL_GROUP_TYPES.map(t => (
+                        <option key={t} value={t} className="bg-black text-white">
+                          {typeLabel(t)}
+                        </option>
+                      ))}
+                    </select>
                     {c.is_public_entity && (
                       <Badge variant="outline" className="h-5 border-yellow-500/30 bg-yellow-500/15 px-1.5 py-0 text-[9px] text-yellow-300">
                         Public

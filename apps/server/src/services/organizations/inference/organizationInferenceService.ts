@@ -94,6 +94,7 @@ function priorityType(type: OrganizationCandidate['organizationType']): number {
     company: 6,
     platform: 5,
     vendor: 5,
+    software: 5,
     program: 4,
     client: 4,
     community_org: 2,

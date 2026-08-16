@@ -53,6 +53,13 @@ const KNOWN_ORGANIZATIONS: Array<{
   { displayName: 'RLH Industries', organizationType: 'company', confidence: 0.85 },
   { displayName: 'Google', organizationType: 'platform', defaultRole: 'tool_provider', confidence: 0.86 },
   { displayName: 'OpenAI', organizationType: 'platform', defaultRole: 'tool_provider', confidence: 0.88 },
+  // AI coding assistants / dev tools — previously unclassified, which let them
+  // fall through to a generic employer/company default ("Cursor" → Company).
+  { displayName: 'Cursor', organizationType: 'software', defaultRole: 'tool_provider', confidence: 0.85 },
+  { displayName: 'Claude Code', organizationType: 'software', defaultRole: 'tool_provider', confidence: 0.85 },
+  { displayName: 'Codex', organizationType: 'software', defaultRole: 'tool_provider', confidence: 0.82 },
+  { displayName: 'GitHub Copilot', organizationType: 'software', aliases: ['Copilot'], defaultRole: 'tool_provider', confidence: 0.85 },
+  { displayName: 'Windsurf', organizationType: 'software', defaultRole: 'tool_provider', confidence: 0.82 },
 ];
 
 export function inferNamedOrganizations(text: string): OrganizationCandidate[] {

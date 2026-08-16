@@ -12,6 +12,7 @@ import {
 } from './crossDomainKnownEntityGuard';
 import { guardDuplicateEntity } from './duplicateEntityGuard';
 import { guardGenericReference } from './genericReferenceGuard';
+import { guardOrganizationCandidate } from './organizationCandidateGuard';
 import { guardPlaceCandidate } from './placeCandidateGuard';
 import { guardSensitiveEntity } from './sensitiveEntityGuard';
 import { guardStandaloneTimePhrase } from '../../timeline/timelineSuggestionGuard';
@@ -74,6 +75,12 @@ export function evaluateEntityQuality(
   // category ("gym") can't be contextualized ("Gym from Kelly") instead.
   const place = guardPlaceCandidate(normalized);
   if (place) return place;
+
+  // Organizations/groups-only: reject bare generic team/department/role
+  // descriptors ("Support Team") and narrative spans that are not actually
+  // named organizations. Same rationale as guardPlaceCandidate above.
+  const org = guardOrganizationCandidate(normalized);
+  if (org) return org;
 
   const bare = guardBareCategoryWord(normalized);
   if (bare) {

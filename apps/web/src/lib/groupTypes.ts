@@ -4,14 +4,14 @@ import type { GroupType } from '../components/organizations/OrganizationProfileC
 export const CANONICAL_GROUP_TYPES: GroupType[] = [
   'friend_group', 'band', 'sports_team', 'company', 'club', 'nonprofit',
   'family', 'household', 'martial_arts', 'scene', 'crew', 'collective', 'community',
-  'institution', 'public_entity', 'brand', 'vendor', 'team', 'project', 'event_group', 'other',
+  'institution', 'public_entity', 'brand', 'vendor', 'team', 'project', 'event_group', 'software', 'other',
 ];
 
 export type OrganizationCategory =
   | 'all' | 'recent'
   | 'companies' | 'communities' | 'families' | 'households' | 'teams'
   | 'crews' | 'bands' | 'scenes'
-  | 'brands' | 'vendors'
+  | 'brands' | 'vendors' | 'software'
   | 'clubs' | 'nonprofits'
   | 'sports_teams' | 'public_entities';
 
@@ -27,6 +27,7 @@ export const ORGANIZATION_CATEGORIES: OrganizationCategory[] = [
   'scenes',
   'brands',
   'vendors',
+  'software',
   'sports_teams',
   'clubs',
   'nonprofits',
@@ -55,6 +56,7 @@ export const GROUP_TYPE_LABELS: Record<GroupType, string> = {
   team: 'Team',
   project: 'Project',
   event_group: 'Event Group',
+  software: 'Software',
   other: 'Other',
 };
 
@@ -66,6 +68,10 @@ export const GROUP_SUBCATEGORIES: Partial<Record<GroupType, readonly string[]>> 
   institution: ['university', 'school', 'hospital', 'government', 'other'],
   club: ['hobby', 'professional', 'social', 'other'],
   nonprofit: ['charity', 'foundation', 'advocacy', 'other'],
+  // Internal subdivisions of a parent org (see organizations.parent_group_id) —
+  // a "team" row nested under a company distinguishes department/lab/crew.
+  team: ['department', 'lab', 'crew_team', 'other'],
+  software: ['ai_tool', 'ide', 'framework', 'developer_tool', 'other'],
 };
 
 export function groupTypeMatchesCategory(groupType: GroupType, category: OrganizationCategory): boolean {
@@ -91,6 +97,8 @@ export function groupTypeMatchesCategory(groupType: GroupType, category: Organiz
       return groupType === 'brand';
     case 'vendors':
       return groupType === 'vendor';
+    case 'software':
+      return groupType === 'software';
     case 'clubs':
       return groupType === 'club' || groupType === 'collective';
     case 'sports_teams':

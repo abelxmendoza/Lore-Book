@@ -35,9 +35,31 @@ const MINE_RELS = new Set<UserRelationship>([
   'member',
   'alumnus',
   'former_member',
+  'employee',
+  'former_employee',
+  'recruiter',
+  'hiring_manager',
+  'volunteer',
+  'contractor',
+  'moderator',
+  'organizer',
+  'performer',
+  'student',
 ]);
 
-const CLOSE_RELS = new Set<UserRelationship>(['adjacent', 'collaborator']);
+const CLOSE_RELS = new Set<UserRelationship>([
+  'adjacent',
+  'collaborator',
+  'applicant',
+  'interview_candidate',
+  'customer',
+  'client',
+  'vendor',
+  'sponsor',
+  'investor',
+  'advisor',
+  'mentor',
+]);
 
 function linkedCharacterCount(org: Organization): number {
   return (org.members ?? []).filter((m) => Boolean(m.character_id)).length;

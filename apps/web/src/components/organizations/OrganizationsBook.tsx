@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { shortDisplayName } from '../../lib/displayName';
-import { Building2, Music, Zap, Globe, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, Calendar, Hash, Sparkles, Plus, X, Heart, TreePine, Network, Tag, Truck } from 'lucide-react';
+import { Building2, Music, Zap, Globe, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, Calendar, Hash, Sparkles, Plus, X, Heart, TreePine, Network, Tag, Truck, Code2 } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -105,6 +105,10 @@ const MEMBERSHIP_MODELS: Organization['membership_model'][] = ['strict', 'fuzzy'
 const USER_RELATIONSHIPS: Organization['user_relationship'][] = [
   'founder', 'leader', 'member', 'former_member', 'collaborator',
   'adjacent', 'fan', 'aware_of', 'referenced', 'alumnus',
+  'employee', 'former_employee', 'applicant', 'interview_candidate',
+  'recruiter', 'hiring_manager', 'customer', 'volunteer', 'contractor',
+  'investor', 'advisor', 'mentor', 'vendor', 'client', 'sponsor',
+  'organizer', 'moderator', 'performer', 'student',
 ];
 const ORG_STATUSES: Organization['status'][] = ['active', 'inactive', 'dissolved'];
 
@@ -1929,6 +1933,15 @@ export const OrganizationsBook: React.FC = () => {
               >
                 <Truck className="h-3 w-3 sm:h-4 sm:w-4" />
                 <span className="text-center truncate max-w-full">Vendors</span>
+              </TabsTrigger>
+            )}
+            {availableCategories.includes('software') && (
+              <TabsTrigger
+                value="software"
+                className="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 data-[state=active]:bg-sky-500/20 data-[state=active]:text-sky-400"
+              >
+                <Code2 className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="text-center truncate max-w-full">Software</span>
               </TabsTrigger>
             )}
             {availableCategories.includes('sports_teams') && (

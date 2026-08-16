@@ -14,6 +14,7 @@ export type OrganizationType =
   | 'client'
   | 'program'
   | 'community_org'
+  | 'software'
   | 'unknown_organization';
 
 export type OrganizationRoleToUser =

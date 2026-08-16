@@ -1,5 +1,5 @@
 import { logger } from '../../logger';
-import { normalizeNameKey, namesOverlapByContainment } from '../../utils/nameNormalization';
+import { normalizeNameKey, namesOverlapByContainment, namesMatchAsAcronym } from '../../utils/nameNormalization';
 import {
   evaluateEntityQuality,
   passesEntityQualityGate,
@@ -37,7 +37,7 @@ function isTableMissing(error: unknown): boolean {
   return (error as { code?: string })?.code === 'PGRST205';
 }
 
-function mapGroupType(orgType: OrganizationType): GroupType {
+export function mapGroupType(orgType: OrganizationType): GroupType {
   switch (orgType) {
     case 'employer':
     case 'company':
@@ -54,12 +54,16 @@ function mapGroupType(orgType: OrganizationType): GroupType {
     case 'platform':
     case 'vendor':
       return 'vendor';
+    case 'community_org':
+      return 'community';
+    case 'software':
+      return 'software';
     default:
       return 'other';
   }
 }
 
-function resolveMatch(
+export function resolveMatch(
   name: string,
   existing: Array<{ id: string; name: string }>,
 ): {
@@ -76,7 +80,9 @@ function resolveMatch(
       matched_organization_name: exact.name,
     };
   }
-  const similar = existing.find((o) => namesOverlapByContainment(o.name, name));
+  const similar = existing.find((o) =>
+    namesOverlapByContainment(o.name, name) || namesMatchAsAcronym(o.name, name)
+  );
   if (similar) {
     return {
       match_status: 'similar',

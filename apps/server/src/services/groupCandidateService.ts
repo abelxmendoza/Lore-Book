@@ -9,12 +9,13 @@
 import { logger } from '../logger';
 import { clustersMatch } from '../utils/clusterMatch';
 import { supabaseAdmin } from './supabaseClient';
-import { characterConnectionService } from './characterConnectionService';
+import { characterConnectionService, type ConnectionOriginContext } from './characterConnectionService';
 import { groupDetectionService } from './groupDetectionService';
 import { organizationService } from './organizationService';
 import type { GroupType, MembershipModel, UserRelationship } from './organizationService';
 import { organizationRelationshipInferenceService } from './organizationRelationshipInferenceService';
 import { nameHousehold } from './entities/householdNaming';
+import { ORG_CANDIDATE_NOISE_MEMBER_NAMES } from './lorebook/quality/organizationCandidateGuard';
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -49,7 +50,12 @@ export interface AcceptCandidateOptions {
 }
 
 const POLLUTED_CANDIDATE_TERMS = /\b(zephyrine|zephyrne|quillborne?|quillborn|quintessa|vexworth|smith rock|san diego|of debt)\b/i;
-const BAD_CANDIDATE_MEMBER_NAMES = new Set(['Had', 'Do', 'Did', 'Just', 'She', 'He', 'They', 'My', 'From', 'The', 'This', 'That', 'San Diego', 'Smith Rock']);
+// Shared with groupDetectionService.ts — see organizationCandidateGuard.ts.
+const BAD_CANDIDATE_MEMBER_NAMES = ORG_CANDIDATE_NOISE_MEMBER_NAMES;
+
+// Kinship groups aren't "organizations that introduce people" — connection
+// origin provenance is only meaningful for actual orgs/communities/teams.
+const NON_INTRODUCTION_GROUP_TYPES = new Set<GroupType>(['family', 'household', 'friend_group']);
 
 // ── Service ──────────────────────────────────────────────────────────────────
 
@@ -92,6 +98,11 @@ export class GroupCandidateService {
       // groups automatically (conservative; never creates new entities).
       const { membershipInferenceService } = await import('./membershipInferenceService');
       await membershipInferenceService.processMessage(userId, rawText, messageId);
+
+      // Explicit "applied to/interviewing with/started at/left X" statements
+      // update the user's own temporal relationship state with a known org.
+      const { organizationRelationshipStateService } = await import('./organizationRelationshipStateService');
+      await organizationRelationshipStateService.processMessage(userId, rawText, messageId);
     } catch (error) {
       logger.error({ error, userId, messageId }, 'GroupCandidateService: failed to process message');
     }
@@ -122,12 +133,19 @@ export class GroupCandidateService {
       const combined = texts.join('\n').slice(0, 8000);
       const sourceId = `conv:${sessionId}`;
 
-      // Passing every message as conversation context means name extraction
-      // sees the whole conversation, so co-mentions spanning multiple turns are
-      // clustered together — not just names that share a single sentence.
+      // Pass the individual turns as conversationContext (never folded into
+      // `message`) so name extraction still sees the whole conversation for
+      // co-mentions spanning multiple turns, while per-candidate scoping
+      // (membersNearText / suggestUserRelationship) still resolves each match
+      // back to the single turn it came from. Passing `combined` as `message`
+      // used to make that scoping resolve to the entire session instead of
+      // one line, which let names/relationship words from unrelated turns
+      // bleed into groups named in a completely different turn (e.g. a
+      // recruiter mention picking up members from an unrelated part of the
+      // same chat session).
       const detected = await groupDetectionService.detectGroupsInMessage(
         userId,
-        combined,
+        '',
         texts
       );
 
@@ -166,11 +184,22 @@ export class GroupCandidateService {
     // co-mentioned characters becomes a bidirectional connection in the people
     // network, so the app learns how characters are linked through shared
     // stories without fusing genuinely separate groups into one clique.
+    //
+    // When the cluster's group already resolves to a persisted organization
+    // (not family/household/friend_group — those aren't "introductions"),
+    // record that org as the connection's origin ("met through Amazon") so
+    // organizationJourneyService can later surface who a given org introduced.
     for (const group of detected) {
       const memberIds = [...new Set(group.member_ids ?? [])];
-      if (memberIds.length >= 2) {
-        await characterConnectionService.recordCoMention(userId, memberIds);
+      if (memberIds.length < 2) continue;
+
+      let originContext: ConnectionOriginContext | undefined;
+      if (group.name && !NON_INTRODUCTION_GROUP_TYPES.has(group.group_type)) {
+        const org = await organizationService.findByName(userId, group.name).catch(() => null);
+        if (org) originContext = { entityType: 'organization', entityId: org.id, entityName: org.name };
       }
+
+      await characterConnectionService.recordCoMention(userId, memberIds, originContext);
     }
 
     for (const group of detected) {
@@ -591,6 +620,15 @@ export class GroupCandidateService {
       throw new Error('Group candidates require at least two confirmed character members');
     }
 
+    // A department/team/lab candidate carries its resolved parent company's
+    // name (see DEPARTMENT_TEAM_POSSESSIVE_PATTERN/DEPARTMENT_TEAM_AT_PATTERN
+    // in groupDetectionService.ts) — link it via parent_group_id instead of
+    // creating an unrelated top-level org, if that parent already exists.
+    const parentGroupName = (candidate.metadata as Record<string, unknown> | null)?.parent_group_name;
+    const parentOrg = typeof parentGroupName === 'string' && parentGroupName.trim()
+      ? await organizationService.findByName(userId, parentGroupName.trim()).catch(() => null)
+      : null;
+
     // Create the organization
     const org = await organizationService.createOrganization(userId, {
       name: orgName,
@@ -602,6 +640,7 @@ export class GroupCandidateService {
       is_public_entity: candidate.is_public_entity,
       description: overrides.description ?? this.buildDescription(candidate),
       status: 'active',
+      parent_group_id: parentOrg?.id,
       metadata: {
         ...(candidate.metadata ?? {}),
         // Explicitly picking a type when accepting the suggestion is a manual

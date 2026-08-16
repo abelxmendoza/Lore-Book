@@ -10,7 +10,7 @@ import { logger } from '../logger';
 import { entityLearningService } from './entityLearningService';
 import { identityLedgerService } from './identity/identityLedgerService';
 import { supabaseAdmin } from './supabaseClient';
-import { normalizeNameKey, namesOverlapByContainment } from '../utils/nameNormalization';
+import { normalizeNameKey, namesOverlapByContainment, namesMatchAsAcronym } from '../utils/nameNormalization';
 import {
   collectNameKeys,
   flagMergedTextSnippets,
@@ -84,7 +84,8 @@ class OrganizationMergeService {
       const a = orgs[i] as OrgRow;
       if (used.has(a.id)) continue;
       const aKey = normalizeNameKey(a.name);
-      const aNames = [a.name, ...(a.aliases ?? [])].map(normalizeNameKey);
+      const aRawNames = [a.name, ...(a.aliases ?? [])];
+      const aNames = aRawNames.map(normalizeNameKey);
       const aMembers = memberMap.get(a.id) ?? new Set();
 
       const group: OrgRow[] = [a];
@@ -94,11 +95,16 @@ class OrganizationMergeService {
         const b = orgs[j] as OrgRow;
         if (used.has(b.id)) continue;
         const bKey = normalizeNameKey(b.name);
-        const bNames = [b.name, ...(b.aliases ?? [])].map(normalizeNameKey);
+        const bRawNames = [b.name, ...(b.aliases ?? [])];
+        const bNames = bRawNames.map(normalizeNameKey);
 
+        // Acronym matching needs the original casing ("USC" vs. "University
+        // of Southern California") — normalizeNameKey lowercases everything,
+        // which would make every word look like a casual lowercase phrase.
         const nameMatch =
           aKey === bKey ||
-          aNames.some(an => bNames.some(bn => an === bn || namesOverlapByContainment(an, bn)));
+          aNames.some(an => bNames.some(bn => an === bn || namesOverlapByContainment(an, bn))) ||
+          aRawNames.some(an => bRawNames.some(bn => namesMatchAsAcronym(an, bn)));
 
         let memberMatch = false;
         if (!nameMatch) {
