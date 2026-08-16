@@ -658,6 +658,7 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
           ...(streamTokenUsage ? { tokenUsage: streamTokenUsage } : {}),
         }),
         status,
+        clientGone,
       });
       if (assistantPersistResult.id) {
         result.metadata.assistantMessageId = assistantPersistResult.id;

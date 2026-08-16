@@ -114,11 +114,12 @@ describe('chatMessagePersistenceService', () => {
     expect(result.error).toContain('update failed');
   });
 
-  it('finalizeAssistantMessage keeps an interrupted-before-any-tokens reply visible instead of deleting it', async () => {
+  it('finalizeAssistantMessage keeps an interrupted-before-any-tokens reply visible when the client disconnected', async () => {
     // A disconnect before any content streamed used to delete the placeholder
-    // outright, leaving the user's message with no reply at all. It must now
-    // be finalized as a visible, honest 'failed' row so the UI can show a
-    // retry affordance instead of silence.
+    // outright, leaving the user's message with no reply at all. When the
+    // client is gone (no live SSE error could reach them), it must now be
+    // finalized as a visible, honest 'failed' row instead so the UI can show
+    // a retry affordance instead of silence.
     const result = await finalizeAssistantMessage({
       userId: 'user-1',
       sessionId: 'session-1',
@@ -126,12 +127,29 @@ describe('chatMessagePersistenceService', () => {
       content: '   ',
       metadata: {},
       status: 'complete',
+      clientGone: true,
     });
     expect(result.saved).toBe(true);
     expect(result.error).toBeUndefined();
     expect(updates).toHaveLength(1);
     expect(updates[0].payload.content).toBe('Response interrupted before it started.');
     expect(updates[0].payload.metadata).toMatchObject({ stream_status: 'failed' });
+  });
+
+  it('finalizeAssistantMessage still deletes the placeholder for a genuinely empty response while the client is connected', async () => {
+    // The client is still connected here, so a live SSE error frame already
+    // told them something went wrong — no need for a redundant persisted row.
+    const result = await finalizeAssistantMessage({
+      userId: 'user-1',
+      sessionId: 'session-1',
+      assistantRowId: 'asst-ph-empty-connected',
+      content: '   ',
+      metadata: {},
+      status: 'failed',
+    });
+    expect(result.saved).toBe(false);
+    expect(result.error).toBe('empty_content');
+    expect(updates).toHaveLength(0);
   });
 
   it('userPersistResult reflects message id presence', () => {

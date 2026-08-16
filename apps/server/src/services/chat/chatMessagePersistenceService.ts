@@ -30,6 +30,15 @@ export type AssistantFinalizeInput = {
   content: string;
   metadata: Record<string, unknown>;
   status: 'complete' | 'partial' | 'failed';
+  /**
+   * True when the client disconnected before this finalize call — the only
+   * case where persisting a visible fallback row is needed, since no live
+   * SSE error frame could reach them. When the client is still connected
+   * (a genuine empty-response error mid-request), they already received a
+   * live SSE error frame, so the empty placeholder is deleted as before
+   * rather than leaving a redundant persisted row.
+   */
+  clientGone?: boolean;
 };
 
 async function runWithRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
@@ -92,10 +101,20 @@ export async function finalizeAssistantMessage(
 ): Promise<MessagePersistResult> {
   const trimmed = input.content.trim();
   const isEmpty = !trimmed;
-  // An interrupted-before-any-tokens stream used to delete the placeholder
-  // outright, leaving the user's message with no reply and no trace anything
-  // was attempted. Finalize it as a visible 'failed' row instead so the UI
-  // can show an honest "interrupted" state with a retry affordance.
+
+  // A genuinely empty response while the client is still connected already
+  // reached them as a live SSE error frame — deleting the placeholder here
+  // matches that (no redundant persisted row). Only when the client is gone
+  // (disconnected before any content streamed, so no live signal was ever
+  // possible) do we keep a visible fallback row instead of deleting it —
+  // that's the only case where deleting silently drops the reply.
+  if (isEmpty && !input.clientGone) {
+    if (input.assistantRowId) {
+      await deleteAssistantPlaceholder(input.userId, input.assistantRowId);
+    }
+    return { saved: false, role: 'assistant', error: 'empty_content' };
+  }
+
   const finalContent = isEmpty ? INTERRUPTED_BEFORE_START_TEXT : input.content;
   const finalStatus = isEmpty ? 'failed' : input.status;
 
