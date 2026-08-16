@@ -10,20 +10,21 @@ npm run check:demo-privacy || exit 1
 # echo "📝 Running linter..."
 # cd apps/web && npm run lint || echo "⚠️  Linter has warnings"
 
-# Run critical tests (fast tests only)
-echo "🧪 Running critical tests..."
-cd apps/server
-if npm test -- --run 2>/dev/null; then
-  echo "✅ Server tests passed"
-else
-  echo "⚠️  Server tests failed. Consider fixing before committing."
-fi
+# Full test suites — blocking. (Previously non-blocking: a failure only
+# printed a warning and let the commit through, which is how a real
+# regression reached main undetected in an earlier commit today.)
+echo "🧪 Running server tests..."
+(cd apps/server && npm test -- --run) || {
+  echo "❌ Server tests failed. Fix before committing (or use --no-verify only if you understand the risk)."
+  exit 1
+}
+echo "✅ Server tests passed"
 
-cd ../web
-if npm run test:unit -- --run 2>/dev/null; then
-  echo "✅ Web unit tests passed"
-else
-  echo "⚠️  Web unit tests failed. Consider fixing before committing."
-fi
+echo "🧪 Running web tests..."
+(cd apps/web && npm run test:unit -- --run) || {
+  echo "❌ Web tests failed. Fix before committing (or use --no-verify only if you understand the risk)."
+  exit 1
+}
+echo "✅ Web tests passed"
 
 echo "✅ Pre-commit checks completed!"
