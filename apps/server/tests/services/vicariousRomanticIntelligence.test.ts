@@ -24,6 +24,17 @@ describe('vicariousRomanticIntelligence', () => {
     expect(hit?.tier).toBe('suspected');
   });
 
+  it('does not tag a hit with a domain word mentioned elsewhere in a long message', () => {
+    const message =
+      'I think Sam was texting Marcus while we were still seeing each other. ' +
+      'Unrelated: my coworker posted on Instagram about a show downtown and I might check it out this weekend.';
+    const hits = parseVicariousEpisode(message, ['Sam']);
+    const hit = hits.find((h) => h.objectName === 'Marcus');
+    expect(hit).toBeDefined();
+    expect(hit?.ontologyTags.some((t) => t.startsWith('APP/'))).toBe(false);
+    expect(hit?.ontologyTags.some((t) => t.startsWith('EVENT/'))).toBe(false);
+  });
+
   it('parses possessive ex pattern', () => {
     const hits = parseVicariousEpisode("Morgan's ex Nova keeps coming up in old stories.");
     expect(hits.some((h) => h.subjectName === 'Morgan' && h.role === 'ex')).toBe(true);

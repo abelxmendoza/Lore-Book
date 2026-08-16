@@ -244,7 +244,12 @@ export function parseVicariousEpisode(
       let tier = pattern.tier;
       if (CONFIRM_CUES.some((c) => norm(text).includes(c))) tier = 'confirmed';
 
-      const enrichment = enrichEntity(objectSurface, text);
+      // Enrich from the evidence window around THIS hit's own regex match,
+      // not the whole message and not cues[0] (a cue found anywhere in the
+      // message, possibly nowhere near this hit) — see romanticIntelligence.ts's
+      // parseRomanticEpisode for why a distant, unrelated word must not tag this hit.
+      const evidence = snippetAround(text, m[0]);
+      const enrichment = enrichEntity(objectSurface, evidence);
       hits.push({
         subjectName,
         objectName,
@@ -252,7 +257,7 @@ export function parseVicariousEpisode(
         role: pattern.role,
         tier,
         confidence: Math.min(0.95, pattern.weight + (tier === 'confirmed' ? 0.05 : 0)),
-        evidence: snippetAround(text, cues[0] ?? objectSurface),
+        evidence,
         cues: [...new Set(cues)].slice(0, 6),
         ontologyTags: [
           `ROMANTIC/VICARIOUS/${tier.toUpperCase()}`,

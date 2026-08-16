@@ -179,14 +179,26 @@ export function parseRomanticEpisode(text: string): RomanticLexicalHit[] {
   const baseConfidence = Math.min(0.95, typeConf + hintBoost);
 
   return names.map((partnerName) => {
-    const enrichment = enrichEntity(partnerName, text);
     const evidenceCue = cues[0] ?? type;
+    const evidence = snippetAround(text, evidenceCue);
+    // Enrich from a window around THIS partner's own mention, not the whole
+    // message and not the shared cue snippet (cues[0] may sit nowhere near
+    // this particular name in a multi-person message). A long message can
+    // mention an app, a show, a group elsewhere for reasons unrelated to this
+    // specific person — scanning the full text turned any such incidental
+    // word into a tag on every relationship hit found anywhere in the
+    // message ("talking to" picking up "APP/SOFTWARE" from an Instagram
+    // mention three sentences away).
+    const enrichmentContext = text.toLowerCase().includes(partnerName.toLowerCase())
+      ? snippetAround(text, partnerName)
+      : evidence;
+    const enrichment = enrichEntity(partnerName, enrichmentContext);
     return {
       partnerName,
       relationshipType: type,
       status,
       confidence: baseConfidence,
-      evidence: snippetAround(text, evidenceCue),
+      evidence,
       cues,
       ontologyTags: enrichment.ontologyTags,
       isSituationship: type === 'situationship' || /\bsituationship\b/i.test(text),

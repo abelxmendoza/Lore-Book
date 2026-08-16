@@ -25,6 +25,18 @@ describe('vicariousRelationshipIntelligence', () => {
     expect(hits.some((h) => h.domain === 'professional' && h.role === 'manager')).toBe(true);
   });
 
+  it('does not tag a hit with a domain word mentioned elsewhere in a long message', () => {
+    const message =
+      "Sarah's sister Carmen visited last month, and we spent the whole weekend catching up on everything " +
+      'that had happened since the last time we all got together as a family, which honestly felt like ages ago. ' +
+      'Totally unrelated: my coworker posted on Instagram about a show downtown and I might check it out this weekend.';
+    const hits = parseVicariousRelationships(message, ['Sarah']);
+    const hit = hits.find((h) => h.domain === 'family' && h.objectSurface.includes('Carmen'));
+    expect(hit).toBeDefined();
+    expect(hit?.ontologyTags.some((t) => t.startsWith('APP/'))).toBe(false);
+    expect(hit?.ontologyTags.some((t) => t.startsWith('EVENT/'))).toBe(false);
+  });
+
   it('still includes romantic hits', () => {
     const hits = parseVicariousRelationships(
       'Sam was texting Marcus while we were still seeing each other',
