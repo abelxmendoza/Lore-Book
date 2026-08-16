@@ -114,7 +114,11 @@ describe('chatMessagePersistenceService', () => {
     expect(result.error).toContain('update failed');
   });
 
-  it('finalizeAssistantMessage skips empty content and deletes placeholder', async () => {
+  it('finalizeAssistantMessage keeps an interrupted-before-any-tokens reply visible instead of deleting it', async () => {
+    // A disconnect before any content streamed used to delete the placeholder
+    // outright, leaving the user's message with no reply at all. It must now
+    // be finalized as a visible, honest 'failed' row so the UI can show a
+    // retry affordance instead of silence.
     const result = await finalizeAssistantMessage({
       userId: 'user-1',
       sessionId: 'session-1',
@@ -123,9 +127,11 @@ describe('chatMessagePersistenceService', () => {
       metadata: {},
       status: 'complete',
     });
-    expect(result.saved).toBe(false);
-    expect(result.error).toBe('empty_content');
-    expect(updates).toHaveLength(0);
+    expect(result.saved).toBe(true);
+    expect(result.error).toBeUndefined();
+    expect(updates).toHaveLength(1);
+    expect(updates[0].payload.content).toBe('Response interrupted before it started.');
+    expect(updates[0].payload.metadata).toMatchObject({ stream_status: 'failed' });
   });
 
   it('userPersistResult reflects message id presence', () => {

@@ -4,6 +4,7 @@ import {
   resolveThreadUpdatedAt,
   LOCAL_ACTIVITY_GRACE_MS,
 } from './mergeLoadedThreadsWithHydrated';
+import { threadPersistenceTracker } from '../services/threadPersistenceTracker';
 import type { ChatThread } from '../hooks/useChatThreads';
 
 function thread(
@@ -117,5 +118,74 @@ describe('mergeLoadedThreadsWithHydrated', () => {
     const merged = mergeLoadedThreadsWithHydrated(loaded, [stalePending]);
 
     expect(merged.map((t) => t.id)).toEqual(['server-a']);
+  });
+
+  // ── Stale/deleted-thread resurrection (P1) ────────────────────────────────
+  // A thread with real messages absent from a fresh, full server page is
+  // ambiguous by itself: it could be genuinely off-page (paginated out) or
+  // deleted/renamed on another device. These cases disambiguate using the
+  // page's own age range and the persistence tracker's genuine-pending state.
+
+  it('keeps a cached thread with messages that is plausibly just off-page (older than the loaded page)', () => {
+    const loaded = Array.from({ length: 30 }, (_, i) =>
+      thread(`server-${i}`, [], `2026-06-${String(30 - i).padStart(2, '0')}T00:00:00Z`)
+    ); // full 30-row page, oldest row is 2026-06-01
+    const offPage = thread(
+      'off-page-real',
+      [{ id: 'm1', role: 'user', content: 'hi', timestamp: new Date('2026-05-01T00:00:00Z') }],
+      '2026-05-01T00:00:00Z' // older than every row on the page
+    );
+
+    const merged = mergeLoadedThreadsWithHydrated(loaded, [offPage], 30);
+
+    expect(merged.map((t) => t.id)).toContain('off-page-real');
+  });
+
+  it('drops a cached thread with messages that is absent from a full page but newer than everything on it (deleted elsewhere)', () => {
+    const loaded = Array.from({ length: 30 }, (_, i) =>
+      thread(`server-${i}`, [], `2026-06-${String(30 - i).padStart(2, '0')}T00:00:00Z`)
+    ); // full 30-row page, oldest row is 2026-06-01
+    const deletedElsewhere = thread(
+      'deleted-real',
+      [{ id: 'm1', role: 'user', content: 'hi', timestamp: new Date('2026-07-01T00:00:00Z') }],
+      '2026-07-01T00:00:00Z' // newer than everything on the page — should have been on it
+    );
+
+    const merged = mergeLoadedThreadsWithHydrated(loaded, [deletedElsewhere], 30);
+
+    expect(merged.map((t) => t.id)).not.toContain('deleted-real');
+  });
+
+  it('keeps a genuinely-pending thread with messages regardless of the page window', () => {
+    threadPersistenceTracker.markPersistPending('genuinely-pending', 1);
+    try {
+      const loaded = Array.from({ length: 30 }, (_, i) =>
+        thread(`server-${i}`, [], `2026-06-${String(30 - i).padStart(2, '0')}T00:00:00Z`)
+      );
+      const pendingWrite = thread(
+        'genuinely-pending',
+        [{ id: 'm1', role: 'user', content: 'hi', timestamp: new Date('2026-07-01T00:00:00Z') }],
+        '2026-07-01T00:00:00Z' // newer than the page — would be dropped if not for the pending state
+      );
+
+      const merged = mergeLoadedThreadsWithHydrated(loaded, [pendingWrite], 30);
+
+      expect(merged.map((t) => t.id)).toContain('genuinely-pending');
+    } finally {
+      threadPersistenceTracker.remove('genuinely-pending');
+    }
+  });
+
+  it('keeps a cached thread with messages absent from a page that was not even full (nothing could be paginated out)', () => {
+    const loaded = [thread('server-a', [], '2026-06-01T00:00:00Z')]; // far short of the 30 limit
+    const notOnServerYet = thread(
+      'small-page-real',
+      [{ id: 'm1', role: 'user', content: 'hi', timestamp: new Date('2026-08-01T00:00:00Z') }],
+      '2026-08-01T00:00:00Z'
+    );
+
+    const merged = mergeLoadedThreadsWithHydrated(loaded, [notOnServerYet], 30);
+
+    expect(merged.map((t) => t.id)).toContain('small-page-real');
   });
 });

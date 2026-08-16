@@ -81,22 +81,28 @@ export async function deleteAssistantPlaceholder(userId: string, assistantRowId:
   }
 }
 
+/** Text shown when a stream was interrupted before any content arrived — kept
+ * short and honest rather than deleting the row, so the user's turn always
+ * has a visible reply instead of silently vanishing. */
+const INTERRUPTED_BEFORE_START_TEXT = 'Response interrupted before it started.';
+
 /** Update placeholder or insert assistant row with final/partial content. */
 export async function finalizeAssistantMessage(
   input: AssistantFinalizeInput
 ): Promise<MessagePersistResult> {
   const trimmed = input.content.trim();
-  if (!trimmed) {
-    if (input.assistantRowId) {
-      await deleteAssistantPlaceholder(input.userId, input.assistantRowId);
-    }
-    return { saved: false, role: 'assistant', error: 'empty_content' };
-  }
+  const isEmpty = !trimmed;
+  // An interrupted-before-any-tokens stream used to delete the placeholder
+  // outright, leaving the user's message with no reply and no trace anything
+  // was attempted. Finalize it as a visible 'failed' row instead so the UI
+  // can show an honest "interrupted" state with a retry affordance.
+  const finalContent = isEmpty ? INTERRUPTED_BEFORE_START_TEXT : input.content;
+  const finalStatus = isEmpty ? 'failed' : input.status;
 
   const rowMetadata = {
     ...input.metadata,
     saved_from_stream: true,
-    stream_status: input.status,
+    stream_status: finalStatus,
   };
 
   try {
@@ -104,7 +110,7 @@ export async function finalizeAssistantMessage(
       const { error } = await runWithRetry('assistant-update', async () =>
         supabaseAdmin
           .from('chat_messages')
-          .update({ content: input.content, metadata: rowMetadata })
+          .update({ content: finalContent, metadata: rowMetadata })
           .eq('id', input.assistantRowId!)
           .eq('user_id', input.userId)
       );
@@ -120,7 +126,7 @@ export async function finalizeAssistantMessage(
             user_id: input.userId,
             session_id: input.sessionId,
             role: 'assistant',
-            content: input.content,
+            content: finalContent,
             metadata: rowMetadata,
           })
           .select('id')

@@ -259,6 +259,29 @@ describe('useChatThreads', () => {
     expect(result.current.threads).toHaveLength(1);
   });
 
+  it('does not reuse an empty draft thread hydrated from a prior session (cross-device merge guard)', async () => {
+    // A thread that merely LOOKS empty in cached/hydrated state must never be
+    // reused by createThread() — another device may already be writing to it.
+    // Only a thread this device minted itself this page load is eligible.
+    mockUseAuth.mockReturnValue(makeAuthState());
+    const stored = [
+      { id: 'stale-cached-draft', title: 'Draft', messages: [], updatedAt: new Date().toISOString() },
+    ];
+    localStorage.setItem('lorekeeper_chat_threads_guest', JSON.stringify(stored));
+
+    const { result } = renderUseChatThreads();
+    await waitFor(() => expect(result.current.threadsLoading).toBe(false));
+    expect(result.current.threads.some((t) => t.id === 'stale-cached-draft')).toBe(true);
+
+    let newId: string;
+    act(() => {
+      newId = result.current.createThread();
+    });
+
+    expect(newId!).not.toBe('stale-cached-draft');
+    expect(result.current.threads.some((t) => t.id === newId!)).toBe(true);
+  });
+
   it('does not reuse a draft that only has messageCount (unhydrated list row)', async () => {
     mockUseAuth.mockReturnValue(makeAuthState());
     const stored = [

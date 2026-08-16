@@ -32,7 +32,10 @@ import {
   ensureLocalUniqueTitle,
   isEmptyDraftThread,
 } from '../utils/threadDedupeUtils';
-import { mergeLoadedThreadsWithHydrated } from '../utils/mergeLoadedThreadsWithHydrated';
+import {
+  mergeLoadedThreadsWithHydrated,
+  DEFAULT_THREAD_PAGE_LIMIT,
+} from '../utils/mergeLoadedThreadsWithHydrated';
 import { mergeThreadMessages, countMissingAssistantTurns } from '../utils/mergeThreadMessages';
 import { mapDbMessageRow } from '../utils/mapDbMessageRow';
 import { dbRowToThread } from '../utils/dbRowToThread';
@@ -139,6 +142,11 @@ export const useChatThreads = () => {
 
   const currentThreadIdRef = useRef<string | null>(null);
   const threadsRef = useRef<ChatThread[]>([]);
+  // Thread IDs created via createThread() during THIS page load. Reuse-if-empty
+  // must never trust a hydrated/cached thread's emptiness — another device may
+  // already be writing to it — so only an ID this device minted itself this
+  // session is eligible for reuse. Reset naturally on reload (in-memory only).
+  const createdThisSessionRef = useRef<Set<string>>(new Set());
 
   useEffect(() => { threadsRef.current = threads; }, [threads]);
 
@@ -221,14 +229,16 @@ export const useChatThreads = () => {
         await store.dispatch(chatApi.endpoints.recoverThreadOrphans.initiate()).unwrap().catch(() => {});
       }
 
-      const data = await fetchThreadsPage({ limit: 30 });
+      const data = await fetchThreadsPage({ limit: DEFAULT_THREAD_PAGE_LIMIT });
       const loaded = dedupeThreads((data.threads || []).map(dbRowToThread));
       const cached = userId ? readAuthThreadCache(userId) : null;
       let mergedThreads: ChatThread[] = [];
       setThreads((prev) => {
         // Prefer live in-memory rows over disk cache so in-flight bumps survive merge.
         const base = prev.length > 0 ? prev : cached?.threads.length ? cached.threads : prev;
-        const merged = sortThreadsByActivity(mergeLoadedThreadsWithHydrated(loaded, base));
+        const merged = sortThreadsByActivity(
+          mergeLoadedThreadsWithHydrated(loaded, base, DEFAULT_THREAD_PAGE_LIMIT)
+        );
         mergedThreads = merged;
         threadsRef.current = merged;
         return merged;
@@ -364,14 +374,22 @@ export const useChatThreads = () => {
     // List rows hydrate with messages: [] and only messageCount set, so emptiness
     // must check messageCount (see isEmptyDraftThread) — otherwise we append into
     // a real conversation that merely hasn't been hydrated yet.
+    //
+    // Reuse is gated on createdThisSessionRef, NOT just isEmptyDraftThread: a
+    // hydrated/cached row can look empty locally while another device has
+    // already started writing to it (stale cache, cross-device race). Only a
+    // thread this device minted itself earlier in this page session is known
+    // to be genuinely uncontested — never resurrect-and-reuse a thread we only
+    // know about from a server fetch or localStorage cache.
     const latest = threadsRef.current[0];
-    if (latest && isEmptyDraftThread(latest)) {
+    if (latest && createdThisSessionRef.current.has(latest.id) && isEmptyDraftThread(latest)) {
       applyCurrentThreadId(latest.id);
       if (isAuthenticated) localStorage.setItem(lastThreadKey(userId), latest.id);
       return latest.id;
     }
 
     const id = crypto.randomUUID();
+    createdThisSessionRef.current.add(id);
     const thread: ChatThread = {
       id,
       title: DRAFT_THREAD_TITLE,

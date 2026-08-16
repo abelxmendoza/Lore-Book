@@ -104,4 +104,69 @@ describe('mapDbMessageRow', () => {
     expect(message.staleProjectionHints).toEqual([{ id: 'bio-1', type: 'biography_snapshot' }]);
     expect(message.staleProjectionSummary).toBe('life summary outdated');
   });
+
+  it('restores the evidence manifest used by reloaded diagnostics', () => {
+    const message = mapDbMessageRow({
+      id: 'asst-db-evidence',
+      role: 'assistant',
+      content: 'The interview was a major event this month.',
+      created_at: '2026-08-12T12:00:00.000Z',
+      metadata: {
+        sources: [{ type: 'event', id: 'event-1', title: 'Interview completed' }],
+        citations: [{ text: 'Interview completed', sourceId: 'event-1', sourceType: 'event' }],
+        recall_sources: [{ entry_id: 'event-1', timestamp: '2026-08-08T12:00:00.000Z' }],
+        ragStats: { sourceCount: 1, cacheHit: false, retrievalMs: 18, contextItems: 1 },
+        response_mode: 'MEMORY_RECALL',
+      },
+    });
+
+    expect(message.sources).toHaveLength(1);
+    expect(message.citations).toHaveLength(1);
+    expect(message.recall_sources).toHaveLength(1);
+    expect(message.ragStats).toMatchObject({ sourceCount: 1, contextItems: 1 });
+    expect(message.response_mode).toBe('MEMORY_RECALL');
+  });
+
+  it('synthesizes a failed lifecycle for an assistant row interrupted before any tokens arrived', () => {
+    const message = mapDbMessageRow({
+      id: 'asst-db-failed',
+      role: 'assistant',
+      content: 'Response interrupted before it started.',
+      created_at: '2026-08-12T12:00:00.000Z',
+      metadata: { saved_from_stream: true, stream_status: 'failed' },
+    });
+
+    expect(message.lifecycle).toMatchObject({
+      cloudPersistence: 'saved',
+      processing: 'failed',
+    });
+    expect(message.lifecycle?.lastError).toMatchObject({
+      stage: 'generation',
+      retryable: true,
+    });
+  });
+
+  it('does not synthesize a lifecycle for a normal completed assistant row', () => {
+    const message = mapDbMessageRow({
+      id: 'asst-db-ok',
+      role: 'assistant',
+      content: 'All good.',
+      created_at: '2026-08-12T12:00:00.000Z',
+      metadata: { saved_from_stream: true, stream_status: 'complete' },
+    });
+
+    expect(message.lifecycle).toBeUndefined();
+  });
+
+  it('does not synthesize a lifecycle for a user row even if stream_status is failed', () => {
+    const message = mapDbMessageRow({
+      id: 'user-db-failed',
+      role: 'user',
+      content: 'hi',
+      created_at: '2026-08-12T12:00:00.000Z',
+      metadata: { stream_status: 'failed' },
+    });
+
+    expect(message.lifecycle).toBeUndefined();
+  });
 });

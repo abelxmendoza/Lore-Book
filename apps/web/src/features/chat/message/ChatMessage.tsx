@@ -729,6 +729,23 @@ export const ChatMessage = ({
                     Saving…
                   </p>
                 )}
+                {!isUser && message.metadata?.stream_status === 'partial' && !message.isStreaming && (
+                  <div className="mt-1.5 flex items-center gap-2" data-testid="message-stream-partial">
+                    <p className="text-[10px] text-amber-300/85">
+                      This reply was cut short — the connection dropped mid-response.
+                    </p>
+                    {onRetryAssistantResponse && (
+                      <button
+                        type="button"
+                        onClick={() => onRetryAssistantResponse(message.id)}
+                        disabled={retryInFlight}
+                        className="text-[10px] font-medium text-amber-200 underline decoration-dotted hover:text-amber-100 disabled:opacity-50"
+                      >
+                        Retry
+                      </button>
+                    )}
+                  </div>
+                )}
               </>
             )}
 

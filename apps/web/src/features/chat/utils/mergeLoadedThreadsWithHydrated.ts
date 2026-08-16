@@ -1,10 +1,18 @@
 import type { ChatThread } from '../hooks/useChatThreads';
 import { sortThreadsByActivity } from './sortThreadsChronologically';
 import { isGenericThreadTitle } from './threadTitleUtils';
+import { threadPersistenceTracker } from '../services/threadPersistenceTracker';
 
 const PENDING_DRAFT_TTL_MS = 60 * 60 * 1000; // keep optimistic empty drafts for 1h
 /** Keep a just-bumped local updatedAt until the server write lands. */
 export const LOCAL_ACTIVITY_GRACE_MS = 60_000;
+/** Matches the page size useChatThreads requests from fetchThreadsPage. */
+export const DEFAULT_THREAD_PAGE_LIMIT = 30;
+
+function isGenuinelyPending(threadId: string): boolean {
+  const state = threadPersistenceTracker.get(threadId)?.state;
+  return state === 'PERSIST_PENDING' || state === 'PERSISTING' || state === 'LOCAL_ONLY';
+}
 
 function preferTitle(serverTitle: string, localTitle: string): string {
   if (isGenericThreadTitle(serverTitle) && !isGenericThreadTitle(localTitle)) {
@@ -13,9 +21,33 @@ function preferTitle(serverTitle: string, localTitle: string): string {
   return serverTitle || localTitle;
 }
 
-function shouldKeepPendingLocal(thread: ChatThread): boolean {
+/**
+ * Should a thread that's absent from the fresh server page still be shown
+ * from local/cached state? Two very different cases both reach here:
+ *
+ *   - A real thread with real messages, cached from a prior session, that
+ *     the server page no longer includes. Absence is ambiguous by itself —
+ *     it could mean "just paginated out" (real, still exists, just below the
+ *     page limit) or "deleted/renamed on another device" (gone, must not be
+ *     resurrected). Genuinely-unconfirmed writes (tracked as still pending)
+ *     always survive; otherwise only keep it if it's plausibly *older* than
+ *     everything on this page — if it's absent AND would have sorted above
+ *     the page's oldest row, it was removed server-side, not paginated out.
+ *   - An empty draft thread not yet round-tripped to the server at all — kept
+ *     for a bounded TTL regardless of the page window (unchanged from before).
+ */
+function shouldKeepPendingLocal(
+  thread: ChatThread,
+  loadedOldestMs: number,
+  pageWasFull: boolean
+): boolean {
   const hasContent = (thread.messages?.length ?? 0) > 0 || (thread.messageCount ?? 0) > 0;
-  if (hasContent) return true;
+  if (hasContent) {
+    if (isGenuinelyPending(thread.id)) return true;
+    if (!pageWasFull) return true;
+    const threadMs = Date.parse(thread.updatedAt);
+    return Number.isFinite(threadMs) && Number.isFinite(loadedOldestMs) && threadMs < loadedOldestMs;
+  }
   const age = Date.now() - new Date(thread.updatedAt).getTime();
   return Number.isFinite(age) && age >= 0 && age < PENDING_DRAFT_TTL_MS;
 }
@@ -48,12 +80,18 @@ export function resolveThreadUpdatedAt(
  */
 export function mergeLoadedThreadsWithHydrated(
   loaded: ChatThread[],
-  prev: ChatThread[]
+  prev: ChatThread[],
+  pageLimit: number = DEFAULT_THREAD_PAGE_LIMIT
 ): ChatThread[] {
   if (prev.length === 0) return sortThreadsByActivity(loaded);
 
   const prevById = new Map(prev.map((t) => [t.id, t]));
   const loadedIds = new Set(loaded.map((t) => t.id));
+  const pageWasFull = loaded.length >= pageLimit;
+  const loadedOldestMs = loaded.reduce((min, t) => {
+    const ms = Date.parse(t.updatedAt);
+    return Number.isFinite(ms) ? Math.min(min, ms) : min;
+  }, Infinity);
 
   const mergedLoaded = loaded.map((t) => {
     const existing = prevById.get(t.id);
@@ -72,7 +110,9 @@ export function mergeLoadedThreadsWithHydrated(
     };
   });
 
-  const pendingOnly = prev.filter((t) => !loadedIds.has(t.id) && shouldKeepPendingLocal(t));
+  const pendingOnly = prev.filter(
+    (t) => !loadedIds.has(t.id) && shouldKeepPendingLocal(t, loadedOldestMs, pageWasFull)
+  );
 
   return sortThreadsByActivity([...pendingOnly, ...mergedLoaded]);
 }
