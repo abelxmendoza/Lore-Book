@@ -17,7 +17,15 @@ function makeSupabaseChain(table: string, books: Record<string, unknown[]>) {
   chain.upsert = vi.fn().mockResolvedValue({ data: null, error: null });
   chain.update = vi.fn(() => ({
     eq: vi.fn(() => ({
-      eq: vi.fn().mockResolvedValue({ error: null }),
+      eq: vi.fn(() => {
+        // Thenable AND chainable: some callers await .update().eq().eq()
+        // directly, others (bumpThreadActivity's monotonic guard) chain a
+        // trailing .lt('updated_at', at) before awaiting.
+        const resolved: Promise<{ error: null }> & { lt?: () => Promise<{ error: null }> } =
+          Promise.resolve({ error: null });
+        resolved.lt = vi.fn().mockResolvedValue({ error: null });
+        return resolved;
+      }),
     })),
   }));
   chain.delete = vi.fn(() => chain);
