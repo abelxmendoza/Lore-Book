@@ -32,7 +32,7 @@ class StoryAccountService {
   /**
    * Extract story/event name from message
    */
-  extractStoryName(message: string): string {
+  async extractStoryName(message: string): Promise<string> {
     // Try to extract entity/story name using patterns
     const patterns = [
       /(what happened|tell me about|remember|story of|story about) (with|at|the|when) ([a-z\s]+)/i,

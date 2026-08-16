@@ -7,6 +7,7 @@
 
 import { JOURNAL_COLS } from '../../db/journalEntryColumns';
 import { logger } from '../../logger';
+import { evaluateSentenceBleed } from '../characters/audit/characterIdentityGate';
 import type { StreamingChatResponse } from '../omegaChatService';
 import { supabaseAdmin } from '../supabaseClient';
 
@@ -1037,7 +1038,7 @@ class ModeHandlers {
       const { storyAccountService } = await import('../storyAccount/storyAccountService');
       
       // Extract story/event name from message
-      const storyName = storyAccountService.extractStoryName(message);
+      const storyName = await storyAccountService.extractStoryName(message);
       
       // Get all accounts of this story
       const accounts = await storyAccountService.getStoryAccounts(userId, storyName);
@@ -1397,6 +1398,20 @@ class ModeHandlers {
   }
 }
 
+// Pronouns/determiners/connective fragments the free-text dismiss command's
+// regexes keep capturing as a "suggestion name" ("Dismiss You from Character
+// suggestions", "remove That project suggestion"). Deliberately independent
+// of characterRegistry's JUNK_NAMES to avoid pulling that module's heavy
+// dependency chain into the mode-router.
+const DISMISS_NAME_JUNK_WORDS = new Set([
+  'i', 'me', 'my', 'mine', 'you', 'your', 'yours', 'he', 'him', 'his', 'she',
+  'her', 'hers', 'they', 'them', 'their', 'we', 'us', 'our', 'it', 'its',
+  'thats', 'whats', 'wheres', 'whens', 'whos', 'hows', 'lets',
+  'the', 'a', 'an', 'this', 'that', 'these', 'those', 'just', 'from',
+  'someone', 'somebody', 'anyone', 'anybody', 'everyone', 'everybody',
+  'people', 'person', 'help', 'please', 'okay', 'ok', 'yes', 'no', 'wait',
+]);
+
 function parseSuggestionDismissRequest(message: string): {
   domain?: import('../suggestionDismissalService').SuggestionDismissalDomain;
   name?: string;
@@ -1423,7 +1438,17 @@ function parseSuggestionDismissRequest(message: string): {
   const afterVerb = text.match(
     /\b(?:dismiss|remove|delete|hide|suppress|reject|drop)\b(?:\s+(?:the|this|that|wrong))?(?:\s+(?:place|location|character|person|project|skill|quest|goal))?(?:\s+suggestion)?\s+([A-Z][\p{L}\p{N}'’.-]*(?:\s+[A-Z0-9][\p{L}\p{N}'’.-]*){0,5})/u,
   );
-  const name = quoted?.[1]?.trim() || afterVerb?.[1]?.trim() || afterSuggestion?.[1]?.trim();
+  const rawName = quoted?.[1]?.trim() || afterVerb?.[1]?.trim() || afterSuggestion?.[1]?.trim();
+  // A bare pronoun/connective fragment ("You", "That") is regex noise, not a
+  // real suggestion name — never pass it to recordDismissal, which would
+  // otherwise happily dismiss a "You" or "That" suggestion that was never
+  // actually pending. Fall through to the clarifying prompt instead.
+  const name =
+    rawName &&
+    !evaluateSentenceBleed(rawName).rejected &&
+    !DISMISS_NAME_JUNK_WORDS.has(rawName.toLowerCase())
+      ? rawName
+      : undefined;
 
   const reason = /\b(wrong book|should be|not a place|not a location|not a character|not a person|not a project|not a skill|not a quest|not a goal)\b/i.test(text)
     ? 'wrong_book'

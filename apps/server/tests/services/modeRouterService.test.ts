@@ -377,6 +377,32 @@ describe("ModeRouterService", () => {
         expect(logger.warn).toHaveBeenCalled();
       }
     });
+
+    it("does not route an introduction into NARRATIVE_RECALL on a weak LLM vote", async () => {
+      // "Tell me about Y" is the classifier's own few-shot NARRATIVE_RECALL
+      // example, so it surface-matches ordinary introductions like this one —
+      // but there's nothing to recall here, just someone new being described.
+      vi.mocked(openai.chat.completions.create).mockResolvedValue({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                mode: "NARRATIVE_RECALL",
+                confidence: 0.6,
+                reasoning: "Surface-matches 'tell me about' example",
+              }),
+            },
+          },
+        ],
+      } as any);
+
+      const result = await modeRouterService.routeMessage(
+        "user-1",
+        "Let me tell you about V: her real first name is Vicky and she's one of my original scene crushes",
+      );
+
+      expect(result.mode).not.toBe("NARRATIVE_RECALL");
+    });
   });
 
   describe("Experience vs Action Detection", () => {

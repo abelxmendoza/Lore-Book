@@ -819,6 +819,17 @@ Respond with JSON:
       return { ...quick, confidence: 0.6, reasoning: 'Overriding LLM ACTION_LOG/EXPERIENCE when confidence < 0.75; use normal chat' };
     }
 
+    // Same override for NARRATIVE_RECALL: the classifier's own few-shot example
+    // ("Tell me about Y") surface-matches ordinary introductions ("Let me tell
+    // you about X..."), and unlike a genuine recall question, an introduction
+    // has nothing to retrieve — routing it to recall either finds nothing or,
+    // if the recall path throws, surfaces a confusing "something went wrong"
+    // error instead of a normal reflective reply. Below 0.75 confidence, prefer
+    // UNKNOWN so the message gets a normal conversational response.
+    if (quick.mode === 'UNKNOWN' && llm.mode === 'NARRATIVE_RECALL' && llm.confidence < 0.75) {
+      return { ...quick, confidence: 0.6, reasoning: 'Overriding LLM NARRATIVE_RECALL when confidence < 0.75; use normal chat' };
+    }
+
     // If LLM is higher but still low, might be mixed
     if (llm.confidence < 0.6 && quick.mode !== 'UNKNOWN') {
       return {
