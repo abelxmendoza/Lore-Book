@@ -17,6 +17,7 @@ import { normalizeNameKey, normalizeDuplicateKey, namesOverlapByContainment } fr
 import { supabaseAdmin } from '../services/supabaseClient';
 import { locationQueryRequestSchema } from '@lorebook/api-contracts';
 import { queryLocationsForUser } from '../services/locations/locationQueryService';
+import { locationTimelineBuilder } from '../services/conversationCentered/entityTimelineBuilder';
 
 const router = Router();
 
@@ -424,6 +425,30 @@ router.get('/:id', requireAuth, asyncHandler(async (req: AuthenticatedRequest, r
   }
   res.json({ location });
 }));
+
+// GET /api/locations/:id/timelines
+router.get(
+  '/:id/timelines',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const locationId = String(req.params.id);
+    const timelines = await locationTimelineBuilder.buildTimelines(userId, locationId);
+    res.json({ success: true, timelines });
+  })
+);
+
+// POST /api/locations/:id/rebuild-timelines
+router.post(
+  '/:id/rebuild-timelines',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const locationId = String(req.params.id);
+    await locationTimelineBuilder.rebuildTimelinesForEntity(userId, locationId);
+    res.json({ success: true, message: 'Timelines rebuilt' });
+  })
+);
 
 // GET /api/locations/:id/facts
 router.get('/:id/facts', requireAuth, async (req: AuthenticatedRequest, res) => {

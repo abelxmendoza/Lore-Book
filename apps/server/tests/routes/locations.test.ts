@@ -8,6 +8,7 @@ import { locationsRouter } from '../../src/routes/locations';
 // Mock dependencies
 vi.mock('../../src/services/locationService');
 vi.mock('../../src/middleware/auth');
+vi.mock('../../src/services/conversationCentered/entityTimelineBuilder');
 vi.mock('../../src/logger', () => ({
   logger: {
     error: vi.fn(),
@@ -47,6 +48,39 @@ describe('Locations API Routes', () => {
 
       expect(response.body).toHaveProperty('locations');
       expect(Array.isArray(response.body.locations)).toBe(true);
+    });
+  });
+
+  describe('GET /api/locations/:id/timelines', () => {
+    it('returns the built timeline', async () => {
+      const { locationTimelineBuilder } = await import(
+        '../../src/services/conversationCentered/entityTimelineBuilder'
+      );
+      const timelines = { sharedExperiences: [], lore: [{ id: 'row-1' }] };
+      vi.mocked(locationTimelineBuilder.buildTimelines).mockResolvedValue(timelines as any);
+
+      const response = await request(app)
+        .get('/api/locations/loc-1/timelines')
+        .expect(200);
+
+      expect(response.body).toEqual({ success: true, timelines });
+      expect(locationTimelineBuilder.buildTimelines).toHaveBeenCalledWith('user-123', 'loc-1');
+    });
+  });
+
+  describe('POST /api/locations/:id/rebuild-timelines', () => {
+    it('rebuilds and returns success', async () => {
+      const { locationTimelineBuilder } = await import(
+        '../../src/services/conversationCentered/entityTimelineBuilder'
+      );
+      vi.mocked(locationTimelineBuilder.rebuildTimelinesForEntity).mockResolvedValue(undefined);
+
+      const response = await request(app)
+        .post('/api/locations/loc-1/rebuild-timelines')
+        .expect(200);
+
+      expect(response.body).toEqual({ success: true, message: 'Timelines rebuilt' });
+      expect(locationTimelineBuilder.rebuildTimelinesForEntity).toHaveBeenCalledWith('user-123', 'loc-1');
     });
   });
 });

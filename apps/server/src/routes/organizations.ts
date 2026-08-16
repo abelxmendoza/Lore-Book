@@ -15,6 +15,7 @@ import { organizationNetworkService } from '../services/organizationNetworkServi
 import { organizationDomainAuditService } from '../services/organizationDomainAuditService';
 import { organizationNormalizationService } from '../services/organizationNormalizationService';
 import { locationMergeService } from '../services/locationMergeService';
+import { organizationTimelineBuilder } from '../services/conversationCentered/entityTimelineBuilder';
 import { queryOrganizationsForUser } from '../services/organizations/organizationQueryService';
 import { supabaseAdmin } from '../services/supabaseClient';
 
@@ -234,6 +235,32 @@ router.get('/:id/mentions', requireAuth, async (req: AuthenticatedRequest, res) 
   } catch (error) {
     logger.error({ error, userId, organizationId }, 'Failed to get organization mention trace');
     res.status(500).json({ success: false, error: 'Failed to get mention trace' });
+  }
+});
+
+// GET /api/organizations/:id/timelines
+router.get('/:id/timelines', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const organizationId = String(req.params.id);
+  try {
+    const timelines = await organizationTimelineBuilder.buildTimelines(userId, organizationId);
+    res.json({ success: true, timelines });
+  } catch (error) {
+    logger.error({ error, userId, organizationId }, 'Failed to build organization timelines');
+    res.status(500).json({ success: false, error: 'Failed to build organization timelines' });
+  }
+});
+
+// POST /api/organizations/:id/rebuild-timelines
+router.post('/:id/rebuild-timelines', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const organizationId = String(req.params.id);
+  try {
+    await organizationTimelineBuilder.rebuildTimelinesForEntity(userId, organizationId);
+    res.json({ success: true, message: 'Timelines rebuilt' });
+  } catch (error) {
+    logger.error({ error, userId, organizationId }, 'Failed to rebuild organization timelines');
+    res.status(500).json({ success: false, error: 'Failed to rebuild organization timelines' });
   }
 });
 

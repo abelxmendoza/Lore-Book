@@ -42,6 +42,7 @@ import { loreBookNoticeBus } from '../services/lorebook/parser/loreBookNoticeBus
 import { memoryFeedbackBus } from '../services/memoryFeedbackBus';
 import { messageCorrectionService } from '../services/messageCorrectionService';
 import { omegaChatService, buildTimelineUpdateLabels } from '../services/omegaChatService';
+import { entityConversationLinkService } from '../services/conversationCentered/entityConversationLinkService';
 import { ChatPersonaRL } from '../services/reinforcementLearning/chatPersonaRL';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { incrementAiRequestCount } from '../services/usageTracking';
@@ -575,6 +576,15 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
     let fullResponse = '';
     let streamTokenUsage: ChatStreamTokenUsage | null = null;
     const persistSessionId = result.metadata.sessionId ?? threadId ?? null;
+
+    if (req.user?.id && persistSessionId && chatFocus) {
+      entityConversationLinkService
+        .applyChatFocusOriginLink(req.user.id, persistSessionId, chatFocus)
+        .catch((err) =>
+          logger.warn({ err, persistSessionId }, 'Failed to apply chat focus origin link')
+        );
+    }
+
     let assistantRowId: string | null = null;
     let assistantPersistResult: MessagePersistResult | null = null;
 

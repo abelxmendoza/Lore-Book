@@ -3,6 +3,8 @@ import { supabaseAdmin } from '../supabaseClient';
 
 export type EntityConversationType = 'character' | 'location' | 'organization' | 'skill' | 'event';
 export type LinkKind = 'mention' | 'origin' | 'created';
+/** Entity kinds with their own timeline concept — the only ones conversation_sessions.primary_entity_type accepts. */
+export type PrimaryEntityType = 'character' | 'location' | 'organization';
 
 export type EntityConversationLink = {
   id: string;
@@ -74,6 +76,49 @@ class EntityConversationLinkService {
     if (linkKind === 'origin' && entityType === 'character') {
       await this.setCharacterOriginThread(userId, entityId, sessionId);
     }
+  }
+
+  /**
+   * Persist the entity a thread was opened about (client-side ChatFocus),
+   * first-write-wins, and record it as an 'origin' mention link. No-ops for
+   * focus entity types with no timeline concept (project, skill, event, etc.)
+   * — see PrimaryEntityType. Safe to call on every message of a
+   * focus-originated thread: the origin link's mention_count is meant to
+   * accumulate, and the primary-entity UPDATE is guarded to only ever take
+   * once.
+   */
+  async applyChatFocusOriginLink(
+    userId: string,
+    sessionId: string,
+    focus: { entityId: string; entityName: string; entityType: string }
+  ): Promise<void> {
+    const mapped = this.mapPrimaryEntityType(focus.entityType);
+    if (!mapped || !sessionId || !focus.entityId) return;
+
+    // linkEntity ensures the session row exists before we try to UPDATE it.
+    await this.linkEntity(userId, mapped, focus.entityId, sessionId, {
+      linkKind: 'origin',
+      entityName: focus.entityName,
+    });
+
+    const { error } = await supabaseAdmin
+      .from('conversation_sessions')
+      .update({ primary_entity_type: mapped, primary_entity_id: focus.entityId })
+      .eq('id', sessionId)
+      .eq('user_id', userId)
+      .is('primary_entity_id', null);
+
+    if (error) {
+      logger.warn(
+        { error, sessionId, entityId: focus.entityId },
+        'Failed to set thread primary entity'
+      );
+    }
+  }
+
+  private mapPrimaryEntityType(type: string): PrimaryEntityType | null {
+    if (type === 'character' || type === 'location' || type === 'organization') return type;
+    return null;
   }
 
   private async ensureSessionExists(userId: string, sessionId: string): Promise<void> {

@@ -11,6 +11,7 @@ import { requireAuth } from '../../src/middleware/auth';
 // Mock dependencies
 vi.mock('../../src/services/organizationService');
 vi.mock('../../src/middleware/auth');
+vi.mock('../../src/services/conversationCentered/entityTimelineBuilder');
 
 const app = express();
 app.use(express.json());
@@ -235,6 +236,52 @@ describe('Organizations Routes', () => {
         'org-1',
         'member-1'
       );
+    });
+  });
+
+  describe('GET /api/organizations/:id/timelines', () => {
+    it('returns the built timeline', async () => {
+      const { organizationTimelineBuilder } = await import(
+        '../../src/services/conversationCentered/entityTimelineBuilder'
+      );
+      const timelines = { sharedExperiences: [{ id: 'row-1' }], lore: [] };
+      vi.mocked(organizationTimelineBuilder.buildTimelines).mockResolvedValue(timelines as any);
+
+      const response = await request(app)
+        .get('/api/organizations/org-1/timelines')
+        .expect(200);
+
+      expect(response.body).toEqual({ success: true, timelines });
+      expect(organizationTimelineBuilder.buildTimelines).toHaveBeenCalledWith('test-user-id', 'org-1');
+    });
+
+    it('returns 500 when the builder throws', async () => {
+      const { organizationTimelineBuilder } = await import(
+        '../../src/services/conversationCentered/entityTimelineBuilder'
+      );
+      vi.mocked(organizationTimelineBuilder.buildTimelines).mockRejectedValue(new Error('boom'));
+
+      const response = await request(app)
+        .get('/api/organizations/org-1/timelines')
+        .expect(500);
+
+      expect(response.body).toHaveProperty('success', false);
+    });
+  });
+
+  describe('POST /api/organizations/:id/rebuild-timelines', () => {
+    it('rebuilds and returns success', async () => {
+      const { organizationTimelineBuilder } = await import(
+        '../../src/services/conversationCentered/entityTimelineBuilder'
+      );
+      vi.mocked(organizationTimelineBuilder.rebuildTimelinesForEntity).mockResolvedValue(undefined);
+
+      const response = await request(app)
+        .post('/api/organizations/org-1/rebuild-timelines')
+        .expect(200);
+
+      expect(response.body).toEqual({ success: true, message: 'Timelines rebuilt' });
+      expect(organizationTimelineBuilder.rebuildTimelinesForEntity).toHaveBeenCalledWith('test-user-id', 'org-1');
     });
   });
 
