@@ -82,6 +82,17 @@ describe('EntityChipsRow', () => {
     expect(screen.getByText('Acme Corp')).toBeInTheDocument();
   });
 
+  it('collapses duplicate chips for the same name (accumulated across turns)', () => {
+    renderRow([
+      { id: 'c1', name: 'Jimmy', type: 'character', confidence: 0.8, provenance: 'character_book' },
+      { id: 'c1-again', name: 'Jimmy', type: 'character', confidence: 0.6, provenance: 'omega_entity' },
+      { id: 'c2', name: 'Priya', type: 'character', confidence: 0.8, provenance: 'character_book' },
+      { id: 'c2-again', name: 'priya', type: 'character', confidence: 0.6, provenance: 'omega_entity' },
+    ]);
+    expect(screen.getAllByText('Jimmy')).toHaveLength(1);
+    expect(screen.getAllByText(/priya/i)).toHaveLength(1);
+  });
+
   it('shows overflow count when entities exceed max without rendering hidden chips', () => {
     const many = Array.from({ length: 5 }, (_, i) => ({
       id: `c${i}`,

@@ -815,6 +815,73 @@ describe('CharacterDetailModal', () => {
       window.removeEventListener(STORY_DATA_UPDATED, onStoryUpdate);
     });
 
+    it('shows group affiliation from the card inside the modal', async () => {
+      render(
+        <CharacterDetailModal
+          character={{
+            ...baseCharacter,
+            primary_organization: {
+              id: 'org-home',
+              name: 'Whittier Hometown Family Household',
+              group_type: 'family',
+              role: 'member',
+            },
+          }}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+          initialTab="relationships"
+        />,
+      );
+
+      expect(screen.getAllByText('Whittier Hometown Family Household').length).toBeGreaterThan(0);
+      expect(screen.getByTestId('character-groups-section')).toHaveTextContent(
+        'Whittier Hometown Family Household',
+      );
+    });
+
+    it('removes an inferred story association without a UUID validation error', async () => {
+      const { fetchJson } = await import('../../lib/api');
+      const sourceId = '11111111-1111-4111-8111-111111111111';
+      const targetId = '22222222-2222-4222-8222-222222222222';
+      const storyId = `story-association-${sourceId}-${targetId}`;
+      vi.mocked(fetchJson).mockImplementation(async (input: RequestInfo, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.url;
+        if (url === `/api/relationships/character-links/${storyId}` && init?.method === 'DELETE') {
+          return { success: true } as never;
+        }
+        throw new Error('Not found');
+      });
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      render(
+        <CharacterDetailModal
+          character={{
+            ...baseCharacter,
+            relationships: [
+              {
+                id: storyId,
+                character_id: targetId,
+                character_name: 'Fictional Ally',
+                relationship_type: 'story_association',
+                closeness_score: 3,
+                summary: 'Connected through shared story context, mentions, or scene grouping.',
+              },
+            ],
+          }}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+          initialTab="relationships"
+        />
+      );
+
+      await userEvent.click(await screen.findByLabelText('Remove connection with Fictional Ally'));
+      await waitFor(() => expect(screen.queryByText('Fictional Ally')).not.toBeInTheDocument());
+      expect(vi.mocked(fetchJson)).toHaveBeenCalledWith(
+        `/api/relationships/character-links/${storyId}`,
+        expect.objectContaining({ method: 'DELETE' }),
+      );
+    });
+
     it('removes a connection via the trash button', async () => {
       const { fetchJson } = await import('../../lib/api');
       vi.mocked(fetchJson).mockImplementation(async (input: RequestInfo, init?: RequestInit) => {
