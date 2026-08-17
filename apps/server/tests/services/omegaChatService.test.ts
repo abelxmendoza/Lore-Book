@@ -286,4 +286,47 @@ describe('OmegaChatService', () => {
       expect(result.content ?? result.stream).toBeDefined();
     });
   });
+
+  describe('buildTopicShiftContext (same-turn topic-shift signal)', () => {
+    const call = (
+      composerEntities?: Array<{ id: string; name: string; type: string; status?: string }>,
+      threadEntities?: Array<{ id: string; name: string; type: string }>
+    ): string => (omegaChatService as any).buildTopicShiftContext(composerEntities, threadEntities);
+
+    it('flags a new character not already in the thread roster', () => {
+      const result = call(
+        [{ id: 'char-romi', name: 'Romi', type: 'character' }],
+        [{ id: 'char-vicky', name: 'Vicky', type: 'character' }]
+      );
+      expect(result).toContain('POSSIBLE NEW THREAD');
+      expect(result).toContain('Romi');
+      expect(result).not.toContain('Vicky');
+    });
+
+    it('returns empty when the composer entity is already in the thread roster', () => {
+      const result = call(
+        [{ id: 'char-vicky', name: 'Vicky', type: 'character' }],
+        [{ id: 'char-vicky', name: 'Vicky', type: 'character' }]
+      );
+      expect(result).toBe('');
+    });
+
+    it('returns empty when the thread has no established roster yet (first message)', () => {
+      const result = call([{ id: 'char-vicky', name: 'Vicky', type: 'character' }], []);
+      expect(result).toBe('');
+    });
+
+    it('returns empty when composerEntities is empty', () => {
+      const result = call([], [{ id: 'char-vicky', name: 'Vicky', type: 'character' }]);
+      expect(result).toBe('');
+    });
+
+    it('ignores non-character entities (a new location does not trigger the cue)', () => {
+      const result = call(
+        [{ id: 'loc-new', name: 'The Roxy', type: 'location' }],
+        [{ id: 'char-vicky', name: 'Vicky', type: 'character' }]
+      );
+      expect(result).toBe('');
+    });
+  });
 });

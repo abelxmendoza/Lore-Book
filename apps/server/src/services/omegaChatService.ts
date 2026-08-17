@@ -805,6 +805,26 @@ class OmegaChatService {
     return `\n\n**THREAD CONFIRMED ENTITIES**: This conversation has established context with:\n${lines.join('\n')}\nBuild on what is already known about these entities from prior thread messages and their records. Do not treat them as newly discovered unless the user introduces genuinely new information.`;
   }
 
+  /**
+   * Same-turn topic-shift signal: people tagged in the current message that
+   * weren't already part of this thread's roster before this message. Every
+   * other drift/episode-boundary signal in this codebase only computes
+   * asynchronously in background ingestion, strictly after the response has
+   * already streamed — this is the one thing that's synchronously available
+   * in time to shape the reply to the message that triggered it.
+   */
+  private buildTopicShiftContext(
+    composerEntities?: Array<{ id: string; name: string; type: string; status?: string }>,
+    threadEntities?: Array<{ id: string; name: string; type: string }>
+  ): string {
+    if (!composerEntities?.length || !threadEntities?.length) return '';
+    const threadIds = new Set(threadEntities.map((e) => e.id));
+    const newPeople = composerEntities.filter((e) => e.type === 'character' && !threadIds.has(e.id));
+    if (newPeople.length === 0) return '';
+    const lines = newPeople.map((e) => `- ${e.name}`);
+    return `\n\n**POSSIBLE NEW THREAD**: This message introduces people not yet part of this thread's established cast:\n${lines.join('\n')}\nIf this reads as a separate story from what's already established here (not just a new character joining the same scene), briefly acknowledge you're tracking it as its own thread before responding. Otherwise don't call attention to it — use your judgment.`;
+  }
+
   private buildChatFocusContext(chatFocus?: ChatFocusPayload): string {
     if (!chatFocus) return '';
     const stats = chatFocus.sessionStats;
@@ -2549,6 +2569,11 @@ When updating relationship analytics or emotional signals from this thread, weig
     const composerEntitiesContext = this.buildComposerEntitiesContext(composerEntities);
     if (composerEntitiesContext) {
       systemPrompt += composerEntitiesContext;
+    }
+
+    const topicShiftContext = this.buildTopicShiftContext(composerEntities, threadEntities);
+    if (topicShiftContext) {
+      systemPrompt += topicShiftContext;
     }
 
     const chatFocusContext = this.buildChatFocusContext(chatFocus);
