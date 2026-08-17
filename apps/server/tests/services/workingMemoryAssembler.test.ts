@@ -6,6 +6,8 @@ function makeChain(result: TableResult) {
   const chain: Record<string, unknown> = {
     select: () => chain,
     eq: () => chain,
+    neq: () => chain,
+    update: () => chain,
     ilike: () => chain,
     or: () => chain,
     in: () => chain,
@@ -35,6 +37,11 @@ vi.mock('../../src/services/supabaseClient', () => ({
   supabaseAdmin: {
     from: (...args: unknown[]) => fromMock(...args),
   },
+}));
+
+const getUserTimezoneMock = vi.fn().mockResolvedValue('UTC');
+vi.mock('../../src/services/temporal/userTimezoneService', () => ({
+  getUserTimezone: (...args: unknown[]) => getUserTimezoneMock(...args),
 }));
 
 import { assembleWorkingMemory, buildWorkingMemoryPacket } from '../../src/services/chat/workingMemoryAssembler';
@@ -889,5 +896,19 @@ describe('Working Memory Assembler', () => {
       .map((item) => `${item.title} ${item.content}`)
       .join('\n');
     expect(selectedText).not.toMatch(/Should not leak into character focus/i);
+  });
+
+  it('resolves temporal queries in the user\'s own timezone, not the server\'s', async () => {
+    // Regression test: classifyTemporalQuery was previously called with no
+    // timezone at all, so "what did I do yesterday" always resolved against
+    // the server process's own local day instead of the user's.
+    getUserTimezoneMock.mockResolvedValueOnce('America/Los_Angeles');
+
+    await assembleWorkingMemory({
+      userId: 'user-1',
+      question: 'What did I do yesterday?',
+    });
+
+    expect(getUserTimezoneMock).toHaveBeenCalledWith('user-1');
   });
 });

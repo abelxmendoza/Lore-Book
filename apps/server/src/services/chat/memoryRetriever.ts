@@ -14,7 +14,8 @@ import { reranker } from '../rag/reranker';
 import { temporalWeighting } from '../rag/temporalWeighting';
 import { applyEpistemicWeights } from '../rag/epistemicWeighting';
 import { computeIdentityWeight } from './identityWeighting';
-import { resolveAllTemporalAnchors } from '../../utils/temporalAnchorResolver';
+import { resolveAllTemporalAnchorsInTimezone } from '../../utils/temporalAnchorResolver';
+import { getUserTimezone } from '../temporal/userTimezoneService';
 import { isOnsetQuery, scoreEntryForTopic, resolveOnset } from '../../utils/onsetDetector';
 import { computePPR, buildMentionGraph, topEntryIds } from '../graph/personalizedPageRank';
 import { trainingSignalLogger } from '../neural/trainingSignalLogger';
@@ -300,7 +301,8 @@ export class MemoryRetriever {
 
       // Temporal anchor resolution: detect natural-language time expressions and resolve
       // to a concrete calendar window. Entries within the window get a scoring boost.
-      const temporalWindow = resolveAllTemporalAnchors(query);
+      const userTimezone = await getUserTimezone(userId);
+      const temporalWindow = resolveAllTemporalAnchorsInTimezone(query, new Date(), userTimezone);
       const onsetQuery = isOnsetQuery(query);
 
       // Step 2: Route to optimal strategy

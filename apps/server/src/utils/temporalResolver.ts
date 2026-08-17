@@ -9,6 +9,7 @@ import * as chrono from 'chrono-node';
 
 import {
   resolveAllTemporalAnchors,
+  resolveAllTemporalAnchorsInTimezone,
   resolveTemporalAnchor,
   type TemporalWindow,
 } from './temporalAnchorResolver';
@@ -67,11 +68,16 @@ export function resolveChronoInText(text: string, now: Date = new Date()): Tempo
 }
 
 /** All distinct chrono windows found in text. */
-export function parseChronoReferences(text: string, now: Date = new Date()): TemporalWindow[] {
+export function parseChronoReferences(
+  text: string,
+  now: Date = new Date(),
+  timezone?: string | null,
+): TemporalWindow[] {
   const trimmed = text?.trim();
   if (!trimmed) return [];
 
-  const parsed = chrono.parse(trimmed, now);
+  const reference = timezone && timezone !== 'UTC' ? ({ instant: now, timezone } as unknown as Date) : now;
+  const parsed = chrono.parse(trimmed, reference as never);
   const seen = new Set<string>();
   const windows: TemporalWindow[] = [];
 
@@ -231,17 +237,18 @@ export function mapTemporalWindowToIngestionRef(
 export function collectAdditionalTemporalReferences(
   text: string,
   now: Date = new Date(),
-  seenLabels: Set<string> = new Set()
+  seenLabels: Set<string> = new Set(),
+  timezone?: string | null,
 ): IngestionTemporalReference[] {
   const refs: IngestionTemporalReference[] = [];
 
-  const anchor = resolveAllTemporalAnchors(text, now);
+  const anchor = resolveAllTemporalAnchorsInTimezone(text, now, timezone);
   if (anchor && !seenLabels.has(anchor.label)) {
     seenLabels.add(anchor.label);
     refs.push(mapTemporalWindowToIngestionRef(anchor));
   }
 
-  for (const window of parseChronoReferences(text, now)) {
+  for (const window of parseChronoReferences(text, now, timezone)) {
     if (seenLabels.has(window.label)) continue;
     seenLabels.add(window.label);
     refs.push(mapTemporalWindowToIngestionRef(window));

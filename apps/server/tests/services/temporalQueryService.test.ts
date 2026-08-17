@@ -35,4 +35,41 @@ describe('temporalQueryService', () => {
     const r = classifyTemporalQuery(journal, now);
     expect(r.intent).toBeNull();
   });
+
+  describe('timezone-aware resolution', () => {
+    // 2026-06-18T04:00:00Z = June 17, 9pm in Los Angeles (PDT, UTC-7).
+    // A LA user's "yesterday" is June 16 — a full day off from the reference
+    // instant's UTC calendar date (June 18).
+    const crossBoundaryNow = new Date('2026-06-18T04:00:00.000Z');
+    const LA = 'America/Los_Angeles';
+
+    function laDay(iso: string): string {
+      return new Date(iso).toLocaleDateString('en-CA', { timeZone: LA });
+    }
+
+    it('resolves "yesterday" to the user\'s local day when a timezone is given', () => {
+      const r = classifyTemporalQuery('What happened yesterday?', crossBoundaryNow, LA);
+      expect(laDay(r.window!.start.toISOString())).toBe('2026-06-16');
+      expect(laDay(r.window!.end.toISOString())).toBe('2026-06-16');
+    });
+
+    it('treats an explicit UTC timezone identically to omitting it', () => {
+      const withUtc = classifyTemporalQuery('What happened yesterday?', crossBoundaryNow, 'UTC');
+      const omitted = classifyTemporalQuery('What happened yesterday?', crossBoundaryNow);
+      expect(withUtc.window?.start.toISOString()).toBe(omitted.window?.start.toISOString());
+      expect(withUtc.window?.end.toISOString()).toBe(omitted.window?.end.toISOString());
+    });
+
+    it('treats a null/undefined timezone identically to omitting it', () => {
+      const withNull = classifyTemporalQuery('What happened yesterday?', crossBoundaryNow, null);
+      const omitted = classifyTemporalQuery('What happened yesterday?', crossBoundaryNow);
+      expect(withNull.window?.start.toISOString()).toBe(omitted.window?.start.toISOString());
+    });
+
+    it('resolves a different real-instant window for LA than for Tokyo', () => {
+      const la = classifyTemporalQuery('What happened yesterday?', crossBoundaryNow, LA);
+      const tokyo = classifyTemporalQuery('What happened yesterday?', crossBoundaryNow, 'Asia/Tokyo');
+      expect(la.window?.start.toISOString()).not.toBe(tokyo.window?.start.toISOString());
+    });
+  });
 });

@@ -40,6 +40,11 @@ import { EventAssemblyService } from './eventAssemblyService';
 const extractTitle = (units: Array<{ content: string }>) =>
   (new EventAssemblyService() as any).extractEventTitle(units) as string;
 
+const extractWhen = (units: Array<{ content: string; created_at?: string }>, timezone?: string) =>
+  (new EventAssemblyService() as any).extractWhen(units, timezone) as
+    | { start: string; end: string | null; label?: string } & Record<string, unknown>
+    | null;
+
 describe('EventAssemblyService.extractEventTitle', () => {
   it('returns no title for an empty failed extraction', () => {
     const title = extractTitle([]);
@@ -71,6 +76,47 @@ describe('EventAssemblyService.extractEventTitle', () => {
     ['I hooked up with Ashley after the party.', 'Night with Ashley'],
   ])('recognizes a known life-event shape without using a raw sentence title', (content, expected) => {
     expect(extractTitle([{ content }])).toBe(expected);
+  });
+});
+
+describe('EventAssemblyService.extractWhen — timezone', () => {
+  // 2026-06-18T04:00:00Z = June 17, 9pm in Los Angeles (PDT, UTC-7).
+  const crossBoundaryCreatedAt = '2026-06-18T04:00:00.000Z';
+  const LA = 'America/Los_Angeles';
+
+  function laDay(iso: string): string {
+    return new Date(iso).toLocaleDateString('en-CA', { timeZone: LA });
+  }
+
+  it('resolves "yesterday" to the user\'s local calendar day when a timezone is passed', () => {
+    const when = extractWhen(
+      [{ content: 'I went out yesterday.', created_at: crossBoundaryCreatedAt }],
+      LA,
+    );
+    expect(when).not.toBeNull();
+    expect(laDay(when!.start)).toBe('2026-06-16');
+  });
+
+  it('defaults to UTC (matching the codebase default) when no timezone is passed', () => {
+    // Regression test for the bug: eventAssemblyService.reconcileEvent's
+    // second call to extractWhen previously omitted the timezone argument
+    // entirely, silently resolving reconciled events in UTC instead of the
+    // same user's timezone used everywhere else in this file.
+    const withoutTz = extractWhen([{ content: 'I went out yesterday.', created_at: crossBoundaryCreatedAt }]);
+    const withUtc = extractWhen(
+      [{ content: 'I went out yesterday.', created_at: crossBoundaryCreatedAt }],
+      'UTC',
+    );
+    expect(withoutTz?.start).toBe(withUtc?.start);
+  });
+
+  it('resolves a different real-instant window for LA than for Tokyo', () => {
+    const la = extractWhen([{ content: 'I went out yesterday.', created_at: crossBoundaryCreatedAt }], LA);
+    const tokyo = extractWhen(
+      [{ content: 'I went out yesterday.', created_at: crossBoundaryCreatedAt }],
+      'Asia/Tokyo',
+    );
+    expect(la?.start).not.toBe(tokyo?.start);
   });
 });
 

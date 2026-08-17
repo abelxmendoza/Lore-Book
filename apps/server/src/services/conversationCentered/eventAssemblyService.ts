@@ -1272,11 +1272,12 @@ export class EventAssemblyService {
       }
 
       // Derive updated event from units
+      const timezone = await getUserTimezone(userId);
       const updatedTitle = this.chooseBetterEventTitle(event.title, this.extractEventTitle(validUnits));
       const updatedWho = this.extractWho(validUnits);
       const updatedWhat = this.extractWhat(validUnits);
       const updatedWhere = this.extractWhere(validUnits);
-      const updatedWhen = this.extractWhen(validUnits);
+      const updatedWhen = this.extractWhen(validUnits, timezone);
       const eligibility = evaluateLifeLogEligibility({
         text: validUnits.map(unit => unit.content).join(' '),
         title: updatedTitle,
@@ -1328,7 +1329,7 @@ export class EventAssemblyService {
           ...this.evidencePatch(
             chooseTemporal(
               this.rowEvidence(event),
-              this.whenToEvidence(updatedWhen, await getUserTimezone(userId)),
+              this.whenToEvidence(updatedWhen, timezone),
             ),
           ),
           end_time: updatedWhen?.end || event.end_time,

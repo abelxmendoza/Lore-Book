@@ -10,6 +10,11 @@ import {
 import { classifyEntity, type EntityClass, type RootType } from '../entities/entityClassifier';
 import { truthStateWeight } from '../provenance/epistemicWeights';
 import { supabaseAdmin } from '../supabaseClient';
+import { getUserTimezone } from '../temporal/userTimezoneService';
+import {
+  parseNamedChatSubject,
+  subjectNamesMatch,
+} from '@lorebook/api-contracts';
 import {
   classifyTemporalQuery,
   occurredInWindow,
@@ -157,6 +162,13 @@ export type WorkingMemoryPacket = {
 
 type AssembleOptions = {
   maxItems?: number;
+};
+
+export type WorkingMemoryFocus = {
+  id: string;
+  name: string;
+  type: 'character' | 'location' | 'organization' | string;
+  aliases?: string[];
 };
 
 export type WmaQueryRecord = {
@@ -350,6 +362,7 @@ const INTENT_RULES: Array<{ intent: WorkingMemoryIntent; pattern: RegExp }> = [
 ];
 
 const TARGET_PATTERNS = [
+  /\bI want to (?:talk|tell you) about\s{1,40}(.{1,120}?)(?:\.|,|;|Help me\b|$)/i,
   /\b(?:what did i do with|what have i done with)\s{1,40}(.{1,120}?)[?.!]?$/i,
   /\b(?:how am i related to)\s{1,40}(.{1,120}?)[?.!]?$/i,
   /\b(?:what role did)\s{1,40}(.{1,120}?)\s{1,40}play\b/i,
@@ -413,11 +426,13 @@ function isTemporalIntent(intent: WorkingMemoryIntent): boolean {
 }
 
 function extractQuestionTarget(question: string): string | null {
+  const named = parseNamedChatSubject(question);
+  if (named) return named;
   const trimmed = question.trim();
   for (const pattern of TARGET_PATTERNS) {
     const match = trimmed.match(pattern);
     const raw = match?.[1]?.replace(/[?.!]{1,8}$/, '').trim();
-    if (raw) return raw;
+    if (raw && !/^(he|she|they|him|her|them|it)$/i.test(raw)) return raw;
   }
   return null;
 }
@@ -2285,7 +2300,12 @@ async function loadSemanticClaimCandidates(
 }
 
 export async function assembleWorkingMemory(
-  input: { question: string; userId: string; threadId?: string | null },
+  input: {
+    question: string;
+    userId: string;
+    threadId?: string | null;
+    focus?: WorkingMemoryFocus | null;
+  },
   options: AssembleOptions = {}
 ): Promise<WorkingMemoryAssembly> {
   const totalStarted = Date.now();
@@ -2293,15 +2313,59 @@ export async function assembleWorkingMemory(
   const scope = new WmaRequestScope();
 
   const entityStarted = Date.now();
-  const temporalResolved: ResolvedTemporalQuery = classifyTemporalQuery(input.question);
+  const userTimezone = await getUserTimezone(input.userId);
+  const temporalResolved: ResolvedTemporalQuery = classifyTemporalQuery(input.question, new Date(), userTimezone);
   const classified = classifyIntentWithSource(input.question);
-  const intent = classified.intent;
+  const namedSubject = parseNamedChatSubject(input.question);
+  const focusMatchesNamed =
+    Boolean(namedSubject && input.focus?.name && subjectNamesMatch(namedSubject, input.focus.name));
+  const effectiveFocus =
+    namedSubject && input.focus && !focusMatchesNamed ? null : input.focus;
+  const focusType = effectiveFocus?.type?.toLowerCase();
+  // A book/modal focus is an explicit navigation instruction. It outranks a
+  // vague sentence such as "help me capture who he is", whose lexical shape
+  // otherwise falls through to LIFE_REVIEW and retrieves the user's whole life.
+  // A capture/who-is that names a different person drops that leftover pin.
+  const intent: WorkingMemoryIntent =
+    focusType === 'character' || Boolean(namedSubject)
+      ? 'PERSON_QUERY'
+      : focusType === 'location'
+        ? 'PLACE_QUERY'
+        : focusType === 'organization'
+          ? 'COMMUNITY_QUERY'
+          : classified.intent;
   const contextPlan = buildContextAssemblyPlan({ question: input.question, intent });
   // Self/identity questions never treat a third-party name as the retrieval subject.
-  const target =
-    classified.subject === 'current_user' ? null : extractQuestionTarget(input.question);
+  const target = effectiveFocus?.name?.trim() ||
+    namedSubject ||
+    (classified.subject === 'current_user' ? null : extractQuestionTarget(input.question));
   const temporalQuery = isTemporalIntent(intent);
-  const entities = await resolveTargetEntities(scope, input.userId, target);
+  const focusEntity: WorkingMemoryEntity | null = effectiveFocus?.id && effectiveFocus.name
+    ? {
+        id: effectiveFocus.id,
+        name: effectiveFocus.name,
+        type:
+          focusType === 'character'
+            ? 'PERSON'
+            : focusType === 'location'
+              ? 'PLACE'
+              : focusType === 'organization'
+                ? 'ORGANIZATION'
+                : String(effectiveFocus.type).toUpperCase(),
+        source:
+          focusType === 'character'
+            ? 'characters'
+            : focusType === 'location'
+              ? 'locations'
+              : focusType === 'organization'
+                ? 'organizations'
+                : 'question',
+        confidence: 1,
+      }
+    : null;
+  const entities = focusEntity
+    ? [focusEntity]
+    : await resolveTargetEntities(scope, input.userId, target);
   const entityResolutionMs = Date.now() - entityStarted;
 
   const primaryEntity =
@@ -2427,7 +2491,37 @@ export async function assembleWorkingMemory(
   });
   const contextAccepted: Candidate[] = [];
   const contextRejected: Array<WorkingMemoryItem & { rejectedReason: string }> = [];
+  const focusNameKeys = new Set(
+    [input.focus?.name, ...(input.focus?.aliases ?? [])]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .map(normalizeNameKey),
+  );
   for (const candidate of deduped) {
+    if (input.focus?.id) {
+      const candidateText = normalizeNameKey(`${candidate.title ?? ''} ${candidate.content ?? ''}`);
+      const metadataIds = [
+        candidate.metadata?.entityId,
+        candidate.metadata?.character_id,
+        ...(Array.isArray(candidate.metadata?.source_entity_ids) ? candidate.metadata!.source_entity_ids as string[] : []),
+        ...(Array.isArray(candidate.metadata?.participant_ids) ? candidate.metadata!.participant_ids as string[] : []),
+      ];
+      const linkedById = metadataIds.includes(input.focus.id);
+      const linkedByName = [...focusNameKeys].some((key) => key && candidateText.includes(key));
+      const linkedByResolver = candidate.reasons?.some((reason) =>
+        /\btarget\b|scoped canonical|resolved query anchor/i.test(reason),
+      );
+      if (!linkedById && !linkedByName && !linkedByResolver) {
+        const rejectedCandidate = scoreCandidate({
+          ...candidate,
+          reasons: [...(candidate.reasons ?? []), `rejected: does not satisfy active focus ${input.focus.name}`],
+        });
+        contextRejected.push({
+          ...rejectedCandidate,
+          rejectedReason: `active_focus_mismatch:${input.focus.id}`,
+        });
+        continue;
+      }
+    }
     const verdict = evaluateContextCandidate(candidate, contextPlan, { target });
     const annotated: Candidate = {
       ...candidate,

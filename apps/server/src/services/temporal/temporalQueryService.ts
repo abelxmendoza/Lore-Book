@@ -3,7 +3,7 @@
  * Distinguishes when something happened from when it was written down.
  */
 import {
-  resolveAllTemporalAnchors,
+  resolveAllTemporalAnchorsInTimezone,
   windowToISORange,
   type TemporalWindow,
 } from '../../utils/temporalAnchorResolver';
@@ -36,11 +36,15 @@ const TEMPORAL_INTENT_RULES: Array<{ intent: TemporalQueryIntent; pattern: RegEx
   { intent: 'TIMELINE_QUERY', pattern: /\b(what was i doing in|what happened in|during (?:january|february|march|april|may|june|july|august|september|october|november|december|\d{4})|in (?:january|february|march|april|may|june|july|august|september|october|november|december|\d{4}))\b/i },
 ];
 
-export function classifyTemporalQuery(question: string, now = new Date()): ResolvedTemporalQuery {
+export function classifyTemporalQuery(
+  question: string,
+  now = new Date(),
+  timezone?: string | null,
+): ResolvedTemporalQuery {
   const trimmed = question.trim();
   for (const rule of TEMPORAL_INTENT_RULES) {
     if (rule.pattern.test(trimmed)) {
-      const window = resolveAllTemporalAnchors(trimmed, now);
+      const window = resolveAllTemporalAnchorsInTimezone(trimmed, now, timezone);
       return {
         intent: rule.intent,
         window,
@@ -56,7 +60,7 @@ export function classifyTemporalQuery(question: string, now = new Date()): Resol
       trimmed,
     );
 
-  const window = resolveAllTemporalAnchors(trimmed, now);
+  const window = resolveAllTemporalAnchorsInTimezone(trimmed, now, timezone);
   if (window && window.confidence >= 0.6 && looksLikeTemporalQuery) {
     return {
       intent: 'TIME_RANGE_QUERY',

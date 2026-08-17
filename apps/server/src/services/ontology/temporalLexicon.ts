@@ -97,6 +97,43 @@ export function scanTemporalMentions(
   return mentions.sort((a, b) => b.confidence - a.confidence);
 }
 
+/**
+ * Timezone-aware wrapper: relative phrases ("yesterday", "this morning") must
+ * resolve in the USER's day, not the server's UTC day. Mirrors the shift used
+ * by resolveAllTemporalAnchorsInTimezone — shift the reference clock into the
+ * user's zone, run the zone-naive scan there, shift the resulting windows
+ * back to real instants.
+ */
+export function scanTemporalMentionsInTimezone(
+  text: string,
+  now: Date,
+  timezone: string | null | undefined,
+  profile: TemporalAnchorProfile = {},
+): TemporalMention[] {
+  if (!timezone || timezone === 'UTC') {
+    return scanTemporalMentions(text, now, profile);
+  }
+  try {
+    const { toZonedTime, fromZonedTime } = require('date-fns-tz') as typeof import('date-fns-tz');
+    const zonedNow = toZonedTime(now, timezone);
+    const mentions = scanTemporalMentions(text, zonedNow, profile);
+    return mentions.map((mention) =>
+      mention.window
+        ? {
+            ...mention,
+            window: {
+              ...mention.window,
+              start: fromZonedTime(mention.window.start, timezone),
+              end: fromZonedTime(mention.window.end, timezone),
+            },
+          }
+        : mention,
+    );
+  } catch {
+    return scanTemporalMentions(text, now, profile);
+  }
+}
+
 /** Best-resolved temporal window for the full text (highest-confidence mention). */
 export function resolveTextTemporalWindow(text: string, now: Date = new Date()): TemporalWindow | null {
   return resolveTemporalWindow(text, now);

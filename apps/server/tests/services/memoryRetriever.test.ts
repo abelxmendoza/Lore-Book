@@ -8,6 +8,7 @@ const mockDetectTemporalType = vi.fn();
 const mockCalculateWeight = vi.fn();
 const mockFrom = vi.fn();
 const mockGetEngineResults = vi.fn();
+const mockGetUserTimezone = vi.fn();
 
 vi.mock('../../src/services/embeddingService', () => ({ embeddingService: { embedText: (...a: unknown[]) => mockEmbedText(...a) } }));
 vi.mock('../../src/services/rag/bm25Search', () => ({ bm25Search: { search: (...a: unknown[]) => mockBm25Search(...a) } }));
@@ -21,6 +22,9 @@ vi.mock('../../src/services/rag/temporalWeighting', () => ({
 }));
 vi.mock('../../src/services/supabaseClient', () => ({ supabaseAdmin: { from: (...a: unknown[]) => mockFrom(...a) } }));
 vi.mock('../../src/engineRuntime/storage', () => ({ getEngineResults: (...a: unknown[]) => mockGetEngineResults(...a) }));
+vi.mock('../../src/services/temporal/userTimezoneService', () => ({
+  getUserTimezone: (...a: unknown[]) => mockGetUserTimezone(...a),
+}));
 
 // Stub other deps used by retrieve/enhancedRetrieve to avoid import errors
 vi.mock('../../src/services/rag/entityRelationshipBoosting', () => ({ entityRelationshipBoosting: { boostByEntities: vi.fn((x: unknown) => x) } }));
@@ -34,6 +38,7 @@ describe('MemoryRetriever', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetEngineResults.mockResolvedValue({});
+    mockGetUserTimezone.mockResolvedValue('UTC');
     mockRewriteQuery.mockResolvedValue({ original: 'recent', entities: [] });
     mockRouteQuery.mockResolvedValue({
       method: 'temporal',
@@ -78,5 +83,17 @@ describe('MemoryRetriever', () => {
 
     expect(mockEmbedText).not.toHaveBeenCalled();
     expect(mockBm25Search).toHaveBeenCalledWith('user-1', 'recent', 40, expect.any(Number));
+  });
+
+  it('resolves the temporal anchor window in the user\'s own timezone, not the server\'s', async () => {
+    // Regression test: enhancedRetrieve previously called resolveAllTemporalAnchors(query)
+    // with no timezone at all, so a "yesterday"-style query always resolved against the
+    // server process's own local day instead of the user's.
+    mockGetUserTimezone.mockResolvedValue('America/Los_Angeles');
+    const retriever = new MemoryRetriever();
+
+    await retriever.retrieve('user-1', 20, 'recent stuff', []);
+
+    expect(mockGetUserTimezone).toHaveBeenCalledWith('user-1');
   });
 });
