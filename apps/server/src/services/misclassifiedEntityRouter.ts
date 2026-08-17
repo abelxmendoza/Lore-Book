@@ -7,6 +7,8 @@ import { classifyMentionKind, type MentionClassification } from '../utils/entity
 import { normalizeNameKey } from '../utils/nameNormalization';
 import { supabaseAdmin } from './supabaseClient';
 import { omegaMemoryService } from './omegaMemoryService';
+import { omegaOrgPromotionService } from './entities/omegaOrgPromotionService';
+import { omegaLocationPromotionService } from './entities/omegaLocationPromotionService';
 
 type OmegaEntityRow = {
   id: string;
@@ -75,21 +77,40 @@ class MisclassifiedEntityRouter {
           .eq('id', existingOmegaId)
           .eq('user_id', userId);
 
+        this.schedulePromotion(userId, omegaType, existingOmegaId, canonicalName);
         return existingOmegaId;
       }
     }
 
+    // Search by name across ALL types, not just the target type — otherwise a
+    // mention that was previously (mis)classified under a different type
+    // (e.g. PERSON) never gets found here, and this creates a second,
+    // disconnected row instead of retyping the existing one. That's how
+    // "East Los Productions" ended up as both a PERSON and an ORG entity.
     const nameKey = normalizeNameKey(canonicalName);
     const { data: rows } = await supabaseAdmin
       .from('omega_entities')
       .select('id, primary_name, type')
-      .eq('user_id', userId)
-      .eq('type', omegaType);
+      .eq('user_id', userId);
 
     const match = (rows ?? []).find(
       (r) => normalizeNameKey(r.primary_name) === nameKey
     );
-    if (match) return match.id as string;
+    if (match) {
+      if (match.type !== omegaType) {
+        await supabaseAdmin
+          .from('omega_entities')
+          .update({
+            type: omegaType,
+            metadata: { subkind, rerouted_from: 'character_pipeline', rerouted_at: new Date().toISOString() },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', match.id)
+          .eq('user_id', userId);
+      }
+      this.schedulePromotion(userId, omegaType, match.id as string, canonicalName);
+      return match.id as string;
+    }
 
     const { data: created, error } = await supabaseAdmin
       .from('omega_entities')
@@ -109,7 +130,28 @@ class MisclassifiedEntityRouter {
       logger.warn({ err: error, userId, name }, 'Failed to create rerouted omega entity');
       return null;
     }
-    return created?.id as string;
+    const createdId = created?.id as string;
+    this.schedulePromotion(userId, omegaType, createdId, canonicalName);
+    return createdId;
+  }
+
+  /**
+   * Best-effort, non-fatal: propose a group_candidates review entry (ORG) or
+   * create a real Place directly (LOCATION), so an omega entity doesn't sit
+   * invisible to the Group Book / Places Book forever. Never throws — a
+   * promotion failure must not break the calling mention classification flow.
+   */
+  private schedulePromotion(userId: string, omegaType: string, id: string | undefined, name: string): void {
+    if (!id) return;
+    if (omegaType === 'ORG') {
+      void omegaOrgPromotionService
+        .promoteEntity(userId, { id, primary_name: name })
+        .catch((err) => logger.debug({ err, userId, id }, 'omega org promotion (best-effort) failed'));
+    } else if (omegaType === 'LOCATION') {
+      void omegaLocationPromotionService
+        .promoteEntity(userId, { id, primary_name: name })
+        .catch((err) => logger.debug({ err, userId, id }, 'omega location promotion (best-effort) failed'));
+    }
   }
 
   /** Merge "Magic" + "Gathering" fragment entities into one game entity. */

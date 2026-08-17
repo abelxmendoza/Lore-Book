@@ -13,6 +13,10 @@ import { entityFactsService } from '../entityFactsService';
 import { listPeripheralsForCharacter } from '../relationshipPeripheralService';
 import { organizationService } from '../organizationService';
 import { supabaseAdmin } from '../supabaseClient';
+import {
+  isSelfCharacterMetadata,
+  resolveRelatedPersonType,
+} from '../relationships/relatedPersonType';
 
 export type CharacterLoreItem = {
   id: string;
@@ -320,22 +324,62 @@ export async function compileCharacterLoreProfile(
     if (typeof id === 'string' && id !== characterId) relatedIds.add(id);
   }
 
+  for (const org of orgs) {
+    const groupType = String(org.group_type ?? org.type ?? '').toLowerCase();
+    if (groupType !== 'family' && groupType !== 'household') continue;
+    for (const member of org.members ?? []) {
+      if (member.character_id && member.character_id !== characterId) {
+        relatedIds.add(member.character_id);
+      }
+    }
+  }
+
   const { data: relatedChars } = relatedIds.size
-    ? await supabaseAdmin.from('characters').select('id, name, has_met, proximity_level, relationship_depth, context_of_mention').eq('user_id', userId).in('id', Array.from(relatedIds))
+    ? await supabaseAdmin
+        .from('characters')
+        .select('id, name, has_met, proximity_level, relationship_depth, context_of_mention, metadata')
+        .eq('user_id', userId)
+        .in('id', Array.from(relatedIds))
     : { data: [] };
 
-  const charById = new Map((relatedChars ?? []).map((c) => [c.id, c]));
+  const charById = new Map(
+    (Array.isArray(relatedChars) ? relatedChars : []).map((c) => [c.id, c]),
+  );
+  const viewerIsSelf = loreSubject === 'self';
+  const viewerRelationshipToYou =
+    typeof meta.relationship_to_user === 'string' ? meta.relationship_to_user : null;
+
+  let selfId: string | null = viewerIsSelf ? characterId : null;
+  if (!selfId) {
+    const { data: selfRow } = await supabaseAdmin
+      .from('characters')
+      .select('id, name, metadata')
+      .eq('user_id', userId)
+      .contains('metadata', { is_self: true })
+      .maybeSingle();
+    if (selfRow?.id) selfId = selfRow.id;
+  }
 
   for (const rel of relRows ?? []) {
     const otherId =
       rel.source_character_id === characterId ? rel.target_character_id : rel.source_character_id;
     const other = charById.get(otherId);
+    const otherMeta = ((other as { metadata?: Record<string, unknown> } | undefined)?.metadata ?? {}) as Record<string, unknown>;
     const hasMet = other?.has_met ?? null;
     const proximity = other?.proximity_level ?? null;
     addPerson({
       characterId: otherId,
       name: other?.name ?? 'Unknown',
-      relationshipType: rel.relationship_type,
+      relationshipType: resolveRelatedPersonType({
+        storedType: String(rel.relationship_type ?? ''),
+        viewerIsSource: rel.source_character_id === characterId,
+        viewerIsSelf,
+        otherIsSelf: otherId === selfId || isSelfCharacterMetadata(otherMeta, other?.name),
+        viewerRelationshipToYou,
+        otherRelationshipToYou:
+          typeof otherMeta.relationship_to_user === 'string' ? otherMeta.relationship_to_user : null,
+        otherName: other?.name,
+      }),
       associationKind: hasMet === false || proximity === 'unmet' || proximity === 'distant' ? 'mentioned' : 'direct',
       hasMet,
       proximityLevel: proximity,
@@ -343,6 +387,39 @@ export async function compileCharacterLoreProfile(
       closenessScore: rel.closeness_score ?? undefined,
       evidence: rel.metadata?.evidence as string | undefined,
     });
+  }
+
+  for (const org of orgs) {
+    const groupType = String(org.group_type ?? org.type ?? '').toLowerCase();
+    if (groupType !== 'family' && groupType !== 'household') continue;
+    for (const member of org.members ?? []) {
+      if (member.status && member.status !== 'active') continue;
+      const otherId = member.character_id;
+      if (!otherId || otherId === characterId) continue;
+      const other = charById.get(otherId);
+      const otherMeta = ((other as { metadata?: Record<string, unknown> } | undefined)?.metadata ?? {}) as Record<string, unknown>;
+      const role = String(member.role ?? '').trim();
+      addPerson({
+        characterId: otherId,
+        name: member.character_name,
+        relationshipType: resolveRelatedPersonType({
+          storedType: role && role !== 'member' ? role : 'family',
+          viewerIsSource: true,
+          viewerIsSelf,
+          otherIsSelf: otherId === selfId || isSelfCharacterMetadata(otherMeta, member.character_name),
+          viewerRelationshipToYou,
+          otherRelationshipToYou:
+            typeof otherMeta.relationship_to_user === 'string' ? otherMeta.relationship_to_user : null,
+          otherName: member.character_name,
+          groupRole: role,
+        }),
+        associationKind: 'inferred',
+        hasMet: other?.has_met ?? null,
+        proximityLevel: other?.proximity_level ?? null,
+        summary: `Members of the same family group "${org.name}"`,
+        domain: 'family',
+      });
+    }
   }
 
   for (const otherId of character.associated_with_character_ids ?? []) {

@@ -33,7 +33,8 @@ describe('ChatFocusChipBar', () => {
 
     expect(screen.getByTestId('chat-focus-chip-bar')).toBeInTheDocument();
     expect(screen.getByText(/Alex/)).toBeInTheDocument();
-    expect(screen.getByText(/Dating & Romance/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Dating & Romance/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Dating & Romance focus/i)).toBeInTheDocument();
     // The focus chip bar never carries a "Demo" badge, in demo mode or otherwise.
     expect(screen.queryByText('Demo')).not.toBeInTheDocument();
     expect(screen.getByText(/~94%/)).toBeInTheDocument();

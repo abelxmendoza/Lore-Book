@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  Check,
   CheckCircle2,
   ClipboardCheck,
+  Copy,
   GitMerge,
   Lock,
   Pencil,
@@ -22,6 +24,13 @@ import {
   type CharacterCardAuditResult,
   type CharacterAuditStatus,
 } from '../../api/characterCardAudit';
+import {
+  CHARACTER_AUDIT_STATUS_LABEL,
+  buildCharacterCardAuditClipboardText,
+  characterAuditSuggestedFix,
+} from '../../lib/characterCardAuditClipboard';
+import { copyTextToClipboard } from '../../lib/listClipboard';
+import { cn } from '../../lib/utils';
 
 type Props = {
   demoMode?: boolean;
@@ -32,26 +41,7 @@ function apiErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-const STATUS_LABEL: Record<CharacterAuditStatus, string> = {
-  valid_identity: 'Valid identity',
-  valid_contextual_reference: 'Contextual reference',
-  contextual_character_needs_context: 'Needs contextual rename',
-  needs_context: 'Needs context',
-  wrong_domain: 'Wrong domain',
-  wrong_domain_tool: 'Tool / software',
-  wrong_domain_media: 'Media / fandom',
-  wrong_domain_band: 'Band / group',
-  wrong_domain_role: 'Role / occupation',
-  wrong_domain_event: 'Event / show',
-  wrong_domain_process: 'Work process',
-  sentence_bleed: 'Sentence bleed',
-  pronoun_fragment: 'Pronoun fragment',
-  broken_span: 'Broken span',
-  duplicate_or_merge_candidate: 'Possible duplicate',
-  junk_test_data: 'Junk / test',
-  bare_title_invalid: 'Invalid bare title',
-  needs_identity_resolution: 'Identity unresolved',
-};
+const STATUS_LABEL = CHARACTER_AUDIT_STATUS_LABEL;
 
 const WRONG_DOMAIN_TONE = 'text-orange-200 border-orange-500/30 bg-orange-500/10';
 
@@ -67,6 +57,7 @@ const STATUS_TONE: Record<CharacterAuditStatus, string> = {
   wrong_domain_role: WRONG_DOMAIN_TONE,
   wrong_domain_event: WRONG_DOMAIN_TONE,
   wrong_domain_process: WRONG_DOMAIN_TONE,
+  wrong_domain_organization: WRONG_DOMAIN_TONE,
   sentence_bleed: 'text-red-200 border-red-500/30 bg-red-500/10',
   pronoun_fragment: 'text-red-200 border-red-500/30 bg-red-500/10',
   broken_span: 'text-violet-200 border-violet-500/30 bg-violet-500/10',
@@ -82,20 +73,6 @@ function isActionable(result: CharacterCardAuditResult): boolean {
   return true;
 }
 
-function suggestedFix(result: CharacterCardAuditResult): string {
-  if (result.suggestedTitle) return result.suggestedTitle;
-  if (result.recommendedAction === 'merge' && result.mergeCandidates?.length) {
-    const names = result.mergeCandidates.map((c) => c.currentTitle);
-    return names.length === 1 ? `Merge into ${names[0]}` : `Merge with: ${names.join(' or ')}`;
-  }
-  if (result.recommendedAction === 'move_to_group') return 'Move to Groups book';
-  if (result.recommendedAction === 'move_to_interest') return 'Move to Interests';
-  if (result.recommendedAction === 'move_to_book') return 'Move to correct book';
-  if (result.recommendedAction === 'delete') return 'Remove card';
-  if (result.recommendedAction === 'needs_review') return 'Review provenance before merging';
-  return '—';
-}
-
 export function CharacterAuditPanel({ demoMode = false, onChanged }: Props) {
   const [report, setReport] = useState<CharacterCardAuditReport | null>(null);
   const [loading, setLoading] = useState(false);
@@ -105,6 +82,8 @@ export function CharacterAuditPanel({ demoMode = false, onChanged }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [renameDraft, setRenameDraft] = useState<{ id: string; value: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadReport = useCallback(async () => {
     if (demoMode) {
@@ -127,6 +106,22 @@ export function CharacterAuditPanel({ demoMode = false, onChanged }: Props) {
   useEffect(() => {
     void loadReport();
   }, [loadReport]);
+
+  useEffect(
+    () => () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    },
+    [],
+  );
+
+  const handleCopyAll = async () => {
+    if (!report) return;
+    const ok = await copyTextToClipboard(buildCharacterCardAuditClipboardText(report, visibleResults));
+    if (!ok) return;
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
+  };
 
   const actionableResults = useMemo(() => {
     if (!report) return [];
@@ -362,6 +357,22 @@ export function CharacterAuditPanel({ demoMode = false, onChanged }: Props) {
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleCopyAll()}
+                  disabled={!report || visibleResults.length === 0}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40',
+                    copied
+                      ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
+                      : 'border-white/10 text-white/60 hover:text-white hover:border-white/25',
+                  )}
+                  title="Copy all character card audit rows as plain text"
+                  aria-label="Copy all character card audit"
+                >
+                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copied ? 'Copied' : 'Copy all'}
+                </button>
                 <Button
                   size="sm"
                   variant="ghost"
@@ -431,8 +442,10 @@ export function CharacterAuditPanel({ demoMode = false, onChanged }: Props) {
                               {STATUS_LABEL[result.status]}
                             </span>
                           </td>
-                          <td className="px-3 py-2.5 text-white/65 max-w-[12rem]">{result.reason}</td>
-                          <td className="px-3 py-2.5 text-white/75 max-w-[12rem]">
+                          <td className="px-3 py-2.5 text-white/65 max-w-[22rem] whitespace-pre-wrap break-words leading-relaxed">
+                            {result.reason}
+                          </td>
+                          <td className="px-3 py-2.5 text-white/75 max-w-[16rem] whitespace-pre-wrap break-words leading-relaxed">
                             {editing ? (
                               <input
                                 className="w-full rounded border border-white/15 bg-black/40 px-2 py-1 text-white"
@@ -444,10 +457,13 @@ export function CharacterAuditPanel({ demoMode = false, onChanged }: Props) {
                                 }}
                               />
                             ) : (
-                              suggestedFix(result)
+                              characterAuditSuggestedFix(result)
                             )}
                           </td>
-                          <td className="px-3 py-2.5 text-white/45 max-w-[14rem] truncate" title={result.provenanceSummary}>
+                          <td
+                            className="px-3 py-2.5 text-white/70 min-w-[20rem] w-[38%] whitespace-pre-wrap break-words leading-relaxed"
+                            data-testid="character-audit-provenance"
+                          >
                             {result.provenanceSummary || '—'}
                           </td>
                           <td className="px-3 py-2.5">

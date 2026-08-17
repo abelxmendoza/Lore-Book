@@ -29,7 +29,14 @@ export function relationshipTypeSpecificity(type: string): number {
   if (t === 'unknown') return 1;
   if (t === 'family' || t === 'related_to' || t === 'related') return 2;
   if (
-    /^(cousin|parent|child|aunt|uncle|sibling|spouse|niece|nephew|grandparent|grandchild|step_|half_|god|in_law|twin)/.test(
+    /^(mother|father|mom|dad|son|daughter|grandmother|grandfather|grandson|granddaughter|grandma|grandpa|abuela|abuelo|aunt|uncle|t[ií]o|t[ií]a|niece|nephew|sister|brother)/.test(
+      t,
+    )
+  ) {
+    return 12;
+  }
+  if (
+    /^(cousin|parent|child|sibling|spouse|grandparent|grandchild|step_|half_|god|in_law|twin)/.test(
       t,
     )
   ) {

@@ -39,6 +39,10 @@ import {
 } from '../services/characters/aliasConstraintService';
 import { dedupeRelationshipsByPerson } from '../services/relationships/dedupeCharacterRelationships';
 import {
+  isSelfCharacterMetadata,
+  resolveRelatedPersonType,
+} from '../services/relationships/relatedPersonType';
+import {
   characterConsolidationReviewService,
 } from '../services/characters/characterConsolidationReviewService';
 import {
@@ -968,10 +972,11 @@ router.post('/merge', requireAuth, async (req: AuthenticatedRequest, res) => {
       mergedBy: 'USER',
       reason,
     });
+    const survivorId = report.targetId;
     const { data: mergedCharacter } = await supabaseAdmin
       .from('characters')
       .select('*')
-      .eq('id', target_id)
+      .eq('id', survivorId)
       .eq('user_id', req.user!.id)
       .maybeSingle();
     const { socialStandingService } = await import('../services/socialStandingService');
@@ -981,12 +986,16 @@ router.post('/merge', requireAuth, async (req: AuthenticatedRequest, res) => {
     const { refreshCharacterGraphAfterConsolidation } = await import(
       '../services/characterGraphRefreshService'
     );
-    await refreshCharacterGraphAfterConsolidation(userId, { focusCharacterId: target_id });
+    await refreshCharacterGraphAfterConsolidation(userId, { focusCharacterId: survivorId });
     res.json({ merged: true, report, character: mergedCharacter ?? null });
   } catch (error: any) {
     logger.error({ err: error }, 'Failed to merge characters');
     const message = error?.message ?? 'Failed to merge characters';
-    const status = message.includes('not found') ? 404 : message.includes('itself') ? 400 : 500;
+    const status = message.includes('not found')
+      ? 404
+      : message.includes('itself') || message.includes('Could not') || message.includes('blocked')
+        ? 400
+        : 500;
     res.status(status).json({ error: message });
   }
 });
@@ -1198,6 +1207,15 @@ router.get(['/', '/list'], requireAuth, async (req: AuthenticatedRequest, res) =
         }
       });
 
+      const selfIds = new Set(
+        charactersData
+          .filter((c) => isSelfCharacterMetadata((c.metadata ?? {}) as Record<string, unknown>, c.name))
+          .map((c) => c.id),
+      );
+      const characterMetaById = new Map(
+        charactersData.map((c) => [c.id, (c.metadata ?? {}) as Record<string, unknown>]),
+      );
+
       // Map results back to characters (in-memory operation - FAST)
       const charactersWithStats = await Promise.all(charactersData.map(async (char) => {
         // Extract social_media from metadata if it exists
@@ -1250,11 +1268,22 @@ router.get(['/', '/list'], requireAuth, async (req: AuthenticatedRequest, res) =
               .map((rel) => {
                 const relatedCharId =
                   rel.source_character_id === char.id ? rel.target_character_id : rel.source_character_id;
+                const otherMeta = characterMetaById.get(relatedCharId) ?? {};
                 return {
                   id: rel.id,
                   character_id: relatedCharId,
                   character_name: characterNameMap.get(relatedCharId) || 'Unknown',
-                  relationship_type: rel.relationship_type,
+                  relationship_type: resolveRelatedPersonType({
+                    storedType: String(rel.relationship_type ?? ''),
+                    viewerIsSource: rel.source_character_id === char.id,
+                    viewerIsSelf: selfIds.has(char.id),
+                    otherIsSelf: selfIds.has(relatedCharId),
+                    viewerRelationshipToYou:
+                      typeof metadata.relationship_to_user === 'string' ? metadata.relationship_to_user : null,
+                    otherRelationshipToYou:
+                      typeof otherMeta.relationship_to_user === 'string' ? otherMeta.relationship_to_user : null,
+                    otherName: characterNameMap.get(relatedCharId),
+                  }),
                   closeness_score: rel.closeness_score,
                   summary: rel.summary,
                   status: rel.status,
@@ -1676,7 +1705,12 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     };
     // Explicit null clears a user override (UI "Auto" choice) — a shallow
     // merge alone can never remove a key.
-    for (const key of ['standing_override', 'impact_override']) {
+    for (const key of [
+      'standing_override',
+      'impact_override',
+      'book_category',
+      'family_excluded',
+    ]) {
       if (key in metadataPatch && metadataPatch[key] === null) delete updatedMetadata[key];
     }
 
@@ -1741,10 +1775,16 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     }
     let firstNameToUpdate = updateData.firstName;
     let lastNameToUpdate = updateData.lastName;
-    let aliasToUpdate = filterValidAliases(
-      nameToUpdate ?? existingChar?.name ?? '',
-      updateData.alias ?? existingChar?.alias ?? []
-    );
+    // User-curated alias lists from the character modal are trusted for
+    // removals (a wrong nickname the user deleted must stay gone). Still
+    // scrub punctuation/possessive duplicates below. Ingestion paths keep
+    // the stricter filterValidAliases gate.
+    let aliasToUpdate = updateData.alias
+      ? [...new Set(updateData.alias.map((a) => a.replace(/\s+/g, ' ').trim()).filter(Boolean))]
+      : filterValidAliases(
+          nameToUpdate ?? existingChar?.name ?? '',
+          existingChar?.alias ?? [],
+        );
 
     if (updateData.name && existingChar?.is_nickname && !updateData.isNickname) {
       // Real name provided for a nickname character
@@ -1806,6 +1846,46 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
           normalizeDuplicateKey(a) !== normalizeDuplicateKey(canonicalNameForAliasCleanup) &&
           !isTrailingPossessiveVariant(a, canonicalNameForAliasCleanup)
       );
+    }
+
+    // Keep metadata.display_title aliases in lockstep so removing a nickname
+    // actually changes the modal header (title aliases used to resurrect).
+    if (updateData.alias !== undefined) {
+      const storedTitle = updatedMetadata.display_title as
+        | { primaryTitle?: string; aliases?: Array<{ value?: string }>; stability?: string; [key: string]: unknown }
+        | undefined;
+      if (storedTitle && typeof storedTitle === 'object') {
+        const kept = new Set(aliasToUpdate.map((a) => a.toLowerCase()));
+        const nextTitleAliases = (storedTitle.aliases ?? []).filter(
+          (a) => typeof a?.value === 'string' && kept.has(a.value.trim().toLowerCase()),
+        );
+        const removedFromTitle = (storedTitle.aliases ?? []).filter(
+          (a) => typeof a?.value === 'string' && !kept.has(a.value.trim().toLowerCase()),
+        );
+        let primaryTitle = storedTitle.primaryTitle;
+        if (
+          storedTitle.stability !== 'locked' &&
+          typeof primaryTitle === 'string' &&
+          removedFromTitle.some(
+            (a) => a.value && primaryTitle!.toLowerCase().includes(a.value.trim().toLowerCase()),
+          )
+        ) {
+          const first = (firstNameToUpdate ?? existingChar?.first_name ?? '').trim();
+          const last = (lastNameToUpdate ?? existingChar?.last_name ?? '').trim();
+          const nickname = aliasToUpdate.find(
+            (a) => a.toLowerCase() !== first.toLowerCase() && a.toLowerCase() !== `${first} ${last}`.toLowerCase(),
+          );
+          primaryTitle =
+            nickname && first
+              ? `${nickname} (${[first, last].filter(Boolean).join(' ')})`
+              : [first, last].filter(Boolean).join(' ') || (nameToUpdate ?? existingChar?.name ?? primaryTitle);
+        }
+        updatedMetadata.display_title = {
+          ...storedTitle,
+          primaryTitle,
+          aliases: nextTitleAliases,
+        };
+      }
     }
 
     if (updateData.status !== undefined) {

@@ -1241,6 +1241,11 @@ export const useChat = () => {
           // instead of re-announcing them as new. Single-slot — last one wins.
           if (alreadyExisting.length > 0) {
             const last = alreadyExisting[alreadyExisting.length - 1];
+            const pinnedId = options?.chatFocus?.entityId;
+            const pinnedIsCharacter = options?.chatFocus?.entityType === 'character';
+            if (pinnedIsCharacter && pinnedId && last.entityId !== pinnedId) {
+              return;
+            }
             dispatch(setChatFocus({
               entityId: last.entityId as string,
               entityName: last.name,

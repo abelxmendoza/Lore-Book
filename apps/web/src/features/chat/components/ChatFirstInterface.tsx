@@ -55,7 +55,7 @@ import {
   scrubSummaryDisplayLine,
 } from '../utils/threadSurfaceScrub';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
-import { isClosedScopeQuery, isFocusEntityRelevant } from '@lorebook/api-contracts';
+import { isClosedScopeQuery, isFocusEntityRelevant, messageConflictsWithPinnedFocus, parseNamedChatSubject, subjectNamesMatch } from '@lorebook/api-contracts';
 import { ChatSourcesBar } from '../sources/ChatSourcesBar';
 import { ChatSourceNavigator } from '../sources/ChatSourceNavigator';
 import { ChatSearchModal } from '../search/ChatSearchModal';
@@ -280,6 +280,41 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       if (focused) return chatSendOptions;
 
       const { closedScope } = isClosedScopeQuery(msg);
+      const namedConflict = Boolean(
+        chatFocus && messageConflictsWithPinnedFocus(msg, chatFocus.entityName ?? ''),
+      );
+      if (namedConflict && chatFocus) {
+        const named = parseNamedChatSubject(msg);
+        const match = named
+          ? threadEntities.find(
+              (entity) => entity.type === 'character' && subjectNamesMatch(entity.name, named),
+            )
+          : undefined;
+        if (match) {
+          return {
+            ...chatSendOptions,
+            entityContext: toEntityContext(match),
+            composerEntities: [
+              {
+                id: match.id,
+                name: match.name,
+                type: 'character',
+                status: 'confirmed',
+                aliases: [],
+                mentionKeys: [match.name.toLowerCase()],
+                matchedLabel: match.name,
+              },
+            ],
+            chatFocus: {
+              ...chatFocus,
+              entityId: match.id,
+              entityName: match.name,
+              entityType: 'character',
+            },
+          };
+        }
+        return { ...chatSendOptions, entityContext: undefined, composerEntities: undefined, chatFocus: undefined };
+      }
       const focusRelevant = !chatFocus || !closedScope || isFocusEntityRelevant(msg, chatFocus.entityName ?? '');
       if (focusRelevant) return chatSendOptions;
 

@@ -70,6 +70,15 @@ vi.mock('../../store/api/entitiesApi', () => ({
       unwrap: vi.fn().mockResolvedValue({}),
     })),
   ],
+  useAddCharacterToDatingBookMutation: () => [
+    vi.fn(() => ({
+      unwrap: vi.fn().mockResolvedValue({ created: true, relationship: { id: 'rel-new' } }),
+    })),
+  ],
+}));
+
+vi.mock('../../hooks/useAccountAuthority', () => ({
+  useAccountAuthority: () => ({ authority: null, loading: false, error: null, refresh: vi.fn() }),
 }));
 
 vi.mock('../../hooks/useShouldUseMockData', () => ({

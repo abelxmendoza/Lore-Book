@@ -343,12 +343,76 @@ export function isClosedScopeQuery(message: string): { closedScope: boolean; rea
  * Whether a pinned focus entity is actually relevant to the current message
  * — a plain substring check against the entity's name/aliases. Used to gate
  * whether a stale focus chip's entityContext gets attached to an outgoing
- * closed-scope message; ordinary (non-closed-scope) messages never call this
- * and keep the existing "always honor the pin" behavior.
+ * closed-scope message. Named-subject conflicts are handled separately by
+ * `messageConflictsWithPinnedFocus`.
  */
 export function isFocusEntityRelevant(message: string, focusEntityName: string, aliases: string[] = []): boolean {
   const names = [focusEntityName, ...aliases].filter(Boolean).map((n) => n.toLowerCase());
   if (names.length === 0) return false;
   const text = message.toLowerCase();
   return names.some((n) => n.length > 1 && text.includes(n));
+}
+
+const PRONOUN_PERSON_QUERY_RE =
+  /\bwho\s+(?:is|was|are|were)\s+(he|she|they|him|her|them)\b/i;
+
+const TALK_ABOUT_RE =
+  /\bI want to (?:talk|tell you) about\s+(.+?)(?:\s+as a romantic interest)?(?:\.|,|;|Help me\b|$)/i;
+
+const WHO_IS_NAMED_RE =
+  /\bwho\s+(?:is|was|are|were)\s+([A-ZÁÉÍÓÚÑ][\w.'-]{1,40}(?:\s+(?:de|del|la|los|las|y|van|von|di|da|le|el|the|a|an|T[ií]o|T[ií]a)\s+[A-ZÁÉÍÓÚÑ][\w.'-]{1,40}|\s+[A-ZÁÉÍÓÚÑ][\w.'-]{1,40}){0,6})/;
+
+const PRONOUN_SUBJECTS = new Set([
+  'he', 'she', 'they', 'him', 'her', 'them', 'his', 'hers', 'their', 'it',
+]);
+
+export function isPronounPersonQuery(message: string): boolean {
+  return PRONOUN_PERSON_QUERY_RE.test(message.trim());
+}
+
+export function parseTalkAboutSubject(message: string): string | null {
+  const match = message.match(TALK_ABOUT_RE);
+  const raw = match?.[1]?.replace(/\s+/g, ' ').trim() ?? '';
+  if (!raw || PRONOUN_SUBJECTS.has(raw.toLowerCase())) return null;
+  return raw.replace(/\s+Help me\b.*$/i, '').trim() || null;
+}
+
+export function parseNamedWhoIsSubject(message: string): string | null {
+  const match = message.match(WHO_IS_NAMED_RE);
+  const raw = match?.[1]?.replace(/[?.!,]+$/g, '').trim() ?? '';
+  if (!raw || PRONOUN_SUBJECTS.has(raw.toLowerCase())) return null;
+  return raw;
+}
+
+export function parseNamedChatSubject(message: string): string | null {
+  return parseTalkAboutSubject(message) || parseNamedWhoIsSubject(message);
+}
+
+export function subjectNamesMatch(a: string, b: string): boolean {
+  const left = a.trim().toLowerCase();
+  const right = b.trim().toLowerCase();
+  if (!left || !right) return false;
+  if (left === right) return true;
+  const leftFirst = left.split(/\s+/)[0] ?? '';
+  const rightFirst = right.split(/\s+/)[0] ?? '';
+  if (leftFirst.length >= 3 && leftFirst === rightFirst) return true;
+  if (left.length >= 4 && right.includes(left)) return true;
+  if (right.length >= 4 && left.includes(right)) return true;
+  return false;
+}
+
+/**
+ * True when the message names a different person than the pinned focus chip.
+ * Pronoun queries ("who is he") are not a named conflict by themselves.
+ */
+export function messageConflictsWithPinnedFocus(
+  message: string,
+  focusEntityName: string,
+  aliases: string[] = [],
+): boolean {
+  const named = parseNamedChatSubject(message);
+  if (!named) return false;
+  const pins = [focusEntityName, ...aliases].filter(Boolean);
+  if (pins.length === 0) return false;
+  return !pins.some((pin) => subjectNamesMatch(named, pin));
 }

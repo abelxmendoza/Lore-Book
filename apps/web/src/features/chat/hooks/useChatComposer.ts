@@ -211,9 +211,13 @@ export const useChatComposer = (
     setImageError(null);
   }, []);
 
-  const handleSubmit = useCallback((e?: React.FormEvent) => {
+  const handleSubmit = useCallback((e?: React.FormEvent, overrideText?: string) => {
     if (e) e.preventDefault();
-    const text = input.trim();
+    // overrideText lets a caller (auto-submit) send a specific captured string
+    // instead of whatever the live textarea currently holds — see ChatComposer's
+    // auto-submit effect for why this matters: without it, a fast follow-up
+    // typed during the auto-submit delay gets folded into the same message.
+    const text = (overrideText ?? input).trim();
     if (!text && pendingImages.length === 0) return;
 
     const entitiesToSend = visibleMatches.filter(
@@ -229,12 +233,25 @@ export const useChatComposer = (
     // while the send is in flight and would otherwise re-fill the composer.
     skipVaultAutoRestoreRef.current = true;
     onSubmit(text, entitiesToSend, previewCorrections, imagesToSend);
-    setInput('');
+    // Entity-chip state (matches/dismissed/confirming/included) always belonged
+    // to the turn we just submitted, so it always clears.
+    dispatch(clearComposerState());
+    // Only clear the composer text when we actually submitted what's in it. An
+    // override that no longer matches the live input means the user typed
+    // something during the auto-submit delay — leave their text in place as
+    // their own draft instead of silently discarding it. clearComposerState
+    // above also wipes Redux's draftText mirror, so resync it to the
+    // preserved local input rather than leaving the two out of sync.
+    if (overrideText === undefined || overrideText === input) {
+      setInput('');
+    } else {
+      dispatch(setComposerDraft(input));
+      saveComposerDraft(draftOwnerId, threadId, input);
+    }
     setPreviewCorrections([]);
     setPendingImages([]);
     setImageError(null);
-    dispatch(clearComposerState());
-  }, [input, pendingImages, onSubmit, visibleMatches, includedSlots, previewCorrections, setInput, dispatch]);
+  }, [input, pendingImages, onSubmit, visibleMatches, includedSlots, previewCorrections, setInput, dispatch, draftOwnerId, threadId]);
 
   const dismissMatch = useCallback(
     (match: CertifiedEntityMatch) => {

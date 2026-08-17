@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
-  Bot, Send, Loader2, Sparkles, PanelLeftClose, PanelLeftOpen,
+  Bot, Send, Loader2, PanelLeftClose, PanelLeftOpen,
   MessageSquare, X, ChevronLeft, BookMarked, List, FileText,
   Upload, Layout, Plus, Menu, MoreHorizontal, BookOpen,
 } from 'lucide-react';
@@ -9,13 +9,17 @@ import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
 import { useChatStream } from '../../hooks/useChatStream';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
-import { useLoreNavigatorData } from '../../hooks/useLoreNavigatorData';
+import {
+  useLoreNavigatorData,
+  type BiographySection,
+  type LoreNavigatorData,
+} from '../../hooks/useLoreNavigatorData';
 import { LoreNavigator, type SelectedItem } from './LoreNavigator';
 import { LoreContentViewer } from './LoreContentViewer';
-import { BiographyGenerator } from './BiographyGenerator';
 import { LoreOutlineEditor } from './LoreOutlineEditor';
 import { ChapterCreationChatbot } from '../chapters/ChapterCreationChatbot';
 import {
+  LOREBOOK_LIBRARY_PATH,
   lorebookEditUrl,
   lorebookReadUrl,
   isDemoBookId,
@@ -28,7 +32,6 @@ import { fetchJson } from '../../lib/api';
 import { saveBiographySection, chatEditBiographySection } from '../../api/lorebookEditor';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { LoreEditorGate } from './LoreEditorGate';
-import type { BiographySection, LoreNavigatorData } from '../../hooks/useLoreNavigatorData';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -94,13 +97,13 @@ const ChatPanel = ({
         <Bot className="h-4 w-4 text-primary shrink-0" />
         <span className="text-sm font-semibold text-white shrink-0">AI Assistant</span>
         {editingLabel && (
-          <span className="md:hidden text-[11px] text-white/40 truncate">
+          <span className="md:hidden min-w-0 break-words text-[11px] text-white/40">
             · {editingLabel}
           </span>
         )}
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <p className="hidden md:block text-xs text-white/40 truncate max-w-[180px]">
+        <p className="hidden max-w-[180px] break-words text-xs text-white/40 md:block">
           {editingLabel
             ? `Editing: ${editingLabel}`
             : 'Select an item to start editing'}
@@ -242,7 +245,7 @@ const MobileSectionStrip = ({ sections, selectedId, onSelect }: MobileSectionStr
           key={section.id}
           type="button"
           onClick={() => onSelect(section.id)}
-          className={`shrink-0 max-w-[200px] truncate rounded-full border px-3 py-2 text-xs font-medium min-h-[36px] touch-manipulation transition-colors ${
+          className={`min-h-[36px] max-w-[80vw] shrink-0 whitespace-normal break-words rounded-2xl border px-3 py-2 text-left text-xs font-medium touch-manipulation transition-colors ${
             selectedId === section.id
               ? 'border-primary/50 bg-primary/20 text-primary'
               : 'border-white/10 text-white/60 active:bg-white/5'
@@ -291,7 +294,6 @@ export const BiographyEditor = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () =>
   const [selectedItem, setSelectedItem] = useState<SelectedItem>(null);
 
   // Layout state
-  const [showGenerator, setShowGenerator] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>('browse');
   const [showNavDesktop, setShowNavDesktop] = useState(true);
   const [showChatDesktop, setShowChatDesktop] = useState(true);
@@ -615,14 +617,11 @@ export const BiographyEditor = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () =>
             : 'Your living lore is empty. Chat to build memories, generate a lorebook, or create chapters to get started.'}
         </p>
         <div className="flex flex-wrap gap-2 justify-center pt-2">
-          <Button size="sm" onClick={() => setShowGenerator(true)} leftIcon={<Sparkles className="h-4 w-4" />}>
-            Generate lore
-          </Button>
           <Button size="sm" variant="outline" onClick={() => setShowChapterChatbot(true)} leftIcon={<Plus className="h-4 w-4" />}>
             Create chapter
           </Button>
-          <Button size="sm" variant="outline" onClick={() => navigate('/lorebook')} leftIcon={<BookMarked className="h-4 w-4" />}>
-            Open LoreBooks
+          <Button size="sm" variant="outline" onClick={() => navigate(LOREBOOK_LIBRARY_PATH)} leftIcon={<BookMarked className="h-4 w-4" />}>
+            Open LoreBooks Library
           </Button>
         </div>
       </div>
@@ -681,21 +680,30 @@ export const BiographyEditor = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () =>
           <button
             type="button"
             onClick={() => navigate(bookId ? lorebookReadUrl(bookId) : '/lorebook')}
-            className="flex items-center gap-1 text-xs text-white/40 hover:text-white/70 transition-colors shrink-0 font-mono min-h-[40px] px-1"
+            className="hidden md:flex items-center gap-1 text-xs text-white/40 hover:text-white/70 transition-colors shrink-0 font-mono min-h-[40px] px-1"
           >
             <ChevronLeft className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">{bookId ? 'Back to book' : 'LoreBooks'}</span>
+            <span>{bookId ? 'Back to book' : 'LoreBooks'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(LOREBOOK_LIBRARY_PATH)}
+            className="md:hidden flex min-h-10 shrink-0 items-center gap-1 rounded-lg border border-primary/25 bg-primary/10 px-2 text-xs font-semibold text-primary active:bg-primary/20 touch-manipulation"
+            aria-label="Back to LoreBooks Library"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+            <span>Library</span>
           </button>
           <div className="w-px h-3.5 bg-white/10 shrink-0 hidden sm:block" />
           <div className="flex items-center gap-2 min-w-0">
             <BookMarked className="h-4 w-4 text-primary shrink-0 hidden sm:block" />
-            <h1 className="text-xs sm:text-sm font-semibold text-white truncate">
+            <h1 className="text-xs sm:text-sm font-semibold text-white break-words">
               {bookTitle ?? 'LoreBook Editor'}
             </h1>
             {selectedItem && (
               <>
                 <span className="text-white/20 shrink-0 hidden sm:inline">/</span>
-                <span className="text-[10px] sm:text-xs text-white/50 truncate capitalize hidden sm:inline">{selectedItem.type}</span>
+                <span className="hidden break-words text-[10px] capitalize text-white/50 sm:inline sm:text-xs">{selectedItem.type}</span>
               </>
             )}
           </div>
@@ -758,19 +766,6 @@ export const BiographyEditor = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () =>
             <Layout className="h-3.5 w-3.5" />
             <span>Outline</span>
           </button>
-          <button
-            type="button"
-            onClick={() => setShowGenerator(v => !v)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
-              showGenerator
-                ? 'border-primary/40 bg-primary/15 text-primary'
-                : 'border-white/10 text-white/50 hover:text-white hover:border-white/20'
-            }`}
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Generate</span>
-          </button>
-
           {/* Chat toggle — desktop only */}
           <button
             type="button"
@@ -830,16 +825,6 @@ export const BiographyEditor = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () =>
           </button>
           <button
             type="button"
-            onClick={() => { setShowGenerator((v) => !v); setShowMobileActions(false); }}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border min-h-[40px] ${
-              showGenerator ? 'border-primary/40 bg-primary/15 text-primary' : 'border-white/10 text-white/60'
-            }`}
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            Generate
-          </button>
-          <button
-            type="button"
             onClick={() => { setMobileTab('chat'); setShowMobileActions(false); }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border border-white/10 text-white/60 min-h-[40px]"
           >
@@ -852,18 +837,6 @@ export const BiographyEditor = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () =>
       {uploadResult && (
         <div className={`mx-4 px-3 py-2 text-sm shrink-0 ${uploadResult.includes('failed') ? 'bg-red-500/10 text-red-200' : 'bg-green-500/10 text-green-200'}`}>
           {uploadResult}
-        </div>
-      )}
-
-      {/* ── Generate Biography panel ── */}
-      {showGenerator && (
-        <div className="border-b border-border/50 p-4 bg-black/30 shrink-0">
-          <BiographyGenerator
-            onBiographyGenerated={() => {
-              setShowGenerator(false);
-              void refreshData();
-            }}
-          />
         </div>
       )}
 
@@ -930,7 +903,7 @@ export const BiographyEditor = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () =>
             {bookId && selectedItem && (
               <div className="shrink-0 border-b border-border/40 bg-black/50 px-3 py-2">
                 <p className="text-[11px] uppercase tracking-wide text-white/35 mb-0.5">Editing</p>
-                <p className="text-sm font-medium text-white truncate">
+                <p className="text-sm font-medium text-white break-words">
                   {selectedItemLabel(selectedItem, mergedData) ?? selectedItem.type}
                 </p>
               </div>

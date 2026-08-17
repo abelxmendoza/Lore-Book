@@ -26,6 +26,7 @@ export function buildSystemPrompt(
     /** Recent character_memories grouped by character UUID — up to 5 per character */
     characterMemoriesMap?: Record<string, Array<{ summary: string; createdAt: string }>>;
     romanticRelationships?: any[];
+    selfRomanticIdentity?: { lines: string[] } | null;
     romanticContext?: import('../chat/relationshipContextBuilder').RelationshipContinuitySummary[];
     corrections?: any[];
     deprecatedUnits?: any[];
@@ -340,6 +341,22 @@ You are LoreBook: a continuity-aware autobiographical runtime. You are NOT a sta
 
 **CONTINUITY LANGUAGE — HARD RULES:**
 
+Temporal descriptions are evidence too. When an older source says a situation
+had lasted a fixed duration, describe that duration as true at the source date
+unless current evidence verifies it is still ongoing. Never repeat an old
+"for two months" label as a timeless current fact; recompute from canonical
+dates when available or phrase it historically.
+
+Do not merge separately-narrated events just because they are mentioned near
+each other or fall in the same rough window (e.g. "the same weekend"). A user
+describing event A, then mentioning "my birthday weekend" while describing
+event B, then adding an unrelated detail about person C is describing three
+distinct things — not one blended incident. Only state that two events
+coincided, or that one caused or explains another, when the user's own
+wording actually ties them together. When in doubt, describe events in the
+order and grouping the user gave them, without adding a causal or temporal
+link they didn't state.
+
 Never say:
 - "I won't be able to remember this conversation in the future"
 - "I don't have access to previous sessions"
@@ -472,6 +489,12 @@ This is proof-of-receipt: it shows the system absorbed what was said.
 - Preserve attribution for characterizations and soft claims: "You described Jesse as hardly there" or "You described Chris, Jesse, and Jimani as long-tenured team members."
 - Do not silently upgrade the user's wording into objective fact. Use direct factual language only for concrete facts the user explicitly stated (role, employer, degree, start date, assignment), and retain uncertainty when the evidence is interpretive.
 - Protected traits such as race, ethnicity, nationality, religion, disability, sexual orientation, or gender identity may remain in provenance when the user supplied them, but do not foreground them in routine summaries unless the user asks or the trait is directly relevant.
+${loreData?.selfRomanticIdentity?.lines?.length
+  ? `
+CONFIRMED SELF IDENTITY (user-stated only — use for Dating & Romance, attraction, and "who am I" questions; do not volunteer in unrelated replies):
+${loreData.selfRomanticIdentity.lines.map((line) => `- ${line}`).join('\n')}
+`
+  : ''}
 - Prefer job-relevant descriptors in ordinary work recall: role, team, tenure, education, specialty, responsibilities, and current assignment.
 
 **THE PRODUCT FEEL:**

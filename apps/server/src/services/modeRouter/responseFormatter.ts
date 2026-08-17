@@ -17,6 +17,22 @@ export function formatModeResponse(
   extras?: Partial<StreamingChatResponse['metadata']>,
 ): StreamingChatResponse {
   const content = handlerResponse.content;
+  const handlerSources = handlerResponse.metadata?.sources;
+  const handlerRecallSources = handlerResponse.metadata?.recall_sources;
+  const extraSources = extras?.sources;
+  const extraRecallSources = extras?.recall_sources;
+  const hasSupportingSources =
+    (Array.isArray(handlerSources) && handlerSources.length > 0) ||
+    (Array.isArray(handlerRecallSources) && handlerRecallSources.length > 0) ||
+    (Array.isArray(extraSources) && extraSources.length > 0) ||
+    (Array.isArray(extraRecallSources) && extraRecallSources.length > 0);
+  // A recall label is an evidence contract, not a styling hint. Deterministic
+  // projections may still answer without citations, but they are synthesis —
+  // never claim that a source-backed recall happened when no source exists.
+  const responseMode =
+    handlerResponse.response_mode === 'FOCUSED_RECALL' && !hasSupportingSources
+      ? 'PROJECTION_SYNTHESIS'
+      : handlerResponse.response_mode;
 
   // Create text stream (single chunk for now)
   const stream = (async function* () {
@@ -27,7 +43,7 @@ export function formatModeResponse(
     content,
     stream,
     metadata: {
-      response_mode: handlerResponse.response_mode,
+      response_mode: responseMode,
       mode,
       confidence: handlerResponse.confidence,
       ...handlerResponse.metadata,

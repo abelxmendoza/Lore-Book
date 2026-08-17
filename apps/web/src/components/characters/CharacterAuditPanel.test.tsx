@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { CharacterAuditPanel } from './CharacterAuditPanel';
 
 vi.mock('../../store/invalidateEntityCache', () => ({
@@ -75,5 +76,53 @@ describe('CharacterAuditPanel', () => {
     render(<CharacterAuditPanel onChanged={vi.fn()} />);
     expect(await screen.findByText(/Character card audit/i)).toBeInTheDocument();
     expect(screen.getByText(/2 cards need attention/i)).toBeInTheDocument();
+  });
+
+  it('shows the full provenance quote in the review dialog', async () => {
+    const provenance =
+      'Last night at Northwind Depot, Jamie the promoter and show host approached me with the other promoter Alex and asked if I could stay through the last set even though I had work in the morning at Vanguard Robotics.';
+    vi.mocked(characterCardAuditApi.get).mockResolvedValue({
+      userId: 'u1',
+      generatedAt: '2026-08-16T00:00:00.000Z',
+      characterCount: 1,
+      summary: {
+        valid_identity: 0,
+        valid_contextual_reference: 0,
+        contextual_character_needs_context: 1,
+        needs_context: 0,
+        wrong_domain: 0,
+        wrong_domain_tool: 0,
+        wrong_domain_media: 0,
+        wrong_domain_band: 0,
+        wrong_domain_role: 0,
+        wrong_domain_event: 0,
+        wrong_domain_process: 0,
+        sentence_bleed: 0,
+        pronoun_fragment: 0,
+        broken_span: 0,
+        duplicate_or_merge_candidate: 0,
+        junk_test_data: 0,
+        bare_title_invalid: 0,
+        needs_identity_resolution: 0,
+      },
+      results: [
+        {
+          characterId: '1',
+          currentTitle: 'Jamie',
+          status: 'contextual_character_needs_context',
+          reason: 'Contextual person — the promoter Jamie',
+          recommendedAction: 'rename_with_context',
+          suggestedTitle: 'Jamie (promoter)',
+          provenanceSummary: provenance,
+        },
+      ],
+    });
+
+    render(<CharacterAuditPanel onChanged={vi.fn()} />);
+    await userEvent.click(await screen.findByRole('button', { name: /review audit/i }));
+
+    const cell = screen.getByTestId('character-audit-provenance');
+    expect(cell).toHaveTextContent(provenance);
+    expect(cell).not.toHaveClass('truncate');
   });
 });

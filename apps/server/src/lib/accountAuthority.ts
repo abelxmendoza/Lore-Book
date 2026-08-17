@@ -193,3 +193,11 @@ export function isFounderEmail(email?: string | null): boolean {
 
 /** Privileged roles that supersede Stripe subscription checks. */
 export const PRIVILEGED_PLATFORM_ROLES: readonly PlatformRole[] = ['owner', 'admin', 'developer'];
+
+/**
+ * Manual Dating & Romance character adds are owner/admin only.
+ * Developer and standard accounts must not get this write path.
+ */
+export function canManuallyAddToDatingBook(authority: Pick<AccountAuthority, 'role' | 'isFounderAccount'>): boolean {
+  return authority.isFounderAccount || authority.role === 'owner' || authority.role === 'admin';
+}

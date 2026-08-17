@@ -15,6 +15,11 @@ import type {
 } from '../conversationCentered/romanticRelationshipDetector';
 
 const norm = (s: string) => (s ?? '').toLowerCase().replace(/['']/g, "'").replace(/\s+/g, ' ').trim();
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+function hasWholeCue(text: string, cue: string): boolean {
+  return new RegExp(`(?:^|[^a-z0-9])${escapeRe(cue)}(?=$|[^a-z0-9])`, 'i').test(norm(text));
+}
 
 export interface RomanticLexicalHit {
   partnerName: string;
@@ -159,7 +164,7 @@ function snippetAround(text: string, cue: string, maxLen = 160): string {
 
 /** True when glossary or extended patterns detect romantic relationship language. */
 export function hasRomanticSignals(text: string): boolean {
-  const hints = discoverRelationshipHints(text);
+  const hints = discoverRelationshipHints(text).filter((hint) => hasWholeCue(text, hint.cue));
   if (hints.some((h) => h.hint === 'ROMANTIC_RELATIONSHIP')) return true;
   return TYPE_RULES.some((r) => r.re.test(text)) || STATUS_RULES.some((r) => r.re.test(text));
 }
@@ -168,7 +173,9 @@ export function hasRomanticSignals(text: string): boolean {
 export function parseRomanticEpisode(text: string): RomanticLexicalHit[] {
   if (!text?.trim() || !hasRomanticSignals(text)) return [];
 
-  const hints = discoverRelationshipHints(text).filter((h) => h.hint === 'ROMANTIC_RELATIONSHIP');
+  const hints = discoverRelationshipHints(text).filter(
+    (h) => h.hint === 'ROMANTIC_RELATIONSHIP' && hasWholeCue(text, h.cue),
+  );
   const cues = hints.map((h) => h.cue);
   const { type, confidence: typeConf } = inferType(text);
   const status = inferStatus(text, type);

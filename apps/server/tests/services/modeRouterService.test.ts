@@ -7,6 +7,17 @@ import { openai } from "../../src/services/openaiClient";
 import { logger } from "../../src/logger";
 
 vi.mock("../../src/services/openaiClient");
+vi.mock("../../src/services/projects/projectStateRecallService", async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/services/projects/projectStateRecallService')>();
+  return {
+    ...actual,
+    resolveProjectStateTarget: vi.fn(async (_userId: string, message: string) =>
+      /\bLoreBook\b/i.test(message)
+        ? { id: 'project-lorebook', name: 'LoreBook' }
+        : null
+    ),
+  };
+});
 vi.mock("../../src/logger", () => ({
   logger: {
     debug: vi.fn(),
@@ -125,6 +136,20 @@ describe("ModeRouterService", () => {
           modeRouterService.routeMessage("user-1", query),
         ).resolves.toMatchObject({ mode: "PROJECT_QUERY" });
       }
+    });
+
+    it("routes compound project-state recall before ingestion", async () => {
+      const result = await modeRouterService.routeMessage(
+        "user-1",
+        "What's the current state of LoreBook, and what should I do next?",
+      );
+
+      expect(result).toMatchObject({
+        mode: "PROJECT_QUERY",
+        confidence: 0.99,
+      });
+      expect(result.reasoning).toContain("Grounded project-state recall");
+      expect(result.mode).not.toBe("EXPERIENCE_INGESTION");
     });
 
     it("keeps a project story question out of project query mode", async () => {

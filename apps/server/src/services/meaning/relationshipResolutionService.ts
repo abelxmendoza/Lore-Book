@@ -24,6 +24,8 @@ const ROLE_PATTERNS: Array<{ role: RelationshipRole; patterns: RegExp[] }> = [
   { role: 'friend', patterns: [/\bmy\s+friend\b/i] },
   { role: 'romantic_partner', patterns: [/\bmy\s+(?:boyfriend|girlfriend|partner|husband|wife)\b/i] },
   { role: 'ex_partner', patterns: [/\bmy\s+ex\b/i] },
+  { role: 'recruiter', patterns: [/\b(?:my\s+)?recruiter\b/i, /\brecruiting\s+contact\b/i] },
+  { role: 'interviewer', patterns: [/\b(?:my|the)\s+interviewer\b/i, /\binterviewed\s+me\b/i] },
   { role: 'coworker', patterns: [/\bmy\s+coworker\b/i, /\bcolleague\b/i] },
   { role: 'boss', patterns: [/\bmy\s+boss\b/i, /\bmy\s+manager\b/i] },
   { role: 'mentor', patterns: [/\bmy\s+mentor\b/i] },
@@ -52,8 +54,11 @@ export function resolveRelationships(
       if (seen.has(role)) break;
       seen.add(role);
 
+      const roleLabel = role.replace('estranged_', '');
       const nameMatch = text.match(
-        new RegExp(`([A-Z][\\w'.-]*(?:\\s+[A-Z][\\w'.-]*){0,2})\\s+(?:is|was)\\s+my\\s+${role.replace('estranged_', '')}`, 'i')
+        new RegExp(`([A-Z][\\w'.-]*(?:\\s+[A-Z][\\w'.-]*){0,2})\\s+(?:is|was)\\s+(?:my|the)\\s+${roleLabel}`, 'i')
+      ) ?? text.match(
+        new RegExp(`(?:my|the)\\s+${roleLabel}\\s+(?:is|was|named)?\\s*([A-Z][\\w'.-]*(?:\\s+[A-Z][\\w'.-]*){0,2})`, 'i')
       );
       const targetName = nameMatch?.[1];
       const targetEntityId = targetName

@@ -148,6 +148,7 @@ Rules:
 - ONLY extract facts the narrator states about THEIR OWN life, identity, feelings, or situation
 - Do NOT extract facts about other people they mention
 - Write facts in third person about the narrator: "Is unemployed", "Lives in Seattle", "Has anxiety"
+- If they explicitly state their gender, sex, pronouns, sexual orientation, or who they date/are attracted to, extract those as durable identity facts. Do not infer orientation from crushes or dating history.
 - confidence: 0.9 = directly stated, 0.7 = implied, 0.5 = speculative
 - contradicts: old fact text if this contradicts something (otherwise omit)
 - Skip vague facts. Max 6 facts. Return { "facts": [] } if none.`;
@@ -280,6 +281,13 @@ class EntityFactsService {
     options?: PersistFactsOptions,
   ): Promise<void> {
     if (!conversationText.trim()) return;
+
+    try {
+      const { learnSelfRomanticIdentity } = await import('./identity/learnSelfRomanticIdentity');
+      await learnSelfRomanticIdentity(userId, characterId, conversationText);
+    } catch (err) {
+      logger.warn({ err, characterId }, 'Self romantic identity learn failed (non-blocking)');
+    }
 
     let extracted: ExtractedFact[] = [];
     try {

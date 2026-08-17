@@ -109,6 +109,58 @@ export function eventContextFromChatMessageMetadata(metadata: unknown): string |
   return entityId || undefined;
 }
 
+type IngestionFocusContext = {
+  id: string;
+  name: string;
+  type: 'character' | 'location' | 'organization';
+  aliases: string[];
+};
+
+function focusRefFromChatMessageMetadata(metadata: unknown): {
+  entityId: string;
+  entityType: string;
+} | null {
+  if (!metadata || typeof metadata !== 'object') return null;
+  const loreContext = (metadata as Record<string, unknown>).lore_context;
+  if (!loreContext || typeof loreContext !== 'object') return null;
+  const focus = (loreContext as Record<string, unknown>).focus;
+  if (!focus || typeof focus !== 'object') return null;
+  const record = focus as Record<string, unknown>;
+  const entityId = typeof record.entityId === 'string' ? record.entityId.trim() : '';
+  const entityType = typeof record.entityType === 'string' ? record.entityType.toLowerCase() : '';
+  return entityId ? { entityId, entityType } : null;
+}
+
+async function resolveTenantOwnedIngestionFocus(
+  userId: string,
+  metadata: unknown,
+): Promise<IngestionFocusContext | null> {
+  const ref = focusRefFromChatMessageMetadata(metadata);
+  if (!ref || !['character', 'location', 'organization'].includes(ref.entityType)) return null;
+  const table = ref.entityType === 'character'
+    ? 'characters'
+    : ref.entityType === 'location'
+      ? 'locations'
+      : 'organizations';
+  const aliasColumn = ref.entityType === 'character' ? 'alias' : 'aliases';
+  const { data, error } = await supabaseAdmin
+    .from(table)
+    .select(`id, name, ${aliasColumn}`)
+    .eq('user_id', userId)
+    .eq('id', ref.entityId)
+    .maybeSingle();
+  if (error || !data?.id || !data?.name) return null;
+  const aliases = Array.isArray((data as Record<string, unknown>)[aliasColumn])
+    ? ((data as Record<string, unknown>)[aliasColumn] as unknown[]).filter((value): value is string => typeof value === 'string')
+    : [];
+  return {
+    id: data.id as string,
+    name: data.name as string,
+    type: ref.entityType as IngestionFocusContext['type'],
+    aliases,
+  };
+}
+
 /**
  * Main ingestion pipeline for conversation messages
  */
@@ -208,6 +260,17 @@ export class ConversationIngestionPipeline {
       // Map sender
       const sender: 'USER' | 'AI' = chatMessage.role === 'user' ? 'USER' : 'AI';
       const eventContext = eventContextFromChatMessageMetadata(chatMessage.metadata);
+      const ingestionFocus = await resolveTenantOwnedIngestionFocus(userId, chatMessage.metadata);
+      const focusedEntityContext = ingestionFocus
+        ? {
+            type: ingestionFocus.type === 'character'
+              ? 'CHARACTER' as const
+              : ingestionFocus.type === 'location'
+                ? 'LOCATION' as const
+                : 'ENTITY' as const,
+            id: ingestionFocus.id,
+          }
+        : undefined;
 
       // Ingest the message (with chat_message_id in metadata for linking)
       const result = await this.ingestMessage(
@@ -217,8 +280,8 @@ export class ConversationIngestionPipeline {
         chatMessage.content,
         conversationHistory,
         eventContext,
-        undefined,
-        { chatMessageId, sourceCreatedAt: chatMessage.created_at },
+        focusedEntityContext,
+        { chatMessageId, sourceCreatedAt: chatMessage.created_at, focus: ingestionFocus ?? undefined },
         runId
       );
 
@@ -815,7 +878,7 @@ export class ConversationIngestionPipeline {
       type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP';
       id: string;
     },
-    ingestOptions?: { chatMessageId?: string; sourceCreatedAt?: string },
+    ingestOptions?: { chatMessageId?: string; sourceCreatedAt?: string; focus?: IngestionFocusContext },
     runId?: string
   ): Promise<{
     messageId: string;
@@ -1370,7 +1433,7 @@ export class ConversationIngestionPipeline {
     conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
     eventContext?: string,
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string },
-    ingestOptions?: { chatMessageId?: string; sourceCreatedAt?: string },
+    ingestOptions?: { chatMessageId?: string; sourceCreatedAt?: string; focus?: IngestionFocusContext },
     runId?: string
   ): Promise<{
     messageId: string;
@@ -1569,6 +1632,22 @@ export class ConversationIngestionPipeline {
           const bookMatches = (await resolveMessageEntitiesForDisplay(userId, rawText)).filter(
             (entity) => entity.type !== 'event',
           );
+          if (ingestOptions?.focus && !bookMatches.some((entity) => entity.id === ingestOptions.focus!.id)) {
+            bookMatches.unshift({
+              id: ingestOptions.focus.id,
+              name: ingestOptions.focus.name,
+              type: ingestOptions.focus.type,
+              confidence: 1,
+              provenance:
+                ingestOptions.focus.type === 'character'
+                  ? 'character_book'
+                  : ingestOptions.focus.type === 'location'
+                    ? 'location_book'
+                    : 'organization_book',
+              mentionStatus: 'confirmed',
+              lifecycleStatus: 'RESOLVED',
+            });
+          }
           // Mirror the gate inside extractEntities so the meter can attribute the
           // skip to this message (same deterministic function — no divergence).
           const entityGateOpen = evaluateEntityCandidates(fullNormalizedText).hasCandidates;
@@ -1583,7 +1662,16 @@ export class ConversationIngestionPipeline {
               const extracted = (await omegaMemoryService.extractEntities(fullNormalizedText)).filter(
                 (entity) => !isLoreBookProductName(entity.name)
               );
-              const entities = mergeCanonicalEntityCandidates(extracted, bookMatches);
+              const entities = mergeCanonicalEntityCandidates(extracted, bookMatches, {
+                authoritativeFocus: ingestOptions?.focus
+                  ? {
+                      id: ingestOptions.focus.id,
+                      name: ingestOptions.focus.name,
+                      type: ingestOptions.focus.type,
+                      aliases: ingestOptions.focus.aliases,
+                    }
+                  : undefined,
+              });
               return { candidateEntities: entities, resolved: await omegaMemoryService.resolveEntities(userId, entities) };
             },
             {

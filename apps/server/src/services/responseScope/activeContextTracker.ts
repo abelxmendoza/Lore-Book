@@ -12,6 +12,7 @@
 import { isFollowUpShaped } from './responseModeResolver';
 import { detectScopeIntent, extractCandidateEntities } from './responseScopePlanner';
 import type { ActiveConversationContext, EntityRef } from './responseScopeTypes';
+import { parseTalkAboutSubject } from '@lorebook/api-contracts';
 
 /** An anchor older than this many general user turns is stale — no inheritance. */
 export const MAX_ACTIVE_CONTEXT_TURNS = 6;
@@ -50,7 +51,27 @@ export function deriveActiveContext(
     userTurnsSinceAnchor += 1;
     if (userTurnsSinceAnchor >= MAX_ACTIVE_CONTEXT_TURNS) return undefined;
   }
-  if (anchorIndex < 0 || !intent) return undefined;
+  if (anchorIndex < 0 || !intent) {
+    const harvestEnd = end;
+    const entities = new Map<string, EntityRef>();
+    for (let index = harvestEnd - 1; index >= 0 && entities.size < MAX_ACTIVE_ENTITIES; index -= 1) {
+      const entry = history[index];
+      if (entry.role !== 'user' || !entry.content.trim()) continue;
+      const talkAbout = parseTalkAboutSubject(entry.content);
+      if (talkAbout) {
+        const key = talkAbout.toLowerCase();
+        if (!entities.has(key)) entities.set(key, { name: talkAbout });
+      }
+      for (const entity of extractCandidateEntities(entry.content)) {
+        if (entities.size >= MAX_ACTIVE_ENTITIES) break;
+        const key = entity.name.toLowerCase();
+        if (!entities.has(key)) entities.set(key, entity);
+      }
+      if (talkAbout) break;
+    }
+    if (entities.size === 0) return undefined;
+    return { intent: 'general', entities: [...entities.values()], userTurnsSinceAnchor: 0 };
+  }
 
   const entities = new Map<string, EntityRef>();
   const collect = (text: string) => {

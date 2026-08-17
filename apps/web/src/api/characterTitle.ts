@@ -63,6 +63,12 @@ export const characterTitleApi = {
       body: JSON.stringify(body),
     }),
 
+  removeAlias: (characterId: string, aliasId: string) =>
+    fetchJson<{ displayTitle: CharacterDisplayTitle }>(
+      `/api/characters/${characterId}/aliases/${encodeURIComponent(aliasId)}`,
+      { method: 'DELETE' },
+    ),
+
   promoteAlias: (characterId: string, aliasId: string) =>
     fetchJson<{ displayTitle: CharacterDisplayTitle }>(
       `/api/characters/${characterId}/aliases/${encodeURIComponent(aliasId)}/promote`,

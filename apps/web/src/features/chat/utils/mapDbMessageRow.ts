@@ -51,6 +51,20 @@ export function mapDbMessageRow(row: DbChatMessageRow): Message {
     ? metadata.response_mode
     : undefined;
   const streamStatus = typeof metadata?.stream_status === 'string' ? metadata.stream_status : undefined;
+  // A row is left at stream_status:'streaming' forever if the backend
+  // process died mid-request (e.g. an OOM kill) before finalizeAssistantMessage
+  // got to run in its own try/finally (chatMessagePersistenceService.ts) —
+  // unlike every other exit path, that one never flips the status to
+  // complete/partial/failed. Only treat it as orphaned once it's had a fair
+  // chance to finish normally: a genuinely in-flight stream (e.g. viewed from
+  // a second tab while still generating) can legitimately sit at 'streaming'
+  // for a while, and the client's own watchdog (useChatStream.ts) already
+  // allows up to 90s-to-first-byte + 45s idle before it gives up on a live
+  // connection — this threshold just needs to clear that bar with room to spare.
+  const STALE_STREAMING_MS = 3 * 60 * 1000;
+  const rowAgeMs = row.created_at ? Date.now() - new Date(row.created_at).getTime() : NaN;
+  const isOrphanedStreaming =
+    streamStatus === 'streaming' && Number.isFinite(rowAgeMs) && rowAgeMs > STALE_STREAMING_MS;
   // A stream interrupted before any tokens arrived is persisted with an
   // explicit fallback message and stream_status:'failed' (see
   // chatMessagePersistenceService.finalizeAssistantMessage) rather than being
@@ -58,7 +72,7 @@ export function mapDbMessageRow(row: DbChatMessageRow): Message {
   // would have so the existing delivery-notice UI (SystemNotice + "Retry
   // response") renders for it after reload, instead of building new UI.
   const failedLifecycle: Message['lifecycle'] | undefined =
-    row.role === 'assistant' && streamStatus === 'failed'
+    row.role === 'assistant' && (streamStatus === 'failed' || isOrphanedStreaming)
       ? {
           localPersistence: 'saved',
           cloudPersistence: 'saved',
