@@ -1,10 +1,22 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+vi.mock('../../logger', () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
+vi.mock('../supabaseClient', () => ({
+  supabaseAdmin: { from: vi.fn() },
+}));
 
 import {
   aggregateCastActivity,
+  castTrendsService,
   classifyCastTrends,
   type CastMemberActivity,
 } from './castTrendsService';
+import { supabaseAdmin } from '../supabaseClient';
+
+const mockFrom = supabaseAdmin.from as ReturnType<typeof vi.fn>;
 
 const NOW = new Date('2026-07-11T00:00:00Z').getTime();
 const daysAgo = (n: number) => new Date(NOW - n * 86_400_000).toISOString();
@@ -104,5 +116,79 @@ describe('castTrendsService — pure helpers', () => {
       ]);
       expect(activity.size).toBe(0);
     });
+  });
+});
+
+function chain(data: unknown, error: unknown = null) {
+  const obj: any = {
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    in: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
+    then: (resolve: any) => resolve({ data, error }),
+  };
+  return obj;
+}
+
+describe('castTrendsService.getTrends', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('drops entities that never resolved to a real characters row ("Cyberpunk" — a raw extracted label, not in the character book), keeps a real named character, and still drops a bare kinship label even when it IS a legacy characters row', async () => {
+    const now = new Date().toISOString();
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'entity_conversation_links') {
+        return chain([
+          {
+            // Never promoted to a characters row — a topic/genre word cached
+            // as an entity_name at extraction time and never re-validated.
+            entity_id: 'cyberpunk-orphan',
+            entity_type: 'character',
+            session_id: 's1',
+            mention_count: 1,
+            first_linked_at: now,
+            last_linked_at: now,
+            metadata: { entity_name: 'Cyberpunk' },
+          },
+          {
+            // Legacy characters row with a bad bare-kinship name, predating
+            // the creation-time guards — still must not surface.
+            entity_id: 'uncle-legacy',
+            entity_type: 'character',
+            session_id: 's1',
+            mention_count: 1,
+            first_linked_at: now,
+            last_linked_at: now,
+            metadata: { entity_name: 'Uncle' },
+          },
+          {
+            entity_id: 'priya-1',
+            entity_type: 'character',
+            session_id: 's1',
+            mention_count: 1,
+            first_linked_at: now,
+            last_linked_at: now,
+            metadata: { entity_name: 'Priya' },
+          },
+        ]);
+      }
+      if (table === 'characters') {
+        // 'cyberpunk-orphan' has no row at all — not in the character book.
+        return chain([
+          { id: 'uncle-legacy', name: 'Uncle', metadata: {} },
+          { id: 'priya-1', name: 'Priya', metadata: {} },
+        ]);
+      }
+      return chain([]);
+    });
+
+    const trends = await castTrendsService.getTrends('user-1');
+    const allNames = [...trends.newFaces, ...trends.rising, ...trends.dormant].map((m) => m.name);
+
+    expect(allNames).not.toContain('Cyberpunk');
+    expect(allNames).not.toContain('Uncle');
+    expect(allNames).toContain('Priya');
   });
 });

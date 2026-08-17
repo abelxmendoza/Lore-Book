@@ -11,6 +11,8 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { isVagueOrIndefiniteActorPhrase } from '../actors/actorLabelPolicy';
+import { isBareTitleInvalid } from '../characters/audit/bareTitleInvalidGuard';
 
 export type CastMemberActivity = {
   entityId: string;
@@ -142,6 +144,7 @@ class CastTrendsService {
         .select('id, name, metadata')
         .eq('user_id', userId)
         .in('id', ids.slice(0, 500));
+      const matchedIds = new Set<string>();
       for (const c of characters ?? []) {
         const entry = activity.get(c.id);
         if (!entry) continue;
@@ -151,9 +154,31 @@ class CastTrendsService {
           continue;
         }
         if (c.name) entry.name = c.name;
+        matchedIds.add(c.id);
+      }
+      // An entity_conversation_links row whose entity never resolved to (or
+      // was later removed from) a real characters row is not a character —
+      // it's a raw extracted label (a topic, a genre, a stray noun phrase)
+      // cached at write time and never re-validated. Only entities that are
+      // actually in the character book belong in this list.
+      for (const id of ids) {
+        if (!matchedIds.has(id)) activity.delete(id);
       }
 
-      const members = [...activity.values()].filter((m) => m.name.trim().length > 0);
+      // Bare kinship/generic labels ("Uncle", "that guy") can outlive their
+      // usefulness here: the cached entity_conversation_links.metadata.entity_name
+      // is never re-validated once written, so a name the creation-time guards
+      // (actorLabelPolicy, bareTitleInvalidGuard) would reject can still surface
+      // in this read path years later if it was ever cached before those guards
+      // existed. Kept as defense in depth even though the character-book match
+      // above now also catches most of this.
+      const members = [...activity.values()].filter((m) => {
+        const name = m.name.trim();
+        if (!name) return false;
+        if (isVagueOrIndefiniteActorPhrase(name)) return false;
+        if (isBareTitleInvalid(name)) return false;
+        return true;
+      });
       return classifyCastTrends(members);
     } catch (err) {
       logger.warn({ err, userId }, 'castTrends: computation failed');
