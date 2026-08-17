@@ -25,6 +25,40 @@ type OrgSwimEvent = SwimlaneEvent & {
   source: OrgDerivedEvent['source'];
 };
 
+/** Shape of a row from GET /api/organizations/:id/timelines (entityTimelineBuilder.ts's EntityTimelineEvent). */
+type EntityTimelineEntry = {
+  id: string;
+  eventId?: string;
+  sourceThreadId?: string;
+  eventTitle: string;
+  eventDate: string;
+  eventSummary?: string;
+  eventType?: string;
+  timelineType: 'shared_experience' | 'lore' | 'mentioned_in';
+  entityRole?: string;
+  userWasPresent: boolean;
+  confidence: number;
+  involvedNames?: string[];
+  audience?: OrgDerivedEvent['audience'];
+  source?: OrgDerivedEvent['source'];
+  subgroupNames?: string[];
+};
+
+function toOrgDerivedEvent(entry: EntityTimelineEntry): OrgDerivedEvent {
+  return {
+    id: entry.id,
+    title: entry.eventTitle,
+    date: entry.eventDate,
+    type: entry.eventType ?? '',
+    summary: entry.eventSummary,
+    involved: entry.involvedNames ?? [],
+    user_was_present: entry.userWasPresent,
+    audience: entry.audience,
+    subgroup_names: entry.subgroupNames,
+    source: entry.source ?? 'conversation',
+  };
+}
+
 interface Props {
   organization: Organization;
   mockMode?: boolean;
@@ -117,19 +151,38 @@ export function OrganizationTimelinePanel({
         setDerivedEvents(getMockOrganizationDerivedEvents(organization));
         return;
       }
-      const r = await fetchJson<{ success: boolean; events: OrgDerivedEvent[] }>(
-        `/api/organizations/${organization.id}/derived-context`,
-      );
+      const r = await fetchJson<{
+        success: boolean;
+        timelines: { sharedExperiences: EntityTimelineEntry[]; lore: EntityTimelineEntry[] };
+      }>(`/api/organizations/${organization.id}/timelines`);
       if (r.success) {
-        // Backend events may omit array fields — normalize so render code can
-        // safely read .involved.length etc. (production crash: 'involved' undefined).
-        setDerivedEvents(
-          (r.events || []).map((e) => ({
-            ...e,
-            involved: e.involved ?? [],
-            subgroup_names: e.subgroup_names ?? [],
-          })),
-        );
+        const events = [...r.timelines.sharedExperiences, ...r.timelines.lore].map(toOrgDerivedEvent);
+        setDerivedEvents(events);
+        // Existing pre-feature history never got backfilled into
+        // entity_timeline_events (only new events populate it going
+        // forward via the live-ingestion hook) — an empty first load likely
+        // means this org just hasn't been rebuilt yet, not that it has no
+        // history. Self-heal once, silently, rather than requiring a manual
+        // rebuild trigger the org panel doesn't otherwise expose.
+        if (events.length === 0) {
+          fetchJson(`/api/organizations/${organization.id}/rebuild-timelines`, { method: 'POST' })
+            .then(() =>
+              fetchJson<{
+                success: boolean;
+                timelines: { sharedExperiences: EntityTimelineEntry[]; lore: EntityTimelineEntry[] };
+              }>(`/api/organizations/${organization.id}/timelines`),
+            )
+            .then((rebuilt) => {
+              if (rebuilt.success) {
+                setDerivedEvents(
+                  [...rebuilt.timelines.sharedExperiences, ...rebuilt.timelines.lore].map(toOrgDerivedEvent),
+                );
+              }
+            })
+            .catch(() => {
+              // leave the (empty) state from the first fetch — not worth surfacing an error for a background backfill
+            });
+        }
       }
     } catch {
       // keep prior data on refresh failure

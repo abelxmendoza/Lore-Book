@@ -377,6 +377,9 @@ export const LocationDetailModal = ({
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [loadingMemories, setLoadingMemories] = useState(false);
   const [memoryCards, setMemoryCards] = useState<MemoryCard[]>([]);
+  const [entityTimelineEntries, setEntityTimelineEntries] = useState<
+    Array<{ id: string; timestamp: string; title: string; summary?: string }>
+  >([]);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date }>>([]);
@@ -595,6 +598,51 @@ export const LocationDetailModal = ({
     void loadLocationMemories();
   }, [location.entries, location.id, location.name, location.firstVisited, location.lastVisited, location.tagCounts, location.moods, location.relatedPeople]);
 
+  // Timeline tab data — separate from memoryCards (Memories tab): sourced
+  // from resolved_events/threads via entityTimelineBuilder, with real
+  // shared_experience/lore classification the raw journal-entry list above
+  // never had.
+  useEffect(() => {
+    if (isMockDataEnabled) return;
+    let cancelled = false;
+
+    type TimelineEntry = { id: string; eventTitle: string; eventDate: string; eventSummary?: string };
+    const fetchTimelines = () =>
+      fetchJson<{ success: boolean; timelines: { sharedExperiences: TimelineEntry[]; lore: TimelineEntry[] } }>(
+        `/api/locations/${location.id}/timelines`,
+      );
+
+    (async () => {
+      try {
+        const r = await fetchTimelines();
+        if (cancelled || !r.success) return;
+        let entries = [...r.timelines.sharedExperiences, ...r.timelines.lore];
+
+        // Pre-feature history never got backfilled — an empty first load
+        // likely means this location just hasn't been rebuilt yet.
+        if (entries.length === 0) {
+          await fetchJson(`/api/locations/${location.id}/rebuild-timelines`, { method: 'POST' });
+          if (cancelled) return;
+          const rebuilt = await fetchTimelines();
+          if (cancelled || !rebuilt.success) return;
+          entries = [...rebuilt.timelines.sharedExperiences, ...rebuilt.timelines.lore];
+        }
+
+        if (!cancelled) {
+          setEntityTimelineEntries(
+            entries.map((e) => ({ id: e.id, timestamp: e.eventDate, title: e.eventTitle, summary: e.eventSummary })),
+          );
+        }
+      } catch {
+        // keep prior state on failure
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [location.id, isMockDataEnabled]);
+
   // Auto-scroll chat to bottom
   useEffect(() => {
     if (chatMessagesEndRef.current) {
@@ -727,7 +775,9 @@ export const LocationDetailModal = ({
   const verifiedPeople = isMockDataEnabled
     ? getMockLocationPeople(location, mockDataService.get.characters())
     : location.relatedPeople.filter(person => person.character_id);
-  const locationTimelineEntries = memoryCards.length > 0
+  const locationTimelineEntries = entityTimelineEntries.length > 0
+    ? entityTimelineEntries
+    : memoryCards.length > 0
     ? memoryCards.map((memory) => {
         const body = memory.content ?? '';
         const tags = Array.isArray(memory.tags) ? memory.tags : [];

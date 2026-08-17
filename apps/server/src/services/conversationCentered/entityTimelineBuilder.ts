@@ -8,6 +8,8 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { organizationService, type GroupEventAudience } from '../organizationService';
+import { listUserPostedEventsForOrganization, type UserPostedEventRow } from '../events/userPostedEventService';
 
 export type EntityKind = 'organization' | 'location';
 export type TimelineType = 'shared_experience' | 'lore' | 'mentioned_in';
@@ -24,6 +26,11 @@ export interface EntityTimelineEvent {
   entityRole?: string;
   userWasPresent: boolean;
   confidence: number;
+  /** Organization only. */
+  involvedNames?: string[];
+  audience?: GroupEventAudience;
+  source?: 'conversation' | 'user_posted';
+  subgroupNames?: string[];
 }
 
 /** Find the user's own "self" character row (same convention as characterTimelineBuilder). */
@@ -37,6 +44,22 @@ async function findSelfCharacterId(userId: string): Promise<string | null> {
     .limit(1)
     .single();
   return userCharacter?.id ?? null;
+}
+
+/** Reverse lookup: which organizations (if any) does each of these characters belong to? */
+export async function getOrganizationIdsForCharacters(
+  userId: string,
+  characterIds: string[]
+): Promise<string[]> {
+  if (characterIds.length === 0) return [];
+  const { data } = await supabaseAdmin
+    .from('organization_members')
+    .select('organization_id')
+    .eq('user_id', userId)
+    .in('character_id', characterIds)
+    .eq('status', 'active');
+
+  return [...new Set((data || []).map((r) => r.organization_id as string))];
 }
 
 export class EntityTimelineBuilder {
@@ -73,6 +96,10 @@ export class EntityTimelineBuilder {
           entityRole: row.entity_role,
           userWasPresent: row.user_was_present,
           confidence: row.confidence,
+          involvedNames: row.involved_names ?? undefined,
+          audience: row.audience ?? undefined,
+          source: row.source ?? undefined,
+          subgroupNames: row.subgroup_names ?? undefined,
         };
 
         if (row.timeline_type === 'shared_experience') {
@@ -89,18 +116,39 @@ export class EntityTimelineBuilder {
     }
   }
 
-  /** Resolve organization membership → the org's member character ids. */
-  private async getOrganizationMemberCharacterIds(userId: string, organizationId: string): Promise<string[]> {
+  /** Resolve organization membership → the org's member character id→name map. */
+  private async getOrganizationMembersMap(userId: string, organizationId: string): Promise<Map<string, string>> {
     const { data: members } = await supabaseAdmin
       .from('organization_members')
-      .select('character_id')
+      .select('character_id, character_name')
       .eq('user_id', userId)
       .eq('organization_id', organizationId)
       .eq('status', 'active');
 
-    return (members || [])
-      .map((m) => m.character_id as string | null)
-      .filter((id): id is string => Boolean(id));
+    const map = new Map<string, string>();
+    for (const m of members || []) {
+      if (m.character_id) map.set(m.character_id, m.character_name);
+    }
+    return map;
+  }
+
+  /** Which of the org's subgroups (if any) does this set of involved character ids touch? */
+  private async resolveSubgroupNames(
+    userId: string,
+    organizationId: string,
+    involvedIds: string[]
+  ): Promise<string[] | undefined> {
+    if (involvedIds.length === 0) return undefined;
+    const hierarchy = await organizationService.getGroupHierarchy(userId, organizationId);
+    if (hierarchy.subgroups.length === 0) return undefined;
+
+    const names = new Set<string>();
+    for (const sg of hierarchy.subgroups) {
+      const sgMembers = await organizationService.getMembers(sg.id);
+      const sgIds = new Set(sgMembers.map((m) => m.character_id).filter(Boolean));
+      if (involvedIds.some((id) => sgIds.has(id))) names.add(sg.name);
+    }
+    return names.size > 0 ? [...names] : undefined;
   }
 
   /**
@@ -124,7 +172,29 @@ export class EntityTimelineBuilder {
       const userWasPresent = Boolean(selfCharacterId && event.people.includes(selfCharacterId));
 
       const timelineType: TimelineType = userWasPresent ? 'shared_experience' : 'lore';
-      const entityRole: string = this.kind === 'location' ? 'visited' : userWasPresent ? 'participant' : 'subject';
+      let entityRole: string = this.kind === 'location' ? 'visited' : userWasPresent ? 'participant' : 'subject';
+
+      let involvedNames: string[] | undefined;
+      let audience: GroupEventAudience | undefined;
+      let subgroupNames: string[] | undefined;
+      let source: 'conversation' | 'user_posted' | undefined;
+
+      if (this.kind === 'organization') {
+        const memberMap = await this.getOrganizationMembersMap(userId, entityId);
+        const involvedIds = event.people.filter((id) => memberMap.has(id));
+        involvedNames = involvedIds.map((id) => memberMap.get(id)!);
+
+        audience = organizationService.classifyGroupEventAudience({
+          user_was_present: userWasPresent,
+          involved: involvedNames,
+          type: event.type ?? '',
+          title: event.title,
+          summary: event.summary,
+        });
+        subgroupNames = await this.resolveSubgroupNames(userId, entityId, involvedIds);
+        source = 'conversation';
+        entityRole = userWasPresent ? 'participant' : 'subject';
+      }
 
       const { error } = await supabaseAdmin.from('entity_timeline_events').upsert(
         {
@@ -141,6 +211,10 @@ export class EntityTimelineBuilder {
           event_summary: event.summary,
           event_type: event.type,
           confidence: 0.7,
+          involved_names: involvedNames ?? null,
+          audience: audience ?? null,
+          source: source ?? null,
+          subgroup_names: subgroupNames ?? null,
           metadata: { processed_at: new Date().toISOString() },
         },
         { onConflict: 'user_id,entity_type,entity_id,event_id,timeline_type' }
@@ -151,6 +225,53 @@ export class EntityTimelineBuilder {
       }
     } catch (error) {
       logger.error({ error, userId, entityId, eventId, kind: this.kind }, 'Failed to process event for entity timeline');
+    }
+  }
+
+  /**
+   * Fold an explicit user-posted Life Log event into an organization's
+   * timeline. Mirrors how the derived-context route tags these events —
+   * always with_user/shared_experience, since the user logged it themselves.
+   */
+  private async processPostedEventForOrganization(
+    userId: string,
+    organizationId: string,
+    postedEvent: UserPostedEventRow
+  ): Promise<void> {
+    try {
+      const memberMap = await this.getOrganizationMembersMap(userId, organizationId);
+      const involvedIds = (postedEvent.people ?? []).filter((id) => memberMap.has(id));
+      const involvedNames = involvedIds.map((id) => memberMap.get(id)!);
+
+      const { error } = await supabaseAdmin.from('entity_timeline_events').upsert(
+        {
+          user_id: userId,
+          entity_type: 'organization',
+          entity_id: organizationId,
+          event_id: postedEvent.id,
+          source_thread_id: null,
+          timeline_type: 'shared_experience',
+          user_was_present: true,
+          entity_role: 'participant',
+          event_title: postedEvent.title,
+          event_date: postedEvent.start_time ?? new Date().toISOString(),
+          event_summary: postedEvent.summary,
+          event_type: postedEvent.type,
+          confidence: 0.7,
+          involved_names: involvedNames,
+          audience: 'with_user' satisfies GroupEventAudience,
+          source: 'user_posted',
+          subgroup_names: null,
+          metadata: { processed_at: new Date().toISOString() },
+        },
+        { onConflict: 'user_id,entity_type,entity_id,event_id,timeline_type' }
+      );
+
+      if (error) {
+        logger.warn({ error, userId, organizationId, eventId: postedEvent.id }, 'Failed to upsert posted event timeline entry');
+      }
+    } catch (error) {
+      logger.error({ error, userId, organizationId, eventId: postedEvent.id }, 'Failed to process posted event for organization timeline');
     }
   }
 
@@ -186,6 +307,7 @@ export class EntityTimelineBuilder {
           event_summary: summary,
           event_type: 'conversation',
           confidence: 0.6,
+          source: this.kind === 'organization' ? 'conversation' : null,
           metadata: { processed_at: new Date().toISOString() },
         },
         { onConflict: 'user_id,entity_type,entity_id,source_thread_id,timeline_type' }
@@ -199,7 +321,7 @@ export class EntityTimelineBuilder {
     }
   }
 
-  /** Rebuild an entity's full timeline from both resolved_events and its primary-linked threads. */
+  /** Rebuild an entity's full timeline from resolved_events, posted events (orgs), and its primary-linked threads. */
   async rebuildTimelinesForEntity(userId: string, entityId: string): Promise<void> {
     try {
       let events: Array<{ id: string; title: string; summary?: string; type?: string; start_time: string; people: string[] }> = [];
@@ -212,13 +334,13 @@ export class EntityTimelineBuilder {
           .contains('locations', [entityId]);
         events = data || [];
       } else {
-        const memberIds = await this.getOrganizationMemberCharacterIds(userId, entityId);
-        if (memberIds.length > 0) {
+        const memberMap = await this.getOrganizationMembersMap(userId, entityId);
+        if (memberMap.size > 0) {
           const { data } = await supabaseAdmin
             .from('resolved_events')
             .select('*')
             .eq('user_id', userId)
-            .overlaps('people', memberIds);
+            .overlaps('people', [...memberMap.keys()]);
           events = data || [];
         }
       }
@@ -231,6 +353,13 @@ export class EntityTimelineBuilder {
           start_time: event.start_time,
           people: event.people || [],
         });
+      }
+
+      if (this.kind === 'organization') {
+        const posted = await listUserPostedEventsForOrganization(userId, entityId);
+        for (const postedEvent of posted) {
+          await this.processPostedEventForOrganization(userId, entityId, postedEvent);
+        }
       }
 
       const { data: threads } = await supabaseAdmin

@@ -56,6 +56,11 @@ import { relationshipCycleDetector } from './relationshipCycleDetector';
 import { breakupDetector } from './breakupDetector';
 import { extractAndLogInteraction } from './romanticInteractionExtractor';
 import { characterTimelineBuilder } from './characterTimelineBuilder';
+import {
+  organizationTimelineBuilder,
+  locationTimelineBuilder,
+  getOrganizationIdsForCharacters,
+} from './entityTimelineBuilder';
 import { workoutEventDetector } from './workoutEventDetector';
 import { biometricExtractor } from './biometricExtractor';
 import { gymSocialDetector } from './gymSocialDetector';
@@ -2492,6 +2497,27 @@ export class ConversationIngestionPipeline {
                           logger.warn({ err }, 'Character timeline processing failed (non-blocking)');
                         });
 
+                      // Step 12.8b: Build organization timelines (member overlap with fullEvent.people)
+                      getOrganizationIdsForCharacters(userId, fullEvent.people)
+                        .then(orgIds => {
+                          for (const orgId of orgIds) {
+                            organizationTimelineBuilder
+                              .processEventForEntity(userId, orgId, fullEvent.id, {
+                                title: fullEvent.title,
+                                summary: fullEvent.summary,
+                                type: fullEvent.type,
+                                start_time: fullEvent.start_time,
+                                people: fullEvent.people,
+                              })
+                              .catch(err => {
+                                logger.warn({ err }, 'Organization timeline processing failed (non-blocking)');
+                              });
+                          }
+                        })
+                        .catch(err => {
+                          logger.warn({ err }, 'Organization lookup for timeline processing failed (non-blocking)');
+                        });
+
                       // Sprint AL: enrich real data after event assembly
                       void import('../events/eventSignificanceService')
                         .then(({ scoreAndPersistEvent }) => scoreAndPersistEvent(userId, fullEvent.id))
@@ -2518,6 +2544,23 @@ export class ConversationIngestionPipeline {
                           }
                         })
                         .catch(err => logger.debug({ err, userId }, 'AL character biography failed'));
+                    }
+
+                    // Step 12.8c: Build location timelines (direct location containment)
+                    if (fullEvent.locations && fullEvent.locations.length > 0) {
+                      for (const locationId of fullEvent.locations) {
+                        locationTimelineBuilder
+                          .processEventForEntity(userId, locationId, fullEvent.id, {
+                            title: fullEvent.title,
+                            summary: fullEvent.summary,
+                            type: fullEvent.type,
+                            start_time: fullEvent.start_time,
+                            people: fullEvent.people || [],
+                          })
+                          .catch(err => {
+                            logger.warn({ err }, 'Location timeline processing failed (non-blocking)');
+                          });
+                      }
                     }
 
                     // Step 12.8.5: Recurring scene detection — non-blocking

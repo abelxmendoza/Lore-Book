@@ -51,6 +51,10 @@ class MockQuery implements PromiseLike<Response> {
     this.log('overlaps', args);
     return this;
   }
+  in(...args: unknown[]) {
+    this.log('in', args);
+    return this;
+  }
   upsert(...args: unknown[]) {
     this.log('upsert', args);
     return this;
@@ -77,13 +81,36 @@ vi.mock('../../src/services/supabaseClient', () => ({
   },
 }));
 
-import { EntityTimelineBuilder } from '../../src/services/conversationCentered/entityTimelineBuilder';
+vi.mock('../../src/services/organizationService', () => ({
+  organizationService: {
+    getGroupHierarchy: vi.fn(),
+    getMembers: vi.fn(),
+    classifyGroupEventAudience: vi.fn(),
+  },
+}));
+
+vi.mock('../../src/services/events/userPostedEventService', () => ({
+  listUserPostedEventsForOrganization: vi.fn(),
+}));
+
+import { EntityTimelineBuilder, getOrganizationIdsForCharacters } from '../../src/services/conversationCentered/entityTimelineBuilder';
+import { organizationService } from '../../src/services/organizationService';
+import { listUserPostedEventsForOrganization } from '../../src/services/events/userPostedEventService';
 
 const USER_ID = 'user-1';
 
 function upsertCallsFor(table: string) {
   return state.calls.filter((c) => c.table === table && c.method === 'upsert');
 }
+
+// Safe defaults for every test — individual tests override with mockResolvedValueOnce/mockReturnValue as needed.
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(organizationService.classifyGroupEventAudience).mockReturnValue('without_user');
+  vi.mocked(organizationService.getGroupHierarchy).mockResolvedValue({ subgroups: [], related: [] });
+  vi.mocked(organizationService.getMembers).mockResolvedValue([]);
+  vi.mocked(listUserPostedEventsForOrganization).mockResolvedValue([]);
+});
 
 describe('EntityTimelineBuilder.buildTimelines', () => {
   beforeEach(() => {
@@ -318,5 +345,145 @@ describe('EntityTimelineBuilder — thread-as-source-row folding', () => {
 
     const payload = upsertCallsFor('entity_timeline_events')[0].args[0] as Record<string, unknown>;
     expect(payload).toMatchObject({ entity_role: 'referenced', source_thread_id: 'thread-1' });
+  });
+});
+
+describe('EntityTimelineBuilder.processEventForEntity — organization fields', () => {
+  beforeEach(() => {
+    state = { responses: {}, calls: [] };
+  });
+
+  it('resolves involved_names from the org roster and audience via organizationService.classifyGroupEventAudience', async () => {
+    state.responses['organization_members'] = [
+      {
+        data: [
+          { character_id: 'member-1', character_name: 'Alice' },
+          { character_id: 'member-2', character_name: 'Bob' },
+        ],
+        error: null,
+      },
+    ];
+    state.responses['characters'] = [{ data: { id: 'self-char-1' }, error: null }];
+    vi.mocked(organizationService.classifyGroupEventAudience).mockReturnValue('group_wide');
+    vi.mocked(organizationService.getGroupHierarchy).mockResolvedValue({
+      subgroups: [{ id: 'sg-1', name: 'Core Team' }],
+      related: [],
+    });
+    vi.mocked(organizationService.getMembers).mockResolvedValue([
+      { character_id: 'member-1', character_name: 'Alice' } as any,
+    ]);
+
+    const builder = new EntityTimelineBuilder('organization');
+    await builder.processEventForEntity(USER_ID, 'org-1', 'ev-1', {
+      title: 'Team offsite',
+      summary: 'Annual retreat',
+      type: 'event',
+      start_time: '2026-03-01T00:00:00Z',
+      people: ['member-1', 'member-2', 'stranger'],
+    });
+
+    expect(organizationService.classifyGroupEventAudience).toHaveBeenCalledWith(
+      expect.objectContaining({ involved: ['Alice', 'Bob'], title: 'Team offsite' })
+    );
+
+    const payload = upsertCallsFor('entity_timeline_events')[0].args[0] as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      involved_names: ['Alice', 'Bob'],
+      audience: 'group_wide',
+      subgroup_names: ['Core Team'],
+      source: 'conversation',
+    });
+  });
+
+  it('leaves involved_names/audience/subgroup_names/source null for locations', async () => {
+    state.responses['characters'] = [{ data: { id: 'self-char-1' }, error: null }];
+
+    const builder = new EntityTimelineBuilder('location');
+    await builder.processEventForEntity(USER_ID, 'loc-1', 'ev-1', {
+      title: 'Beach trip',
+      type: 'outing',
+      start_time: '2026-02-01T00:00:00Z',
+      people: ['self-char-1'],
+    });
+
+    expect(organizationService.classifyGroupEventAudience).not.toHaveBeenCalled();
+    const payload = upsertCallsFor('entity_timeline_events')[0].args[0] as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      involved_names: null,
+      audience: null,
+      subgroup_names: null,
+      source: null,
+    });
+  });
+});
+
+describe('EntityTimelineBuilder.rebuildTimelinesForEntity — posted-event folding (organizations only)', () => {
+  beforeEach(() => {
+    state = { responses: {}, calls: [] };
+  });
+
+  it('folds a user-posted event with source user_posted, with_user, shared_experience', async () => {
+    state.responses['organization_members'] = [{ data: [], error: null }];
+    state.responses['conversation_sessions'] = [{ data: [], error: null }];
+    vi.mocked(listUserPostedEventsForOrganization).mockResolvedValue([
+      {
+        id: 'posted-1',
+        title: 'Company picnic',
+        summary: 'Posted from the Life Log',
+        type: 'event',
+        start_time: '2026-05-01T00:00:00Z',
+        locations: [],
+        people: [],
+        activities: [],
+        confidence: 1,
+        metadata: {},
+        created_at: '2026-05-01T00:00:00Z',
+        updated_at: '2026-05-01T00:00:00Z',
+      },
+    ]);
+
+    const builder = new EntityTimelineBuilder('organization');
+    await builder.rebuildTimelinesForEntity(USER_ID, 'org-1');
+
+    const payload = upsertCallsFor('entity_timeline_events')[0].args[0] as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      entity_id: 'org-1',
+      event_id: 'posted-1',
+      timeline_type: 'shared_experience',
+      user_was_present: true,
+      audience: 'with_user',
+      source: 'user_posted',
+    });
+  });
+});
+
+describe('getOrganizationIdsForCharacters', () => {
+  beforeEach(() => {
+    state = { responses: {}, calls: [] };
+  });
+
+  it('returns distinct organization ids for the given character ids', async () => {
+    state.responses['organization_members'] = [
+      {
+        data: [
+          { organization_id: 'org-1' },
+          { organization_id: 'org-2' },
+          { organization_id: 'org-1' },
+        ],
+        error: null,
+      },
+    ];
+
+    const result = await getOrganizationIdsForCharacters(USER_ID, ['char-1', 'char-2']);
+
+    expect(result.sort()).toEqual(['org-1', 'org-2']);
+    const inCall = state.calls.find((c) => c.table === 'organization_members' && c.method === 'eq' && c.args[0] === 'status');
+    expect(inCall).toBeTruthy();
+  });
+
+  it('returns an empty array without querying when given no character ids', async () => {
+    const result = await getOrganizationIdsForCharacters(USER_ID, []);
+    expect(result).toEqual([]);
+    expect(state.calls).toHaveLength(0);
   });
 });
