@@ -90,6 +90,17 @@ describe('Composer entity chip flow (integration)', () => {
           status: 'suggestion',
         },
       ],
+      // fetchJson is a single shared mock hit by both the certified-entity-index
+      // endpoint and the debounced LoreBook-parse endpoint (fetchLoreBookParse) —
+      // longer composer text can trigger the latter. Without these fields,
+      // opsFromParse's `[...parse.operations, ...parse.redirects]` throws on
+      // undefined, surfacing as an unhandled rejection in any test whose input
+      // reaches that debounce window.
+      operations: [],
+      redirects: [],
+      suppressed: [],
+      warnings: [],
+      lexicalSpanCount: 0,
     });
   });
 
@@ -150,5 +161,48 @@ describe('Composer entity chip flow (integration)', () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(textarea.value).toBe('');
     expect(onApplied).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fold a fast follow-up typed during the autoSubmit delay into the auto-sent message', async () => {
+    // Regression for a live incident: a character's focus-chip flow pre-fills
+    // an initialPrompt with autoSubmit, which fires 350ms later. Typing a
+    // follow-up in that window used to get concatenated into the same
+    // outgoing message (since the injected prompt and the live textarea
+    // shared one mutable `input` state) — the two turns became one, and the
+    // reply never completed.
+    const onSubmit = vi.fn();
+    const onAutoSubmitDone = vi.fn();
+    renderComposer(
+      <ChatComposer
+        onSubmit={onSubmit}
+        loading={false}
+        initialPrompt="I want to talk about Jordan the Hiring Manager."
+        autoSubmit
+        onAutoSubmitDone={onAutoSubmitDone}
+      />,
+    );
+
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    await waitFor(() =>
+      expect(textarea.value).toBe('I want to talk about Jordan the Hiring Manager.'),
+    );
+
+    // Type a fast follow-up well within the 350ms auto-submit delay.
+    fireEvent.change(textarea, {
+      target: { value: 'I want to talk about Jordan the Hiring Manager.\n\n\n\nwho is he' },
+    });
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+
+    // The auto-sent message is exactly the injected prompt — not merged with
+    // the user's typed follow-up.
+    expect(onSubmit.mock.calls[0][0]).toBe('I want to talk about Jordan the Hiring Manager.');
+    expect(onAutoSubmitDone).toHaveBeenCalledTimes(1);
+
+    // The user's follow-up is preserved as their own live draft, not
+    // silently discarded and not left merged with the already-sent prompt.
+    expect(textarea.value).toBe(
+      'I want to talk about Jordan the Hiring Manager.\n\n\n\nwho is he',
+    );
   });
 });

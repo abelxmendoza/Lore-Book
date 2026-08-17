@@ -236,9 +236,18 @@ export const ChatComposer = ({
 
   // Auto-send once after prompt/images are seeded (Post Event → main chat).
   const autoSubmitFiredRef = useRef(false);
+  // Captured once, the first time this effect runs after autoSubmit becomes
+  // true — NOT re-read on every input change. `input` is deliberately absent
+  // from the dependency array below: the injected prompt and the live
+  // textarea share the same state, so a fast follow-up typed during the
+  // 350ms delay would otherwise get folded into the auto-sent message
+  // instead of staying the user's own turn (see chatComposer.autoSubmitRace
+  // in the test file for the incident this fixes).
+  const autoSubmitTextRef = useRef<string | null>(null);
   useEffect(() => {
     if (!autoSubmit) {
       autoSubmitFiredRef.current = false;
+      autoSubmitTextRef.current = null;
       return;
     }
     if (autoSubmitFiredRef.current) return;
@@ -249,21 +258,25 @@ export const ChatComposer = ({
       return;
     }
 
-    const readyText = input.trim();
+    if (autoSubmitTextRef.current === null) {
+      autoSubmitTextRef.current = input.trim();
+    }
+    const readyText = autoSubmitTextRef.current;
     if (!readyText && pendingImages.length === 0) return;
 
     // Wait a beat so new-thread handoff settles.
     const timer = window.setTimeout(() => {
       if (autoSubmitFiredRef.current) return;
       autoSubmitFiredRef.current = true;
-      handleSubmit();
+      handleSubmit(undefined, readyText);
       onAutoSubmitDone?.();
     }, 350);
     return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `input` is read
+    // once above to seed autoSubmitTextRef, not tracked live; see comment above.
   }, [
     autoSubmit,
     initialImages,
-    input,
     pendingImages,
     seedPendingImages,
     handleSubmit,
