@@ -169,4 +169,54 @@ describe('mapDbMessageRow', () => {
 
     expect(message.lifecycle).toBeUndefined();
   });
+
+  it('synthesizes a failed lifecycle for an assistant row orphaned at stream_status:streaming past the stale threshold', () => {
+    // e.g. the backend process died mid-request (OOM kill) before
+    // finalizeAssistantMessage ever ran to flip the status.
+    const staleCreatedAt = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const message = mapDbMessageRow({
+      id: 'asst-db-orphaned',
+      role: 'assistant',
+      content: '',
+      created_at: staleCreatedAt,
+      metadata: { saved_from_stream: true, stream_status: 'streaming' },
+    });
+
+    expect(message.lifecycle).toMatchObject({
+      cloudPersistence: 'saved',
+      processing: 'failed',
+    });
+    expect(message.lifecycle?.lastError).toMatchObject({
+      stage: 'generation',
+      message: 'Response interrupted before it started.',
+      retryable: true,
+    });
+  });
+
+  it('does not synthesize a lifecycle for a recent assistant row still at stream_status:streaming', () => {
+    // A genuinely in-flight stream (e.g. viewed from a second tab) should not
+    // flash a false "failed" state within its normal generation window.
+    const recentCreatedAt = new Date(Date.now() - 5000).toISOString();
+    const message = mapDbMessageRow({
+      id: 'asst-db-live',
+      role: 'assistant',
+      content: '',
+      created_at: recentCreatedAt,
+      metadata: { saved_from_stream: true, stream_status: 'streaming' },
+    });
+
+    expect(message.lifecycle).toBeUndefined();
+  });
+
+  it('does not synthesize a lifecycle for a streaming row with no created_at (cannot judge staleness)', () => {
+    const message = mapDbMessageRow({
+      id: 'asst-db-no-timestamp',
+      role: 'assistant',
+      content: '',
+      created_at: null,
+      metadata: { saved_from_stream: true, stream_status: 'streaming' },
+    });
+
+    expect(message.lifecycle).toBeUndefined();
+  });
 });
