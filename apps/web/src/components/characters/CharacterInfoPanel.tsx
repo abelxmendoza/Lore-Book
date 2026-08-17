@@ -4,17 +4,16 @@
 
 import { shortDisplayName } from '../../lib/displayName';
 import {
+  BookOpen,
   Clock,
   Heart,
   Info,
-  Link2,
   MapPin,
   Smile,
   Sparkles,
   Star,
   Briefcase,
   User,
-  Users,
   Save,
   Wand2,
   Loader2,
@@ -29,21 +28,33 @@ import { useUpdateCharacterMutation } from '../../store/api/entitiesApi';
 import { isFetchJsonError } from '../../store/api/baseApi';
 import { fetchJson } from '../../lib/api';
 import type { Character } from './CharacterProfileCard';
-import { RelationshipFlagsPanel } from '../love/RelationshipFlagsPanel';
-import { RelationshipLifeImpactPanel } from '../love/RelationshipLifeImpactPanel';
 import { CharacterLoreProfileSection } from './CharacterLoreProfileSection';
 import type { CharacterLoreProfile } from '../../api/characterLoreProfile';
-import { resolveMockRelationshipInfluence } from '../../mocks/romanticLifeImpact';
-import { composeRomanticRelationshipBadgeLabel } from '../../lib/romanticRelationshipLabel';
-import { suggestDisplayTitleFromNames, getCharacterDisplayTitle } from '../../lib/characterDisplayTitle';
+import { suggestDisplayTitleFromNames } from '../../lib/characterDisplayTitle';
 import { isKinshipNameToken, splitStructuredPersonName } from '../../lib/structuredPersonName';
 import {
   RELATIONSHIP_TO_YOU_OPTIONS,
+  isKinshipShapedRelationshipToYou,
   relationshipToYouLabel,
   resolveRelationshipToYou,
+  toRomanticRelationshipType,
 } from '../../lib/relationshipToYou';
 import { normalizeSignalLabel } from '../../lib/characterCardSignals';
+import {
+  BOOK_CATEGORY_OPTIONS,
+  ROMANTIC_OR_CRUSH_ARCHETYPES,
+  bookCategoryLabel,
+  buildBookCategoryMetadataPatch,
+  inferredBookCategory,
+  pinnedBookCategory,
+} from '../../lib/characterBookCategory';
 import { selfCharacterApi } from '../../api/selfCharacter';
+import { dispatchStoryDataUpdated } from '../../lib/storyRefresh';
+import {
+  characterCreatedAt,
+  characterFirstMentionedAt,
+  formatCharacterDate,
+} from '../../lib/characterTimeline';
 
 type Relationship = {
   id?: string;
@@ -103,7 +114,55 @@ const ORIENTATION_OPTIONS = [
   { value: 'bisexual', label: 'Bisexual' },
   { value: 'heterosexual', label: 'Heterosexual' },
   { value: 'queer', label: 'Queer' },
+  { value: 'pansexual', label: 'Pansexual' },
+  { value: 'asexual', label: 'Asexual' },
 ];
+
+const GENDER_OPTIONS = [
+  { value: 'unknown', label: 'Unknown' },
+  { value: 'man', label: 'Man' },
+  { value: 'woman', label: 'Woman' },
+  { value: 'nonbinary', label: 'Nonbinary' },
+  { value: 'trans_man', label: 'Trans man' },
+  { value: 'trans_woman', label: 'Trans woman' },
+];
+
+const DATING_PREF_OPTIONS = [
+  { value: 'unknown', label: 'Unknown' },
+  { value: 'women', label: 'Women' },
+  { value: 'men', label: 'Men' },
+  { value: 'anyone', label: 'Anyone' },
+];
+
+function datingPrefValue(meta: Record<string, unknown>): string {
+  const pref = meta.dating_preference;
+  if (!pref || typeof pref !== 'object') return 'unknown';
+  const label = (pref as { label?: unknown }).label;
+  if (typeof label === 'string' && DATING_PREF_OPTIONS.some((option) => option.value === label)) {
+    return label;
+  }
+  return 'unknown';
+}
+
+function datingPrefPatch(value: string): Record<string, unknown> {
+  if (value === 'unknown') {
+    return {
+      dating_preference: null,
+      dating_preference_source: 'unknown',
+      dating_preference_confirmed_at: null,
+    };
+  }
+  const partner_sexes =
+    value === 'women' ? ['female'] : value === 'men' ? ['male'] : ['male', 'female', 'nonbinary'];
+  return {
+    dating_preference: {
+      partner_sexes,
+      label: value,
+      source: 'user_confirmed',
+      confirmed_at: new Date().toISOString(),
+    },
+  };
+}
 
 type ArchetypePreset = {
   value: string;
@@ -227,6 +286,7 @@ const normalizeRoleList = (value: string) =>
   joinMultiField(splitMultiField(value).map((role) => role.toLowerCase().replace(/\s+/g, ' ')), MAX_CHARACTER_ROLES);
 
 function inferArchetypeFromLocalContext(input: {
+  name?: string;
   role?: string;
   summary?: string;
   tags?: string[];
@@ -256,7 +316,10 @@ function inferArchetypeFromLocalContext(input: {
   if (/\b(romantic interest|romantically interested|catching feelings|talking stage|texting stage)\b/.test(text) || relationshipType === 'romantic_interest') {
     return { archetype: 'romantic_interest', reason: 'A budding romantic interest appears in the character details.' };
   }
-  if ((kinship || /^(family|parent|mother|father|sibling|brother|sister|cousin|aunt|uncle|grand|step)/.test(relationshipType)) && !hasCrushSignal) {
+  const namedKin = /^(?:my\s+)?(?:t[ií]o|t[ií]a|uncle|aunt|mom|mother|dad|father|grandma|grandpa|abuela|abuelo|cousin|sister|brother)(?:\s|$)/i.test(
+    String(input.name ?? ''),
+  );
+  if ((kinship || namedKin || /^(parent|mother|father|sibling|brother|sister|cousin|aunt|uncle|grand|step)/.test(relationshipType)) && !hasCrushSignal) {
     return { archetype: 'family', reason: 'Family or kinship context is already on this card.' };
   }
   if (/\b(ex[- ]?(girlfriend|boyfriend|partner|wife|husband)|my ex\b|broke up|used to date)\b/.test(text) || relationshipType === 'past_romantic') {
@@ -300,6 +363,12 @@ function inferArchetypeFromLocalContext(input: {
   }
   if (/\b(scene|show|gig|club|festival|meetup|regular at)\b/.test(text)) {
     return { archetype: 'community', reason: 'Community or scene context appears in the character details.' };
+  }
+  // Mirrors the server's `muse` rule in characterArchetypeService.ts — kept in
+  // sync manually so mock-data mode (this function) and the real inference
+  // path can produce the same archetype for the same input.
+  if (/\b(muse|inspir(es|ed|ing)|artist i admire|their art)\b/.test(text)) {
+    return { archetype: 'muse', reason: 'They spark your creative side.' };
   }
   if (/\b(celebrity|public figure|influencer|famous|artist i follow|creator i follow|parasocial)\b/.test(text) || relationshipType === 'public_figure') {
     return { archetype: 'public_figure', reason: 'They are mostly known through public presence or media.' };
@@ -444,8 +513,6 @@ export type CharacterInfoPanelProps = {
   dynamics: { health?: { health_score?: number; trends?: { health_trend?: string } }; lifecycle?: { current_stage?: string } } | null;
   askInChat: (prompt: string) => void;
   relationshipStatus?: string;
-  romanticConnections: Relationship[];
-  strongestConnections: Relationship[];
   lifeMap: LifeMapItem[];
   occupations: string[];
   workplaces: string[];
@@ -456,7 +523,6 @@ export type CharacterInfoPanelProps = {
   loadingAttributes: boolean;
   provenance: { mentionCount?: number; firstMentionedAt?: string; lastMentionedAt?: string; sourceUtterances?: { content: string; created_at: string }[] } | null;
   isMockDataEnabled: boolean;
-  openCharacterByRelationship: (rel: Relationship) => void;
   loreProfile?: CharacterLoreProfile | null;
   loreProfileLoading?: boolean;
   onOpenCharacterById?: (characterId: string) => void;
@@ -468,8 +534,6 @@ export type CharacterInfoPanelProps = {
   onFocusFieldHandled?: () => void;
   /** Hide "Relationship to you" on the self / main character modal. */
   isSelfCharacter?: boolean;
-  /** Open Dating & Romance on the Overview tab for this bond. */
-  onOpenDatingArc?: () => void;
 };
 
 function StatCell({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
@@ -541,8 +605,6 @@ export function CharacterInfoPanel({
   dynamics,
   askInChat,
   relationshipStatus,
-  romanticConnections,
-  strongestConnections,
   lifeMap,
   occupations,
   workplaces,
@@ -553,7 +615,6 @@ export function CharacterInfoPanel({
   loadingAttributes,
   provenance,
   isMockDataEnabled,
-  openCharacterByRelationship,
   loreProfile,
   loreProfileLoading = false,
   onOpenCharacterById,
@@ -563,7 +624,6 @@ export function CharacterInfoPanel({
   focusField = null,
   onFocusFieldHandled,
   isSelfCharacter = false,
-  onOpenDatingArc,
 }: CharacterInfoPanelProps) {
   const [updateCharacter] = useUpdateCharacterMutation();
   const [relationshipToYouBusy, setRelationshipToYouBusy] = useState(false);
@@ -594,13 +654,32 @@ export function CharacterInfoPanel({
   const standingOverride = (meta.standing_override as { tier?: string } | null)?.tier ?? null;
   const impactOverride = typeof meta.impact_override === 'number' ? meta.impact_override : null;
   const sexValue = typeof meta.sex === 'string' ? meta.sex : 'unknown';
+  const genderValue = typeof meta.gender_identity === 'string' ? meta.gender_identity : 'unknown';
   const orientationValue = typeof meta.sexual_orientation === 'string' ? meta.sexual_orientation : 'unknown';
+  const datingPref = datingPrefValue(meta);
   const archetypeValue = editedCharacter.archetype ?? '';
   const roleValue = editedCharacter.role ?? '';
   const sexSource = toFieldSource(meta.sex_source, sexValue !== 'unknown');
+  const genderSource = toFieldSource(meta.gender_identity_source, genderValue !== 'unknown');
   const orientationSource = toFieldSource(meta.sexual_orientation_source, orientationValue !== 'unknown');
+  const datingPrefSource = toFieldSource(
+    typeof (meta.dating_preference as { source?: unknown } | undefined)?.source === 'string'
+      ? (meta.dating_preference as { source?: string }).source
+      : meta.dating_preference_source,
+    datingPref !== 'unknown',
+  );
   const archetypeSource = toFieldSource(meta.archetype_source, Boolean(archetypeValue));
   const roleSource = toFieldSource(meta.role_source, Boolean(roleValue));
+  const pinnedCategory = pinnedBookCategory(meta);
+  const inferredCategory = inferredBookCategory(editedCharacter, { hasDatingRow: Boolean(relationship) });
+  const bookCategoryValue = pinnedCategory ?? 'auto';
+  const bookCategorySource = toFieldSource(
+    pinnedCategory ? 'user_confirmed' : 'auto',
+    true,
+  );
+  const bookCategoryReason =
+    (typeof meta.book_category_reason === 'string' && meta.book_category_reason.trim()) ||
+    inferredCategory.reason;
   const relationshipToYouResolved = useMemo(
     () =>
       resolveRelationshipToYou({
@@ -626,13 +705,15 @@ export function CharacterInfoPanel({
     return base;
   }, [relationshipToYouValue]);
 
-  const romanceIdentityLabel = relationship
-    ? composeRomanticRelationshipBadgeLabel(relationship)
-    : null;
+  // Compare against the server-remapped form (partner -> dating, spouse ->
+  // lover, ex -> ex_lover, ...) — the romantic_relationships row synced from
+  // this value never stores the "Relationship to you" label verbatim, so a
+  // direct string comparison would miss the match and show two diverging
+  // cards for the same relationship (see toRomanticRelationshipType).
   const relationshipToYouDuplicatesRomance = Boolean(
     relationship &&
       relationshipToYouValue &&
-      (normalizeSignalLabel(relationshipToYouValue) ===
+      (normalizeSignalLabel(toRomanticRelationshipType(relationshipToYouValue)) ===
         normalizeSignalLabel(relationship.relationship_type) ||
         (normalizeSignalLabel(relationshipToYouValue) === 'situationship' &&
           (relationship.is_situationship ||
@@ -773,54 +854,6 @@ export function CharacterInfoPanel({
       cancelled = true;
     };
   }, [isMockDataEnabled]);
-  const baseRelationshipTypeOptions: EditableFieldOption[] = [
-    { value: 'boyfriend', label: 'Boyfriend' },
-    { value: 'girlfriend', label: 'Girlfriend' },
-    { value: 'wife', label: 'Wife' },
-    { value: 'husband', label: 'Husband' },
-    { value: 'fiancé', label: 'Fiance' },
-    { value: 'fiancée', label: 'Fiancee' },
-    { value: 'lover', label: 'Lover' },
-    { value: 'fuck_buddy', label: 'Fuck buddy' },
-    { value: 'ex_boyfriend', label: 'Ex-boyfriend' },
-    { value: 'ex_girlfriend', label: 'Ex-girlfriend' },
-    { value: 'ex_wife', label: 'Ex-wife' },
-    { value: 'ex_husband', label: 'Ex-husband' },
-    { value: 'ex_lover', label: 'Ex-lover' },
-    { value: 'divorced', label: 'Divorced' },
-    { value: 'co_parent', label: 'Co-parent' },
-    { value: 'baby_mama', label: 'Baby mama' },
-    { value: 'baby_daddy', label: 'Baby daddy' },
-    { value: 'situationship', label: 'Situationship' },
-    { value: 'crush', label: 'Crush' },
-    { value: 'dating', label: 'Dating' },
-    { value: 'talking', label: 'Talking' },
-    { value: 'hooking_up', label: 'Hooking up' },
-    { value: 'one_night_stand', label: 'One-night stand' },
-    { value: 'friends_with_benefits', label: 'Friends with benefits' },
-    { value: 'complicated', label: 'Complicated' },
-    { value: 'on_break', label: 'On break' },
-    { value: 'in_love', label: 'In love' },
-    { value: 'obsession', label: 'Obsession' },
-    { value: 'infatuation', label: 'Infatuation' },
-    { value: 'lust', label: 'Lust' },
-  ];
-  const relationshipTypeOptions: EditableFieldOption[] =
-    relationship?.relationship_type && !baseRelationshipTypeOptions.some((option) => option.value === relationship.relationship_type)
-      ? [{ value: relationship.relationship_type, label: humanizeType(relationship.relationship_type) }, ...baseRelationshipTypeOptions]
-      : baseRelationshipTypeOptions;
-  const relationshipStatusOptions: EditableFieldOption[] = [
-    { value: 'active', label: 'Active' },
-    { value: 'on_break', label: 'On break' },
-    { value: 'ended', label: 'Ended' },
-    { value: 'complicated', label: 'Complicated' },
-    { value: 'paused', label: 'Paused' },
-    { value: 'ghosted', label: 'Ghosted' },
-    { value: 'blocked', label: 'Blocked' },
-    { value: 'unrequited', label: 'Unrequited' },
-    { value: 'fading', label: 'Fading' },
-    { value: 'rekindled', label: 'Rekindled' },
-  ];
   const tierLabels: Record<string, string> = {
     inner_circle: 'Inner circle',
     close: 'Close',
@@ -841,12 +874,12 @@ export function CharacterInfoPanel({
   };
 
   const persistOverride = async (
-    key: 'standing_override' | 'impact_override' | 'sex' | 'sexual_orientation',
+    key: 'standing_override' | 'impact_override' | 'sex' | 'sexual_orientation' | 'gender_identity',
     value: unknown,
   ) => {
     const previousMeta = { ...((editedCharacter.metadata ?? {}) as Record<string, unknown>) };
     const patch =
-      key === 'sex' || key === 'sexual_orientation'
+      key === 'sex' || key === 'sexual_orientation' || key === 'gender_identity'
         ? {
             [key]: value,
             [`${key}_source`]: value === 'unknown' ? 'unknown' : 'user_confirmed',
@@ -925,6 +958,26 @@ export function CharacterInfoPanel({
     }
   };
 
+  const persistDatingPreference = async (value: string) => {
+    const previousMeta = { ...((editedCharacter.metadata ?? {}) as Record<string, unknown>) };
+    const patch = datingPrefPatch(value);
+    setEditedCharacter((prev) => ({
+      ...prev,
+      metadata: { ...((prev.metadata ?? {}) as Record<string, unknown>), ...patch },
+    }));
+    if (isMockDataEnabled) {
+      onUpdate();
+      return;
+    }
+    try {
+      await updateCharacter({ id: characterId, values: { metadata: patch } }).unwrap();
+      onUpdate();
+    } catch (err) {
+      setEditedCharacter((prev) => ({ ...prev, metadata: previousMeta }));
+      throw err instanceof Error ? err : new Error(formatPersistError(err, 'Could not save dating preference'));
+    }
+  };
+
   const standingTierOptions: Array<{ value: string; label: string }> = [
     { value: 'inner_circle', label: 'Inner circle' },
     { value: 'close', label: 'Close' },
@@ -958,10 +1011,38 @@ export function CharacterInfoPanel({
         seenAliases.add(key);
         return true;
       });
+    const currentTitleMeta = (editedCharacter.metadata?.display_title as any) || {};
+    const isLocked = currentTitleMeta.stability === 'locked';
+    const suggested = suggestDisplayTitleFromNames({
+      ...editedCharacter,
+      first_name: firstName,
+      last_name: lastName,
+      alias: aliases,
+      metadata: { ...(editedCharacter.metadata || {}) },
+    });
+    const nextTitle = {
+      ...currentTitleMeta,
+      aliases: aliases.map((value: string, i: number) => ({
+        id: `legacy-${i}`,
+        value,
+        aliasType: 'nickname',
+        prominenceScore: 0,
+        evidenceCount: 0,
+      })),
+      ...(!isLocked && suggested
+        ? {
+            primaryTitle: suggested,
+            stability: 'stable',
+            titleType: 'structured',
+            generatedFromNames: true,
+          }
+        : {}),
+    };
     const metadataPatch = {
       middle_name: middleName || null,
       middle_name_source: middleName ? 'user_confirmed' : 'user_cleared',
       name_parts_confirmed_at: new Date().toISOString(),
+      display_title: nextTitle,
     };
 
     setIdentitySaving(true);
@@ -988,36 +1069,6 @@ export function CharacterInfoPanel({
         },
       }).unwrap();
 
-      // Auto-sync a friendly card title from the new structured names (nickname + first)
-      // only if the user hasn't locked a custom title. This keeps names vs title clearly separated
-      // while giving good defaults for cards.
-      const currentTitleMeta = (editedCharacter.metadata?.display_title as any) || {};
-      const isLocked = currentTitleMeta.stability === 'locked';
-      if (!isLocked) {
-        const suggested = suggestDisplayTitleFromNames({
-          ...editedCharacter,
-          first_name: firstName,
-          last_name: lastName,
-          alias: aliases,
-          metadata: { ...(editedCharacter.metadata || {}), ...metadataPatch },
-        });
-        if (suggested && suggested !== getCharacterDisplayTitle(editedCharacter as any)) {
-          setEditedCharacter((prev) => ({
-            ...prev,
-            metadata: {
-              ...((prev.metadata ?? {}) as Record<string, unknown>),
-              display_title: {
-                ...currentTitleMeta,
-                primaryTitle: suggested,
-                stability: 'stable',
-                titleType: 'structured',
-                generatedFromNames: true,
-              },
-            },
-          }));
-        }
-      }
-
       onUpdate();
     } catch (err) {
       console.error('Failed to save character identity names:', err);
@@ -1031,7 +1082,8 @@ export function CharacterInfoPanel({
     const previousArchetype = editedCharacter.archetype ?? '';
     const nextArchetype = normalizeArchetypeList(nextRaw);
     const confirmedAt = new Date().toISOString();
-    const metadataPatch = {
+    const primary = nextArchetype.split(',')[0]?.trim().toLowerCase() ?? '';
+    const metadataPatch: Record<string, unknown> = {
       archetype_source: nextArchetype ? 'user_confirmed' : 'user_cleared',
       archetype_confirmed_at: confirmedAt,
       manual_archetype_correction: {
@@ -1041,6 +1093,16 @@ export function CharacterInfoPanel({
         corrected_at: confirmedAt,
       },
     };
+    if (nextArchetype && ROMANTIC_OR_CRUSH_ARCHETYPES.has(primary)) {
+      const pinned = pinnedBookCategory(meta);
+      if (pinned !== 'family') {
+        metadataPatch.family_excluded = {
+          value: true,
+          reason: `archetype:${primary}`,
+          at: confirmedAt,
+        };
+      }
+    }
 
     setEditedCharacter((prev) => ({
       ...prev,
@@ -1049,6 +1111,9 @@ export function CharacterInfoPanel({
     }));
 
     if (isMockDataEnabled) {
+      if (metadataPatch.family_excluded) {
+        dispatchStoryDataUpdated({ scopes: ['characters', 'family'], characterIds: [characterId] });
+      }
       onUpdate();
       return;
     }
@@ -1062,6 +1127,9 @@ export function CharacterInfoPanel({
         },
       }).unwrap();
 
+      if (metadataPatch.family_excluded) {
+        dispatchStoryDataUpdated({ scopes: ['characters', 'family'], characterIds: [characterId] });
+      }
       onUpdate();
     } catch (err) {
       setEditedCharacter((prev) => ({
@@ -1071,6 +1139,43 @@ export function CharacterInfoPanel({
       }));
       console.error('Failed to save character archetype:', err);
       throw err instanceof Error ? err : new Error('Could not save archetype');
+    }
+  };
+
+  const persistBookCategory = async (nextRaw: string) => {
+    const previousCategory =
+      typeof meta.book_category === 'string' ? meta.book_category : pinnedBookCategory(meta);
+    const metadataPatch = buildBookCategoryMetadataPatch({
+      nextRaw,
+      previousCategory,
+      previousExcluded: meta.family_excluded,
+    });
+    const previousMeta = { ...((editedCharacter.metadata ?? {}) as Record<string, unknown>) };
+
+    setEditedCharacter((prev) => {
+      const nextMeta = { ...((prev.metadata ?? {}) as Record<string, unknown>), ...metadataPatch };
+      if (metadataPatch.book_category == null) delete nextMeta.book_category;
+      if (metadataPatch.family_excluded == null) delete nextMeta.family_excluded;
+      return { ...prev, metadata: nextMeta };
+    });
+
+    if (isMockDataEnabled) {
+      dispatchStoryDataUpdated({ scopes: ['characters', 'family'], characterIds: [characterId] });
+      onUpdate();
+      return;
+    }
+
+    try {
+      await updateCharacter({
+        id: characterId,
+        values: { metadata: metadataPatch },
+      }).unwrap();
+      dispatchStoryDataUpdated({ scopes: ['characters', 'family'], characterIds: [characterId] });
+      onUpdate();
+    } catch (err) {
+      setEditedCharacter((prev) => ({ ...prev, metadata: previousMeta }));
+      console.error('Failed to save character book category:', err);
+      throw err instanceof Error ? err : new Error('Could not save Character Book category');
     }
   };
 
@@ -1190,6 +1295,7 @@ export function CharacterInfoPanel({
           return;
         }
         const inference = inferArchetypeFromLocalContext({
+          name: editedCharacter.name,
           role: editedCharacter.role,
           summary: editedCharacter.summary,
           tags: editedCharacter.tags,
@@ -1286,43 +1392,6 @@ export function CharacterInfoPanel({
     relationship?.relationship_type,
   ]);
 
-  const persistRelationshipType = async (nextType: string) => {
-    if (!relationship?.id) throw new Error('This relationship is not editable yet.');
-    await fetchJson<{ success: boolean; relationship: Relationship }>(
-      `/api/conversation/romantic-relationships/${relationship.id}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify({
-          relationship_type: nextType,
-          metadata: {
-            relationship_type_source: 'user_confirmed',
-            relationship_type_confirmed_at: new Date().toISOString(),
-          },
-          reason: 'user_corrected_relationship_type',
-        }),
-      }
-    );
-    onUpdate();
-  };
-
-  const persistRelationshipStatus = async (nextStatus: string) => {
-    if (!relationship?.id) throw new Error('This relationship is not editable yet.');
-    await fetchJson<{ success: boolean; relationship: Relationship }>(
-      `/api/conversation/romantic-relationships/${relationship.id}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify({
-          status: nextStatus,
-          metadata: {
-            relationship_status_source: 'user_confirmed',
-            relationship_status_confirmed_at: new Date().toISOString(),
-          },
-          reason: 'user_corrected_relationship_status',
-        }),
-      }
-    );
-    onUpdate();
-  };
 
   const persistRelationshipToYou = async (nextType: string) => {
     const cleaned = nextType.trim().toLowerCase().replace(/[\s-]+/g, '_');
@@ -1372,7 +1441,8 @@ export function CharacterInfoPanel({
         if (selfId && selfId !== characterId) {
           const isYouSide = (r: Relationship) =>
             r.character_id === selfId || /^(you|me)$/i.test(r.character_name ?? '');
-          const isTypedKinship = (type?: string) => /_of$/i.test(String(type ?? '')) && !/^related_to$/i.test(String(type ?? ''));
+          const isTypedKinship = (type?: string) =>
+            /_of$/i.test(String(type ?? '')) && !/^related_to$/i.test(String(type ?? ''));
 
           const existingYou = (editedCharacter.relationships ?? []).find(
             (r) =>
@@ -1381,11 +1451,20 @@ export function CharacterInfoPanel({
               !String(r.id).startsWith('story-association') &&
               !isTypedKinship(r.relationship_type),
           );
-          const alreadyHasTypedKin = (editedCharacter.relationships ?? []).some(
+
+          // A typed Family Tree edge (e.g. "cousin_of") already owns this
+          // relationship's meaning. Setting a kinship-shaped value here would
+          // otherwise fall through to the POST branch below and insert a
+          // second, untyped character_relationships row for the same pair —
+          // metadata.relationship_to_user (already saved above) is enough.
+          const hasTypedKinshipEdge = (editedCharacter.relationships ?? []).some(
             (r) => isYouSide(r) && isTypedKinship(r.relationship_type),
           );
+          const skipGraphSync = hasTypedKinshipEdge && isKinshipShapedRelationshipToYou(cleaned);
 
-          if (existingYou?.id && onUpdateWorldPerson) {
+          if (skipGraphSync) {
+            // no-op: leave the typed kinship edge as the sole source of truth
+          } else if (existingYou?.id && onUpdateWorldPerson) {
             await onUpdateWorldPerson(existingYou.id, { relationship_type: cleaned, status: 'confirmed' });
             setEditedCharacter((prev) => ({
               ...prev,
@@ -1393,7 +1472,7 @@ export function CharacterInfoPanel({
                 r.id === existingYou.id ? { ...r, relationship_type: cleaned, status: 'confirmed' } : r,
               ),
             }));
-          } else if (!alreadyHasTypedKin) {
+          } else {
             const result = await fetchJson<{ success?: boolean; relationship?: Relationship }>(
               '/api/relationships/character-links',
               {
@@ -1451,14 +1530,6 @@ export function CharacterInfoPanel({
     'Marcus Johnson': { mentionCount: 98, firstMentionedAt: '2020-03-12T00:00:00Z', lastMentionedAt: new Date(Date.now() - 14 * 86400000).toISOString(), sourceUtterances: [{ content: 'Met Marcus at that entrepreneurship event.', created_at: '2020-03-12T00:00:00Z' }] },
   };
   const p = isMockDataEnabled ? mockProvenanceMap[editedCharacter.name] ?? provenance : provenance;
-  const lifeImpact =
-    relationship && isMockDataEnabled
-      ? resolveMockRelationshipInfluence({
-          relationshipId: relationship.id,
-          personId: characterId,
-          personName: editedCharacter.name,
-        })
-      : undefined;
 
   return (
     <div className="space-y-4 sm:space-y-5">
@@ -1527,6 +1598,18 @@ export function CharacterInfoPanel({
           {(editedCharacter.alias?.length ?? 0) > 0 && (
             <StatCell label="Also known as" value={editedCharacter.alias!.slice(0, 2).join(', ')} />
           )}
+          {formatCharacterDate(characterCreatedAt(editedCharacter)) && (
+            <StatCell
+              label="Card added"
+              value={formatCharacterDate(characterCreatedAt(editedCharacter))}
+            />
+          )}
+          {formatCharacterDate(characterFirstMentionedAt(editedCharacter)) && (
+            <StatCell
+              label="First mentioned"
+              value={formatCharacterDate(characterFirstMentionedAt(editedCharacter))}
+            />
+          )}
         </div>
       </section>
 
@@ -1545,9 +1628,7 @@ export function CharacterInfoPanel({
             <div className="min-w-0 flex-1">
               <h3 className="text-sm font-bold text-white">Relationship to you</h3>
               <p className="mt-1 text-xs leading-relaxed text-white/45">
-                How {shortDisplayName(editedCharacter.name)} connects to you — friend, coworker, family,
-                partner, and so on. LoreBook infers this from chat titles like &ldquo;Cousin James&rdquo;, but
-                skips stage/persona names (e.g. Goth Tio). Correct anytime below.
+                LoreBook fills this from chat and family links. Change it here if it is wrong — the other card updates too.
               </p>
             </div>
           </div>
@@ -1634,7 +1715,26 @@ export function CharacterInfoPanel({
                       {alias}
                       <button
                         type="button"
-                        onClick={() => setAliasesList(aliasesList.filter((_, i) => i !== idx))}
+                        onClick={() => {
+                          const next = aliasesList.filter((_, i) => i !== idx);
+                          setAliasesList(next);
+                          setEditedCharacter((prev) => {
+                            const prevTitle = (prev.metadata?.display_title as { aliases?: Array<{ value?: string }>; primaryTitle?: string } | undefined) ?? {};
+                            return {
+                              ...prev,
+                              alias: next,
+                              metadata: {
+                                ...((prev.metadata ?? {}) as Record<string, unknown>),
+                                display_title: {
+                                  ...prevTitle,
+                                  aliases: (prevTitle.aliases ?? []).filter(
+                                    (item) => item.value?.trim().toLowerCase() !== alias.trim().toLowerCase(),
+                                  ),
+                                },
+                              },
+                            };
+                          });
+                        }}
                         className="ml-1 text-white/50 hover:text-white/80"
                         aria-label={`Remove ${alias}`}
                       >
@@ -1775,6 +1875,32 @@ export function CharacterInfoPanel({
                   Pick up to {MAX_CHARACTER_ARCHETYPES} story archetypes. The first one remains the primary signal for older views.
                 </p>
               </div>
+              <div className="min-w-0 rounded-xl border border-sky-500/20 bg-sky-950/15 p-3 sm:col-span-2 sm:p-3.5">
+                <div className="mb-3 flex items-start gap-2">
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-300/80" />
+                  <p className="min-w-0 text-xs leading-relaxed text-white/60">
+                    Character Book tabs are inferred from kinship, romance, and work context. If someone landed in the wrong
+                    filter, set the tab here. Your correction is saved and LoreBook will not put them back in Family unless you
+                    pin Family.
+                  </p>
+                </div>
+                <EditableField
+                  label="Character Book category"
+                  value={bookCategoryValue}
+                  displayValue={
+                    pinnedCategory
+                      ? bookCategoryLabel(pinnedCategory)
+                      : `Auto · ${bookCategoryLabel(inferredCategory.category)}`
+                  }
+                  source={bookCategorySource}
+                  variant="select"
+                  options={BOOK_CATEGORY_OPTIONS}
+                  emptyHint="Auto"
+                  icon={<BookOpen className="h-3.5 w-3.5 text-sky-300" />}
+                  onSave={persistBookCategory}
+                />
+                <p className="mt-2 text-[11px] leading-relaxed text-sky-100/70">{bookCategoryReason}</p>
+              </div>
               <EditableField
                 label="Sex"
                 value={sexValue}
@@ -1785,6 +1911,15 @@ export function CharacterInfoPanel({
                 onSave={(next) => persistOverride('sex', next)}
               />
               <EditableField
+                label="Gender"
+                value={genderValue}
+                displayValue={GENDER_OPTIONS.find((option) => option.value === genderValue)?.label ?? humanizeType(genderValue)}
+                source={genderSource}
+                variant="select"
+                options={GENDER_OPTIONS}
+                onSave={(next) => persistOverride('gender_identity', next)}
+              />
+              <EditableField
                 label="Sexual orientation"
                 value={orientationValue}
                 displayValue={ORIENTATION_OPTIONS.find((option) => option.value === orientationValue)?.label ?? humanizeType(orientationValue)}
@@ -1793,12 +1928,23 @@ export function CharacterInfoPanel({
                 options={ORIENTATION_OPTIONS}
                 onSave={(next) => persistOverride('sexual_orientation', next)}
               />
+              {isSelfCharacter && (
+                <EditableField
+                  label="Dating preference"
+                  value={datingPref}
+                  displayValue={DATING_PREF_OPTIONS.find((option) => option.value === datingPref)?.label ?? humanizeType(datingPref)}
+                  source={datingPrefSource}
+                  variant="select"
+                  options={DATING_PREF_OPTIONS}
+                  onSave={(next) => persistDatingPreference(next)}
+                />
+              )}
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── Skills, hobbies, groups, people (mention-derived lore) ───── */}
+      {/* Skills & hobbies stay on Info. Groups, people, and dating live on Connections. */}
       <CharacterLoreProfileSection
         profile={loreProfile ?? null}
         loading={loreProfileLoading}
@@ -1807,114 +1953,8 @@ export function CharacterInfoPanel({
         relationships={editedCharacter.relationships}
         onAskInChat={askInChat}
         onOpenCharacter={onOpenCharacterById}
-        onAddPerson={onAddWorldPerson}
-        onUpdatePerson={onUpdateWorldPerson}
-        onDeletePerson={onDeleteWorldPerson}
+        sections={['skills', 'snippets']}
       />
-
-      {/* ── 3. Your relationship (romantic / close) ──────────────────── */}
-      {relationship && (
-        <section className="rounded-2xl border border-rose-500/25 bg-rose-950/20 p-4" data-testid="your-relationship-section">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <Heart className="h-4 w-4 text-rose-400 shrink-0" />
-              <h3 className="text-sm font-bold text-white">Your relationship</h3>
-            </div>
-            {onOpenDatingArc && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={onOpenDatingArc}
-                data-testid="open-dating-romance-overview"
-                className="w-full sm:w-auto shrink-0 border-pink-500/30 text-pink-200 hover:bg-pink-500/10 hover:text-pink-100"
-              >
-                <Link2 className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-                Dating &amp; Romance · Overview
-              </Button>
-            )}
-          </div>
-          <div className="mb-3 grid gap-3 sm:grid-cols-2">
-            {romanceIdentityLabel && (
-              <div className="sm:col-span-2 rounded-lg border border-rose-500/20 bg-black/30 px-3 py-2">
-                <p className="text-[10px] uppercase tracking-wide text-rose-200/70 mb-1">Bond</p>
-                <p className="text-sm text-white" data-testid="character-info-romance-bond">
-                  {romanceIdentityLabel}
-                </p>
-              </div>
-            )}
-            <EditableField
-              label="Relationship type"
-              value={relationship.relationship_type}
-              displayValue={
-                relationshipTypeOptions.find((option) => option.value === relationship.relationship_type)?.label ??
-                humanizeType(relationship.relationship_type)
-              }
-              source={toFieldSource(relationship.metadata?.relationship_type_source, Boolean(relationship.relationship_type))}
-              variant="select"
-              options={relationshipTypeOptions}
-              onSave={persistRelationshipType}
-              disabled={!relationship.id || isMockDataEnabled}
-            />
-            <EditableField
-              label="Status"
-              value={relationship.status ?? 'active'}
-              displayValue={relationshipStatusOptions.find((option) => option.value === relationship.status)?.label ?? humanizeType(relationship.status ?? 'active')}
-              source={toFieldSource(relationship.metadata?.relationship_status_source, Boolean(relationship.status))}
-              variant="select"
-              options={relationshipStatusOptions}
-              onSave={persistRelationshipStatus}
-              disabled={!relationship.id || isMockDataEnabled}
-            />
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-            <StatCell label="Compatibility" value={`${Math.round((relationship.compatibility_score ?? 0) * 100)}%`} />
-            <StatCell label="Health" value={`${Math.round((relationship.relationship_health ?? 0) * 100)}%`} />
-            <StatCell label="Your interest" value={`${Math.round((relationship.affection_score ?? 0) * 100)}%`} />
-            {relationship.start_date && (
-              <StatCell
-                label="Since"
-                value={new Date(relationship.start_date).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
-              />
-            )}
-          </div>
-          {(relationship.pros?.length ?? 0) > 0 && (
-            <div className="grid sm:grid-cols-2 gap-3 text-xs">
-              {relationship.pros!.length > 0 && (
-                <ul className="space-y-1 text-white/70">
-                  {relationship.pros!.slice(0, 3).map((pro, i) => (
-                    <li key={i} className="flex gap-1.5"><span className="text-emerald-400">+</span>{pro}</li>
-                  ))}
-                </ul>
-              )}
-              {(relationship.cons?.length ?? 0) > 0 && (
-                <ul className="space-y-1 text-white/70">
-                  {relationship.cons!.slice(0, 3).map((con, i) => (
-                    <li key={i} className="flex gap-1.5"><span className="text-red-400">−</span>{con}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-          <div className="mt-3">
-            <RelationshipFlagsPanel
-              redFlags={relationship.red_flags ?? []}
-              greenFlags={relationship.green_flags ?? []}
-              compact
-            />
-          </div>
-          {lifeImpact && (
-            <div className="mt-4 pt-4 border-t border-rose-500/15">
-              <h4 className="text-xs font-semibold text-rose-200/90 mb-2">Life impact</h4>
-              <RelationshipLifeImpactPanel
-                influence={lifeImpact}
-                personName={shortDisplayName(editedCharacter.name)}
-                compact
-              />
-            </div>
-          )}
-        </section>
-      )}
 
       {/* ── 4. Work & life ───────────────────────────────────────────── */}
       <div className="grid sm:grid-cols-2 gap-3">
@@ -1957,35 +1997,6 @@ export function CharacterInfoPanel({
           </div>
         </section>
       </div>
-
-      {/* ── 5. Key people ──────────────────────────────────────────────── */}
-      {(strongestConnections.length > 0 || romanticConnections.length > 0) && (
-        <section>
-          <h3 className="text-[11px] font-semibold uppercase tracking-widest text-white/40 mb-2 flex items-center gap-1.5">
-            <Users className="h-3.5 w-3.5" /> Key people
-          </h3>
-          <div className="grid sm:grid-cols-2 gap-2">
-            {[...romanticConnections, ...strongestConnections.filter((s) => !romanticConnections.some((r) => r.character_id === s.character_id))].slice(0, 4).map((rel) => (
-              <button
-                key={rel.character_id ?? rel.id ?? rel.character_name}
-                type="button"
-                onClick={() => openCharacterByRelationship(rel)}
-                className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-left hover:border-primary/30 hover:bg-primary/5 transition-colors touch-manipulation"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium text-white truncate">{rel.character_name}</span>
-                  {rel.closeness_score != null && (
-                    <span className="text-[10px] text-emerald-400 shrink-0">{rel.closeness_score}/10</span>
-                  )}
-                </div>
-                <p className="text-[10px] text-white/40 capitalize mt-0.5 truncate">
-                  {rel.relationship_type.replace(/_/g, ' ')}
-                </p>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* ── 6. Personality ───────────────────────────────────────────── */}
       {behaviorAttributes.length > 0 && (
