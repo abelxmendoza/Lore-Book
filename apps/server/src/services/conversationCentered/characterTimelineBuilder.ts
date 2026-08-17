@@ -212,6 +212,50 @@ export class CharacterTimelineBuilder {
   }
 
   /**
+   * Fold a segmented episode where this character was the primary entity
+   * into their timeline as a lore entry — the character-timeline equivalent
+   * of entityTimelineBuilder's processThreadForEntity, but keyed to a single
+   * episode (source_episode_id) rather than a whole thread, since a thread
+   * can contain distinct scenes for different characters and each needs its
+   * own entry rather than one collapsing into the other on upsert.
+   */
+  async processEpisodeForCharacter(
+    userId: string,
+    characterId: string,
+    episode: { id: string; title: string; start_at: string; source_message_ids?: string[] }
+  ): Promise<void> {
+    try {
+      const { error } = await supabaseAdmin.from('character_timeline_events').upsert(
+        {
+          user_id: userId,
+          character_id: characterId,
+          event_id: null,
+          source_episode_id: episode.id,
+          timeline_type: 'lore',
+          user_was_present: true,
+          character_role: 'mentioned',
+          event_title: episode.title || 'Conversation',
+          event_date: episode.start_at,
+          event_type: 'conversation',
+          source_message_ids: episode.source_message_ids ?? [],
+          confidence: 0.6,
+          metadata: { processed_at: new Date().toISOString() },
+        },
+        { onConflict: 'user_id,character_id,source_episode_id,timeline_type' }
+      );
+
+      if (error) {
+        logger.warn(
+          { error, userId, characterId, episodeId: episode.id },
+          'Failed to upsert episode-sourced character timeline event'
+        );
+      }
+    } catch (error) {
+      logger.error({ error, userId, characterId, episodeId: episode.id }, 'Failed to process episode for character timeline');
+    }
+  }
+
+  /**
    * Rebuild timelines for a character (useful after event updates)
    */
   async rebuildTimelinesForCharacter(
@@ -238,12 +282,8 @@ export class CharacterTimelineBuilder {
         .eq('user_id', userId)
         .contains('people', [characterId]);
 
-      if (!events || events.length === 0) {
-        return;
-      }
-
       // Process each event
-      for (const event of events) {
+      for (const event of events || []) {
         const impacts = await eventImpactDetector.getEventImpacts(userId, event.id);
         const primaryImpact = impacts[0];
 
@@ -260,6 +300,18 @@ export class CharacterTimelineBuilder {
           primaryImpact?.impactType,
           primaryImpact?.connectionCharacterId
         );
+      }
+
+      // Fold episodes where this character was the primary entity
+      const { data: episodes } = await supabaseAdmin
+        .from('episodes')
+        .select('id, title, start_at, source_message_ids')
+        .eq('user_id', userId)
+        .eq('primary_entity_type', 'character')
+        .eq('primary_entity_id', characterId);
+
+      for (const episode of episodes || []) {
+        await this.processEpisodeForCharacter(userId, characterId, episode);
       }
     } catch (error) {
       logger.error({ error, userId, characterId }, 'Failed to rebuild timelines for character');

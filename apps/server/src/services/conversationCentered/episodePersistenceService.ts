@@ -10,6 +10,8 @@ import { supabaseAdmin } from '../supabaseClient';
 import { filterEpisodeParticipantNames, isPollutingPlaceLabel } from '../actors/entityLabelPollution';
 import { segmentEpisodes, type Episode, type SegMessage } from './episodeSegmentationCore';
 import { loadThreadMessages } from './threadContentService';
+import { characterTimelineBuilder } from './characterTimelineBuilder';
+import { locationTimelineBuilder } from './entityTimelineBuilder';
 
 export interface EpisodeRow {
   id: string;
@@ -26,6 +28,13 @@ export interface EpisodeRow {
   source_event_ids: string[];
   participant_ids: string[];
   location_ids: string[];
+  primary_entity_type: 'character' | 'location' | null;
+  primary_entity_id: string | null;
+}
+
+export interface PrimaryEntity {
+  type: 'character' | 'location';
+  id: string;
 }
 
 export interface PersistEpisodesResult {
@@ -124,6 +133,51 @@ async function resolveEntityNames(userId: string, ids: string[]): Promise<Map<st
   return nameById;
 }
 
+async function resolveRealEntityMembership(
+  userId: string,
+  characterCandidateIds: string[],
+  locationCandidateIds: string[]
+): Promise<{ characterIds: Set<string>; locationIds: Set<string> }> {
+  const [{ data: chars }, { data: locs }] = await Promise.all([
+    characterCandidateIds.length
+      ? supabaseAdmin.from('characters').select('id').eq('user_id', userId).in('id', characterCandidateIds)
+      : Promise.resolve({ data: [] as { id: string }[] }),
+    locationCandidateIds.length
+      ? supabaseAdmin.from('locations').select('id').eq('user_id', userId).in('id', locationCandidateIds)
+      : Promise.resolve({ data: [] as { id: string }[] }),
+  ]);
+
+  return {
+    characterIds: new Set((chars ?? []).map((r) => r.id)),
+    locationIds: new Set((locs ?? []).map((r) => r.id)),
+  };
+}
+
+/**
+ * Pick the episode's "primary" entity — location first (matches
+ * buildEpisodeTitle's location-first convention), else the first participant
+ * that resolves to a real (promoted) character rather than an unpromoted
+ * omega-only mention. Null when nothing resolves.
+ */
+export function resolvePrimaryEntity(
+  ep: Episode,
+  realCharacterIds: Set<string>,
+  realLocationIds: Set<string>
+): PrimaryEntity | null {
+  const loc = ep.locations[0];
+  if (loc && UUID_RE.test(loc) && realLocationIds.has(loc)) {
+    return { type: 'location', id: loc };
+  }
+
+  for (const participantId of ep.participants) {
+    if (UUID_RE.test(participantId) && realCharacterIds.has(participantId)) {
+      return { type: 'character', id: participantId };
+    }
+  }
+
+  return null;
+}
+
 async function resolveEventIds(
   userId: string,
   startAt: string,
@@ -177,7 +231,11 @@ export async function persistEpisodesForThread(
 
   const segmented = segmentEpisodes(segMessages);
   const allEntityIds = [...new Set(segmented.flatMap((e) => e.participants))];
-  const nameById = await resolveEntityNames(userId, [...allEntityIds, ...segmented.flatMap((e) => e.locations)]);
+  const allLocationIds = [...new Set(segmented.flatMap((e) => e.locations))];
+  const [nameById, { characterIds: realCharacterIds, locationIds: realLocationIds }] = await Promise.all([
+    resolveEntityNames(userId, [...allEntityIds, ...allLocationIds]),
+    resolveRealEntityMembership(userId, allEntityIds, allLocationIds),
+  ]);
 
   const rows: Omit<EpisodeRow, 'id'>[] = [];
   for (const ep of segmented) {
@@ -187,6 +245,7 @@ export async function persistEpisodesForThread(
     if (messageIds.length === 0) continue;
 
     const sourceEventIds = await resolveEventIds(userId, ep.startAt, ep.endAt, participantIds);
+    const primaryEntity = resolvePrimaryEntity(ep, realCharacterIds, realLocationIds);
 
     rows.push({
       user_id: userId,
@@ -202,6 +261,8 @@ export async function persistEpisodesForThread(
       source_event_ids: sourceEventIds,
       participant_ids: participantIds,
       location_ids: locationIds,
+      primary_entity_type: primaryEntity?.type ?? null,
+      primary_entity_id: primaryEntity?.id ?? null,
     });
   }
 
@@ -220,6 +281,18 @@ export async function persistEpisodesForThread(
       .select('*');
     if (error) throw error;
     inserted = (data ?? []) as EpisodeRow[];
+  }
+
+  for (const episode of inserted) {
+    if (episode.primary_entity_type === 'character' && episode.primary_entity_id) {
+      void characterTimelineBuilder
+        .processEpisodeForCharacter(userId, episode.primary_entity_id, episode)
+        .catch((err) => logger.warn({ err, episodeId: episode.id }, 'Character episode-timeline fold failed (non-blocking)'));
+    } else if (episode.primary_entity_type === 'location' && episode.primary_entity_id) {
+      void locationTimelineBuilder
+        .processEpisodeForEntity(userId, episode.primary_entity_id, episode)
+        .catch((err) => logger.warn({ err, episodeId: episode.id }, 'Location episode-timeline fold failed (non-blocking)'));
+    }
   }
 
   const labels = inserted.map((e) => e.title);

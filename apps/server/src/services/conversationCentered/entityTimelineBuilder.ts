@@ -18,6 +18,7 @@ export interface EntityTimelineEvent {
   id: string;
   eventId?: string;
   sourceThreadId?: string;
+  sourceEpisodeId?: string;
   eventTitle: string;
   eventDate: string;
   eventSummary?: string;
@@ -88,6 +89,7 @@ export class EntityTimelineBuilder {
           id: row.id,
           eventId: row.event_id ?? undefined,
           sourceThreadId: row.source_thread_id ?? undefined,
+          sourceEpisodeId: row.source_episode_id ?? undefined,
           eventTitle: row.event_title || 'Untitled',
           eventDate: row.event_date || row.created_at,
           eventSummary: row.event_summary,
@@ -321,6 +323,52 @@ export class EntityTimelineBuilder {
     }
   }
 
+  /**
+   * Fold a segmented episode where this location was the primary entity into
+   * its timeline as a lore entry. Location kind only — organizations have no
+   * per-episode data and stay on the whole-thread processThreadForEntity path.
+   * Keyed to source_episode_id rather than source_thread_id so a thread with
+   * several episodes for the same location gets one row per episode instead
+   * of colliding into one on upsert.
+   */
+  async processEpisodeForEntity(
+    userId: string,
+    entityId: string,
+    episode: { id: string; title: string; start_at: string }
+  ): Promise<void> {
+    try {
+      const { error } = await supabaseAdmin.from('entity_timeline_events').upsert(
+        {
+          user_id: userId,
+          entity_type: this.kind,
+          entity_id: entityId,
+          event_id: null,
+          source_thread_id: null,
+          source_episode_id: episode.id,
+          timeline_type: 'lore',
+          user_was_present: true,
+          entity_role: 'referenced',
+          event_title: episode.title || 'Conversation',
+          event_date: episode.start_at,
+          event_type: 'conversation',
+          confidence: 0.6,
+          source: null,
+          metadata: { processed_at: new Date().toISOString() },
+        },
+        { onConflict: 'user_id,entity_type,entity_id,source_episode_id,timeline_type' }
+      );
+
+      if (error) {
+        logger.warn(
+          { error, userId, entityId, episodeId: episode.id, kind: this.kind },
+          'Failed to upsert episode-sourced timeline event'
+        );
+      }
+    } catch (error) {
+      logger.error({ error, userId, entityId, episodeId: episode.id, kind: this.kind }, 'Failed to process episode for entity timeline');
+    }
+  }
+
   /** Rebuild an entity's full timeline from resolved_events, posted events (orgs), and its primary-linked threads. */
   async rebuildTimelinesForEntity(userId: string, entityId: string): Promise<void> {
     try {
@@ -360,17 +408,28 @@ export class EntityTimelineBuilder {
         for (const postedEvent of posted) {
           await this.processPostedEventForOrganization(userId, entityId, postedEvent);
         }
-      }
 
-      const { data: threads } = await supabaseAdmin
-        .from('conversation_sessions')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('primary_entity_type', this.kind)
-        .eq('primary_entity_id', entityId);
+        const { data: threads } = await supabaseAdmin
+          .from('conversation_sessions')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('primary_entity_type', this.kind)
+          .eq('primary_entity_id', entityId);
 
-      for (const thread of threads || []) {
-        await this.processThreadForEntity(userId, entityId, thread.id);
+        for (const thread of threads || []) {
+          await this.processThreadForEntity(userId, entityId, thread.id);
+        }
+      } else {
+        const { data: episodes } = await supabaseAdmin
+          .from('episodes')
+          .select('id, title, start_at')
+          .eq('user_id', userId)
+          .eq('primary_entity_type', 'location')
+          .eq('primary_entity_id', entityId);
+
+        for (const episode of episodes || []) {
+          await this.processEpisodeForEntity(userId, entityId, episode);
+        }
       }
     } catch (error) {
       logger.error({ error, userId, entityId, kind: this.kind }, 'Failed to rebuild timelines for entity');

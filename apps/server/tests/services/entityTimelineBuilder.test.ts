@@ -326,16 +326,27 @@ describe('EntityTimelineBuilder — thread-as-source-row folding', () => {
     });
   });
 
-  it('uses "referenced" as the thread entity_role for locations', async () => {
+  it('does not query conversation_sessions for locations — org path only', async () => {
     state.responses['resolved_events'] = [{ data: [], error: null }];
-    state.responses['conversation_sessions'] = [
-      { data: [{ id: 'thread-1' }], error: null },
+    state.responses['episodes'] = [{ data: [], error: null }];
+
+    const builder = new EntityTimelineBuilder('location');
+    await builder.rebuildTimelinesForEntity(USER_ID, 'loc-1');
+
+    expect(state.calls.some((c) => c.table === 'conversation_sessions')).toBe(false);
+  });
+});
+
+describe('EntityTimelineBuilder — episode-as-source-row folding (location only)', () => {
+  beforeEach(() => {
+    state = { responses: {}, calls: [] };
+  });
+
+  it('folds a primary-entity-linked episode into a lore entry with source_episode_id set and event_id null', async () => {
+    state.responses['resolved_events'] = [{ data: [], error: null }];
+    state.responses['episodes'] = [
       {
-        data: {
-          title: 'Chat about The Old Pier',
-          updated_at: '2026-04-01T00:00:00Z',
-          metadata: {},
-        },
+        data: [{ id: 'episode-1', title: 'The Old Pier', start_at: '2026-04-01T00:00:00Z' }],
         error: null,
       },
     ];
@@ -343,8 +354,35 @@ describe('EntityTimelineBuilder — thread-as-source-row folding', () => {
     const builder = new EntityTimelineBuilder('location');
     await builder.rebuildTimelinesForEntity(USER_ID, 'loc-1');
 
-    const payload = upsertCallsFor('entity_timeline_events')[0].args[0] as Record<string, unknown>;
-    expect(payload).toMatchObject({ entity_role: 'referenced', source_thread_id: 'thread-1' });
+    const episodesCall = state.calls.find(
+      (c) => c.table === 'episodes' && c.method === 'eq' && c.args[0] === 'primary_entity_id'
+    );
+    expect(episodesCall).toBeTruthy();
+    expect(episodesCall!.args).toEqual(['primary_entity_id', 'loc-1']);
+
+    const upserts = upsertCallsFor('entity_timeline_events');
+    expect(upserts).toHaveLength(1);
+    const payload = upserts[0].args[0] as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      entity_type: 'location',
+      entity_id: 'loc-1',
+      event_id: null,
+      source_thread_id: null,
+      source_episode_id: 'episode-1',
+      timeline_type: 'lore',
+      entity_role: 'referenced',
+      event_title: 'The Old Pier',
+    });
+  });
+
+  it('organizations do not fold episodes (no per-episode org data)', async () => {
+    state.responses['organization_members'] = [{ data: [], error: null }];
+    state.responses['conversation_sessions'] = [{ data: [], error: null }];
+
+    const builder = new EntityTimelineBuilder('organization');
+    await builder.rebuildTimelinesForEntity(USER_ID, 'org-1');
+
+    expect(state.calls.some((c) => c.table === 'episodes')).toBe(false);
   });
 });
 
