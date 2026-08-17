@@ -176,6 +176,7 @@ describe('Working Memory Assembler', () => {
         ],
         error: null,
       },
+      entity_timeline_events: { data: [], error: null },
       character_relationships: {
         data: [
           {
@@ -752,5 +753,141 @@ describe('Working Memory Assembler', () => {
     // text from the canonical projector — chat now inherits this the same way the
     // Timeline/Swimlanes UI already does, which it did not before this change.
     expect(allText).not.toMatch(/please fix the date/i);
+  });
+
+  it('treats an active Character Book focus as authoritative and rejects unrelated life context', async () => {
+    tableResults.journal_entries = {
+      data: [{
+        id: 'entry-unrelated-work',
+        content: 'Worked a warehouse shift at a large retailer.',
+        summary: 'Unrelated employment history',
+        date: '2026-06-12T00:00:00Z',
+        tags: ['work'],
+        source: 'chat',
+        metadata: {},
+      }],
+      error: null,
+    };
+
+    const result = await assembleWorkingMemory({
+      userId: 'user-1',
+      question: 'Help me capture who he is.',
+      focus: {
+        id: 'char-sol',
+        name: 'Sam Chen',
+        type: 'character',
+      },
+    });
+
+    expect(result.intent).toBe('PERSON_QUERY');
+    expect(result.entities).toEqual([
+      expect.objectContaining({ id: 'char-sol', name: 'Sam Chen', confidence: 1 }),
+    ]);
+    const selectedText = [
+      ...result.episodes,
+      ...result.events,
+      ...result.relationships,
+      ...result.timeline,
+    ].map((item) => `${item.title} ${item.content}`).join('\n');
+    expect(selectedText).toMatch(/Sam Chen/i);
+    expect(selectedText).not.toMatch(/warehouse shift|employment history/i);
+    expect(result.rejected.some((item) => item.rejectedReason === 'active_focus_mismatch:char-sol')).toBe(true);
+  });
+
+  it('surfaces entity_timeline_events rows when focus is an organization', async () => {
+    tableResults.entity_timeline_events = {
+      data: [
+        {
+          id: 'ev-org-1',
+          event_title: 'Team offsite',
+          event_type: 'gathering',
+          event_date: '2026-06-10',
+          event_summary: 'The Thursday Crew went on a retreat together.',
+          confidence: 0.85,
+          metadata: { significance_score: 70 },
+        },
+      ],
+      error: null,
+    };
+
+    const result = await assembleWorkingMemory({
+      userId: 'user-1',
+      question: "What's been happening with the group?",
+      focus: {
+        id: 'org-thursday-crew',
+        name: 'The Thursday Crew',
+        type: 'organization',
+      },
+    });
+
+    expect(result.intent).toBe('COMMUNITY_QUERY');
+    const selectedText = [...result.episodes, ...result.events, ...result.timeline]
+      .map((item) => `${item.title} ${item.content}`)
+      .join('\n');
+    expect(selectedText).toMatch(/Thursday Crew went on a retreat/i);
+  });
+
+  it('surfaces entity_timeline_events rows when focus is a location', async () => {
+    tableResults.entity_timeline_events = {
+      data: [
+        {
+          id: 'ev-loc-1',
+          event_title: 'Visit to Blue Room',
+          event_type: 'visit',
+          event_date: '2026-06-10',
+          event_summary: 'A memorable night that started everything.',
+          confidence: 0.8,
+          metadata: { significance_score: 65 },
+        },
+      ],
+      error: null,
+    };
+
+    const result = await assembleWorkingMemory({
+      userId: 'user-1',
+      question: "What's happened at this place?",
+      focus: {
+        id: 'loc-metro',
+        name: 'Blue Room',
+        type: 'location',
+      },
+    });
+
+    const selectedText = [...result.episodes, ...result.events, ...result.timeline]
+      .map((item) => `${item.title} ${item.content}`)
+      .join('\n');
+    expect(selectedText).toMatch(/night that started everything/i);
+  });
+
+  it('does not surface entity_timeline_events rows for character focus', async () => {
+    tableResults.entity_timeline_events = {
+      data: [
+        {
+          id: 'ev-org-leak',
+          event_title: 'Should not leak into character focus',
+          event_type: 'gathering',
+          event_date: '2026-06-10',
+          event_summary: 'This row belongs to an organization, not the focused character.',
+          confidence: 0.9,
+          metadata: {},
+        },
+      ],
+      error: null,
+    };
+
+    const result = await assembleWorkingMemory({
+      userId: 'user-1',
+      question: 'Tell me about him.',
+      focus: {
+        id: 'char-sol',
+        name: 'Sam Chen',
+        type: 'character',
+      },
+    });
+
+    const selectedText = [...result.episodes, ...result.events, ...result.timeline]
+      .map((item) => `${item.title} ${item.content}`)
+      .join('\n');
+    expect(selectedText).not.toMatch(/Should not leak into character focus/i);
   });
 });

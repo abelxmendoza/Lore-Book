@@ -1122,6 +1122,50 @@ async function loadPersonCandidates(
   return out;
 }
 
+/**
+ * Organization/location equivalent of loadPersonCandidates' timeline block —
+ * entity_timeline_events (entityTimelineBuilder.ts) is the org/location
+ * analog of character_timeline_events, but had no reader anywhere in the
+ * response path until now.
+ */
+async function loadEntityTimelineCandidates(
+  scope: WmaRequestScope,
+  userId: string,
+  entityType: 'organization' | 'location',
+  entityId: string,
+  target: string
+): Promise<Candidate[]> {
+  const events = await scope.traced(
+    'entity_timeline_events',
+    `timeline events for target ${entityType}`,
+    `events:${entityType}:${entityId}`,
+    () =>
+      supabaseAdmin
+        .from('entity_timeline_events')
+        .select('id, event_title, event_type, event_date, event_summary, confidence, metadata')
+        .eq('user_id', userId)
+        .eq('entity_type', entityType)
+        .eq('entity_id', entityId)
+        .order('event_date', { ascending: false })
+        .limit(6)
+  );
+
+  return ((events ?? []) as any[]).map((event) => ({
+    id: `entity_event:${event.id}`,
+    type: 'event',
+    title: event.event_title ?? event.event_type ?? `Event involving ${target}`,
+    content: String(event.event_summary ?? event.event_title ?? ''),
+    source: 'entity_timeline_events',
+    date: event.event_date,
+    confidence: Number(event.confidence ?? 0.7),
+    relevance: 0.9,
+    importance: 0.7,
+    significance: Number((event.metadata as Record<string, unknown>)?.significance_score ?? 60) / 100,
+    relationshipDistance: 1,
+    reasons: [`timeline event for target ${entityType}`],
+  }));
+}
+
 type PersistedEpisodeRow = {
   id: string;
   title: string;
@@ -2296,8 +2340,17 @@ export async function assembleWorkingMemory(
     entities.find((entity) => entity.source === 'locations' && entity.id) ?? null;
   const personEntityId =
     primaryEntity?.source === 'characters' && primaryEntity.id ? primaryEntity.id : null;
+  // Org/location equivalent of isPersonish: entity_timeline_events is the
+  // org/location analog of character_timeline_events, and focus already
+  // sets primaryEntity.type to 'ORGANIZATION'/'PLACE' — see focusEntity above.
+  const timelineEntityFocus: { entityType: 'organization' | 'location'; entityId: string } | null =
+    primaryEntity?.type === 'ORGANIZATION' && primaryEntity.id
+      ? { entityType: 'organization', entityId: primaryEntity.id }
+      : primaryEntity?.type === 'PLACE' && primaryEntity.id
+        ? { entityType: 'location', entityId: primaryEntity.id }
+        : null;
 
-  const [personCandidates, relationshipCandidates, threadRelationshipCandidates, goalCandidates, skillCandidates, communityCandidates, projectCandidates, episodeCandidates, textualCandidates, anchorCandidates, semanticClaimCandidates, characterQueryCandidates] =
+  const [personCandidates, relationshipCandidates, threadRelationshipCandidates, goalCandidates, skillCandidates, communityCandidates, projectCandidates, episodeCandidates, textualCandidates, anchorCandidates, semanticClaimCandidates, characterQueryCandidates, entityTimelineCandidates] =
     await Promise.all([
       !temporalQuery && isPersonish
         ? loadPersonCandidates(scope, input.userId, primaryEntity!, target ?? primaryEntity!.name, characterRow)
@@ -2331,12 +2384,22 @@ export async function assembleWorkingMemory(
       !temporalQuery
         ? loadCharacterQueryCandidates(scope, input.userId, personEntityId, intent)
         : Promise.resolve([] as Candidate[]),
+      !temporalQuery && timelineEntityFocus
+        ? loadEntityTimelineCandidates(
+            scope,
+            input.userId,
+            timelineEntityFocus.entityType,
+            timelineEntityFocus.entityId,
+            target ?? primaryEntity!.name
+          )
+        : Promise.resolve([] as Candidate[]),
     ]);
   const candidateGenerationMs = Date.now() - candidateStarted;
 
   const rankingStarted = Date.now();
   const merged = [
     ...characterQueryCandidates,
+    ...entityTimelineCandidates,
     ...episodeCandidates,
     ...personCandidates,
     ...relationshipCandidates,
