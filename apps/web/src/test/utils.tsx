@@ -10,7 +10,7 @@ import { ReduxProvider } from '../store/ReduxProvider';
 const AllTheProviders = ({ children }: { children: React.ReactNode }) => {
   return (
     <ReduxProvider>
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <BrowserRouter>
         <ChatThreadProvider>
           <MockDataProvider>
             <LoreKeeperProvider>

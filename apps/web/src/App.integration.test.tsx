@@ -55,7 +55,7 @@ describe('App Integration Tests - Black Screen Prevention', () => {
 
   it('should render App component without crashing', async () => {
     const { container } = render(
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <BrowserRouter>
         <ErrorBoundary>
           <MockDataProvider>
             <GuestProvider>
@@ -78,7 +78,7 @@ describe('App Integration Tests - Black Screen Prevention', () => {
 
   it('should render main content area', async () => {
     render(
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <BrowserRouter>
         <ErrorBoundary>
           <MockDataProvider>
             <GuestProvider>
@@ -115,7 +115,7 @@ describe('App Integration Tests - Black Screen Prevention', () => {
     delete import.meta.env.VITE_SUPABASE_ANON_KEY;
 
     const { container } = render(
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <BrowserRouter>
         <ErrorBoundary>
           <MockDataProvider>
             <GuestProvider>
@@ -149,7 +149,7 @@ describe('App Integration Tests - Black Screen Prevention', () => {
     };
 
     render(
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <BrowserRouter>
         <ErrorBoundary>
           <ThrowError />
         </ErrorBoundary>
@@ -171,7 +171,7 @@ describe('App Integration Tests - Black Screen Prevention', () => {
   it('should render without requiring authentication', async () => {
     // App should render even without auth
     const { container } = render(
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <BrowserRouter>
         <ErrorBoundary>
           <MockDataProvider>
             <GuestProvider>

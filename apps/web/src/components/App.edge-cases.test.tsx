@@ -46,7 +46,7 @@ describe('App Edge Cases', () => {
     delete import.meta.env.VITE_SUPABASE_URL;
 
     const { container } = render(
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <BrowserRouter>
         <ErrorBoundary>
           <MockDataProvider>
             <GuestProvider>
@@ -80,7 +80,7 @@ describe('App Edge Cases', () => {
     );
 
     const { container } = render(
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <BrowserRouter>
         <ErrorBoundary>
           <MockDataProvider>
             <GuestProvider>
@@ -106,7 +106,7 @@ describe('App Edge Cases', () => {
     );
 
     const { container } = render(
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <BrowserRouter>
         <ErrorBoundary>
           <MockDataProvider>
             <GuestProvider>
