@@ -3,7 +3,13 @@
  */
 import { supabaseAdmin } from '../supabaseClient';
 import { normalizeNameKey } from '../../utils/nameNormalization';
-import type { TrustDomain, UnknownGap } from './trustTypes';
+import { isTrustSurfaceNoise } from './trustSurfaceNoise';
+import type { UnknownGap } from './trustTypes';
+
+function pushGap(gaps: UnknownGap[], gap: UnknownGap): void {
+  if (isTrustSurfaceNoise(gap.label, gap.prompt, gap.domain)) return;
+  gaps.push(gap);
+}
 
 export async function detectUnknowns(userId: string): Promise<UnknownGap[]> {
   const gaps: UnknownGap[] = [];
@@ -42,7 +48,7 @@ export async function detectUnknowns(userId: string): Promise<UnknownGap[]> {
 
   const charKeys = new Set((characters ?? []).map((c) => normalizeNameKey(c.name)));
   for (const row of knowledgeGaps ?? []) {
-    gaps.push({
+    pushGap(gaps, {
       id: row.id,
       kind: row.gap_type === 'sparse_entity' ? 'sparse_entity' : 'mentioned_person_no_profile',
       label: row.label,
@@ -56,7 +62,7 @@ export async function detectUnknowns(userId: string): Promise<UnknownGap[]> {
   for (const ent of omegaPeople ?? []) {
     const key = normalizeNameKey(ent.primary_name);
     if (!key || charKeys.has(key)) continue;
-    gaps.push({
+    pushGap(gaps, {
       id: `omega-person-${ent.id}`,
       kind: 'mentioned_person_no_profile',
       label: ent.primary_name,
@@ -79,7 +85,7 @@ export async function detectUnknowns(userId: string): Promise<UnknownGap[]> {
   for (const place of omegaPlaces ?? []) {
     const key = normalizeNameKey(place.primary_name);
     if (!key || locKeys.has(key)) continue;
-    gaps.push({
+    pushGap(gaps, {
       id: `omega-place-${place.id}`,
       kind: 'mentioned_place_no_location',
       label: place.primary_name,
@@ -96,7 +102,7 @@ export async function detectUnknowns(userId: string): Promise<UnknownGap[]> {
   for (const s of projectSuggestions ?? []) {
     const key = normalizeNameKey(s.name);
     if (projectKeys.has(key)) continue;
-    gaps.push({
+    pushGap(gaps, {
       id: `project-sug-${s.id}`,
       kind: 'mentioned_project_no_card',
       label: s.name,
@@ -120,7 +126,7 @@ export async function detectUnknowns(userId: string): Promise<UnknownGap[]> {
 
   for (const c of characters ?? []) {
     if (charIdsWithRel.has(c.id)) continue;
-    gaps.push({
+    pushGap(gaps, {
       id: `no-rel-${c.id}`,
       kind: 'no_relationship',
       label: c.name,

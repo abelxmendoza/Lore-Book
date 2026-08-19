@@ -4,6 +4,7 @@
 import { contradictionEngine } from '../contradiction/contradictionEngine';
 import { contradictionAlertService } from '../contradictionAlertService';
 import { supabaseAdmin } from '../supabaseClient';
+import { isTrustSurfaceNoise } from './trustSurfaceNoise';
 import type { ReviewQueueItem, TrustDomain, UnknownGap, EntityTrustRow } from './trustTypes';
 
 function domainPriority(domain: TrustDomain): number {
@@ -96,6 +97,7 @@ export async function buildReviewQueue(
   }
 
   for (const gap of unknowns.slice(0, 25)) {
+    if (isTrustSurfaceNoise(gap.label, gap.prompt, gap.domain)) continue;
     review_queue.push({
       id: gap.id,
       kind: gap.kind,
@@ -109,6 +111,7 @@ export async function buildReviewQueue(
   }
 
   for (const row of classified.filter((e) => e.state === 'suggested').slice(0, 15)) {
+    if (isTrustSurfaceNoise(row.name, row.reason ?? '', row.domain)) continue;
     review_queue.push({
       id: `suggested-${row.id}`,
       kind: 'suggested_entity',

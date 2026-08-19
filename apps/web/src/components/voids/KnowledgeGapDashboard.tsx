@@ -6,7 +6,7 @@ import { Button } from '../ui/button';
 import { fetchJson } from '../../lib/api';
 import { fetchTrustOverview } from '../../api/trust';
 import { TrustCoveragePanel } from '../trust/TrustCoveragePanel';
-import { useMockData } from '../../contexts/MockDataContext';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import {
   MOCK_ENTITY_KNOWLEDGE_GAPS,
   MOCK_VOID_PERIODS,
@@ -53,7 +53,7 @@ interface VoidStats {
 }
 
 export const KnowledgeGapDashboard: React.FC = () => {
-  const { useMockData: isMockData } = useMockData();
+  const isMockData = useShouldUseMockData();
   const { goBack, backLabel } = useGoBack('/');
   const [significanceFilter, setSignificanceFilter] = useState<'all' | 'low' | 'medium' | 'high'>('all');
   const [voidData, setVoidData] = useState<{ voids: VoidPeriod[]; totalGaps: number } | null>(null);
