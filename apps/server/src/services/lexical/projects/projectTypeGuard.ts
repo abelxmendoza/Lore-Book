@@ -12,6 +12,7 @@ import {
 import { guardCrossBookEntity } from './projectCrossBookGuard';
 import { guardConsumerAppReference } from './projectConsumerAppGuard';
 import { guardObjectReference } from './projectObjectGuard';
+import { isAltAccountTestingCommentary } from '../../lorebook/quality/productMetaCommentaryGuard';
 
 const norm = (s: string) => (s ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
 
@@ -113,6 +114,20 @@ export function guardProjectCandidate(
       confidenceBoost: 0,
       rulesFired: ['stopword_only'],
       rejectionReason: 'stopword_or_conjunction',
+    };
+  }
+
+  // Meta-commentary about testing LoreBook with a throwaway/alt account
+  // ("using my alt account to test the app") is not a project the user is
+  // building — it must never surface as a suggestion.
+  if (isAltAccountTestingCommentary(text) || isAltAccountTestingCommentary(contextLine)) {
+    return {
+      allowed: false,
+      status: 'rejected',
+      rejectedAs: 'product_meta_commentary',
+      confidenceBoost: 0,
+      rulesFired: ['lorebook_product_meta_commentary'],
+      rejectionReason: 'product_meta_commentary',
     };
   }
 

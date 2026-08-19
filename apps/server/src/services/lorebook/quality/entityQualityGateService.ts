@@ -14,6 +14,7 @@ import { guardDuplicateEntity } from './duplicateEntityGuard';
 import { guardGenericReference } from './genericReferenceGuard';
 import { guardOrganizationCandidate } from './organizationCandidateGuard';
 import { guardPlaceCandidate } from './placeCandidateGuard';
+import { guardProductMetaCommentary } from './productMetaCommentaryGuard';
 import { guardSensitiveEntity } from './sensitiveEntityGuard';
 import { guardStandaloneTimePhrase } from '../../timeline/timelineSuggestionGuard';
 import type {
@@ -62,6 +63,9 @@ export function evaluateEntityQuality(
 
   const broken = guardBrokenSpan(normalized);
   if (broken) return broken;
+
+  const productMeta = guardProductMetaCommentary(normalized);
+  if (productMeta) return productMeta;
 
   const generic = guardGenericReference(normalized);
   if (generic) return generic;
