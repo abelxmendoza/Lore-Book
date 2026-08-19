@@ -283,7 +283,11 @@ export function mayCreateCharacterFromLifecycle(input: {
     mention,
     signals: {
       mentionCount: input.mentionCount,
-      conversationCount: input.conversationCount ?? Math.min(input.mentionCount, 2),
+      // No real cross-thread conversation count is tracked pre-promotion today
+      // (see entity_conversation_links — only populated *after* a character
+      // already exists). Absent a real signal, mentionCount is a fairer stand-in
+      // than an arbitrary cap at 2, which punished anyone mentioned 3+ times.
+      conversationCount: input.conversationCount ?? input.mentionCount,
       timeSpanDays: input.timeSpanDays ?? 0,
       daysSinceLastSeen: input.daysSinceLastSeen,
       userConfirmed: input.userConfirmed,

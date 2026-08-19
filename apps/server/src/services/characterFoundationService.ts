@@ -20,6 +20,8 @@ import { identityLedgerService } from './identity/identityLedgerService';
 import { normalizeNameKey, splitPersonName } from '../utils/nameNormalization';
 import { shouldDeferCharacterPromotion } from '../utils/entityMentionClassifier';
 import { mayCreateCharacterFromLifecycle } from './actors/identityLifecycleService';
+import { detectEmotionalWeight } from './characters/inference/rolePersonInference';
+import { parseSocialRoles } from './ontology/socialRelationshipIntelligence';
 import { kinshipRoleToString, parseKinshipFromName } from './kinship/kinshipGlossary';
 import { decideRelationshipToYouFromKinship } from './kinship/kinshipRelationshipToYou';
 import { sexFromKinship } from './kinship/sexFromKinship';
@@ -602,7 +604,7 @@ class CharacterFoundationService {
     userId: string,
     entity: { id: string; primary_name: string; type: string; aliases?: string[] | null; mention_count?: number },
     threadId?: string | null,
-    options?: { forcePromote?: boolean }
+    options?: { forcePromote?: boolean; messageText?: string }
   ): Promise<{ characterId: string; created: boolean } | null> {
     if (entity.type !== 'PERSON' && entity.type !== 'CHARACTER') return null;
 
@@ -678,9 +680,38 @@ class CharacterFoundationService {
     }
 
     const cleanedName = decision.cleanName;
+
+    // Real signals, not weak defaults: how long this entity has been on
+    // record (created_at/updated_at are always populated, unlike a distinct
+    // conversation count we don't track pre-promotion), plus any friend/family
+    // relationship language and emotional weight actually present in the
+    // triggering message — reusing the same detectors the journal-driven
+    // promotion path already trusts (characterPromotionGate.ts).
+    const { data: entityTiming } = await supabaseAdmin
+      .from('omega_entities')
+      .select('created_at, updated_at')
+      .eq('id', entity.id)
+      .maybeSingle();
+    const timeSpanDays = entityTiming?.created_at && entityTiming?.updated_at
+      ? Math.max(0, Math.round(
+          (new Date(entityTiming.updated_at).getTime() - new Date(entityTiming.created_at).getTime()) / 86_400_000,
+        ))
+      : 0;
+
+    const messageText = options?.messageText ?? '';
+    const emotional = detectEmotionalWeight(messageText);
+    const socialRoles = parseSocialRoles(messageText);
+    const relationshipStrength = socialRoles.length
+      ? Math.max(...socialRoles.map((r) => r.confidence))
+      : 0;
+
     const lifecycle = mayCreateCharacterFromLifecycle({
       name: cleanedName,
       mentionCount: mentions,
+      timeSpanDays,
+      emotionalWeight: Math.min(1, emotional.boost * 4),
+      relationshipStrength,
+      narrativeImportance: messageText.trim() ? 0.2 : 0,
     });
     if (!options?.forcePromote && !lifecycle.allow) {
       logger.debug(

@@ -1734,7 +1734,8 @@ export class ConversationIngestionPipeline {
                 const promotion = await characterFoundationService.promoteOmegaEntityToCharacter(
                   userId,
                   entity as any,
-                  threadId
+                  threadId,
+                  { messageText: fullNormalizedText }
                 );
                 if (!promotion) continue;
                 const characterId = promotion.characterId;

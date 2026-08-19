@@ -126,6 +126,47 @@ describe('identityLifecycleService', () => {
     ).toBe(true);
   });
 
+  it('promotes a clearly-named recurring person even without a tracked conversation count', () => {
+    // Real-world case: a full-name person mentioned 4 times, no distinct
+    // conversation-count signal available (not tracked pre-promotion) and no
+    // relationship/emotional signal computed. The default for conversationCount
+    // must scale with mentionCount, not cap at 2, or this person is stuck
+    // below the Character threshold forever regardless of how often they come up.
+    const { allow, decision } = mayCreateCharacterFromLifecycle({
+      name: 'Nathan Pena',
+      mentionCount: 4,
+    });
+    expect(allow).toBe(true);
+    expect(decision.stage).toBe('CHARACTER');
+  });
+
+  it('does not promote from just two bare mentions with no other signal', () => {
+    // Guards the conservative floor: raising the conversationCount default
+    // must not make two incidental mentions enough on their own.
+    const { allow } = mayCreateCharacterFromLifecycle({
+      name: 'Nathan Pena',
+      mentionCount: 2,
+    });
+    expect(allow).toBe(false);
+  });
+
+  it('gives real credit for relationship-language signals without single-handedly promoting from two mentions', () => {
+    const withSignals = mayCreateCharacterFromLifecycle({
+      name: 'Nathan Pena',
+      mentionCount: 2,
+      relationshipStrength: 0.75, // e.g. "he's the homie"
+      narrativeImportance: 0.2,
+    });
+    const withoutSignals = mayCreateCharacterFromLifecycle({
+      name: 'Nathan Pena',
+      mentionCount: 2,
+    });
+    expect(withSignals.decision.score.total).toBeGreaterThan(withoutSignals.decision.score.total);
+    // Still conservative — two mentions plus one relationship cue isn't
+    // automatically enough; more recurrence should still be required.
+    expect(withSignals.allow).toBe(false);
+  });
+
   it('allows user-confirmed promotion even with few mentions', () => {
     const { allow, decision } = mayCreateCharacterFromLifecycle({
       name: 'Jamie',
