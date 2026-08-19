@@ -86,6 +86,7 @@ import {
 } from '../../lib/characterDisplay';
 import { getCharacterDisplayTitle } from '../../lib/characterDisplayTitle';
 import { CharacterTitleSection } from './CharacterTitleSection';
+import { characterTitleApi, type CharacterDisplayTitle } from '../../api/characterTitle';
 import { useCharacterQuery } from '../../hooks/useCharacterQuery';
 import type { CharacterChatMention } from '../../hooks/useCharacterProfileBundleTypes';
 import { useUpdateCharacterMutation, useReclassifyEntityMutation } from '../../store/api/entitiesApi';
@@ -542,6 +543,93 @@ export const CharacterDetailModal = ({
       // Roll back optimistic rename and surface the error inline (EditableEntityName).
       setEditedCharacter((prev) => ({ ...prev, name: editedCharacter.name }));
       throw err instanceof Error ? err : new Error('Failed to rename character');
+    }
+  };
+
+  /**
+   * Edit the card title shown in the header. For a plain character this is
+   * just the raw name (handleRenameCharacter). But many characters show a
+   * computed title — a kinship title like "Cousin James", a nickname
+   * composition, an epithet — that differs from the stored `name`. Those
+   * were previously not editable at all. Here we pin a user-chosen title via
+   * the (already-built, previously unused) character-title API, and keep the
+   * old computed title as a tracked alias so the system still knows every
+   * name this person has been called by, not just the newest one.
+   */
+  const handleRetitleCharacter = async (nextTitle: string) => {
+    const trimmed = nextTitle.trim();
+    if (!trimmed || trimmed === displayName) return;
+
+    if (displayName === editedCharacter.name) {
+      await handleRenameCharacter(trimmed);
+      return;
+    }
+
+    const previousTitle = displayName;
+    const previousDisplayTitle = editedCharacter.metadata?.display_title as
+      | CharacterDisplayTitle
+      | undefined;
+    const optimisticDisplayTitle: CharacterDisplayTitle = {
+      characterId: character.id,
+      primaryTitle: trimmed,
+      titleParts: previousDisplayTitle?.titleParts ?? {},
+      titleType: previousDisplayTitle?.titleType ?? 'legal_or_full_name',
+      aliases: previousDisplayTitle?.aliases ?? [],
+      stability: 'locked',
+      evidencePhrases: previousDisplayTitle?.evidencePhrases ?? [],
+      lastUpdatedFromMessageId: previousDisplayTitle?.lastUpdatedFromMessageId,
+    };
+    setEditedCharacter((prev) => ({
+      ...prev,
+      metadata: { ...(prev.metadata ?? {}), display_title: optimisticDisplayTitle },
+    }));
+
+    if (isMockDataEnabled) {
+      mockDataService.mutate.characters.upsert({
+        ...(editedCharacter as Character),
+        metadata: { ...(editedCharacter.metadata ?? {}), display_title: optimisticDisplayTitle },
+      });
+      onUpdate();
+      return;
+    }
+
+    try {
+      const result = await characterTitleApi.patch(character.id, {
+        primaryTitle: trimmed,
+        stability: 'locked',
+        userConfirmed: true,
+      });
+      setEditedCharacter((prev) => ({
+        ...prev,
+        metadata: { ...(prev.metadata ?? {}), display_title: result.displayTitle },
+      }));
+      // Best-effort: preserve the previous computed title as a known alias so
+      // "who this person is called" isn't lost, just superseded.
+      try {
+        const aliasResult = await characterTitleApi.addAlias(character.id, {
+          value: previousTitle,
+          aliasType: 'old_display_title',
+        });
+        setEditedCharacter((prev) => ({
+          ...prev,
+          metadata: { ...(prev.metadata ?? {}), display_title: aliasResult.displayTitle },
+        }));
+      } catch {
+        // Non-fatal — the primary title change already succeeded.
+      }
+      invalidateCache(character.id);
+      onUpdate();
+      dispatchStoryDataUpdated({ scopes: ['characters', 'family'], characterIds: [character.id] });
+      if (isMainCharacter && !isMockDataEnabled) {
+        selfCharacterApi.ensureSelf().catch(() => {});
+        selfCharacterApi.repairIdentity().catch(() => {});
+      }
+    } catch (err) {
+      setEditedCharacter((prev) => ({
+        ...prev,
+        metadata: { ...(prev.metadata ?? {}), display_title: previousDisplayTitle },
+      }));
+      throw err instanceof Error ? err : new Error('Failed to update title');
     }
   };
 
@@ -2932,16 +3020,12 @@ export const CharacterDetailModal = ({
               <div className="min-w-0 flex-1">
                 <div className="flex items-start gap-1.5 min-w-0 flex-wrap">
                   <h2 className="text-base font-bold text-white break-words">
-                    {displayName === editedCharacter.name ? (
-                      <EditableEntityName
-                        name={editedCharacter.name}
-                        onSave={handleRenameCharacter}
-                        label="character name"
-                        className="break-words"
-                      />
-                    ) : (
-                      displayName
-                    )}
+                    <EditableEntityName
+                      name={displayName}
+                      onSave={handleRetitleCharacter}
+                      label="character name"
+                      className="break-words"
+                    />
                   </h2>
                   {isMainCharacter && (
                     <Star className="h-3.5 w-3.5 shrink-0 fill-amber-300 text-amber-300 mt-0.5" aria-hidden />
@@ -3036,15 +3120,11 @@ export const CharacterDetailModal = ({
               <div className="flex-1 min-w-0 space-y-1">
 	                <div className="flex items-center gap-1.5 flex-wrap">
 	                  <h2 className="text-base lg:text-lg font-bold text-white tracking-tight break-words leading-tight">
-	                    {displayName === editedCharacter.name ? (
-	                      <EditableEntityName
-	                        name={editedCharacter.name}
-	                        onSave={handleRenameCharacter}
-	                        label="character name"
-	                      />
-	                    ) : (
-	                      displayName
-	                    )}
+	                    <EditableEntityName
+	                      name={displayName}
+	                      onSave={handleRetitleCharacter}
+	                      label="character name"
+	                    />
 	                  </h2>
                     {isMainCharacter && (
                       <>

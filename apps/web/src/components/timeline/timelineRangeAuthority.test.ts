@@ -58,6 +58,41 @@ describe('timelineRangeAuthority', () => {
     expect(span.spanDays).toBeLessThan(120);
   });
 
+  it('anchors to real history instead of collapsing to 45 days when nothing is "reliable"', () => {
+    // Months-old, low-confidence/imported entries with no reliable arcs to
+    // anchor on — this used to fall back to today-45d, clipping all of it
+    // off the visible canvas.
+    const span = computeReliableTimelineSpan(
+      [
+        entry({
+          id: 'old1',
+          start_time: '2026-04-02T00:00:00.000Z',
+          time_precision: 'year',
+          time_confidence: 0.3,
+          tags: ['imported'],
+        }),
+        entry({
+          id: 'old2',
+          start_time: '2026-05-15T00:00:00.000Z',
+          time_precision: 'year',
+          time_confidence: 0.3,
+          tags: ['imported'],
+        }),
+      ],
+      [],
+      new Date('2026-07-25T12:00:00.000Z'),
+    );
+    expect(span.usedFallback).toBe(true);
+    expect(span.start.getTime()).toBeLessThan(new Date('2026-04-02T00:00:00.000Z').getTime());
+    expect(span.spanDays).toBeGreaterThan(45);
+  });
+
+  it('still falls back to the last 45 days when there is no history at all', () => {
+    const span = computeReliableTimelineSpan([], [], new Date('2026-07-25T12:00:00.000Z'));
+    expect(span.usedFallback).toBe(true);
+    expect(span.spanDays).toBe(45);
+  });
+
   it('picks month scale for ~7 week reliable spans', () => {
     expect(defaultScaleForSpanDays(50)).toBe('season');
     expect(defaultScaleForSpanDays(30)).toBe('month');

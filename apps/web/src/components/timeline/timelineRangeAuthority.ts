@@ -57,24 +57,52 @@ export function collectReliableDates(
   return dates.filter((d) => Number.isFinite(d.getTime()));
 }
 
-export function computeReliableTimelineSpan(
-  entries: ChronologyEntry[],
-  arcs: LifeArc[],
-  today = new Date(),
-): { start: Date; end: Date; spanDays: number; usedFallback: boolean } {
-  const dates = collectReliableDates(entries, arcs);
-  if (dates.length === 0) {
-    const start = new Date(today);
-    start.setDate(start.getDate() - 45);
-    return { start, end: today, spanDays: 45, usedFallback: true };
+/** Every dated entry/arc, reliability aside — used only when nothing passes
+ *  the reliable filter, so real history still anchors the canvas. */
+function collectAllDates(entries: ChronologyEntry[], arcs: LifeArc[]): Date[] {
+  const dates: Date[] = [];
+  for (const e of entries) {
+    dates.push(new Date(e.start_time));
   }
+  for (const a of arcs) {
+    if (a.start_date) dates.push(new Date(a.start_date));
+    if (a.end_date) dates.push(new Date(a.end_date));
+  }
+  return dates.filter((d) => Number.isFinite(d.getTime()));
+}
+
+function paddedSpan(
+  dates: Date[],
+  today: Date,
+  usedFallback: boolean,
+): { start: Date; end: Date; spanDays: number; usedFallback: boolean } {
   const min = new Date(Math.min(...dates.map((d) => d.getTime())));
   const max = new Date(Math.max(...dates.map((d) => d.getTime()), today.getTime()));
   // Pad a week on each side
   min.setDate(min.getDate() - 7);
   max.setDate(max.getDate() + 7);
   const spanDays = Math.max(14, Math.round((max.getTime() - min.getTime()) / DAY_MS));
-  return { start: min, end: max, spanDays, usedFallback: false };
+  return { start: min, end: max, spanDays, usedFallback };
+}
+
+export function computeReliableTimelineSpan(
+  entries: ChronologyEntry[],
+  arcs: LifeArc[],
+  today = new Date(),
+): { start: Date; end: Date; spanDays: number; usedFallback: boolean } {
+  const dates = collectReliableDates(entries, arcs);
+  if (dates.length > 0) return paddedSpan(dates, today, false);
+
+  // Nothing passed the reliability bar (common for older/imported history
+  // with low confidence or year-only precision) — fall back to the real
+  // span of everything we have rather than collapsing to the last 45 days,
+  // which silently clipped genuine history off-canvas.
+  const allDates = collectAllDates(entries, arcs);
+  if (allDates.length > 0) return paddedSpan(allDates, today, true);
+
+  const start = new Date(today);
+  start.setDate(start.getDate() - 45);
+  return { start, end: today, spanDays: 45, usedFallback: true };
 }
 
 export function defaultScaleForSpanDays(spanDays: number): TimelineZoomScaleId {

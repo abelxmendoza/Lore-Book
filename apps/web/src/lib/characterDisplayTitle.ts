@@ -75,7 +75,15 @@ export function getCharacterDisplayTitle(
     alias?: string[];
   },
 ): string {
-  const epithet = resolveStoredEpithet((character.metadata ?? {}) as Record<string, unknown>);
+  const meta = character.metadata ?? {};
+  const stored = meta.display_title as CharacterDisplayTitle | undefined;
+  // A user-locked title is an explicit, deliberate choice — it must win outright,
+  // not get silently recomposed with an unrelated fantasy epithet.
+  if (stored?.stability === 'locked' && stored.primaryTitle?.trim()) {
+    return stripPersonNameEpithet(stored.primaryTitle.trim());
+  }
+
+  const epithet = resolveStoredEpithet(meta as Record<string, unknown>);
   // When an epithet is present, prefer the clean Character Book primary name so
   // kinship titles ("Aunt Maribel") aren't reduced to first-name-only.
   const primary = stripPersonNameEpithet(character.name || '').trim();
