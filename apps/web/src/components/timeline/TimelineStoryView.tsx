@@ -1,10 +1,8 @@
 /**
- * TimelineStoryView — arc-by-arc reading experience.
+ * TimelineStoryView — arc-by-arc reading experience (unwired).
  *
- * Left:  life arcs sorted chronologically
- * Right: selected arc header + AI summary + entries in reading order
- *
- * Gravity-ranked chapters live in Narrative Anchors — this view reads arcs in time.
+ * Story reading now lives in Life Saga (`/saga`). Omni Timeline no longer
+ * hosts a Story tab; keep this file for a possible Saga merge later.
  */
 
 import { useState, useMemo, useEffect } from 'react';

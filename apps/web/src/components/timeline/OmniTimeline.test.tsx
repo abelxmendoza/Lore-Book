@@ -119,10 +119,6 @@ vi.mock('./TimelineCalendarView', () => ({
   TimelineCalendarView: () => <div data-testid="timeline-calendar-view">Calendar view</div>,
 }));
 
-vi.mock('./TimelineStoryView', () => ({
-  TimelineStoryView: () => <div data-testid="timeline-story-view">Story view</div>,
-}));
-
 vi.mock('./TimelineGeneratingSimulation', () => ({
   TimelineGeneratingSimulation: ({
     query,
@@ -242,6 +238,34 @@ describe('OmniTimeline layout and navigation', () => {
 
     await user.click(screen.getByRole('tab', { name: /calendar/i }));
     expect(screen.getByTestId('timeline-calendar-view')).toBeInTheDocument();
+  });
+
+  it('does not offer a Story tab — story reading lives in Life Saga', () => {
+    renderOmniTimeline();
+    expect(screen.queryByRole('tab', { name: /^story$/i })).not.toBeInTheDocument();
+    expect(screen.getByTestId('read-in-life-saga')).toBeInTheDocument();
+  });
+
+  it('sends old ?view=story deep links to Life Saga', () => {
+    render(
+      <MemoryRouter initialEntries={['/timeline?view=story']}>
+        <OmniTimeline />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/saga');
+  });
+
+  it('opens Life Saga from the chronology handoff', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/timeline']}>
+        <OmniTimeline />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+    await user.click(screen.getByTestId('read-in-life-saga'));
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/saga');
   });
 
   it('opens calendar from ?view=calendar deep link', () => {

@@ -28,6 +28,8 @@ import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 
 import { TimelineInlineDate } from './TimelineDateDisplay';
 import { TimelineReorderableList } from './TimelineReorderableList';
+import { LifeSagaLink } from './timelineSurfaceHandoff';
+import './TimelineChronology.css';
 
 type TimelineStitchedViewProps = {
   lifeArcId?: string;
@@ -155,7 +157,7 @@ export const TimelineStitchedView = ({
   };
 
   const shell = embedded
-    ? 'h-full flex flex-col min-h-0'
+    ? 'timeline-chronology-root h-full flex flex-col min-h-0'
     : 'fixed inset-0 z-50 flex flex-col bg-black/95 backdrop-blur-md';
 
   const displayError =
@@ -287,21 +289,24 @@ export const TimelineStitchedView = ({
                 : 'text-center flex flex-col items-center mx-auto max-w-xl px-10 sm:px-12',
             ].join(' ')}
           >
-            {!embedded && (
-              <div className="flex items-center justify-center gap-2 text-primary/80 mb-1">
-                <Layers className="h-4 w-4" />
-                <span className="text-[10px] uppercase tracking-widest font-mono">Stitched timeline</span>
-              </div>
-            )}
-            <h2
-              className={`font-semibold text-white ${
-                embedded
-                  ? 'text-base sm:text-lg truncate'
-                  : 'text-lg sm:text-xl text-balance'
-              }`}
-            >
-              {title}
-            </h2>
+            <div className={`flex items-center gap-2 text-primary/80 mb-1 ${embedded ? '' : 'justify-center'}`}>
+              <Layers className="h-4 w-4" />
+              <span className="text-[10px] uppercase tracking-widest font-mono">
+                {embedded && !lifeArcId ? 'Chronology' : 'Stitched timeline'}
+              </span>
+            </div>
+            <div className={`flex flex-wrap items-center gap-2 ${embedded ? '' : 'justify-center'}`}>
+              <h2
+                className={`font-semibold text-white min-w-0 ${
+                  embedded
+                    ? 'text-base sm:text-lg truncate'
+                    : 'text-lg sm:text-xl text-balance'
+                }`}
+              >
+                {embedded && !lifeArcId ? 'What happened, in time' : title}
+              </h2>
+              {embedded && !lifeArcId && <LifeSagaLink compact />}
+            </div>
             <p
               className={`text-[11px] sm:text-xs text-white/40 mt-0.5 ${
                 embedded ? '' : 'text-center'
@@ -309,7 +314,7 @@ export const TimelineStitchedView = ({
             >
               {loading
                 ? 'Loading…'
-                : `${items.length} item${items.length !== 1 ? 's' : ''}${embedded ? '' : ' · moments & events woven together'}`}
+                : `${items.length} moment${items.length !== 1 ? 's' : ''}${embedded ? '' : ' · woven together in time'}`}
               {data?.has_user_order && !loading && ' · custom order saved'}
               {!loading && (data?.excluded_count ?? 0) > 0 && (
                 <span

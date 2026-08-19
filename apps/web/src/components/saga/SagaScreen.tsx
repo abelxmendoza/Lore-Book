@@ -8,6 +8,7 @@ import { buildLifeSagaClipboardText } from '../../lib/sagaClipboard';
 import { Button } from '../ui/button';
 import { ChapterDetailDrawer, type ChapterContext } from './ChapterDetailDrawer';
 import type { SagaOverview, SagaStoryline } from '../../api/saga';
+import { ViewOnTimelineLink } from '../timeline/timelineSurfaceHandoff';
 
 // ─── Mock data ───────────────────────────────────────────────────────────────
 
@@ -307,6 +308,9 @@ export const SagaScreen = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void
               <p className="text-white/40 text-sm mt-1.5 max-w-xs">
                 The storylines, chapters, and turning points that make up your life narrative.
               </p>
+              <div className="mt-3">
+                <ViewOnTimelineLink />
+              </div>
             </div>
 
             <div className="flex items-center gap-2 shrink-0 mt-1">

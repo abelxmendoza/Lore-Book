@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('../../hooks/useIsMobile', () => ({
   useIsMobile: () => false,
@@ -126,6 +127,18 @@ describe('TimelineStitchedView overlay', () => {
     expect(screen.getByText('What changed')).toBeVisible();
     expect(screen.getByText('OrbitPad development progressed.')).toBeVisible();
     expect(screen.getByText('91')).toBeVisible();
+  });
+
+  it('labels the global chronology view in time-order language, not a feed', () => {
+    render(
+      <MemoryRouter>
+        <TimelineStitchedView embedded />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Chronology')).toBeVisible();
+    expect(screen.getByText('What happened, in time')).toBeVisible();
+    expect(screen.getByTestId('read-in-life-saga')).toBeInTheDocument();
   });
 
   it('shows compiler meter and hands off to main chat with chapter context', async () => {

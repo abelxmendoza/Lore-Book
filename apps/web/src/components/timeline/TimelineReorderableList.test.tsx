@@ -136,6 +136,12 @@ describe('TimelineReorderableList', () => {
     expect(props.onSelect).toHaveBeenCalledWith(ITEMS[0]);
   });
 
+  it('renders a year marker on the chronology spine', () => {
+    renderList();
+    expect(screen.getByTestId('timeline-chronology')).toBeInTheDocument();
+    expect(document.querySelector('.timeline-chronology__year-label')).toHaveTextContent('2024');
+  });
+
   it('does not open an item when the click ends a text selection', () => {
     const props = renderList();
     const getSelection = vi
