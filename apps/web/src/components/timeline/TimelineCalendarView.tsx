@@ -29,7 +29,7 @@ import type { Event } from '../events/EventProfileCard';
 import { EventDetailModal } from '../events/EventDetailModal';
 import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 import { TimelineStitchedView } from './TimelineStitchedView';
-import { TimelineDateHeader, TimelineMonthBanner } from './TimelineDateDisplay';
+import { TimelineDateHeader } from './TimelineDateDisplay';
 
 function dayKey(date: Date): string {
   return format(date, 'yyyy-MM-dd');
@@ -308,42 +308,42 @@ export const TimelineCalendarView = ({
   );
 
   return (
-    <div className="timeline-calendar-root h-full flex flex-col min-h-0" data-testid="timeline-calendar-view">
-      <div className="flex-shrink-0 px-3 sm:px-5 py-3 border-b border-white/10 space-y-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0 text-center sm:text-left">
-            <p className="text-[10px] uppercase tracking-widest text-white/35 font-mono mb-1">
+    <div className="timeline-calendar-root h-full flex flex-col min-h-0 overflow-hidden" data-testid="timeline-calendar-view">
+      <div className="timeline-calendar-toolbar flex-shrink-0 px-3 sm:px-4 py-2 border-b border-white/10 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-widest text-white/35 font-mono">
               Calendar{isDemoMode ? ' · Demo' : ''}
             </p>
-            <div className="flex justify-center sm:justify-start">
-              <TimelineMonthBanner label={format(month, 'MMMM yyyy')} sublabel="Month view" />
-            </div>
+            <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight leading-tight truncate">
+              {format(month, 'MMMM yyyy')}
+            </h2>
           </div>
 
-          <div className="flex items-center justify-center gap-1.5 flex-wrap">
+          <div className="flex items-center justify-end gap-1.5 flex-shrink-0">
             <button
               type="button"
               onClick={() => void syncOccasions()}
               disabled={syncing}
               title="Sync occasions from recent lore"
-              className="inline-flex items-center justify-center gap-1.5 h-11 min-w-[44px] px-3 rounded-xl border border-white/10 text-white/65 active:bg-white/5 touch-manipulation disabled:opacity-40"
+              className="inline-flex items-center justify-center gap-1.5 h-9 min-w-[36px] sm:h-10 px-2.5 rounded-xl border border-white/10 text-white/65 active:bg-white/5 touch-manipulation disabled:opacity-40"
             >
               <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-              <span className="text-xs hidden xs:inline sm:inline">Sync</span>
+              <span className="text-xs hidden sm:inline">Sync</span>
             </button>
             <div className="inline-flex items-center rounded-xl border border-white/10 overflow-hidden">
               <button
                 type="button"
                 onClick={() => goMonth(-1)}
                 aria-label="Previous month"
-                className="h-11 w-11 flex items-center justify-center text-white/55 active:bg-white/5 touch-manipulation"
+                className="h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center text-white/55 active:bg-white/5 touch-manipulation"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 onClick={goToday}
-                className="h-11 px-3 text-xs text-white/70 border-x border-white/10 active:bg-white/5 touch-manipulation"
+                className="h-9 sm:h-10 px-2.5 text-xs text-white/70 border-x border-white/10 active:bg-white/5 touch-manipulation"
               >
                 Today
               </button>
@@ -351,7 +351,7 @@ export const TimelineCalendarView = ({
                 type="button"
                 onClick={() => goMonth(1)}
                 aria-label="Next month"
-                className="h-11 w-11 flex items-center justify-center text-white/55 active:bg-white/5 touch-manipulation"
+                className="h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center text-white/55 active:bg-white/5 touch-manipulation"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
@@ -382,11 +382,11 @@ export const TimelineCalendarView = ({
         )}
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] overflow-hidden">
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-2 sm:p-4 lg:p-5">
+      <div className="timeline-calendar-layout">
+        <div className="timeline-calendar-grid-pane">
           {historicalNeighborhood && historicalNeighborhood.tracks.length > 0 && (
             <section
-              className="mb-3 rounded-xl border border-violet-400/20 bg-violet-500/[0.07] px-3 py-2"
+              className="mb-2 shrink-0 rounded-xl border border-violet-400/20 bg-violet-500/[0.07] px-3 py-2"
               aria-label={`Parallel life tracks in ${historicalNeighborhood.label}`}
               data-testid="calendar-historical-neighborhood"
             >
@@ -406,20 +406,21 @@ export const TimelineCalendarView = ({
             </section>
           )}
           <div
-            className="grid grid-cols-7 gap-1 sm:gap-1.5 text-center text-[10px] sm:text-[11px] uppercase font-bold text-primary/80 mb-2 tracking-wider"
+            className="timeline-calendar-weekdays grid grid-cols-7 gap-1 sm:gap-1.5 text-center text-[10px] sm:text-[11px] uppercase font-bold text-primary/80 mb-1.5 tracking-wider shrink-0"
             aria-hidden
           >
             {weekdayLabels.map((d, i) => (
-              <div key={`${d}-${i}`} className="py-1">
+              <div key={`${d}-${i}`} className="py-0.5">
                 {d}
               </div>
             ))}
           </div>
 
           <div
-            className="grid grid-cols-7 gap-1 sm:gap-1.5"
+            className="timeline-calendar-month"
             role="grid"
             aria-label={`${format(month, 'MMMM yyyy')} calendar`}
+            data-testid="calendar-month-grid"
           >
             {days.map((day) => {
               const key = dayKey(day);
@@ -439,7 +440,7 @@ export const TimelineCalendarView = ({
                   aria-selected={isSelected}
                   aria-label={`${format(day, 'EEEE, MMMM d')}${itemCount ? `, ${itemCount} items` : ''}`}
                   onClick={() => selectDay(day)}
-                  className={`min-h-[44px] sm:min-h-[4.75rem] rounded-lg sm:rounded-xl border flex flex-col items-stretch justify-start p-1 sm:p-2 touch-manipulation transition ${
+                  className={`timeline-calendar-day rounded-lg sm:rounded-xl border flex flex-col items-stretch justify-start p-1 sm:p-1.5 touch-manipulation transition overflow-hidden ${
                     isSelected
                       ? 'border-primary/70 bg-primary/20 ring-2 ring-primary/45 shadow-[0_0_16px_rgba(99,102,241,0.35)]'
                       : today
@@ -490,17 +491,14 @@ export const TimelineCalendarView = ({
           </div>
         </div>
 
-        {/* Day detail: side panel on large screens, stacked below on tablet; sheet on phones */}
+        {/* Day detail: side panel when the calendar is wide; stacked below when narrow; sheet on phones */}
         {!isMobile ? (
-          <div
-            className="flex-shrink-0 lg:flex-1 border-t lg:border-t-0 lg:border-l border-white/10 min-h-0 max-h-[42%] lg:max-h-none overflow-y-auto p-3 sm:p-4"
-            data-testid="calendar-day-detail"
-          >
+          <div className="timeline-calendar-detail" data-testid="calendar-day-detail">
             <TimelineDateHeader
               dateKey={format(selected, 'yyyy-MM-dd')}
               weekday={format(selected, 'EEEE')}
               sticky={false}
-              className="mx-0 mb-3 lg:mb-4 rounded-xl overflow-hidden"
+              className="mx-0 mb-2 rounded-xl overflow-hidden"
             />
             {dayDetailContent}
           </div>
