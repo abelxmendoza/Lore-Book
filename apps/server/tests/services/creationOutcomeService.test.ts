@@ -65,4 +65,24 @@ describe('creationOutcomeService', () => {
     expect(classifyCreationMentionDomain('Glass Harbor', story)).toBe('media');
     expect(classifyCreationMentionDomain('Static Rooms', story)).toBe('media');
   });
+
+  it('routes a business/brand suffix name to organization, not person', () => {
+    const story = 'East Los Productions is throwing the show downtown next week.';
+    expect(classifyCreationMentionDomain('East Los Productions', story)).toBe('organization');
+  });
+
+  it('does not misroute an occupation phrase ("show promoter") to event', () => {
+    const story = 'Ink is a show promoter who books the downtown venue.';
+    expect(classifyCreationMentionDomain('Ink', story)).toBeNull();
+  });
+
+  it('skips bare pronoun mentions entirely — no outcome emitted, no classifyForCreation call', async () => {
+    vi.mocked(entityAmbiguityService.extractEntityMentions).mockReturnValue([
+      { text: 'They', start_index: 0, end_index: 4, confidence: 0.6 },
+    ]);
+
+    const outcomes = await collectCreationOutcomesForMessage('user-1', 'They went to the show.');
+    expect(outcomes).toEqual([]);
+    expect(characterRegistry.classifyForCreation).not.toHaveBeenCalled();
+  });
 });

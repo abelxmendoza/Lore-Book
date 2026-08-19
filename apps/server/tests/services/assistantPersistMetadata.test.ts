@@ -6,6 +6,8 @@ describe('buildAssistantPersistMetadata', () => {
   it('includes protocol fields when present', () => {
     const metadata = buildAssistantPersistMetadata({
       sources: [{ id: 'e1' }],
+      citations: [{ text: 'Interview completed', sourceId: 'e1', sourceType: 'event' }],
+      ragStats: { sourceCount: 1, contextItems: 1, retrievalMs: 12, cacheHit: false },
       mentionedEntities: [{ id: 'c1', name: 'Juan', type: 'character' }],
       creationOutcomes: [{ mention: 'Maria', action: 'defer' }],
       creationOutcomeSummary: 'needs clarification on Maria',
@@ -17,6 +19,8 @@ describe('buildAssistantPersistMetadata', () => {
     expect(metadata.creationOutcomeSummary).toBe('needs clarification on Maria');
     expect(metadata.staleProjectionHints).toHaveLength(1);
     expect(metadata.staleProjectionSummary).toBe('life summary outdated');
+    expect(metadata.citations).toHaveLength(1);
+    expect(metadata.ragStats).toMatchObject({ sourceCount: 1, contextItems: 1 });
   });
 
   it('omits empty protocol fields', () => {

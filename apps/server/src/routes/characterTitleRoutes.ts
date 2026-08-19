@@ -74,6 +74,21 @@ router.post('/aliases', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
+router.delete('/aliases/:aliasId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const result = await characterTitleService.removeAlias(
+      req.user!.id,
+      req.params.id as string,
+      decodeURIComponent(req.params.aliasId as string),
+    );
+    if (!result) return res.status(404).json({ error: 'Character not found' });
+    return res.json({ displayTitle: result });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Could not remove alias';
+    return res.status(422).json({ error: msg });
+  }
+});
+
 router.post('/aliases/:aliasId/promote', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const result = await characterTitleService.promoteAlias(

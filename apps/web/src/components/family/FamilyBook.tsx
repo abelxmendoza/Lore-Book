@@ -94,7 +94,7 @@ export function FamilyBook() {
       if (ensured.character) {
         setSelectedCharacter(ensured.character);
         if (ensured.created) {
-          dispatchStoryDataUpdated({ scopes: ['family'] });
+          dispatchStoryDataUpdated({ scopes: ['family', 'characters'] });
           void load();
         }
       } else {
@@ -107,7 +107,7 @@ export function FamilyBook() {
 
   // ── Manual tree edits (real accounts only) ─────────────────────────────────
   const refreshFamily = useCallback(() => {
-    dispatchStoryDataUpdated({ scopes: ['family'] });
+    dispatchStoryDataUpdated({ scopes: ['family', 'characters'] });
     void load();
   }, [load]);
 

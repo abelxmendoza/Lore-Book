@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
+import { unionThreadMetaLabels } from '../actors/entityLabelPollution';
 import {
   isSummaryStale,
   deriveDeterministicSummaries,
   parseSummaryResponse,
   buildIncrementalInput,
   scrubSummaryEntityClauses,
+  removeUnsupportedSummaryClaims,
+  isHighSignalLifeUpdate,
   STALENESS_THRESHOLD,
 } from './threadSummaryService';
 import {
@@ -41,6 +44,26 @@ describe('threadSummaryService — staleness', () => {
   it('becomes stale at the threshold', () => {
     const meta = withSummary({ message_count: 10 + STALENESS_THRESHOLD });
     expect(isSummaryStale(meta)).toBe(true);
+  });
+
+  it('recognizes one dense state-changing life update without waiting for four turns', () => {
+    expect(isHighSignalLifeUpdate({
+      role: 'user',
+      content: 'I completed an interview with Vanguard Robotics and was rejected afterward. I am still interviewing for an autonomy role, and right now I am focused on the next interview and my job search.'.repeat(2),
+    })).toBe(true);
+  });
+});
+
+describe('threadSummaryService — evidence boundary', () => {
+  it('removes an invented marital claim while preserving supported career updates', () => {
+    const source = 'I completed an interview and was rejected. I am unemployed and still looking for work.';
+    const summary = removeUnsupportedSummaryClaims(
+      'The user completed an interview and is unemployed. There is uncertainty in their marital situation.',
+      source,
+    );
+    expect(summary).toContain('interview');
+    expect(summary).toContain('unemployed');
+    expect(summary).not.toContain('marital');
   });
 });
 
@@ -95,6 +118,15 @@ describe('scrubSummaryEntityClauses', () => {
       ["Abuela's house"],
     );
     expect(scrubbed).toBe("People: Jamie. Places: Abuela's house.");
+  });
+
+  it('repairs sentence bleed and removes ontology pollution from entity clauses', () => {
+    const scrubbed = scrubSummaryEntityClauses(
+      'A complicated social and creative transition. People: Yuli. She, Elvis, Computer Science majors. Places: Computer Science.',
+      unionThreadMetaLabels(['Yuli. She', 'Elvis', 'Computer Science majors'], undefined, { kind: 'people' }),
+      unionThreadMetaLabels(['Computer Science'], undefined, { kind: 'places' }),
+    );
+    expect(scrubbed).toBe('A complicated social and creative transition. People: Yuli, Elvis.');
   });
 
   it('drops leftover person fragments after the first People period', () => {

@@ -7,6 +7,7 @@ import {
   Heart,
   Layers,
   Loader2,
+  Pencil,
   Plus,
   RotateCcw,
   Sparkles,
@@ -28,31 +29,65 @@ import {
   type CharacterLoreItem,
   type CharacterPersonAssociation,
 } from '../../api/characterLoreProfile';
+import { relationshipTypeSpecificity } from '../../lib/dedupeCharacterRelationships';
+import {
+  RELATIONSHIP_TO_YOU_OPTIONS,
+  relationshipToYouLabel,
+} from '../../lib/relationshipToYou';
 import type { Character } from './CharacterProfileCard';
 
-export const WORLD_RELATIONSHIP_TYPE_OPTIONS = [
-  { value: 'friend', label: 'Friend' },
-  { value: 'close_friend', label: 'Close friend' },
-  { value: 'best_friend', label: 'Best friend' },
-  { value: 'acquaintance', label: 'Acquaintance' },
-  { value: 'family', label: 'Family' },
-  { value: 'sibling', label: 'Sibling' },
-  { value: 'cousin', label: 'Cousin' },
-  { value: 'parent', label: 'Parent' },
-  { value: 'child', label: 'Child' },
-  { value: 'coworker', label: 'Coworker' },
-  { value: 'mentor', label: 'Mentor' },
-  { value: 'bandmate', label: 'Bandmate' },
-  { value: 'scene_friend', label: 'Scene friend' },
-  { value: 'collaborator', label: 'Collaborator' },
-  { value: 'rival', label: 'Rival' },
-  { value: 'enemy', label: 'Enemy' },
-  { value: 'romantic', label: 'Romantic' },
-  { value: 'crush', label: 'Crush' },
-  { value: 'dating', label: 'Dating' },
-  { value: 'situationship', label: 'Situationship' },
-  { value: 'ex_lover', label: 'Ex-lover' },
-] as const;
+const WORLD_RELATIONSHIP_GROUPS: Array<{ label: string; values: string[] }> = [
+  {
+    label: 'Family',
+    values: [
+      'mother', 'father', 'parent', 'son', 'daughter', 'child',
+      'grandmother', 'grandfather', 'grandson', 'granddaughter', 'grandchild',
+      'aunt', 'uncle', 'niece', 'nephew', 'sibling', 'cousin', 'spouse', 'family',
+    ],
+  },
+  {
+    label: 'Friends',
+    values: ['best_friend', 'close_friend', 'friend', 'acquaintance'],
+  },
+  {
+    label: 'Work & scene',
+    values: ['coworker', 'mentor', 'bandmate', 'collaborator', 'scene_friend'],
+  },
+  {
+    label: 'Dating',
+    values: ['partner', 'girlfriend', 'boyfriend', 'dating', 'crush', 'situationship', 'ex_lover'],
+  },
+  {
+    label: 'Conflict',
+    values: ['rival', 'enemy'],
+  },
+];
+
+const WORLD_RELATIONSHIP_TYPE_LABELS: Record<string, string> = {
+  ...Object.fromEntries(RELATIONSHIP_TO_YOU_OPTIONS.map((option) => [option.value, option.label])),
+  scene_friend: 'Scene friend',
+  ex_lover: 'Ex',
+};
+
+export const WORLD_RELATIONSHIP_TYPE_OPTIONS = WORLD_RELATIONSHIP_GROUPS.flatMap((group) =>
+  group.values.map((value) => ({
+    value,
+    label: WORLD_RELATIONSHIP_TYPE_LABELS[value] ?? relationshipToYouLabel(value),
+  })),
+);
+
+function worldTypeLabel(value: string): string {
+  return WORLD_RELATIONSHIP_TYPE_LABELS[value] ?? relationshipToYouLabel(value);
+}
+
+function selectOptionsForType(current?: string) {
+  const known = new Set(WORLD_RELATIONSHIP_TYPE_OPTIONS.map((option) => option.value));
+  const extra =
+    current && !known.has(current)
+      ? [{ value: current, label: worldTypeLabel(current) }]
+      : [];
+  return { groups: WORLD_RELATIONSHIP_GROUPS, extra };
+}
 
 const WORLD_RELATIONSHIP_STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
@@ -87,6 +122,8 @@ type EditablePerson = {
   editable: boolean;
 };
 
+type LoreProfileSection = 'skills' | 'groups' | 'people' | 'snippets';
+
 type Props = {
   profile: CharacterLoreProfile | null;
   loading: boolean;
@@ -98,6 +135,8 @@ type Props = {
   onAddPerson?: (targetCharacterId: string, relationshipType: string, status: string) => Promise<void>;
   onUpdatePerson?: (relationshipId: string, patch: { relationship_type?: string; status?: string }) => Promise<void>;
   onDeletePerson?: (relationshipId: string) => Promise<void>;
+  /** Which blocks to render. Defaults to the full Info lore stack. */
+  sections?: LoreProfileSection[];
 };
 
 function stanceHint(stance?: string): string | null {
@@ -224,14 +263,15 @@ export function CharacterLoreProfileSection({
   onAddPerson,
   onUpdatePerson,
   onDeletePerson,
+  sections = ['skills', 'groups', 'people', 'snippets'],
 }: Props) {
   const [addOpen, setAddOpen] = useState(false);
   const [characterOptions, setCharacterOptions] = useState<Character[]>([]);
   const [charactersLoading, setCharactersLoading] = useState(false);
   const [selectedCharacterId, setSelectedCharacterId] = useState('');
   const [selectedType, setSelectedType] = useState('friend');
-  const [selectedStatus, setSelectedStatus] = useState('active');
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [editingPersonKey, setEditingPersonKey] = useState<string | null>(null);
   // Characters removed this session — kept out of the list so a deleted person
   // doesn't reappear from the lore-derived side (state stays consistent until the
   // next reload, when the server no longer surfaces them).
@@ -247,6 +287,10 @@ export function CharacterLoreProfileSection({
   const [repairNotice, setRepairNotice] = useState<string | null>(null);
   const [editorError, setEditorError] = useState<string | null>(null);
   const [learnNotice, setLearnNotice] = useState<string | null>(null);
+  const showSkills = sections.includes('skills');
+  const showGroups = sections.includes('groups');
+  const showPeople = sections.includes('people');
+  const showSnippets = sections.includes('snippets');
 
   const dismissLoreItem = async (item: CharacterLoreItem) => {
     setDismissingLoreId(item.id);
@@ -332,12 +376,6 @@ export function CharacterLoreProfileSection({
 
   const mergedPeople = useMemo<EditablePerson[]>(() => {
     const byKey = new Map<string, EditablePerson>();
-    const specificity = (type: string) => {
-      const t = type.toLowerCase().replace(/[\s-]+/g, '_');
-      if (t === 'family' || t === 'related_to' || t === 'related' || t === 'story_association') return 1;
-      if (/^(cousin|parent|child|aunt|uncle|sibling|spouse|niece|nephew|grand)/.test(t)) return 10;
-      return 4;
-    };
 
     for (const rel of relationships) {
       if (!rel.character_id || rel.character_name === 'You') continue;
@@ -355,10 +393,10 @@ export function CharacterLoreProfileSection({
         editable: Boolean(rel.id),
       };
       const prev = byKey.get(key);
-      if (!prev || specificity(next.relationshipType) > specificity(prev.relationshipType)) {
+      if (!prev || relationshipTypeSpecificity(next.relationshipType) > relationshipTypeSpecificity(prev.relationshipType)) {
         byKey.set(key, next);
       } else if (
-        specificity(next.relationshipType) === specificity(prev.relationshipType) &&
+        relationshipTypeSpecificity(next.relationshipType) === relationshipTypeSpecificity(prev.relationshipType) &&
         (next.closenessScore ?? 0) > (prev.closenessScore ?? 0)
       ) {
         byKey.set(key, next);
@@ -381,9 +419,13 @@ export function CharacterLoreProfileSection({
       });
     }
 
-    return Array.from(byKey.values()).filter(
-      (person) => !person.characterId || !dismissedCharacterIds.has(person.characterId),
-    );
+    return Array.from(byKey.values())
+      .filter((person) => !person.characterId || !dismissedCharacterIds.has(person.characterId))
+      .sort((a, b) => {
+        const spec = relationshipTypeSpecificity(b.relationshipType) - relationshipTypeSpecificity(a.relationshipType);
+        if (spec !== 0) return spec;
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      });
   }, [profile?.people, relationships, dismissedCharacterIds]);
 
   const existingCharacterIds = new Set(
@@ -420,10 +462,9 @@ export function CharacterLoreProfileSection({
     setSavingKey('add');
     setEditorError(null);
     try {
-      await onAddPerson(selectedCharacterId, selectedType, selectedStatus);
+      await onAddPerson(selectedCharacterId, selectedType, 'active');
       setSelectedCharacterId('');
       setSelectedType('friend');
-      setSelectedStatus('active');
       setAddOpen(false);
     } catch (error) {
       console.error('Failed to add world person:', error);
@@ -434,8 +475,7 @@ export function CharacterLoreProfileSection({
   };
 
   // Convert an auto-detected (lore-derived) person into a real, managed
-  // relationship — the easy way to add an existing character you already see
-  // listed. Once linked they gain the type/status editors and a delete button.
+  // relationship. Labels stay auto-filled; Change is there if you need it.
   const linkPerson = async (characterId: string, relationshipType: string) => {
     if (!onAddPerson) return;
     setSavingKey(`link-${characterId}`);
@@ -467,8 +507,10 @@ export function CharacterLoreProfileSection({
     }
   };
 
-  const deletePerson = async (relationshipId: string, characterId?: string) => {
+  const deletePerson = async (relationshipId: string, characterId?: string, personName?: string) => {
     if (!onDeletePerson) return;
+    const who = personName ?? 'this person';
+    if (!window.confirm(`Remove the connection with ${who}? Their character card stays in your book.`)) return;
     setSavingKey(`${relationshipId}-delete`);
     setEditorError(null);
     try {
@@ -486,7 +528,7 @@ export function CharacterLoreProfileSection({
   if (loading) {
     return (
       <section className="rounded-xl border border-white/10 bg-white/[0.02] p-4 text-xs text-white/40">
-        Loading skills, interests, and connections…
+        {showPeople && !showSkills ? 'Loading connections…' : 'Loading skills, interests, and connections…'}
       </section>
     );
   }
@@ -532,7 +574,7 @@ export function CharacterLoreProfileSection({
 
   return (
     <div className="space-y-4">
-      {displayProfile.mentionOnly && (
+      {showSkills && displayProfile.mentionOnly && (
         <div className="rounded-xl border border-amber-500/25 bg-amber-950/20 px-3 py-2.5 flex items-start gap-2 text-xs text-amber-100/90">
           <UserX className="h-4 w-4 shrink-0 mt-0.5" />
           <p>
@@ -545,6 +587,7 @@ export function CharacterLoreProfileSection({
         <p className="text-[11px] text-red-300" role="alert">{editorError}</p>
       )}
 
+      {showSkills && (
       <div className="grid sm:grid-cols-2 gap-3">
         <section className="rounded-xl border border-indigo-500/20 bg-indigo-950/15 p-3.5">
           <h3 className="text-xs font-bold text-indigo-200/90 flex items-center gap-1.5 mb-2">
@@ -668,7 +711,9 @@ export function CharacterLoreProfileSection({
           )}
         </section>
       </div>
+      )}
 
+      {showGroups && (
       <section className="rounded-xl border border-teal-500/20 bg-teal-950/15 p-3.5">
         <h3 className="text-xs font-bold text-teal-200/90 flex items-center gap-1.5 mb-2">
           <Briefcase className="h-3.5 w-3.5" /> Groups & affiliations
@@ -696,11 +741,16 @@ export function CharacterLoreProfileSection({
           </div>
         )}
       </section>
+      )}
 
+      {showPeople && (
       <section>
         <div className="flex items-center justify-between gap-2 mb-2">
           <h3 className="text-[11px] font-semibold uppercase tracking-widest text-white/40 flex items-center gap-1.5">
             <Users className="h-3.5 w-3.5" /> People in their world
+            {mergedPeople.length > 0 && (
+              <span className="normal-case tracking-normal text-white/30">({mergedPeople.length})</span>
+            )}
           </h3>
           {onAddPerson && (
             <Button
@@ -708,6 +758,7 @@ export function CharacterLoreProfileSection({
               size="sm"
               variant="outline"
               onClick={toggleAdd}
+              data-testid="add-connection-toggle"
               className="h-7 px-2 text-[11px] border-white/15 bg-white/[0.03] text-white/70 hover:bg-white/10"
             >
               <Plus className="h-3.5 w-3.5 mr-1" />
@@ -717,11 +768,12 @@ export function CharacterLoreProfileSection({
         </div>
         {addOpen && (
           <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 mb-2 space-y-2">
-            <div className="grid sm:grid-cols-[1fr_150px_130px_auto] gap-2">
+            <div className="grid sm:grid-cols-[1fr_150px_auto] gap-2">
               <select
                 value={selectedCharacterId}
                 onChange={(event) => setSelectedCharacterId(event.target.value)}
                 disabled={charactersLoading}
+                aria-label="Existing character"
                 className="h-9 rounded-md border border-white/10 bg-black/50 px-2 text-xs text-white"
               >
                 <option value="">Choose existing character</option>
@@ -734,17 +786,12 @@ export function CharacterLoreProfileSection({
                 onChange={(event) => setSelectedType(event.target.value)}
                 className="h-9 rounded-md border border-white/10 bg-black/50 px-2 text-xs text-white"
               >
-                {WORLD_RELATIONSHIP_TYPE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-              <select
-                value={selectedStatus}
-                onChange={(event) => setSelectedStatus(event.target.value)}
-                className="h-9 rounded-md border border-white/10 bg-black/50 px-2 text-xs text-white"
-              >
-                {WORLD_RELATIONSHIP_STATUS_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
+                {WORLD_RELATIONSHIP_GROUPS.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.values.map((value) => (
+                      <option key={value} value={value}>{worldTypeLabel(value)}</option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
               <Button
@@ -752,6 +799,7 @@ export function CharacterLoreProfileSection({
                 size="sm"
                 onClick={addPerson}
                 disabled={!selectedCharacterId || savingKey === 'add' || charactersLoading}
+                data-testid="add-connection-submit"
                 className="h-9 text-xs"
               >
                 {savingKey === 'add' || charactersLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Add'}
@@ -770,9 +818,10 @@ export function CharacterLoreProfileSection({
           />
         ) : (
           <div className="grid sm:grid-cols-2 gap-2">
-            {mergedPeople.slice(0, 10).map((person) => {
+            {mergedPeople.map((person) => {
               const badge = associationBadge(person.associationKind);
               const clickable = person.characterId && onOpenCharacter;
+              const typeOptions = selectOptionsForType(person.relationshipType);
               return (
                 <div
                   key={person.key}
@@ -793,7 +842,7 @@ export function CharacterLoreProfileSection({
                       {badge.label}
                     </Badge>
                   </div>
-                  {person.editable && person.relationshipId ? (
+                  {person.editable && person.relationshipId && editingPersonKey === person.key ? (
                     <div className="grid grid-cols-[1fr_1fr_auto] gap-1.5 items-center">
                       <select
                         value={person.relationshipType}
@@ -801,7 +850,14 @@ export function CharacterLoreProfileSection({
                         disabled={savingKey?.startsWith(person.relationshipId)}
                         className="h-7 min-w-0 rounded-md border border-white/10 bg-black/50 px-1.5 text-[10px] text-white capitalize"
                       >
-                        {WORLD_RELATIONSHIP_TYPE_OPTIONS.map((option) => (
+                        {typeOptions.groups.map((group) => (
+                          <optgroup key={group.label} label={group.label}>
+                            {group.values.map((value) => (
+                              <option key={value} value={value}>{worldTypeLabel(value)}</option>
+                            ))}
+                          </optgroup>
+                        ))}
+                        {typeOptions.extra.map((option) => (
                           <option key={option.value} value={option.value}>{option.label}</option>
                         ))}
                       </select>
@@ -817,37 +873,62 @@ export function CharacterLoreProfileSection({
                       </select>
                       <button
                         type="button"
-                        onClick={() => deletePerson(person.relationshipId!, person.characterId ?? undefined)}
-                        disabled={savingKey === `${person.relationshipId}-delete`}
-                        className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-red-500/20 text-red-300/80 hover:bg-red-500/10 disabled:opacity-50"
-                        aria-label={`Remove ${person.name}`}
+                        onClick={() => setEditingPersonKey(null)}
+                        className="h-7 px-1.5 text-[10px] text-white/50 hover:text-white"
                       >
-                        {savingKey === `${person.relationshipId}-delete`
-                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          : <Trash2 className="h-3.5 w-3.5" />}
+                        Done
                       </button>
                     </div>
                   ) : (
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-[10px] text-white/45 capitalize truncate">
-                        {person.relationshipType.replace(/_/g, ' ')}
+                        {worldTypeLabel(person.relationshipType)}
                         {person.domain ? ` · ${person.domain}` : ''}
+                        {person.status && !['active', 'confirmed'].includes(person.status)
+                          ? ` · ${person.status.replace(/_/g, ' ')}`
+                          : ''}
                       </p>
-                      {person.characterId && onAddPerson && (
-                        <button
-                          type="button"
-                          onClick={() => linkPerson(person.characterId!, person.relationshipType)}
-                          disabled={savingKey === `link-${person.characterId}`}
-                          className="shrink-0 inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary/90 hover:bg-primary/20 disabled:opacity-50"
-                          title={`Add ${person.name} as a managed relationship`}
-                          aria-label={`Add ${person.name} as a relationship`}
-                        >
-                          {savingKey === `link-${person.characterId}`
-                            ? <Loader2 className="h-3 w-3 animate-spin" />
-                            : <Plus className="h-3 w-3" />}
-                          Add
-                        </button>
-                      )}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {person.editable && person.relationshipId && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setEditingPersonKey(person.key)}
+                              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-medium text-white/45 hover:bg-white/10 hover:text-white/80"
+                              aria-label={`Change how ${person.name} relates`}
+                            >
+                              <Pencil className="h-3 w-3" />
+                              Change
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deletePerson(person.relationshipId!, person.characterId ?? undefined, person.name)}
+                              disabled={savingKey === `${person.relationshipId}-delete`}
+                              className="h-6 w-6 inline-flex items-center justify-center rounded-md text-white/30 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
+                              aria-label={`Remove connection with ${person.name}`}
+                            >
+                              {savingKey === `${person.relationshipId}-delete`
+                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                : <Trash2 className="h-3.5 w-3.5" />}
+                            </button>
+                          </>
+                        )}
+                        {!person.editable && person.characterId && onAddPerson && (
+                          <button
+                            type="button"
+                            onClick={() => linkPerson(person.characterId!, person.relationshipType)}
+                            disabled={savingKey === `link-${person.characterId}`}
+                            className="shrink-0 inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary/90 hover:bg-primary/20 disabled:opacity-50"
+                            title={`Add ${person.name} as a managed relationship`}
+                            aria-label={`Add ${person.name} as a relationship`}
+                          >
+                            {savingKey === `link-${person.characterId}`
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : <Plus className="h-3 w-3" />}
+                            Add
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
                   {person.summary && (
@@ -859,8 +940,9 @@ export function CharacterLoreProfileSection({
           </div>
         )}
       </section>
+      )}
 
-      {displayProfile.loreSnippets.length > 0 && (
+      {showSnippets && displayProfile.loreSnippets.length > 0 && (
         <section className="rounded-xl border border-white/10 bg-white/[0.02] p-3.5">
           <h3 className="text-xs font-bold text-white/70 flex items-center gap-1.5 mb-2">
             <Layers className="h-3.5 w-3.5" /> Other lore

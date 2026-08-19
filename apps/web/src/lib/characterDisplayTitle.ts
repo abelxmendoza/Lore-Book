@@ -38,7 +38,7 @@ function baseIdentityTitle(
 ): string {
   const meta = character.metadata ?? {};
   const stored = meta.display_title as CharacterDisplayTitle | undefined;
-  if (stored?.primaryTitle?.trim()) {
+  if (stored?.primaryTitle?.trim() && storedTitleStillValid(stored, character)) {
     return stripPersonNameEpithet(stored.primaryTitle.trim());
   }
 
@@ -127,10 +127,28 @@ export function getTitleStabilityLabel(character: Pick<Character, 'metadata'>): 
   return STABILITY_LABEL[getTitleStability(character)];
 }
 
+function storedTitleStillValid(
+  stored: CharacterDisplayTitle,
+  character: Pick<Character, 'alias' | 'metadata'>,
+): boolean {
+  if (stored.stability === 'locked') return true;
+  const title = stored.primaryTitle.trim();
+  const nicknameMatch = title.match(/^(.+?)\s+\((.+)\)$/);
+  if (!nicknameMatch) return true;
+  const nick = nicknameMatch[1].trim();
+  const aliases = getCharacterAliases(character);
+  return aliases.some((alias) => alias.toLowerCase() === nick.toLowerCase());
+}
+
 export function getCharacterAliases(character: Pick<Character, 'metadata' | 'alias'>): string[] {
   const meta = character.metadata ?? {};
   const stored = meta.display_title as CharacterDisplayTitle | undefined;
   const fromTitle = stored?.aliases?.map((a) => a.value) ?? [];
   const legacy = character.alias ?? [];
+  // The alias column is the curated list. Don't resurrect nicknames the user
+  // already removed from the card just because display_title metadata is stale.
+  if (Array.isArray(character.alias)) {
+    return [...new Set(legacy.filter(Boolean))];
+  }
   return [...new Set([...fromTitle, ...legacy].filter(Boolean))];
 }

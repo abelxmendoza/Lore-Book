@@ -8,7 +8,10 @@ export function isDemoBookId(bookId: string): boolean {
 }
 
 export function isLorebookLibraryRoute(pathname: string): boolean {
-  const path = pathname.split('?')[0].split('#')[0];
+  const rawPath = pathname.split('?')[0].split('#')[0];
+  const path = rawPath.startsWith('/demo/')
+    ? rawPath.slice('/demo'.length)
+    : rawPath;
   return path === LOREBOOK_LIBRARY_PATH || path === LOREBOOK_LIBRARY_LEGACY_PATH;
 }
 

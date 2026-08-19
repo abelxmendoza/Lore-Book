@@ -6,7 +6,7 @@
  * types, work roles); names and identities always come from the user's graph.
  */
 import type { AnchorBuildContext, EntityGravityInput } from './narrativeAnchorTypes';
-import type { SalienceCategory } from './narrativeCognitionTypes';
+import type { PersonActivityComparison, SalienceCategory } from './narrativeCognitionTypes';
 
 const FAMILY_RE =
   /\b(mom|mother|dad|father|grandm(?:a|other)|grandpa|grandfather|abuel[oa]|brother|sister|sibling|cousin|aunt|uncle|t[ií][oa]s?|nephew|niece|household|family)\b/i;
@@ -27,6 +27,7 @@ export type PersonSalienceInput = {
   daysSinceLastSeen: number | null;
   /** A romantic bond that ended but may still carry emotional weight. */
   hasEndedBond: boolean;
+  activityComparison?: PersonActivityComparison;
 };
 
 function corpusFor(entity: EntityGravityInput, ctx: AnchorBuildContext): string {
@@ -73,6 +74,7 @@ export function buildSalienceInputs(
   ctx: AnchorBuildContext,
   recencyByEntity: Map<string, string>,
   now: string,
+  activityByEntity: Map<string, PersonActivityComparison> = new Map(),
 ): PersonSalienceInput[] {
   return ctx.entities
     .filter((entity) => entity.entityType === 'character')
@@ -83,6 +85,7 @@ export function buildSalienceInputs(
         category: classifyPersonCategory(entity, ctx),
         daysSinceLastSeen: daysBetween(recencyByEntity.get(entity.entityId), now),
         hasEndedBond: ENDED_BOND_RE.test(corpus),
+        activityComparison: activityByEntity.get(entity.entityId),
       };
     });
 }

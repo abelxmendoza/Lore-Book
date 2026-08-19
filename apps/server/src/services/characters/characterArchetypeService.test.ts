@@ -43,4 +43,21 @@ describe('characterArchetypeService', () => {
     expect(inference.archetype).toBe('unrequited_crush');
     expect(inference.reason).toMatch(/one-sided crush|overpursuit/i);
   });
+
+  it('does not treat a generic family stamp as kinship without a title or role', () => {
+    const inference = inferCharacterArchetype({
+      name: 'Alex',
+      summary: '',
+      metadata: { relationship_type: 'family', categories: ['family'] },
+    });
+    expect(inference.archetype).not.toBe('family');
+  });
+
+  it('still infers family from a kinship title on the name', () => {
+    const inference = inferCharacterArchetype({
+      name: 'Tía Maya',
+      metadata: { relationship_type: 'family' },
+    });
+    expect(inference.archetype).toBe('family');
+  });
 });

@@ -11,6 +11,12 @@ import {
   hierarchyIcon,
   domainLabel,
 } from '../services/relationships/relationshipRoleInferenceService';
+import {
+  characterConnectionService,
+  parseStoryAssociationId,
+} from '../services/characterConnectionService';
+import { syncCharacterLinkGraph } from '../services/kinship/characterLinkGraphSync';
+import { relationshipTypeForViewer } from '../services/relationships/relatedPersonType';
 
 const router = Router();
 
@@ -133,7 +139,10 @@ function relationshipResponse(
     id: relationship.id,
     character_id: relatedCharacterId,
     character_name: characterNameById.get(relatedCharacterId) ?? 'Unknown',
-    relationship_type: relationship.relationship_type,
+    relationship_type: relationshipTypeForViewer(
+      String(relationship.relationship_type ?? ''),
+      relationship.source_character_id === perspectiveCharacterId,
+    ),
     closeness_score: relationship.closeness_score,
     summary: relationship.summary,
     status: relationship.status,
@@ -325,6 +334,14 @@ router.post(
 
     if (error) throw error;
 
+    await syncCharacterLinkGraph({
+      userId,
+      fromCharacterId: input.source_character_id,
+      toCharacterId: input.target_character_id,
+      surfaceType: input.relationship_type,
+      status: input.status,
+    }).catch(() => undefined);
+
     await syncRomanticRelationshipForCharacterLink({
       userId,
       relationship,
@@ -389,6 +406,16 @@ router.patch(
 
     if (error) throw error;
 
+    if (patch.relationship_type) {
+      await syncCharacterLinkGraph({
+        userId,
+        fromCharacterId: existing.source_character_id,
+        toCharacterId: existing.target_character_id,
+        surfaceType: patch.relationship_type,
+        status: relationship.status,
+      }).catch(() => undefined);
+    }
+
     await syncRomanticRelationshipForCharacterLink({
       userId,
       relationship,
@@ -411,7 +438,19 @@ router.delete(
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
-    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const rawId = String(req.params.id ?? '');
+    const storyAssociation = parseStoryAssociationId(rawId);
+    if (storyAssociation) {
+      const dismissed = await characterConnectionService.dismissAssociation(
+        userId,
+        storyAssociation.sourceId,
+        storyAssociation.targetId,
+      );
+      if (!dismissed) return res.status(404).json({ error: 'Relationship not found' });
+      return res.json({ success: true });
+    }
+
+    const { id } = z.object({ id: z.string().uuid() }).parse({ id: rawId });
 
     const { data: existing, error: existingError } = await supabaseAdmin
       .from('character_relationships')

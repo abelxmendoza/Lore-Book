@@ -9,6 +9,7 @@ import { memoryGraphService } from '../memoryGraphService';
 import type { ChatSource } from '../omegaChatService';
 import { orchestratorService } from '../orchestratorService';
 import { ragPacketCacheService } from '../ragPacketCacheService';
+import { formatSelfRomanticIdentityLines } from '../identity/selfRomanticIdentity';
 import { supabaseAdmin } from '../supabaseClient';
 
 import {
@@ -35,6 +36,12 @@ import {
   type WorkingMemoryAssembly,
   type WorkingMemoryItem,
 } from './workingMemoryAssembler';
+
+export type RagFocus = {
+  id: string;
+  name: string;
+  type: 'character' | 'location' | 'organization' | string;
+};
 
 // ─── Fitness keyword gate ────────────────────────────────────────────────────
 const FITNESS_RE = /\b(workout|exercise|gym|ran|run|lifted|bench|squat|deadlift|calories|weight|lbs|kg|miles|steps|cardio|biometric|body fat|muscle)\b/i;
@@ -65,12 +72,22 @@ export async function buildRAGPacket(
   extractDatesAndTimes?: (msg: string) => Promise<Array<{ date: string; context: string; precision: string; confidence: number }>>,
   scopePlan?: import('../responseScope').ResponseScopePlan,
   currentMessageId?: string,
+  focus?: RagFocus | null,
 ) {
   // Full-packet cache hit — skip everything
   // Retellings deliberately bypass the message-text cache: an identical new
   // telling changes the evidence set even when the text is unchanged.
   const retellingRecall = isRetellingRecallMessage(message);
-  const cached = retellingRecall ? null : ragPacketCacheService.getCachedPacket(userId, message);
+  const cacheContextKey = [
+    currentContext?.kind ?? 'none',
+    currentContext?.threadId ?? '',
+    currentContext?.timelineNodeId ?? '',
+    focus?.type ?? '',
+    focus?.id ?? '',
+  ].join(':');
+  const cached = retellingRecall
+    ? null
+    : ragPacketCacheService.getCachedPacket(userId, message, cacheContextKey);
   if (cached) return cached;
 
   // ── Orchestrator summary ─────────────────────────────────────────────────
@@ -265,6 +282,9 @@ export async function buildRAGPacket(
         userId,
         question: message,
         threadId: (currentContext as { threadId?: string } | undefined)?.threadId,
+        focus: focus
+          ? { id: focus.id, name: focus.name, type: focus.type }
+          : undefined,
       });
       const { planResponseScope, applyScopePlanToAssembly } = await import('../responseScope');
       workingMemory = applyScopePlanToAssembly(
@@ -390,7 +410,7 @@ export async function buildRAGPacket(
     const retrievalPath = chooseRetrievalPath({
       hasWorkingMemory: Boolean(workingMemory && workingMemory.budget.selected > 0),
       contextKind: currentContext?.kind,
-      entityQuery: isEntityQuery(message),
+      entityQuery: Boolean(focus) || isEntityQuery(message),
     });
     retrievalPaths.push(retrievalPath);
 
@@ -418,7 +438,9 @@ export async function buildRAGPacket(
 
     } else if (retrievalPath === 'entity_arc_fallback') {
       // Entity-scoped retrieval path
-      const mentionedEntities = detectMentionedEntities(message, allCharacters, allLocations);
+      const mentionedEntities = focus && (focus.type === 'character' || focus.type === 'location')
+        ? [{ id: focus.id, type: focus.type, name: focus.name, matchScore: 1 } as const]
+        : detectMentionedEntities(message, allCharacters, allLocations);
       let arcLoadedForPrimary = false;
 
       if (mentionedEntities.length > 0) {
@@ -859,7 +881,17 @@ export async function buildRAGPacket(
     allCharacters, allLocations, allChapters, timelineHierarchy, allPeoplePlaces,
     characterAttributesMap: Object.fromEntries(characterAttributesMap),
     characterMemoriesMap,
-    romanticRelationships, romanticContext, corrections, deprecatedUnits,
+    romanticRelationships,
+    selfRomanticIdentity: (() => {
+      const selfChar = (allCharacters as Array<{ metadata?: Record<string, unknown> | null }> | undefined)?.find((row) => {
+        const meta = row.metadata ?? {};
+        return meta.is_self === true || meta.is_user === true;
+      });
+      if (!selfChar?.metadata) return null;
+      const lines = formatSelfRomanticIdentityLines(selfChar.metadata);
+      return lines.length ? { lines } : null;
+    })(),
+    romanticContext, corrections, deprecatedUnits,
     workoutEvents, recentBiometrics, topInterests,
     recentInterpretations, stableArcs, episodicEvents, socialCommunities,
     crystallizedKnowledge,
@@ -884,6 +916,14 @@ export async function buildRAGPacket(
     workingMemoryPacket,
     retrievalTrace: {
       paths: retrievalPaths,
+      focus: focus
+        ? {
+            id: focus.id,
+            name: focus.name,
+            type: focus.type,
+            resolution: 'authoritative_navigation_focus',
+          }
+        : null,
       promptSections: [
         foundationRecallBlock ? 'working_memory' : null,
         retellingRecallBlock ? 'retelling_recall' : null,
@@ -907,6 +947,6 @@ export async function buildRAGPacket(
     queryCount: packet.retrievalTrace.queryCount,
   }, 'RAGBuilder: retrieval trace');
 
-  if (!retellingRecall) ragPacketCacheService.cachePacket(userId, message, packet);
+  if (!retellingRecall) ragPacketCacheService.cachePacket(userId, message, packet, cacheContextKey);
   return packet;
 }

@@ -25,6 +25,27 @@ const OPINION = [
 const TRAILING_RECALL_CHECK =
   /(?:^|[\n.!?]\s*)(?:this is (?:a )?repeated story[,.]?\s*)?(?:do you remember|have i told you (?:this|that) before|i (?:already )?told you (?:this|that) before)\??\s*$/i;
 
+const INTERROGATIVE_START =
+  /^(?:what|who|when|where|why|how|which|whose|whom|am|is|are|was|were|do|does|did|have|has|had|can|could|would|should|will|may|might)\b/i;
+
+/**
+ * Detect a turn whose job is to ask for information rather than contribute a
+ * new autobiographical fact. Punctuation is optional because mobile/voice
+ * input commonly omits the trailing question mark.
+ */
+export function isPureInterrogative(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (/[.!?]\s*i\s+(?:am|was|have|had|started|stopped|met|went|did|felt|worked|lived|made|built|released|got|left|joined|quit)\b/i.test(trimmed)) {
+    return false;
+  }
+  if (TRAILING_RECALL_CHECK.test(trimmed) && hasSubstantiveStatementBeforeRecallQuestion(trimmed)) {
+    return false;
+  }
+  if (trimmed.endsWith('?')) return true;
+  return INTERROGATIVE_START.test(trimmed);
+}
+
 /**
  * A biographical deposit does not become "just a question" because the user
  * ends it with a memory check. The suffix asks for retrieval; the preceding
@@ -45,10 +66,7 @@ export function resolveFactuality(
   const padded = padForScan(text);
   const trimmed = text.trim();
 
-  if (
-    (trimmed.endsWith('?') || /\b(should i|what if|how do i)\b/i.test(trimmed)) &&
-    !hasSubstantiveStatementBeforeRecallQuestion(trimmed)
-  ) {
+  if (isPureInterrogative(trimmed)) {
     return { factuality: 'question', certaintyLevel: Math.min(lexical.confidence, 0.4) };
   }
 

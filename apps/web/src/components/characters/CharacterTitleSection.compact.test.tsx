@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
 
 import { CharacterTitleSection } from './CharacterTitleSection';
 import type { Character } from './CharacterProfileCard';
@@ -35,5 +36,24 @@ describe('CharacterTitleSection compact mode', () => {
 
     expect(screen.queryByRole('heading', { name: 'Taylor Example' })).not.toBeInTheDocument();
     expect(screen.getByText('Tay')).toBeInTheDocument();
+  });
+
+  it('lets the user remove a wrong alias from the header chips', async () => {
+    const onUpdated = vi.fn();
+    render(
+      <CharacterTitleSection
+        character={{ ...character, id: 'dummy-character-a' }}
+        compact
+        omitTitle
+        onUpdated={onUpdated}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove alias Tay' }));
+    expect(onUpdated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        alias: expect.not.arrayContaining(['Tay']),
+      }),
+    );
   });
 });

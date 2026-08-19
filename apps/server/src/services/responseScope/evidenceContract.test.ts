@@ -7,7 +7,7 @@ import {
   DEFAULT_MIN_EVIDENCE_SCORE,
 } from './evidenceContract';
 
-type TestSource = { type: string; id: string; title: string; snippet?: string };
+type TestSource = { type: string; id: string; title: string; snippet?: string; date?: string };
 
 function src(type: string, id: string, title: string, snippet?: string): TestSource {
   return { type, id, title, snippet };
@@ -48,6 +48,16 @@ describe('buildEvidenceContract', () => {
     const contract = buildEvidenceContract('Good morning, how are you?');
     expect(contract.topic).toBe('general');
   });
+
+  it('builds a closed calendar window for this-month recall', () => {
+    const contract = buildEvidenceContract(
+      'What were my biggest milestones this month?',
+      undefined,
+      undefined,
+      new Date('2026-08-12T12:00:00Z'),
+    );
+    expect(contract.temporalRange?.label).toBe('current_month');
+  });
 });
 
 describe('scoreEvidence', () => {
@@ -84,6 +94,48 @@ describe('scoreEvidence', () => {
     expect(reasons).toContain('entity:rina');
   });
 
+  it('does not treat a pronoun-shaped roster entry ("It", "His") as an entity match', () => {
+    // Stale junk character cards ("It", "His") some accounts still carry
+    // from before extraction rejected pronoun-shaped names as junk_word.
+    // Because "his" is a substring of "this", a raw includes() check turned
+    // this into a false entity hit on nearly any unrelated memory.
+    const closedScopeContract = buildEvidenceContract(
+      "who's new and returning in this story?",
+      undefined,
+      ['It', 'His'],
+    );
+    const { score, reasons } = scoreEvidence(
+      src('character', 'unrelated', 'Kali Uchis', 'Character'),
+      closedScopeContract,
+    );
+    expect(reasons.some((r) => r.startsWith('entity:'))).toBe(false);
+    expect(score).toBe(0);
+
+    const { reasons: reasonsB } = scoreEvidence(
+      src('entry', 'unrelated2', 'Random background', 'Nothing relevant in this unrelated snippet.'),
+      closedScopeContract,
+    );
+    expect(reasonsB.some((r) => r.startsWith('entity:'))).toBe(false);
+  });
+
+  it('does not substring-match a short entity name inside an unrelated word ("Ink" inside "think")', () => {
+    const planContract = buildEvidenceContract('Tell me about Ink', {
+      primaryEntities: [{ name: 'Ink' }],
+      maxEvidenceItems: 20,
+    });
+    const { reasons } = scoreEvidence(
+      src('entry', 'unrelated', 'Random thought', 'I think I should drink more water and get some sleep.'),
+      planContract,
+    );
+    expect(reasons.some((r) => r.startsWith('entity:'))).toBe(false);
+
+    const { reasons: hitReasons } = scoreEvidence(
+      src('character', 'ink', 'Ink', 'Ink is a show promoter.'),
+      planContract,
+    );
+    expect(hitReasons).toContain('entity:ink');
+  });
+
   it('does not general_pass an unrelated low-scoring source for a closed-scope query', () => {
     const closedScopeContract = buildEvidenceContract(
       "who's new and returning in this story?",
@@ -98,6 +150,20 @@ describe('scoreEvidence', () => {
     expect(reasons).not.toContain('general_pass');
   });
 
+  it('does not general_pass unrelated background for a named who-is', () => {
+    const contract = buildEvidenceContract('who is he', {
+      primaryEntities: [{ name: 'Marcus' }],
+    });
+    expect(contract.requireSubjectOverlap).toBe(true);
+    const { score, reasons } = scoreEvidence(
+      src('knowledge', 'noise', "Tía Maya's Family", 'Inferred from a holiday gathering at Tía Maya house.'),
+      contract,
+    );
+    expect(score).toBe(0);
+    expect(reasons).toContain('timeline_subject_mismatch');
+    expect(reasons).not.toContain('general_pass');
+  });
+
   it('still general_passes the same low-scoring source when the query is not closed-scope (regression guard)', () => {
     const generalContract = buildEvidenceContract('how has my week been?');
     expect(generalContract.closedScope).toBe(false);
@@ -107,6 +173,30 @@ describe('scoreEvidence', () => {
     );
     expect(score).toBe(25);
     expect(reasons).toContain('general_pass');
+  });
+
+  it('ranks significant in-month events above routine in-month notes and rejects older events', () => {
+    const contract = buildEvidenceContract(
+      'What were my biggest milestones this month?',
+      undefined,
+      undefined,
+      new Date('2026-08-12T12:00:00Z'),
+    );
+    const milestone = scoreEvidence(
+      { ...src('event', 'new', 'Vanguard Robotics interview completed', 'Completed the interview and received the outcome.'), date: '2026-08-06' },
+      contract,
+    );
+    const routine = scoreEvidence(
+      { ...src('entry', 'routine', 'Routine planning note', 'Reviewed the week.'), date: '2026-08-04' },
+      contract,
+    );
+    const older = scoreEvidence(
+      { ...src('event', 'old', 'Older interview', 'Completed an interview.'), date: '2026-07-20' },
+      contract,
+    );
+    expect(milestone.score).toBeGreaterThan(routine.score);
+    expect(older.reasons).toContain('temporal_scope_mismatch');
+    expect(older.score).toBe(0);
   });
 
   it('closed-scope contract still accepts a source with a real entity hit from the active-story roster', () => {

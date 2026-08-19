@@ -7,6 +7,8 @@ import { EpistemicStatusBadge } from '../epistemic/EpistemicStatusBadge';
 import { Badge } from '../ui/badge';
 import { Card, CardContent } from '../ui/card';
 
+import { getPerceptionShortTitle } from './perceptionDisplayTitle';
+
 type PerceptionEntryCardProps = {
   perception: PerceptionEntry;
   onEdit?: (perception: PerceptionEntry) => void;
@@ -27,6 +29,7 @@ export const PerceptionEntryCard = ({
     : perception.confidence_level.replace('_', ' ');
   const heardAt = formatDistanceToNow(new Date(perception.timestamp_heard), { addSuffix: true });
   const evolutionCount = perception.evolution_notes?.length ?? 0;
+  const shortTitle = getPerceptionShortTitle(perception);
 
   const getSourceIcon = (source: string) => {
     switch (source) {
@@ -118,25 +121,29 @@ export const PerceptionEntryCard = ({
       }}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
-      aria-label={onClick ? `Open perception about ${perception.subject_alias || 'this person'}` : undefined}
+      aria-label={onClick ? `Open ${shortTitle}, a perception about ${perception.subject_alias || 'this person'}` : undefined}
     >
       <CardContent className="space-y-2 overflow-visible p-2 sm:space-y-2.5 sm:p-4">
         {/* Subject + timestamp share a row — subject is the headline, everything
             else below is supporting detail, not more headline-weight chips. */}
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
           {showSubject && (perception.subject_alias || perception.subject_person_id) && (
-            <div className="flex min-w-0 items-start gap-1 text-[11px] sm:gap-1.5 sm:text-sm">
+            <div className="flex min-w-0 flex-1 basis-[10rem] items-start gap-1 text-[11px] sm:gap-1.5 sm:text-sm">
               <User className="mt-0.5 h-3 w-3 shrink-0 text-white/50 sm:h-3.5 sm:w-3.5" />
               <span className="min-w-0 break-words font-medium text-white">
                 {perception.subject_alias || 'Unknown'}
               </span>
             </div>
           )}
-          <div className="flex shrink-0 items-center gap-0.5 text-[8px] text-white/40 sm:gap-1 sm:text-xs">
+          <div className="flex min-w-0 items-center gap-0.5 text-[8px] text-white/40 sm:gap-1 sm:text-xs">
             <Clock className="h-2.5 w-2.5 sm:h-3 sm:w-3" aria-hidden="true" />
-            <span className="whitespace-nowrap">{heardAt}</span>
+            <span className="break-words">{heardAt}</span>
           </div>
         </div>
+
+        <h3 className="break-words text-xs font-semibold leading-snug text-white sm:text-base">
+          {shortTitle}
+        </h3>
 
         {/* Source + confidence + status — compact chips, consistent across
             breakpoints so they wrap as pairs instead of one-per-line. The

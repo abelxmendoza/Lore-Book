@@ -41,6 +41,18 @@ function shouldAutoApply(result: CharacterCardAuditResult, metadata: Record<stri
   if (result.status === 'junk_test_data' || result.status === 'bare_title_invalid') return true;
   if (result.status === 'sentence_bleed' || result.status === 'pronoun_fragment') return true;
   if (result.status === 'broken_span' && result.mergeCandidates?.[0]) return true;
+  // Broken possessive with no clean card to merge into — the rename is
+  // deterministic (strip the trailing possessive marker), so it's safe to
+  // auto-apply without the confidence gate used for other renames.
+  if (
+    result.status === 'broken_span' &&
+    !result.mergeCandidates?.[0] &&
+    result.recommendedAction === 'rename_with_context' &&
+    result.suggestedTitle &&
+    result.suggestedTitle.trim() !== result.currentTitle.trim()
+  ) {
+    return true;
+  }
   if (isWrongDomainStatus(result.status)) return true;
   if (
     result.recommendedAction === 'rename_with_context' &&

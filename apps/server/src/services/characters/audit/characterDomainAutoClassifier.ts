@@ -27,6 +27,7 @@ export type AutoDomain =
   | 'role'
   | 'skill'
   | 'place'
+  | 'organization'
   | 'unknown';
 
 export type AutoDomainResult = {
@@ -38,7 +39,7 @@ export type AutoDomainResult = {
 
 const LLM_DOMAINS: ReadonlySet<string> = new Set([
   'person', 'contextual_person', 'tool', 'media', 'band', 'group',
-  'event', 'process', 'role', 'skill', 'place', 'unknown',
+  'event', 'process', 'role', 'skill', 'place', 'organization', 'unknown',
 ]);
 
 /**
@@ -104,6 +105,7 @@ Domains:
 - role: job title / occupation label, not a specific person.
 - skill: an ability or craft.
 - place: location or venue.
+- organization: a business/brand/company (production company, label, promoter's company) named with a corporate-style name — not the same as "group" (a team/community the user belongs to).
 - unknown: cannot tell.
 
 Rules: provenance proves the phrase was MENTIONED, not that it is a human. Only answer person/contextual_person on positive human evidence. Return JSON: {"classifications":[{"id":"...","domain":"...","confidence":0.0,"reason":"..."}]} — one entry per candidate, confidence in [0,1].`;

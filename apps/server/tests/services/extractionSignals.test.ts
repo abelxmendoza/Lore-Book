@@ -136,6 +136,10 @@ describe('extractionSignals', () => {
       'studying computer science at MIT',
       'I live in Portland now',
       "I'm 32 years old",
+      "I'm gay",
+      'I am a woman',
+      'My pronouns are they/them',
+      'I like women',
     ])('detects self attributes in: %s', (text) => {
       expect(hasSelfAttributeSignal(text)).toBe(true);
     });

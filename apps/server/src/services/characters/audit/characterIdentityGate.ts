@@ -59,7 +59,7 @@ export function evaluateSentenceBleed(name: string): SentenceBleedResult {
 
 // ── Domain arbitration ───────────────────────────────────────────────────────
 
-export type ArbitrationDomain = 'tool' | 'media' | 'band' | 'role' | 'event' | 'process';
+export type ArbitrationDomain = 'tool' | 'media' | 'band' | 'role' | 'event' | 'process' | 'organization';
 
 export type DomainArbitrationResult = {
   domain: ArbitrationDomain | null;
@@ -120,6 +120,17 @@ const ROLE_NAMES_A_PERSON =
 
 const EVENT_NAME_PATTERN =
   /\b(prom|fest|festival|concert|expo|rave|gala|showcase|show)\b/i;
+
+/**
+ * A business/brand suffix at the end of a name is strong, name-level
+ * evidence of an organization, not a person — "East Los Productions" is a
+ * promotion company even though "East"/"Los" alone could pass as name-shaped
+ * tokens. Deliberately requires the suffix as the trailing word: a person
+ * whose actual name happens to contain "productions" mid-phrase is vanishingly
+ * rare next to how often promoters/labels/crews get extracted as people.
+ */
+const ORG_SUFFIX_PATTERN =
+  /\b(productions?|promotions?|entertainment|presents|studios?|records?|media|collective|management)\.?$/i;
 
 const TOOL_PROVENANCE = /\b(tool|software|app|cli|ide|terminal|coding|installed?|api|sdk|version)\b/i;
 const MEDIA_PROVENANCE = /\b(anime|manga|fandom|series|episode|season|film|movie|franchise|binge[- ]?watch\w*|watch(ed|ing)?)\b/i;
@@ -195,6 +206,14 @@ export function arbitrateDomainStrong(
     };
   }
 
+  if (ORG_SUFFIX_PATTERN.test(name.trim())) {
+    return {
+      domain: 'organization',
+      strength: 'strong',
+      reason: `"${name}" is a business/brand name (organization), not a person`,
+    };
+  }
+
   return NO_MATCH;
 }
 
@@ -217,6 +236,15 @@ function escapeRegExp(value: string): string {
  */
 const NAME_MARKER_GAP = `(?:\\s+[^\\s.!?]+){0,6}`;
 
+// An event-marker word ("show", "festival", …) right after a name is only
+// evidence of an event/title when it isn't itself the head of an occupation
+// noun phrase — "Ink is a show promoter" names Ink's job, not an event.
+// Exported so other event-detection regexes (e.g. creationOutcomeService's
+// explicit-event check) apply the same exception and don't misroute an
+// occupation phrase that a differently-shaped pattern happens to catch.
+export const NOT_OCCUPATION_AFTER_MARKER =
+  `(?!\\s+(?:promoter|promoters|vendor|vendors|organizer|organizers|organiser|organisers|producer|producers|host|hosts|runner|runners|owner|owners|coordinator|coordinators|planner|planners)\\b)`;
+
 export function nameAdjacentDomain(
   name: string,
   provenanceText: string,
@@ -226,7 +254,7 @@ export function nameAdjacentDomain(
   const quotes = `["'\\u201C\\u201D\\u2018\\u2019]*`;
 
   const eventAdjacent = new RegExp(
-    `${esc}${quotes}\\s+(show|event|festival|concert|party|night|prom)\\b`,
+    `${esc}${quotes}\\s+(show|event|festival|concert|party|night|prom)\\b${NOT_OCCUPATION_AFTER_MARKER}`,
     'i',
   );
   if (eventAdjacent.test(provenanceText)) return 'event';
@@ -239,7 +267,7 @@ export function nameAdjacentDomain(
   if (mediaAdjacent.test(provenanceText)) return 'media';
 
   const eventNear = new RegExp(
-    `${esc}${quotes}${NAME_MARKER_GAP}\\s+(show|festival|concert|expo|showcase)\\b`,
+    `${esc}${quotes}${NAME_MARKER_GAP}\\s+(show|festival|concert|expo|showcase)\\b${NOT_OCCUPATION_AFTER_MARKER}`,
     'i',
   );
   if (eventNear.test(provenanceText)) return 'event';

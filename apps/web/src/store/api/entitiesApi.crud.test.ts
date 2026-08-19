@@ -156,6 +156,37 @@ describe('entitiesApi character CRUD mutations', () => {
     subscription.unsubscribe();
   });
 
+  it('adds a character to Dating & Romance and refetches the subscribed relationship list', async () => {
+    const store = makeStore();
+    const subscription = store.dispatch(entitiesApi.endpoints.getRomanticRelationships.initiate());
+    await subscription.unwrap();
+
+    await store.dispatch(
+      entitiesApi.endpoints.addCharacterToDatingBook.initiate({
+        character_id: '11111111-1111-4111-8111-111111111111',
+        relationship_type: 'crush',
+        status: 'unrequited',
+      }),
+    ).unwrap();
+
+    await waitForRomanticRefetch(2);
+    expect(mockedFetchJson).toHaveBeenCalledWith(
+      '/api/conversation/romantic-relationships',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          character_id: '11111111-1111-4111-8111-111111111111',
+          relationship_type: 'crush',
+          status: 'unrequited',
+        }),
+      }),
+      expect.any(Object),
+    );
+    expect(mockedInvalidateCache).toHaveBeenCalledWith('/api/conversation/romantic-relationships');
+
+    subscription.unsubscribe();
+  });
+
   it('updates a romantic relationship and refetches the subscribed relationship list', async () => {
     const store = makeStore();
     const subscription = store.dispatch(entitiesApi.endpoints.getRomanticRelationships.initiate());

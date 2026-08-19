@@ -147,6 +147,15 @@ describe('characterCardAudit guards', () => {
     expect(report[0].provenanceSummary).toContain('CSUF');
   });
 
+  it('keeps the full provenance quote instead of cutting it with an ellipsis', () => {
+    const provenance =
+      'Last night at Northwind Depot, Jamie the promoter and show host approached me with the other promoter Alex and asked if I could stay through the last set even though I had work in the morning at Vanguard Robotics.';
+    expect(provenance.length).toBeGreaterThan(160);
+    const roster = [row('1', 'Jamie', { contextOfMention: provenance })];
+    const report = characterCardAuditService.auditRoster(roster);
+    expect(report[0].provenanceSummary).toBe(provenance);
+  });
+
   it('classifies Cousin as needs_context', () => {
     const roster = [row('1', 'Cousin')];
     const result = auditOne('Cousin', roster);
