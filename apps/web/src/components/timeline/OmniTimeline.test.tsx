@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { OmniTimeline } from './OmniTimeline';
@@ -113,10 +113,6 @@ vi.mock('./TimelineStitchedView', () => ({
       {lifeArcId ? `${scopeLabel} · ${lifeArcId}` : 'Stitched view'}
     </div>
   ),
-}));
-
-vi.mock('./TimelineCalendarView', () => ({
-  TimelineCalendarView: () => <div data-testid="timeline-calendar-view">Calendar view</div>,
 }));
 
 vi.mock('./TimelineStoryView', () => ({
@@ -240,13 +236,27 @@ describe('OmniTimeline layout and navigation', () => {
     await user.click(screen.getByRole('tab', { name: /chronology/i }));
     expect(screen.getByTestId('timeline-stitched-embedded')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('tab', { name: /calendar/i }));
-    expect(screen.getByTestId('timeline-calendar-view')).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: /story/i }));
+    expect(screen.getByTestId('timeline-story-view')).toBeInTheDocument();
+
+    expect(screen.queryByRole('tab', { name: /calendar/i })).not.toBeInTheDocument();
   });
 
-  it('opens calendar from ?view=calendar deep link', () => {
-    renderOmniTimeline('/timeline?view=calendar');
-    expect(screen.getByTestId('timeline-calendar-view')).toBeInTheDocument();
+  it('sends calendar deep links to Life Log instead of swimlanes', async () => {
+    render(
+      <MemoryRouter initialEntries={['/timeline?view=calendar&date=2026-08-18']}>
+        <OmniTimeline />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location-probe')).toHaveTextContent(
+        '/events?view=calendar&date=2026-08-18',
+      );
+    });
+    expect(screen.queryByTestId('timeline-calendar-view')).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /^calendar$/i })).not.toBeInTheDocument();
   });
 
   it('opens Timelines Library from ?view=library deep link', () => {

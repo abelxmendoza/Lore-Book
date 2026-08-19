@@ -1,7 +1,7 @@
 import type { ElementType } from 'react';
 import './OmniTimelineBottomNav.css';
 
-export type OmniTimelineView = 'swimlanes' | 'events' | 'story' | 'calendar' | 'library';
+export type OmniTimelineView = 'swimlanes' | 'events' | 'story' | 'library';
 
 type NavItem = {
   id: OmniTimelineView;

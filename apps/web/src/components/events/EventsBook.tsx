@@ -48,6 +48,7 @@ import { EventDetailModal } from './EventDetailModal';
 import { EventProfileCard, type Event } from './EventProfileCard';
 import { PostEventComposer } from './PostEventComposer';
 import { listDemoUserPostedEvents } from '../../mocks/userPostedEventsDemo';
+import { TimelineCalendarView } from '../timeline/TimelineCalendarView';
 
 const ITEMS_PER_PAGE = 18;
 const EVENTS_CARD_VIEW_STORAGE_KEY = 'lorebook.eventsBook.cardViewMode';
@@ -639,7 +640,9 @@ const MOCK_SCENES: RecurringScene[] = [
 
 export const EventsBook: React.FC = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const showCalendar = searchParams.get('view') === 'calendar';
+  const calendarDate = searchParams.get('date');
   const [viewMode, setViewMode] = useState<ViewMode>('events');
   const [momentsLayout, setMomentsLayout] = useState<MomentsLayout>('grid');
   const [cardViewMode, setCardViewMode] = useState<CardViewMode>(() =>
@@ -947,8 +950,15 @@ export const EventsBook: React.FC = () => {
               <span className="text-white/15" aria-hidden>·</span>
               <button
                 type="button"
-                onClick={() => navigate('/timeline?view=calendar')}
-                className="rounded-md px-1.5 py-0.5 text-white/55 transition-colors hover:bg-white/5 hover:text-white"
+                onClick={() => {
+                  const params = new URLSearchParams(searchParams);
+                  params.set('view', 'calendar');
+                  setSearchParams(params);
+                }}
+                aria-current={showCalendar ? 'page' : undefined}
+                className={`rounded-md px-1.5 py-0.5 transition-colors hover:bg-white/5 hover:text-white ${
+                  showCalendar ? 'text-white bg-white/5' : 'text-white/55'
+                }`}
               >
                 Calendar
               </button>
@@ -978,12 +988,18 @@ export const EventsBook: React.FC = () => {
             key={value}
             type="button"
             onClick={() => {
+              if (showCalendar) {
+                const params = new URLSearchParams(searchParams);
+                if (params.get('view') === 'calendar') params.delete('view');
+                params.delete('date');
+                setSearchParams(params, { replace: true });
+              }
               setViewMode(value);
               if (value === 'events') setMomentsLayout('grid');
             }}
             className={`
               flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors flex-1 sm:flex-none justify-center
-              ${viewMode === value
+              ${viewMode === value && !showCalendar
                 ? 'bg-primary/20 text-primary'
                 : 'text-white/50 hover:text-white/80 hover:bg-white/5'
               }
@@ -995,6 +1011,26 @@ export const EventsBook: React.FC = () => {
         ))}
       </div>
 
+      {showCalendar ? (
+        <div
+          className="overflow-hidden rounded-xl border border-white/10 bg-black/40 min-h-[560px] h-[max(560px,calc(100dvh-16rem))]"
+          data-testid="life-log-calendar"
+        >
+          <TimelineCalendarView
+            initialDate={calendarDate}
+            onDateChange={(dateKey) => {
+              const params = new URLSearchParams(searchParams);
+              params.set('view', 'calendar');
+              params.set('date', dateKey);
+              setSearchParams(params, { replace: true });
+            }}
+            onOpenDayInTimeline={(dateKey) => {
+              navigate(`/timeline?view=events&q=${encodeURIComponent(dateKey)}`);
+            }}
+          />
+        </div>
+      ) : (
+      <>
       {/* ── Moment search + filters (grid layout only) ── */}
       {viewMode === 'events' && momentsLayout === 'grid' && <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="flex-1 relative">
@@ -1715,6 +1751,9 @@ export const EventsBook: React.FC = () => {
             )
           )}
         </div>
+      )}
+
+      </>
       )}
 
       {/* Modals */}

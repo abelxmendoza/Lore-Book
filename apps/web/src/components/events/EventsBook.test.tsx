@@ -80,6 +80,9 @@ vi.mock('./EventDetailModal', () => ({ EventDetailModal: () => null }));
 vi.mock('../memory-explorer/MemoryExplorer', () => ({
   MemoryExplorer: () => <div data-testid="memory-explorer">Memory explorer</div>,
 }));
+vi.mock('../timeline/TimelineCalendarView', () => ({
+  TimelineCalendarView: () => <div data-testid="timeline-calendar-view">Calendar view</div>,
+}));
 
 describe('EventsBook', () => {
   beforeEach(() => {
@@ -125,6 +128,21 @@ describe('EventsBook', () => {
     expect(screen.getByRole('button', { name: /Narrative Anchors/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Calendar$/i })).toBeInTheDocument();
     expect(screen.getByText(/1 moment/i)).toBeInTheDocument();
+  });
+
+  it('opens the month calendar on Life Log instead of Omni Timeline swimlanes', async () => {
+    render(<EventsBook />);
+    await screen.findByText('Night out with Jamie');
+
+    fireEvent.click(screen.getByRole('button', { name: /^Calendar$/i }));
+
+    expect(await screen.findByTestId('life-log-calendar')).toBeInTheDocument();
+    expect(screen.getByTestId('timeline-calendar-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('events-book-grid')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Moments$/i }));
+    expect(await screen.findByTestId('events-book-grid')).toBeInTheDocument();
+    expect(screen.queryByTestId('life-log-calendar')).not.toBeInTheDocument();
   });
 
   it('restores Life Log celebration classifiers with nested subcategories', async () => {

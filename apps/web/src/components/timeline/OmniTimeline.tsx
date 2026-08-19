@@ -5,7 +5,7 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { LayoutTemplate, BookOpen, Search, Sparkles, Menu, CalendarDays, Calendar, X, Clock3, ChevronLeft } from 'lucide-react';
+import { LayoutTemplate, BookOpen, Search, Sparkles, Menu, CalendarDays, X, Clock3, ChevronLeft } from 'lucide-react';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useLifeArcs, type LifeArc } from '../../hooks/useLifeArcs';
 import { useStitchedTimeline } from '../../hooks/useStitchedTimeline';
@@ -16,7 +16,6 @@ import { useEntityModal } from '../../contexts/EntityModalContext';
 import { TimelineSwimlanes } from './TimelineSwimlanes';
 import { TimelineStoryView } from './TimelineStoryView';
 import { TimelineStitchedView } from './TimelineStitchedView';
-import { TimelineCalendarView } from './TimelineCalendarView';
 import { OmniTimelineBottomNav, type OmniTimelineView } from './OmniTimelineBottomNav';
 import { useGetChaptersQuery } from '../../store/api/loreApi';
 import { TimelineGeneratingSimulation } from './TimelineGeneratingSimulation';
@@ -58,7 +57,6 @@ type GenPhase = 'idle' | 'generating' | 'revealed';
 const VIEWS: { id: View; label: string; shortLabel: string; Icon: React.ElementType; desc: string }[] = [
   { id: 'swimlanes', label: 'Swimlanes', shortLabel: 'Lanes', Icon: LayoutTemplate, desc: 'Your life across parallel tracks in calendar time' },
   { id: 'events',    label: 'Chronology', shortLabel: 'Chronology', Icon: CalendarDays,  desc: 'Same scenes stitched in time — copyable, with an explicit reorder mode' },
-  { id: 'calendar',  label: 'Calendar',  shortLabel: 'Calendar', Icon: Calendar,  desc: 'Named occasions and events by day' },
   { id: 'story',     label: 'Story',     shortLabel: 'Story', Icon: BookOpen,       desc: 'Read life arcs in order' },
   { id: 'library',   label: 'Library',   shortLabel: 'Library', Icon: Clock3,       desc: 'All generated timeline history you’ve spun up' },
 ];
@@ -85,7 +83,7 @@ type OmniTimelineProps = {
   onOpenAppSidebar?: () => void;
 };
 
-const VALID_VIEWS = new Set<View>(['swimlanes', 'events', 'calendar', 'story', 'library']);
+const VALID_VIEWS = new Set<View>(['swimlanes', 'events', 'story', 'library']);
 
 function viewFromSearchParams(params: URLSearchParams): View {
   const raw = params.get('view');
@@ -106,25 +104,22 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   );
   const urlQuery = searchParams.get('q') ?? '';
   const characterId = searchParams.get('characterId') ?? undefined;
-  const calendarDateParam =
-    searchParams.get('date') ??
-    (/^\d{4}-\d{2}-\d{2}$/.test(urlQuery) ? urlQuery : null);
   const isMobile = useIsMobile();
   const [view, setViewState] = useState<View>(() => viewFromSearchParams(searchParams));
   const [stitchedArc, setStitchedArc] = useState<LifeArc | null>(null);
   const [lorebookPrefill, setLorebookPrefill] = useState<LorebookCreatorPrefill | null>(null);
 
-  const handleCalendarDateChange = useCallback(
-    (dateKey: string) => {
-      const params = new URLSearchParams(searchParams);
-      params.set('view', 'calendar');
-      params.set('date', dateKey);
-      setSearchParams(params, { replace: true });
-    },
-    [searchParams, setSearchParams],
-  );
+  // Month calendar is a Life Log surface, not a swimlanes tab.
+  useEffect(() => {
+    if (searchParams.get('view') !== 'calendar') return;
+    const next = new URLSearchParams();
+    next.set('view', 'calendar');
+    const date = searchParams.get('date');
+    if (date) next.set('date', date);
+    navigate(`/events?${next.toString()}`, { replace: true });
+  }, [navigate, searchParams]);
 
-  // Keep view in sync with ?view= so Life Log / deep links share one calendar.
+  // Keep view in sync with ?view= (search opens the overlay, not a peer tab).
   useEffect(() => {
     const next = viewFromSearchParams(searchParams);
     setViewState((prev) => (prev === next ? prev : next));
@@ -144,20 +139,6 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   const [genInput, setGenInput] = useState(urlQuery);
   const [dateInput, setDateInput] = useState(/^\d{4}-\d{2}-\d{2}$/.test(urlQuery) ? urlQuery : '');
   const [genQuery, setGenQuery] = useState(urlQuery);
-
-  const handleOpenDayInTimeline = useCallback(
-    (dateKey: string) => {
-      const params = new URLSearchParams(searchParams);
-      params.set('view', 'events');
-      params.set('q', dateKey);
-      params.delete('date');
-      setSearchParams(params, { replace: true });
-      setDateInput(dateKey);
-      setGenInput(dateKey);
-      setGenQuery(dateKey);
-    },
-    [searchParams, setSearchParams],
-  );
 
   const [genPhase, setGenPhase] = useState<GenPhase>(urlQuery.trim() ? 'revealed' : 'idle');
   const [genSearchOpen, setGenSearchOpen] = useState(
@@ -794,14 +775,6 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
             }}
           />
         );
-      case 'calendar':
-        return (
-          <TimelineCalendarView
-            initialDate={calendarDateParam}
-            onDateChange={handleCalendarDateChange}
-            onOpenDayInTimeline={handleOpenDayInTimeline}
-          />
-        );
       case 'story':
         return (
           <TimelineStoryView
@@ -818,7 +791,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
 
   return (
     <div
-      className={`omni-timeline-root${view === 'story' ? ' omni-timeline-root--story' : ''}${view === 'calendar' ? ' omni-timeline-root--calendar' : ''}${view === 'library' ? ' omni-timeline-root--library' : ''}`}
+      className={`omni-timeline-root${view === 'story' ? ' omni-timeline-root--story' : ''}${view === 'library' ? ' omni-timeline-root--library' : ''}`}
       data-testid="omni-timeline"
     >
       {/* ── Mobile header ──────────────────────────────────────────────── */}
@@ -914,7 +887,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
                 )}
               </div>
               <p className="omni-timeline-subtitle">
-                Your life in time — arcs, chronology, and calendar.
+                Your life in time — arcs, chronology, and story.
               </p>
               {(arcs.length > 0 || entries.length > 0) && (
                 <p className="mt-0.5 text-xs text-white/35">

@@ -1,6 +1,6 @@
 /**
  * Canonical month calendar — occasions + stitched events/moments by day.
- * Single calendar for the app (Omni Timeline). Life Log links here.
+ * Lives on Life Log (`/events?view=calendar`), not Omni Timeline swimlanes.
  */
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
