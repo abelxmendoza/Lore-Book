@@ -4,6 +4,7 @@
 import { supabaseAdmin } from '../supabaseClient';
 import { normalizeNameKey } from '../../utils/nameNormalization';
 import { buildMemoryCoverageAudit } from '../diagnostics/memoryCoverageAudit';
+import { isTrustSurfaceNoise } from './trustSurfaceNoise';
 import type { EntityTrustRow, KnowledgeState, TrustDomain } from './trustTypes';
 
 function defaultStateCounts(): Record<KnowledgeState, number> {
@@ -111,6 +112,7 @@ export async function classifyProjectStates(userId: string): Promise<{
   }
 
   for (const s of suggestions ?? []) {
+    if (isTrustSurfaceNoise(s.name, 'pending suggestion', 'projects')) continue;
     counts.suggested += 1;
     entities.push({
       id: s.id,
