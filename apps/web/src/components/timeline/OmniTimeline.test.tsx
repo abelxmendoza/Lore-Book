@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { OmniTimeline } from './OmniTimeline';
@@ -246,14 +246,16 @@ describe('OmniTimeline layout and navigation', () => {
     expect(screen.getByTestId('read-in-life-saga')).toBeInTheDocument();
   });
 
-  it('sends old ?view=story deep links to Life Saga', () => {
+  it('sends old ?view=story deep links to Life Saga', async () => {
     render(
       <MemoryRouter initialEntries={['/timeline?view=story']}>
         <OmniTimeline />
         <LocationProbe />
       </MemoryRouter>,
     );
-    expect(screen.getByTestId('location-probe')).toHaveTextContent('/saga');
+    await waitFor(() => {
+      expect(screen.getByTestId('location-probe').textContent).toMatch(/\/saga$/);
+    });
   });
 
   it('opens Life Saga from the chronology handoff', async () => {

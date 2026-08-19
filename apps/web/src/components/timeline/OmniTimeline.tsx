@@ -3,7 +3,7 @@
  * Fetches arc + chronology data once, routes between three views.
  */
 
-import { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { LayoutTemplate, Search, Sparkles, Menu, CalendarDays, Calendar, X, Clock3, ChevronLeft } from 'lucide-react';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -145,10 +145,13 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
     setViewState((prev) => (prev === next ? prev : next));
   }, [searchParams]);
 
-  useLayoutEffect(() => {
-    if (searchParams.get('view') !== 'story') return;
+  useEffect(() => {
+    const viewParam =
+      searchParams.get('view') ??
+      new URLSearchParams(location.search.replace(/^\?/, '')).get('view');
+    if (viewParam !== 'story') return;
     navigate(getRuntimeRouteFromSurface('saga', isDemoRuntimeActive()), { replace: true });
-  }, [searchParams, navigate]);
+  }, [location.search, searchParams, navigate]);
 
   const setView = useCallback(
     (next: View) => {
