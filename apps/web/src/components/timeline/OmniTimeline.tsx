@@ -839,6 +839,8 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
     }
   };
 
+  const hidePeerChrome = view === 'story' || view === 'library' || view === 'calendar';
+
   return (
     <div
       className={`omni-timeline-root${view === 'story' ? ' omni-timeline-root--story' : ''}${view === 'calendar' ? ' omni-timeline-root--calendar' : ''}${view === 'library' ? ' omni-timeline-root--library' : ''}`}
@@ -974,7 +976,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
           <OmniTimelineErrorBanner message={dataError} onRetry={handleRetryData} />
         )}
 
-        {!isMobile && view !== 'story' && view !== 'library' && (
+        {!isMobile && !hidePeerChrome && (
           <UniversalTimelineSearch
             genInput={genInput}
             genQuery={genQuery}
@@ -990,8 +992,8 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
           />
         )}
 
-        {/* Story already lists arcs — hide competing chrome to free reading height */}
-        {view !== 'story' && view !== 'library' && !loading && !genQuery && activeArcs.length > 0 && (
+        {/* Story / library / calendar need leftover viewport — hide competing chrome */}
+        {!hidePeerChrome && !loading && !genQuery && activeArcs.length > 0 && (
           <div className="omni-timeline-active-arcs">
             <p className="omni-timeline-section-label">Active now</p>
             <div className="flex flex-wrap gap-2">
@@ -1033,7 +1035,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
         )}
 
       {/* ── Life Chapters strip — birth-year-anchored life eras ──────────── */}
-      {view !== 'story' && view !== 'library' && !loading && !genQuery && lifeEras.length > 0 && (
+      {!hidePeerChrome && !loading && !genQuery && lifeEras.length > 0 && (
         <div className="omni-timeline-life-chapters">
           <div className="flex items-center gap-2">
             <span className="omni-timeline-section-label shrink-0 mb-0">Life Chapters</span>

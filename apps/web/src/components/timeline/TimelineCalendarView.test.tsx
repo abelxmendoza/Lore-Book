@@ -151,6 +151,14 @@ describe('TimelineCalendarView', () => {
     expect(screen.getByText(/June 2024/i)).toBeInTheDocument();
   });
 
+  it('fills leftover height with a stretching month grid', () => {
+    render(<TimelineCalendarView initialDate={FIXED_DATE} />);
+    const root = screen.getByTestId('timeline-calendar-view');
+    expect(root).toHaveClass('timeline-calendar-root');
+    expect(root.querySelector('.timeline-calendar-layout')).toBeTruthy();
+    expect(screen.getByTestId('calendar-month-grid')).toHaveClass('timeline-calendar-month');
+  });
+
   it('shows fuzzy historical periods as parallel tracks instead of day cards', () => {
     const data = monthResult({
       historicalNeighborhoods: [{
