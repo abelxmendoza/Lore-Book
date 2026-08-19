@@ -14,14 +14,14 @@ describe('Lore Keeper App - Core Functionality', () => {
     cy.get('aside').first().should('be.visible');
     cy.get('aside').first().within(() => {
       cy.get('button').contains('Chat').should('be.visible');
-      cy.get('button').contains('Timeline').should('be.visible'); // "Omni Timeline"
+      cy.get('button').contains('Timeline').should('be.visible');
       cy.get('button').contains('Characters').should('be.visible');
     });
   });
 
   it('should navigate between surfaces', () => {
-    // Navigate to Timeline (sidebar label is "Omni Timeline")
-    cy.contains('Omni Timeline').click();
+    // Navigate to Timeline
+    cy.get('aside').first().contains('button', 'Timeline').click();
     cy.url().should('include', '/timeline');
     cy.waitForApp();
 

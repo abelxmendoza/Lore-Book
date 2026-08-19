@@ -84,7 +84,7 @@ export const CHAT_FOCUS_SOURCE_LABELS: Record<ChatFocusSourceSurface, string> = 
   events: 'Life Log',
   perceptions: 'Perceptions',
   lorebook: 'Lorebooks',
-  timeline: 'Omni Timeline',
+  timeline: 'Timeline',
   anchors: 'Narrative Anchors',
   memoir: 'LoreBook Editor',
 };

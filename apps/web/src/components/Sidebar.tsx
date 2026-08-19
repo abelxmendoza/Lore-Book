@@ -17,6 +17,7 @@ import { UserAvatarButton } from './UserAvatarButton';
 
 import { surfaceToRoute, type SurfaceKey } from '../utils/routeMapping';
 import { useEntityCounts } from '../hooks/useEntityCounts';
+import { LIFE_STORY_CHAT_HINT, LIFE_STORY_HINT, LIFE_STORY_SIDEBAR_BLURB } from '../lib/lifeStoryCopy';
 
 interface SidebarProps {
   activeSurface?: SurfaceKey;
@@ -91,7 +92,7 @@ const SidebarContent = ({
             <Logo size="lg" showText={true} />
           </button>
           <p className="mt-4 text-xs text-white/50">Your personal memory system. Remember everything that matters.</p>
-          <p className="mt-1.5 text-xs text-primary/70">Chat first — timelines & views help you explore what you&apos;ve shared.</p>
+          <p className="mt-1.5 text-xs text-primary/70">{LIFE_STORY_CHAT_HINT} Timeline, Anchors, and Life Saga are how you look at them.</p>
           <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-green-500/20 bg-green-500/5 px-2 py-1">
             <Shield className="h-3 w-3 text-green-400" />
             <p className="text-xs text-green-400/80">100% Private & Secure</p>
@@ -222,24 +223,6 @@ const SidebarContent = ({
           </button>
           <button
             type="button"
-            onClick={() => handleSurfaceChange('events')}
-            aria-label="Open life log"
-            aria-current={activeSurface === 'events' ? 'page' : undefined}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
-              activeSurface === 'events'
-                ? 'border-primary bg-primary/10 text-white'
-                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-            )}
-          >
-            <Sparkles className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-            <span className="flex-1 text-left">Life Log</span>
-            {counts && counts.events > 0 && (
-              <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.events}</span>
-            )}
-          </button>
-          <button
-            type="button"
             onClick={() => handleSurfaceChange('projects')}
             aria-label="Open projects view"
             aria-current={activeSurface === 'projects' ? 'page' : undefined}
@@ -274,21 +257,6 @@ const SidebarContent = ({
               <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.skills}</span>
             )}
           </button>
-          <button
-            type="button"
-            onClick={() => handleSurfaceChange('anchors')}
-            aria-label="Open narrative anchors"
-            aria-current={activeSurface === 'anchors' ? 'page' : undefined}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
-              activeSurface === 'anchors'
-                ? 'border-primary bg-primary/10 text-white'
-                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-            )}
-          >
-            <Anchor className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-            <span className="flex-1 text-left">Narrative Anchors</span>
-          </button>
 
           {/* 3. Beliefs & evidence */}
           <p className="mt-4 mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40 px-1">Beliefs &amp; evidence</p>
@@ -309,23 +277,31 @@ const SidebarContent = ({
 
           {/* 4. Explore your story */}
           <p className="mt-4 mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40 px-1">Explore your story</p>
+          <p className="px-1 mb-2 text-[11px] leading-relaxed text-white/40">{LIFE_STORY_SIDEBAR_BLURB}</p>
           <button
-            onClick={() => handleSurfaceChange('quests')}
-            aria-label="Open quests"
-            aria-current={activeSurface === 'quests' ? 'page' : undefined}
+            type="button"
+            onClick={() => handleSurfaceChange('events')}
+            aria-label="Open life log"
+            aria-current={activeSurface === 'events' ? 'page' : undefined}
             className={cn(
               "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
-              activeSurface === 'quests'
+              activeSurface === 'events'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
             )}
           >
-            <Target className="h-4 w-4 text-primary" aria-hidden="true" />
-            Quests
+            <Sparkles className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+            <span className="flex-1 min-w-0 text-left">
+              <span className="block">Life Log</span>
+              <span className="mt-0.5 block text-[11px] leading-snug text-white/40">{LIFE_STORY_HINT.moments}</span>
+            </span>
+            {counts && counts.events > 0 && (
+              <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.events}</span>
+            )}
           </button>
           <button
             onClick={() => {
-              navigate('/timeline');
+              navigate(runtimeRoute('/timeline'));
               onSurfaceChange?.('timeline');
               onMobileDrawerClose?.();
             }}
@@ -338,12 +314,15 @@ const SidebarContent = ({
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
             )}
           >
-            <CalendarDays className="h-4 w-4 text-primary" aria-hidden="true" />
-            <span className="flex-1 text-left">Omni Timeline</span>
+            <CalendarDays className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+            <span className="flex-1 min-w-0 text-left">
+              <span className="block">Timeline</span>
+              <span className="mt-0.5 block text-[11px] leading-snug text-white/40">{LIFE_STORY_HINT.timeline}</span>
+            </span>
           </button>
           <button
             onClick={() => {
-              navigate('/timeline?view=library');
+              navigate(`${runtimeRoute('/timeline')}?view=library`);
               onSurfaceChange?.('timeline');
               onMobileDrawerClose?.();
             }}
@@ -361,6 +340,24 @@ const SidebarContent = ({
             <span className="flex-1 text-left">Timelines Library</span>
           </button>
           <button
+            type="button"
+            onClick={() => handleSurfaceChange('anchors')}
+            aria-label="Open narrative anchors"
+            aria-current={activeSurface === 'anchors' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
+              activeSurface === 'anchors'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Anchor className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+            <span className="flex-1 min-w-0 text-left">
+              <span className="block">Narrative Anchors</span>
+              <span className="mt-0.5 block text-[11px] leading-snug text-white/40">{LIFE_STORY_HINT.anchors}</span>
+            </span>
+          </button>
+          <button
             onClick={() => handleSurfaceChange('saga')}
             aria-label="Open life saga"
             aria-current={activeSurface === 'saga' ? 'page' : undefined}
@@ -371,8 +368,25 @@ const SidebarContent = ({
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
             )}
           >
-            <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
-            Life Saga
+            <BookOpen className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+            <span className="flex-1 min-w-0 text-left">
+              <span className="block">Life Saga</span>
+              <span className="mt-0.5 block text-[11px] leading-snug text-white/40">{LIFE_STORY_HINT.saga}</span>
+            </span>
+          </button>
+          <button
+            onClick={() => handleSurfaceChange('quests')}
+            aria-label="Open quests"
+            aria-current={activeSurface === 'quests' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
+              activeSurface === 'quests'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Target className="h-4 w-4 text-primary" aria-hidden="true" />
+            Quests
           </button>
           <button
             onClick={() => handleSurfaceChange('documents')}

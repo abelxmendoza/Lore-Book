@@ -243,7 +243,8 @@ describe('OmniTimeline layout and navigation', () => {
   it('does not offer a Story tab — story reading lives in Life Saga', () => {
     renderOmniTimeline();
     expect(screen.queryByRole('tab', { name: /^story$/i })).not.toBeInTheDocument();
-    expect(screen.getByTestId('read-in-life-saga')).toBeInTheDocument();
+    expect(screen.getByLabelText(/how to look at your life/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Life Saga/i })).toBeInTheDocument();
   });
 
   it('sends old ?view=story deep links to Life Saga', async () => {
@@ -266,7 +267,7 @@ describe('OmniTimeline layout and navigation', () => {
         <LocationProbe />
       </MemoryRouter>,
     );
-    await user.click(screen.getByTestId('read-in-life-saga'));
+    await user.click(screen.getByRole('button', { name: /Life Saga/i }));
     expect(screen.getByTestId('location-probe')).toHaveTextContent('/saga');
   });
 

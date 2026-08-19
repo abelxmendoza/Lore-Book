@@ -51,17 +51,16 @@ import { mockDataService } from '../../services/mockDataService';
 import { useGoBack } from '../../hooks/useGoBack';
 import { isDemoRuntimeActive } from '../../lib/demoRuntime';
 import { getRuntimeRouteFromSurface } from '../../utils/routeMapping';
-import { LifeSagaLink } from './timelineSurfaceHandoff';
 import './OmniTimeline.css';
 
 type View = OmniTimelineView;
 type GenPhase = 'idle' | 'generating' | 'revealed';
 
 const VIEWS: { id: View; label: string; shortLabel: string; Icon: React.ElementType; desc: string }[] = [
-  { id: 'swimlanes', label: 'Swimlanes', shortLabel: 'Lanes', Icon: LayoutTemplate, desc: 'Your life across parallel tracks in calendar time' },
-  { id: 'events',    label: 'Chronology', shortLabel: 'Chronology', Icon: CalendarDays,  desc: 'What happened, in time — copyable, with an explicit reorder mode' },
-  { id: 'calendar',  label: 'Calendar',  shortLabel: 'Calendar', Icon: Calendar,  desc: 'Named occasions and events by day' },
-  { id: 'library',   label: 'Library',   shortLabel: 'Library', Icon: Clock3,       desc: 'All generated timeline history you’ve spun up' },
+  { id: 'swimlanes', label: 'Swimlanes', shortLabel: 'Lanes', Icon: LayoutTemplate, desc: 'Moments across parallel tracks' },
+  { id: 'events',    label: 'Chronology', shortLabel: 'Chronology', Icon: CalendarDays,  desc: 'Date list of moments — not the story' },
+  { id: 'calendar',  label: 'Calendar',  shortLabel: 'Calendar', Icon: Calendar,  desc: 'Moments by day' },
+  { id: 'library',   label: 'Library',   shortLabel: 'Library', Icon: Clock3,       desc: 'Timelines you have generated' },
 ];
 
 const BOTTOM_NAV = VIEWS.map(({ id, shortLabel, Icon }) => ({
@@ -891,7 +890,6 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
                 <p className="omni-timeline-gen-label">Showing: {genQuery}</p>
               )}
               <StorySurfaceLinks current="timeline" className="mt-1.5" />
-              <LifeSagaLink compact className="mt-1.5" />
             </div>
             <button
               type="button"
@@ -940,19 +938,14 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
                 )}
               </div>
               <p className="omni-timeline-subtitle">
-                Your life in time. Open Life Saga when you want the story.
+                When things happened — not the story you read.
               </p>
               {(arcs.length > 0 || entries.length > 0) && (
                 <p className="mt-0.5 text-xs text-white/35">
-                  {arcs.length > 0
-                    ? `${arcs.length} arc${arcs.length !== 1 ? 's' : ''} · ${entries.length} moments`
-                    : `${entries.length} moments`}
+                  {entries.length} {entries.length === 1 ? 'moment' : 'moments'}
                 </p>
               )}
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <StorySurfaceLinks current="timeline" />
-                <LifeSagaLink compact />
-              </div>
+              <StorySurfaceLinks current="timeline" className="mt-2" />
             </div>
 
             <div className="omni-timeline-view-tabs" role="tablist" aria-label="Timeline views">

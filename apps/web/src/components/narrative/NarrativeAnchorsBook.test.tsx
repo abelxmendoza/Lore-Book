@@ -37,14 +37,15 @@ describe('NarrativeAnchorsBook', () => {
   it('explains narrative anchors and shows discovered story threads', async () => {
     render(<NarrativeAnchorsBook />);
 
-    expect(screen.getByText('Narrative Anchors')).toBeInTheDocument();
-    expect(screen.getByText(/Chapters your memories keep returning to/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Narrative Anchors' })).toBeInTheDocument();
+    expect(screen.getAllByText(/Chapters that keep coming back/i).length).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText('The college years')).toBeInTheDocument();
     expect(screen.getByText('2018–2022')).toBeInTheDocument();
     expect(screen.getByText('Strong match')).toBeInTheDocument();
-    expect(screen.getByLabelText(/Connected story views/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/How to look at your life/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Moments/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^Timeline$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Timeline/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Life Saga/i })).toBeInTheDocument();
   });
 
   it('reveals the evidence behind an anchor', async () => {

@@ -138,6 +138,7 @@ describe('TimelineStitchedView overlay', () => {
 
     expect(screen.getByText('Chronology')).toBeVisible();
     expect(screen.getByText('What happened, in time')).toBeVisible();
+    expect(screen.getByText(/this is the date list/i)).toBeVisible();
     expect(screen.getByTestId('read-in-life-saga')).toBeInTheDocument();
   });
 

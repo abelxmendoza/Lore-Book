@@ -319,7 +319,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
     const names: Record<SurfaceKey, string> = {
       home: 'Home',
       chat: 'Chat',
-      timeline: 'Omni Timeline',
+      timeline: 'Timeline',
       characters: 'Characters',
       locations: 'Locations',
       memoir: 'LoreBook Editor',

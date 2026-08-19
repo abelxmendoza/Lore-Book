@@ -12,6 +12,7 @@ import { useMockData } from '../../contexts/MockDataContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useStitchedTimeline } from '../../hooks/useStitchedTimeline';
 import { isBackendConnectionError } from '../../lib/backendErrorDisplay';
+import { LIFE_STORY_CHRONOLOGY } from '../../lib/lifeStoryCopy';
 import type { LorebookContentMeterModel } from '../../lib/lorebookContentMeter';
 import type { LorebookForm } from '../../lib/lorebookTiers';
 import type { LoreReadinessSummary } from '../../lib/loreReadiness';
@@ -307,6 +308,11 @@ export const TimelineStitchedView = ({
               </h2>
               {embedded && !lifeArcId && <LifeSagaLink compact />}
             </div>
+            {embedded && !lifeArcId && (
+              <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-white/45 sm:text-xs">
+                {LIFE_STORY_CHRONOLOGY}
+              </p>
+            )}
             <p
               className={`text-[11px] sm:text-xs text-white/40 mt-0.5 ${
                 embedded ? '' : 'text-center'

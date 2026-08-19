@@ -202,8 +202,8 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
               },
               {
                 icon: Calendar,
-                title: 'Omni Timeline',
-                desc: 'See your entire life story in chronological order',
+                title: 'Timeline',
+                desc: 'See when things happened — a date list of your moments',
                 route: '/timeline',
               },
               {

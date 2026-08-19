@@ -52,5 +52,8 @@ describe('SagaScreen', () => {
       </MemoryRouter>,
     );
     expect(screen.getByTestId('view-on-timeline')).toHaveTextContent(/chronology/i);
+    expect(screen.getByText(/this is your life as a story/i)).toBeInTheDocument();
+    expect(screen.getByText(/a chapter is a stretch of time/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/how to look at your life/i)).toBeInTheDocument();
   });
 });

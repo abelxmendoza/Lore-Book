@@ -91,13 +91,13 @@ describe('EventsBook', () => {
 
   it('does not show the legacy chat-first banner above Life Log', async () => {
     render(<EventsBook />);
-    await screen.findByText(/Scenes from your conversations/i);
+    await screen.findByTestId('life-story-job');
     expect(screen.queryByText(/This view is built from your conversations/i)).not.toBeInTheDocument();
   });
 
   it('shows a Filters toggle button in the header', async () => {
     render(<EventsBook />);
-    await screen.findByText(/Scenes from your conversations/i);
+    await screen.findByTestId('life-story-job');
     const filtersButton = screen.queryByRole('button', { name: /Filters?/i });
     expect(filtersButton).toBeInTheDocument();
   });
@@ -110,7 +110,7 @@ describe('EventsBook', () => {
     expect(searchInput).toBeInTheDocument();
   });
 
-  it('keeps Moments and Patterns as the only primary tabs with quiet Also see links', async () => {
+  it('keeps Moments and Patterns as the only primary tabs and explains the other views', async () => {
     render(<EventsBook />);
     await screen.findByText('Night out with Jamie');
 
@@ -118,12 +118,13 @@ describe('EventsBook', () => {
     expect(screen.getByRole('button', { name: /^Patterns$/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Browse$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Search facts$/i })).toBeInTheDocument();
-    expect(screen.getByText(/Scenes from your conversations/i)).toBeInTheDocument();
-    expect(screen.queryByText(/Timeline puts them in order/i)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/Connected story views/i)).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/Also see/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Narrative Anchors/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^Calendar$/i })).toBeInTheDocument();
+    expect(screen.getByText(/Browse every moment/i)).toBeInTheDocument();
+    expect(screen.getByTestId('life-story-job')).toHaveTextContent(/Timeline puts the same moments in time/i);
+    expect(screen.getByLabelText(/How to look at your life/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Timeline/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Anchors/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Life Saga/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Post a moment/i })).toBeInTheDocument();
     expect(screen.getByText(/1 moment/i)).toBeInTheDocument();
   });
 

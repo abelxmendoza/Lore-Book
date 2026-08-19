@@ -48,6 +48,7 @@ import { EventDetailModal } from './EventDetailModal';
 import { EventProfileCard, type Event } from './EventProfileCard';
 import { PostEventComposer } from './PostEventComposer';
 import { listDemoUserPostedEvents } from '../../mocks/userPostedEventsDemo';
+import { StorySurfaceLinks } from '../story/StorySurfaceLinks';
 
 const ITEMS_PER_PAGE = 18;
 const EVENTS_CARD_VIEW_STORAGE_KEY = 'lorebook.eventsBook.cardViewMode';
@@ -909,7 +910,7 @@ export const EventsBook: React.FC = () => {
               Moments
             </h2>
             <p className="mt-1 max-w-2xl text-sm text-white/55">
-              Scenes from your conversations — and events you post with a date, place, and story.
+              Browse every moment — saved from Chat, or posted with a date and place.
             </p>
             <p className="mt-2 text-xs text-white/40">
               {events.length} {events.length === 1 ? 'moment' : 'moments'}
@@ -927,32 +928,13 @@ export const EventsBook: React.FC = () => {
                 className="h-9 bg-amber-500/20 border border-amber-400/35 text-amber-50 hover:bg-amber-500/30"
                 onClick={() => setShowPostComposer(true)}
                 data-testid="events-book-post-event"
+                aria-label="Post a moment"
               >
                 <Plus className="h-3.5 w-3.5 mr-1.5" />
-                Post event
+                Post a moment
               </Button>
             </div>
-            <nav
-              aria-label="Also see"
-              className="mt-3 flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-white/40"
-            >
-              <span className="mr-1 text-white/30">Also see</span>
-              <button
-                type="button"
-                onClick={() => navigate('/narrative-anchors')}
-                className="rounded-md px-1.5 py-0.5 text-white/55 transition-colors hover:bg-white/5 hover:text-white"
-              >
-                Narrative Anchors
-              </button>
-              <span className="text-white/15" aria-hidden>·</span>
-              <button
-                type="button"
-                onClick={() => navigate('/timeline?view=calendar')}
-                className="rounded-md px-1.5 py-0.5 text-white/55 transition-colors hover:bg-white/5 hover:text-white"
-              >
-                Calendar
-              </button>
-            </nav>
+            <StorySurfaceLinks current="moments" className="mt-3" />
           </div>
         </CardContent>
       </Card>

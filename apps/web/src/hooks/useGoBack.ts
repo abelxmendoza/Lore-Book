@@ -9,7 +9,7 @@ type LocationState = {
 const SURFACE_LABELS: Record<SurfaceKey, string> = {
   home: 'Home',
   chat: 'Chat',
-  timeline: 'Omni Timeline',
+  timeline: 'Timeline',
   characters: 'Characters',
   locations: 'Locations',
   memoir: 'LoreBook Editor',
