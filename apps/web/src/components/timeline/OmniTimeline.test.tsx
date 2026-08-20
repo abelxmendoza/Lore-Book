@@ -242,11 +242,13 @@ describe('OmniTimeline layout and navigation', () => {
 
     await user.click(screen.getByRole('tab', { name: /calendar/i }));
     expect(screen.getByTestId('timeline-calendar-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('universal-timeline-search-desktop')).not.toBeInTheDocument();
   });
 
   it('opens calendar from ?view=calendar deep link', () => {
     renderOmniTimeline('/timeline?view=calendar');
     expect(screen.getByTestId('timeline-calendar-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('universal-timeline-search-desktop')).not.toBeInTheDocument();
   });
 
   it('opens Timelines Library from ?view=library deep link', () => {
