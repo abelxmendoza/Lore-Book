@@ -112,7 +112,8 @@ export function inferredBookCategory(
  * Builds the metadata patch for a manual Character Book category correction.
  * "auto" clears the pin (and any exclusion it implied) so inference decides
  * again. Pinning away from Family marks family_excluded so the character
- * won't drift back on its own; pinning Family clears any prior exclusion.
+ * won't drift back on its own; pinning Family clears any prior exclusion and
+ * marks it reviewed so the family tree keeps them.
  */
 export function buildBookCategoryMetadataPatch(input: {
   nextRaw: string;
@@ -127,6 +128,7 @@ export function buildBookCategoryMetadataPatch(input: {
   if (!next) {
     const patch: Record<string, unknown> = {
       book_category: null,
+      book_category_source: 'user_cleared',
       book_category_reason: null,
       book_category_confirmed_at: confirmedAt,
     };
@@ -136,6 +138,7 @@ export function buildBookCategoryMetadataPatch(input: {
 
   const patch: Record<string, unknown> = {
     book_category: next,
+    book_category_source: 'user_confirmed',
     book_category_confirmed_at: confirmedAt,
     manual_book_category_correction: {
       field: 'book_category',
@@ -146,10 +149,122 @@ export function buildBookCategoryMetadataPatch(input: {
   };
 
   if (next === 'family') {
-    if (input.previousExcluded) patch.family_excluded = null;
+    patch.family_excluded = null;
+    patch.family_reviewed = true;
   } else if (previous !== next || input.previousExcluded) {
     patch.family_excluded = { value: true, reason: `book_category:${next}`, at: confirmedAt };
   }
 
   return patch;
+}
+
+export type FamilyBookExtras = {
+  hasDatingRow?: boolean;
+  onFamilyTree?: boolean;
+};
+
+type FamilyMembershipInput = {
+  name?: string | null;
+  alias?: string[] | null;
+  archetype?: string | null;
+  role?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+function isFamilyTitledName(value: string | null | undefined): boolean {
+  return FAMILY_NAME_TITLE_RE.test((value ?? '').trim());
+}
+
+/** A specific kinship term (cousin, aunt, sister, ...) — excludes the generic
+ *  "family" bucket label, which alone isn't strong enough evidence for Family
+ *  Book membership (unlike inferredBookCategory's looser default-tab guess). */
+function isSpecificKinshipValue(value: string | null | undefined): boolean {
+  if (!value) return false;
+  if (value.trim().toLowerCase() === 'family') return false;
+  return isKinshipShapedRelationshipToYou(value);
+}
+
+/**
+ * Strict membership check for the Family Book tab/tree — distinct from
+ * inferredBookCategory's single-best-guess-tab logic. Requires real kinship
+ * evidence (titled name/alias, kinship role, kinship-shaped relationship, or
+ * family-tree placement), not just a generic "family" archetype/category tag,
+ * so the tree doesn't fill up with false positives.
+ */
+export function decideFamilyBookMembership(
+  character: FamilyMembershipInput,
+  extras: FamilyBookExtras = {},
+): { matches: boolean; reason: string } {
+  const meta = character.metadata ?? {};
+
+  // An explicit exclusion always wins, even over a user pin or tree placement.
+  const excluded = meta.family_excluded as { value?: boolean } | null | undefined;
+  if (excluded?.value) {
+    return { matches: false, reason: 'Explicitly excluded from Family.' };
+  }
+
+  // A confirmed user pin to Family is authoritative next.
+  if (pinnedBookCategory(meta) === 'family' && meta.book_category_source === 'user_confirmed') {
+    return { matches: true, reason: 'Pinned to Family by the user.' };
+  }
+
+  // A romantic/crush archetype (or an active dating row) means this is a
+  // Dating & Romance person, never Family — even with stale family metadata.
+  const archetypeList = String(character.archetype ?? '')
+    .split(',')
+    .map((a) => a.trim().toLowerCase())
+    .filter(Boolean);
+  if (extras.hasDatingRow || archetypeList.some((a) => ROMANTIC_OR_CRUSH_ARCHETYPES.has(a))) {
+    return { matches: false, reason: 'This is a crush/dating connection, not a family member.' };
+  }
+
+  if (extras.onFamilyTree) {
+    return { matches: true, reason: 'Placed on the family tree.' };
+  }
+
+  const aliases = character.alias ?? [];
+  if (isFamilyTitledName(character.name) || aliases.some((a) => isFamilyTitledName(a))) {
+    return { matches: true, reason: 'Their name carries a kinship title (aunt, cousin, mom, ...).' };
+  }
+  if (isSpecificKinshipValue(character.role)) {
+    return { matches: true, reason: 'Their role is a specific kinship term.' };
+  }
+  if (
+    isSpecificKinshipValue(meta.relationship_to_user as string | undefined) ||
+    isSpecificKinshipValue(meta.relationship_type as string | undefined) ||
+    (typeof meta.kinship_label === 'string' && meta.kinship_label.trim())
+  ) {
+    return { matches: true, reason: 'A specific kinship relationship is on record for them.' };
+  }
+
+  return { matches: false, reason: 'No kinship evidence (name, role, relationship, or tree placement) found.' };
+}
+
+/** Convenience boolean wrapper around decideFamilyBookMembership. */
+export function characterBelongsInFamilyBook(
+  character: FamilyMembershipInput,
+  extras: FamilyBookExtras = {},
+): boolean {
+  return decideFamilyBookMembership(character, extras).matches;
+}
+
+type FamilyTreeMember = {
+  id: string;
+  is_self?: boolean;
+  has_card?: boolean;
+  is_placeholder?: boolean;
+};
+
+/** Real, card-backed member ids from a family tree — excludes the self node,
+ *  placeholders, and any member with no linked character card. */
+export function familyTreeCardIds(
+  tree: { members?: FamilyTreeMember[] | null } | null | undefined,
+): Set<string> {
+  const members = tree?.members ?? [];
+  const ids = new Set<string>();
+  for (const member of members) {
+    if (member.is_self || member.is_placeholder) continue;
+    if (member.has_card) ids.add(member.id);
+  }
+  return ids;
 }
