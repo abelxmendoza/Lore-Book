@@ -96,7 +96,7 @@ describe('demoChatSimulation', () => {
       entityName: 'Destination Wedding in Mexico',
       entityType: 'event',
       sourceSurface: 'events',
-      sourceLabel: 'Life Log',
+      sourceLabel: 'Timeline',
       sessionStats: {
         messagesSent: 0,
         connectionDelta: 0,

@@ -1690,7 +1690,7 @@ export const LocationDetailModal = ({
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-amber-50">Events here</p>
                   <p className="text-[11px] text-white/45 mt-0.5">
-                    Post a Life Log Event at {location.name}.
+                    Post a moment at {location.name}.
                   </p>
                 </div>
                 <Button
@@ -1700,7 +1700,7 @@ export const LocationDetailModal = ({
                   data-testid="location-post-event"
                 >
                   <Plus className="h-3.5 w-3.5 mr-1.5" />
-                  Post event
+                  Post moment
                 </Button>
               </div>
 

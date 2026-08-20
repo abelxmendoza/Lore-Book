@@ -242,7 +242,7 @@ describe('EventsBook', () => {
 
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     const copied = writeText.mock.calls[0][0] as string;
-    expect(copied).toContain('Life Log / Patterns');
+    expect(copied).toContain('Timeline / Patterns');
     expect(copied).toContain('Punk Shows');
   });
 

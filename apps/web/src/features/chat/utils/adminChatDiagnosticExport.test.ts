@@ -101,7 +101,7 @@ describe('buildChatConversationCopyText', () => {
       entityName: 'Catch-up coffee after the gap',
       entityType: 'event' as const,
       sourceSurface: 'events' as const,
-      sourceLabel: 'Life Log',
+      sourceLabel: 'Timeline',
       sessionStats: {
         messagesSent: 0,
         connectionDelta: 0,
@@ -124,7 +124,7 @@ describe('buildChatConversationCopyText', () => {
     });
 
     const text = buildChatConversationCopyText([message()], undefined, snapshot);
-    expect(text).toContain('Focus chip: Catch-up coffee after the gap · Life Log (events/event)');
+    expect(text).toContain('Focus chip: Catch-up coffee after the gap · Timeline (events/event)');
     expect(text).toContain('canonical event: Catch-up coffee after the gap [event-1]');
     expect(text).toContain('exclude from creation; keep as enrichment target');
     expect(text).toContain('Catch-up coffee after the gap (event; confirmed)');

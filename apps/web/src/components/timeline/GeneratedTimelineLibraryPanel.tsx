@@ -25,7 +25,7 @@ type Props = {
   className?: string;
   defaultExpanded?: boolean;
   /**
-   * `page` — full Omni Timeline Library view (always visible, empty state).
+   * `page` — full Timeline Library view (always visible, empty state).
    * `strip` — legacy collapsible chrome (unused once Library is a peer view).
    */
   variant?: 'page' | 'strip';
@@ -218,7 +218,7 @@ export function GeneratedTimelineLibraryPanel({
               <div className="max-w-sm space-y-1.5">
                 <p className="text-sm font-medium text-white/80">No generated timelines yet</p>
                 <p className="text-xs text-white/45 leading-relaxed">
-                  Search from Omni Timeline (nightlife, a person, a year) and every result is saved here as history you can reopen.
+                  Search from Timeline (nightlife, a person, a year) and every result is saved here as history you can reopen.
                 </p>
               </div>
               {onGenerateNew && (

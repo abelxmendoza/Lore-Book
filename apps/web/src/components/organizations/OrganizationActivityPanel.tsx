@@ -28,7 +28,7 @@ type Props = {
   onRemoveEvent: (eventId: string) => Promise<void> | void;
   formatDate: (dateString?: string) => string;
   eventSaving?: boolean;
-  /** Opens the shared Life Log Event composer with this group prefilled. */
+  /** Opens the shared moment composer with this group prefilled. */
   onPostEvent?: () => void;
   /** Open Event detail or moment panel for a timeline row. */
   onEventSelect?: (event: OrgDerivedEvent) => void;
@@ -75,9 +75,9 @@ export function OrganizationActivityPanel({
       {onPostEvent && (
         <div className="flex flex-col gap-3 rounded-xl border border-amber-400/20 bg-amber-500/[0.06] px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-amber-50">Post an Event</p>
+            <p className="text-sm font-medium text-amber-50">Post a moment</p>
             <p className="text-[11px] text-white/45 mt-0.5">
-              Flyer, date, and place — shows on this group’s timeline and in Life Log.
+              Flyer, date, and place — shows on this group’s timeline and in Timeline Moments.
             </p>
           </div>
           <Button
@@ -87,7 +87,7 @@ export function OrganizationActivityPanel({
             data-testid="org-post-event"
           >
             <Plus className="h-3.5 w-3.5 mr-1.5" />
-            Post event
+            Post moment
           </Button>
         </div>
       )}

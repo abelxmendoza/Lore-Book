@@ -44,8 +44,8 @@ export function buildPostedEventIngestPrompt(input: {
     'EVENT ENRICHMENT MODE',
     '',
     input.storyOnly
-      ? 'I dumped a Life Log moment as a story (details optional). Please process it into LoreBook.'
-      : 'I already saved this Life Log event. Please process the attached flyer/photos and my notes into LoreBook.',
+      ? 'I dumped a Timeline moment as a story (details optional). Please process it into LoreBook.'
+      : 'I already saved this Timeline moment. Please process the attached flyer/photos and my notes into LoreBook.',
     '',
     'TARGET EVENT',
     `Event id: ${input.eventId}`,
@@ -71,7 +71,7 @@ export function buildPostedEventIngestPrompt(input: {
     'Return and merge: participants, organizations/groups, locations, timing, activities, relationships, memories, timeline updates, themes, a concise narrative summary, confidence, and evidence references.',
     'An explicitly present but unnamed participant must remain an unresolved participant — do not omit them and do not invent a name.',
     'Approximate dates and time periods are fine. Do not invent exact dates, names, or facts.',
-    'Update the target Life Log event and connected knowledge bases while preserving provenance and review rules.',
+    'Update the target Timeline moment and connected knowledge bases while preserving provenance and review rules.',
   );
   return lines.join('\n');
 }

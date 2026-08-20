@@ -35,7 +35,7 @@ function compactMoment(event: GeneratedTimelineEvent): string | null {
 
 export function buildGeneratedTimelineKnowledgeScope(input: GeneratedTimelineChatInput): string {
   const subject = input.compilation?.subject;
-  const base = `Omni Timeline subject: “${input.query}”`;
+  const base = `Timeline subject: “${input.query}”`;
   if (input.isMock) {
     return `${base} · simulated preview only · do not treat preview moments as evidence`;
   }
@@ -61,7 +61,7 @@ export function buildGeneratedTimelineChatPrompt(input: GeneratedTimelineChatInp
     );
   }
   return (
-    `I want to continue exploring “${input.query}” from my Omni Timeline. ` +
+    `I want to continue exploring “${input.query}” from my Timeline. ` +
     'Use the attached timeline context, help me connect the real moments, and ask about important gaps or corrections.'
   );
 }

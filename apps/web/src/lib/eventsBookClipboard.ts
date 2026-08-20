@@ -8,7 +8,7 @@ export function buildEventsBookClipboardText(
   options?: ListClipboardFilterOptions,
 ): string {
   return buildListClipboardText({
-    title: 'Life Log / Moments',
+    title: 'Timeline / Moments',
     filters: options?.filters,
     items: events.map((event) => ({
       heading: getDisplayTitle({

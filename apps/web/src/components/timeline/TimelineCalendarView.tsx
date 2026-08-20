@@ -1,6 +1,6 @@
 /**
  * Canonical month calendar — occasions + stitched events/moments by day.
- * Single calendar for the app (Omni Timeline). Life Log links here.
+ * Single calendar for the app Timeline. Moments and old Life Log links land here.
  */
 
 import { useState, useMemo, useCallback, useEffect } from 'react';

@@ -59,7 +59,7 @@ describe('CharacterTimelinePanel', () => {
     });
   });
 
-  it('links out to Life Log and Omni Timeline for the character', async () => {
+  it('links out to Moments and Timeline for the character', async () => {
     render(
       <MemoryRouter>
         <CharacterTimelinePanel characterId="c1" characterName="Jerry Medina" active />
@@ -76,7 +76,7 @@ describe('CharacterTimelinePanel', () => {
     expect(omni.getAttribute('href')).toBe('/timeline?view=events&characterId=c1');
   });
 
-  it('opens Life Log event detail when a timeline row is clicked', async () => {
+  it('opens Timeline moment detail when a timeline row is clicked', async () => {
     fetchJsonMock
       .mockResolvedValueOnce({
         success: true,

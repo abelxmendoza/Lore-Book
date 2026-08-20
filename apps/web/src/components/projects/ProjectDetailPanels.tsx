@@ -420,7 +420,7 @@ export function ProjectTimelineTab({
               className="text-[11px] h-8"
               leftIcon={<CalendarClock className="h-3.5 w-3.5" />}
             >
-              Omni Timeline
+              Timeline
             </Button>
           )}
           {onCreateLorebook && (

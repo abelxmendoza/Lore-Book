@@ -2781,7 +2781,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                       data-testid="org-stories-post-event"
                     >
                       <Calendar className="h-3.5 w-3.5 mr-1.5" />
-                      Post event
+                      Post moment
                     </Button>
                     <Button
                       size="sm"
@@ -2798,7 +2798,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                 {showAddStory && (
                   <div className="border-b border-white/8 bg-black/35 px-3.5 py-3.5 sm:px-4 space-y-3">
                     <p className="text-[11px] text-white/45">
-                      Freeform group note (not attached to a Life Log Event). Prefer posting an Event when there’s a date and place.
+                      Freeform group note (not attached to a Timeline moment). Prefer posting a moment when there’s a date and place.
                     </p>
                     <Input
                       placeholder="Title *"
@@ -2840,7 +2840,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                       </div>
                       <p className="text-sm font-medium text-white/75">No stories yet</p>
                       <p className="mt-1 text-xs text-white/40 max-w-xs mx-auto leading-relaxed">
-                        Post an Event for {editedOrg.name} (date + place), then add what happened — or save a freeform note.
+                        Post a moment for {editedOrg.name} (date + place), then add what happened — or save a freeform note.
                       </p>
                       <div className="mt-4 flex flex-wrap justify-center gap-2">
                         <Button
@@ -2855,7 +2855,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                           }}
                         >
                           <Calendar className="h-3.5 w-3.5 mr-1.5" />
-                          Post event
+                          Post moment
                         </Button>
                         <Button size="sm" variant="outline" className="h-9" onClick={() => setShowAddStory(true)}>
                           <Plus className="h-3.5 w-3.5 mr-1.5" />

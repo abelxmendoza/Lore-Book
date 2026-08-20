@@ -83,7 +83,7 @@ export function getDemoFocusResponse(message: string, focus: ChatFocus): string 
 
   if (focus.sourceSurface === 'timeline') {
     return withDemoDisclaimer(
-      `*(Demo — Omni Timeline focus)*\n\n` +
+      `*(Demo — Timeline focus)*\n\n` +
         `Focused on **${name}** from **${section}**.\n\n` +
         `${deepeningLine}\n\n` +
         `This preview shows how a stitched chapter carries into main chat — focus chip, connection deepening, and a simulated reply. ` +

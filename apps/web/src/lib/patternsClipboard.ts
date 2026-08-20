@@ -23,7 +23,7 @@ export function patternContinuityLabel(strength: number): string {
 
 export function buildPatternsClipboardText(scenes: PatternClipboardScene[]): string {
   return buildListClipboardText({
-    title: 'Life Log / Patterns',
+    title: 'Timeline / Patterns',
     items: scenes.map((scene) => ({
       heading: scene.canonical_title,
       fields: [

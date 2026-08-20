@@ -22,7 +22,7 @@ const DOMAIN_LABELS: Record<TrustDomain, string> = {
   skills: 'Skills',
   communities: 'Communities',
   relationships: 'Relationships',
-  events: 'Life Log',
+  events: 'Timeline',
   households: 'Households',
 };
 

@@ -35,13 +35,13 @@ describe('chatFocusUtils', () => {
     });
   });
 
-  it('keeps a Life Log event typed as an event and out of generic entity context', () => {
+  it('keeps a Timeline moment typed as an event and out of generic entity context', () => {
     const focus: ChatFocus = {
       entityId: 'event-1',
       entityName: 'Catch-up coffee after the gap',
       entityType: 'event',
       sourceSurface: 'events',
-      sourceLabel: 'Life Log',
+      sourceLabel: 'Timeline',
       sessionStats: emptyChatFocusSessionStats(),
     };
 

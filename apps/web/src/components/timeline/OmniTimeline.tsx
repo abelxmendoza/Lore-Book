@@ -1,6 +1,6 @@
 /**
- * OmniTimeline — clean shell replacing OmniTimelinePanel.
- * Fetches arc + chronology data once, routes between three views.
+ * OmniTimeline — Timeline shell: Chronology, Lanes, Calendar, Moments, Patterns, Library.
+ * Fetches arc + chronology data once, then routes between those views.
  */
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
@@ -1099,7 +1099,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
         </div>
       )}
 
-      {/* Timelines Library is a peer view under Omni Timeline (?view=library). */}
+      {/* Timelines Library is a peer view under Timeline (?view=library). */}
 
       <main className="omni-timeline-main">
         {renderContent()}
