@@ -57,8 +57,8 @@ type GenPhase = 'idle' | 'generating' | 'revealed';
 
 const VIEWS: { id: View; label: string; shortLabel: string; Icon: React.ElementType; desc: string }[] = [
   { id: 'swimlanes', label: 'Swimlanes', shortLabel: 'Lanes', Icon: LayoutTemplate, desc: 'Your life across parallel tracks in calendar time' },
-  { id: 'events',    label: 'Chronology', shortLabel: 'Chronology', Icon: CalendarDays,  desc: 'Same scenes stitched in time — copyable, with an explicit reorder mode' },
   { id: 'calendar',  label: 'Calendar',  shortLabel: 'Calendar', Icon: Calendar,  desc: 'Named occasions and events by day' },
+  { id: 'events',    label: 'Chronology', shortLabel: 'Chronology', Icon: CalendarDays,  desc: 'Same scenes stitched in time — copyable, with an explicit reorder mode' },
   { id: 'story',     label: 'Story',     shortLabel: 'Story', Icon: BookOpen,       desc: 'Read life arcs in order' },
   { id: 'library',   label: 'Library',   shortLabel: 'Library', Icon: Clock3,       desc: 'All generated timeline history you’ve spun up' },
 ];
