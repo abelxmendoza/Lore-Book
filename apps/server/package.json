@@ -62,6 +62,7 @@
   "dependencies": {
     "@lorebook/api-contracts": "file:vendor/api-contracts",
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "@sentry/node": "^10.70.0",
     "@supabase/supabase-js": "^2.110.7",
     "chrono-node": "^2.10.0",
     "cors": "^2.8.6",
