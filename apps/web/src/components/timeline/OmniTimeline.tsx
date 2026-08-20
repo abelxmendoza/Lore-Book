@@ -124,18 +124,6 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
     [searchParams, setSearchParams],
   );
 
-  // Same as handleCalendarDateChange, but for the calendar embedded next to
-  // Swimlanes — picking a date there should update the URL without
-  // navigating away from the combined view.
-  const handleEmbeddedCalendarDateChange = useCallback(
-    (dateKey: string) => {
-      const params = new URLSearchParams(searchParams);
-      params.set('date', dateKey);
-      setSearchParams(params, { replace: true });
-    },
-    [searchParams, setSearchParams],
-  );
-
   // Keep view in sync with ?view= so Life Log / deep links share one calendar.
   useEffect(() => {
     const next = viewFromSearchParams(searchParams);
@@ -767,34 +755,23 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
         return libraryPanel;
       case 'swimlanes':
         return (
-          <div className="timeline-swimlanes-calendar-split">
-            <div className="timeline-swimlanes-calendar-split__swimlanes">
-              <TimelineSwimlanes
-                arcs={arcs}
-                arcsByTrack={arcsByTrack}
-                activeArcs={activeArcs}
-                entries={displayEntries}
-                loading={loading}
-                unresolvedItems={unresolvedItems}
-                lifeEras={lifeEras.map((era) => ({
-                  id: era.id,
-                  label: era.chapter_title,
-                  startDate: era.start_date,
-                  endDate: era.end_date,
-                }))}
-                onOpenArcTimeline={handleOpenArcTimeline}
-                onCreateLorebook={handleCreateLorebookFromArc}
-                canCreateLorebookForArc={canCreateLorebookForArc}
-              />
-            </div>
-            <div className="timeline-swimlanes-calendar-split__calendar">
-              <TimelineCalendarView
-                initialDate={calendarDateParam}
-                onDateChange={handleEmbeddedCalendarDateChange}
-                onOpenDayInTimeline={handleOpenDayInTimeline}
-              />
-            </div>
-          </div>
+          <TimelineSwimlanes
+            arcs={arcs}
+            arcsByTrack={arcsByTrack}
+            activeArcs={activeArcs}
+            entries={displayEntries}
+            loading={loading}
+            unresolvedItems={unresolvedItems}
+            lifeEras={lifeEras.map((era) => ({
+              id: era.id,
+              label: era.chapter_title,
+              startDate: era.start_date,
+              endDate: era.end_date,
+            }))}
+            onOpenArcTimeline={handleOpenArcTimeline}
+            onCreateLorebook={handleCreateLorebookFromArc}
+            canCreateLorebookForArc={canCreateLorebookForArc}
+          />
         );
       case 'events':
         return (
