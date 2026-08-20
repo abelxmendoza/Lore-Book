@@ -1,4 +1,5 @@
 import { normalizeNameKey } from '../../utils/nameNormalization';
+import { getCurrentCharacterRelationship } from '../characters/characterRelationshipAuthorityService';
 import type { TemporalWindow } from '../../utils/temporalAnchorResolver';
 import { stitchedTimelineService } from '../chronologyV2/stitchedTimelineService';
 import { isCanonicalLifeEpisode } from '../conversationCentered/episodeProjectionPolicy';
@@ -779,24 +780,40 @@ async function loadProtagonistRelationshipCandidates(
   const ROMANTIC_EDGE_RE =
     /\b(crush|dating|boyfriend|girlfriend|romantic|partner|situationship|lover|ex[-_ ]?(boyfriend|girlfriend)?|hookup|unrequited)\b/i;
 
-  for (const rel of (rels ?? []) as any[]) {
+  // Authority-projected current state per row, not the raw cache columns —
+  // character_relationships.relationship_type/status can be stale (see
+  // characterRelationshipAuthorityService.ts). A row whose projection has
+  // been fully retracted ("we were never friends") is skipped entirely
+  // rather than surfaced as if it were still true.
+  const relProjections = await Promise.all(
+    ((rels ?? []) as any[]).map((rel) =>
+      getCurrentCharacterRelationship(userId, rel.source_character_id, rel.target_character_id).catch(() => null),
+    ),
+  );
+
+  (rels ?? []).forEach((rel: any, i: number) => {
     const otherId =
       rel.source_character_id === protagonist.id ? rel.target_character_id : rel.source_character_id;
     const otherName = nameMap.get(otherId) ?? 'Unknown';
     const kinship = (rel.metadata as Record<string, unknown>)?.kinship;
     const relMeta = (rel.metadata as Record<string, unknown> | null) ?? {};
-    const relType = String(rel.relationship_type ?? '');
-    const edgeText = `${relType} ${kinship ?? ''} ${JSON.stringify(relMeta)}`;
+
+    const projection = relProjections[i];
+    if (!projection?.current) return; // retracted or nothing to report — do not surface stale/removed state
+    const currentType = projection.current.type ?? rel.relationship_type;
+    const currentStatus = projection.current.status ?? rel.status;
+
+    const edgeText = `${currentType} ${kinship ?? ''} ${JSON.stringify(relMeta)}`;
     // Tag romantic edges so response-scope can block them on general/event vents.
     const domain = ROMANTIC_EDGE_RE.test(edgeText) ? 'romance' : undefined;
     out.push({
       id: `relationship:${rel.id}`,
       type: 'relationship',
-      title: kinship ? `${kinship} — ${otherName}` : `${rel.relationship_type} — ${otherName}`,
-      content: `${rel.relationship_type}${kinship ? ` (${kinship})` : ''}${rel.status ? `, ${rel.status}` : ''}`,
+      title: kinship ? `${kinship} — ${otherName}` : `${currentType} — ${otherName}`,
+      content: `${currentType}${kinship ? ` (${kinship})` : ''}${currentStatus ? `, ${currentStatus}` : ''}`,
       source: 'character_relationships',
-      date: rel.updated_at,
-      confidence: Number(relMeta.confidence ?? 0.85),
+      date: projection.current.changedAt ?? rel.updated_at,
+      confidence: Number(projection.current.confidence ?? relMeta.confidence ?? 0.85),
       relevance: 0.95,
       importance: 0.8,
       significance: 0.75,
@@ -804,7 +821,7 @@ async function loadProtagonistRelationshipCandidates(
       reasons: ['protagonist relationship edge'],
       metadata: domain ? { ...relMeta, domain } : relMeta,
     });
-  }
+  });
 
   const edgeRows = (edges ?? []) as Array<{
     id: string;
@@ -1100,22 +1117,32 @@ async function loadPersonCandidates(
     });
   }
 
-  for (const rel of (relationships ?? []) as any[]) {
+  const relRows = (relationships ?? []) as any[];
+  const relProjections = await Promise.all(
+    relRows.map((rel) =>
+      getCurrentCharacterRelationship(userId, rel.source_character_id, rel.target_character_id).catch(() => null),
+    ),
+  );
+  relRows.forEach((rel, i) => {
+    const projection = relProjections[i];
+    if (!projection?.current) return; // retracted or nothing to report — do not surface stale/removed state
+    const currentType = projection.current.type ?? rel.relationship_type;
+    const currentStatus = projection.current.status ?? rel.status;
     out.push({
       id: `relationship:${rel.id}`,
       type: 'relationship',
-      title: String(rel.relationship_type ?? 'relationship').replace(/_/g, ' '),
-      content: `${rel.relationship_type ?? 'relationship'}${rel.status ? ` (${rel.status})` : ''}`,
+      title: String(currentType ?? 'relationship').replace(/_/g, ' '),
+      content: `${currentType ?? 'relationship'}${currentStatus ? ` (${currentStatus})` : ''}`,
       source: 'character_relationships',
-      date: rel.updated_at,
-      confidence: 0.78,
+      date: projection.current.changedAt ?? rel.updated_at,
+      confidence: Number(projection.current.confidence ?? 0.78),
       relevance: 0.82,
       importance: Number(rel.strength ?? 60) / 100,
       significance: 0.65,
       relationshipDistance: 0.9,
       reasons: ['relationship edge adjacent to target'],
     });
-  }
+  });
 
   for (const fact of (facts ?? []) as any[]) {
     out.push({

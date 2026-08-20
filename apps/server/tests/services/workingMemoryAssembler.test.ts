@@ -911,4 +911,62 @@ describe('Working Memory Assembler', () => {
 
     expect(getUserTimezoneMock).toHaveBeenCalledWith('user-1');
   });
+
+  it('reports the authority-projected current relationship, not a stale character_relationships cache row', async () => {
+    // Regression test for the original production bug: character_relationships
+    // still says "friend" (a stale system-inferred row from before a user
+    // correction), but the authority ledger has a later, higher-authority
+    // "estranged" transition. The relationship candidate chat retrieval sees
+    // must reflect the ledger, not the stale cache.
+    tableResults.characters = {
+      data: [
+        { id: 'char-me', name: 'Me', alias: [], summary: null, metadata: {}, importance_score: 100, updated_at: '2026-01-01T00:00:00Z' },
+        { id: 'char-genni', name: 'Genni', alias: [], summary: null, metadata: {}, importance_score: 50, updated_at: '2026-01-01T00:00:00Z' },
+      ],
+      error: null,
+    };
+    tableResults.character_relationships = {
+      data: [
+        {
+          id: 'rel-1',
+          relationship_type: 'friend',
+          status: 'active',
+          metadata: {},
+          source_character_id: 'char-me',
+          target_character_id: 'char-genni',
+          updated_at: '2026-06-01T00:00:00Z',
+        },
+      ],
+      error: null,
+    };
+    tableResults.entity_relationships = { data: [], error: null };
+    tableResults.character_relationship_history = {
+      data: [
+        {
+          id: 'h1', user_id: 'user-1', source_character_id: 'char-me', target_character_id: 'char-genni',
+          from_relationship_type: null, from_status: null, to_relationship_type: 'friend', to_status: 'active',
+          changed_at: '2026-06-01T00:00:00Z', recorded_at: '2026-06-01T00:00:00Z', valid_until: null,
+          change_kind: 'CREATED', authority: 'SYSTEM_DERIVED', evidence_ids: [], confidence: null,
+          relationship_id: 'rel-1', corrects_history_id: null,
+        },
+        {
+          id: 'h2', user_id: 'user-1', source_character_id: 'char-me', target_character_id: 'char-genni',
+          from_relationship_type: 'friend', from_status: 'active', to_relationship_type: 'estranged', to_status: 'inactive',
+          changed_at: '2026-07-15T00:00:00Z', recorded_at: '2026-07-15T00:00:00Z', valid_until: null,
+          change_kind: 'TRANSITIONED', authority: 'USER_EXPLICIT', evidence_ids: [], confidence: null,
+          relationship_id: 'rel-1', corrects_history_id: null,
+        },
+      ],
+      error: null,
+    };
+
+    const result = await assembleWorkingMemory({
+      userId: 'user-1',
+      question: 'What is my relationship with Genni?',
+    });
+
+    const relationshipText = result.relationships.map((e) => `${e.title} ${e.content}`).join('\n');
+    expect(relationshipText).toMatch(/estranged/i);
+    expect(relationshipText).not.toMatch(/friend/i);
+  });
 });

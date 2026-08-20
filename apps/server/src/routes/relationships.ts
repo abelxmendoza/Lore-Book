@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../utils/asyncHandler';
+import { logger } from '../logger';
 import { supabaseAdmin } from '../services/supabaseClient';
 import {
   inferRolesFromText,
@@ -11,6 +12,12 @@ import {
   hierarchyIcon,
   domainLabel,
 } from '../services/relationships/relationshipRoleInferenceService';
+import {
+  recordRelationshipTransition,
+  endRelationship,
+  correctRelationshipAssertion,
+  getCurrentCharacterRelationship,
+} from '../services/characters/characterRelationshipAuthorityService';
 
 const router = Router();
 
@@ -325,6 +332,19 @@ router.post(
 
     if (error) throw error;
 
+    await recordRelationshipTransition({
+      userId,
+      sourceCharacterId: input.source_character_id,
+      targetCharacterId: input.target_character_id,
+      toRelationshipType: relationship.relationship_type,
+      toStatus: relationship.status,
+      changeKind: existing ? 'TRANSITIONED' : 'CREATED',
+      authority: 'USER_EXPLICIT',
+      relationshipId: relationship.id,
+    }).catch((err) => {
+      logger.warn({ err, relationshipId: relationship.id }, 'Relationship history write failed (cache row already saved)');
+    });
+
     await syncRomanticRelationshipForCharacterLink({
       userId,
       relationship,
@@ -389,6 +409,19 @@ router.patch(
 
     if (error) throw error;
 
+    await recordRelationshipTransition({
+      userId,
+      sourceCharacterId: existing.source_character_id,
+      targetCharacterId: existing.target_character_id,
+      toRelationshipType: relationship.relationship_type,
+      toStatus: relationship.status,
+      changeKind: 'TRANSITIONED',
+      authority: 'USER_EXPLICIT',
+      relationshipId: relationship.id,
+    }).catch((err) => {
+      logger.warn({ err, relationshipId: relationship.id }, 'Relationship history write failed (cache row already saved)');
+    });
+
     await syncRomanticRelationshipForCharacterLink({
       userId,
       relationship,
@@ -401,6 +434,110 @@ router.patch(
       success: true,
       relationship: relationshipResponse(relationship, existing.source_character_id, characterNameById),
     });
+  })
+);
+
+// ─── POST /api/relationships/character-links/:id/end ────────────────────────
+// "We're not friends anymore" — the relationship happened, then closed.
+// Preserves history; does not delete the row.
+
+router.post(
+  '/character-links/:id/end',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from('character_relationships')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (existingError) throw existingError;
+    if (!existing) return res.status(404).json({ error: 'Relationship not found' });
+
+    const historyRow = await endRelationship({
+      userId,
+      sourceCharacterId: existing.source_character_id,
+      targetCharacterId: existing.target_character_id,
+      authority: 'USER_EXPLICIT',
+      relationshipId: existing.id,
+    });
+
+    const { data: relationship, error } = await supabaseAdmin
+      .from('character_relationships')
+      .update({
+        status: 'ended',
+        metadata: {
+          ...(existing.metadata ?? {}),
+          source: 'character_world_editor',
+          manual: true,
+          user_confirmed_at: new Date().toISOString(),
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+
+    return res.json({ success: true, relationship, historyRowId: historyRow.id });
+  })
+);
+
+// ─── POST /api/relationships/character-links/:id/retract ────────────────────
+// "We were never friends" — corrects the most recent positive assertion for
+// this pair rather than presenting it as historical truth going forward.
+// The retracted assertion stays in the ledger as an audit trail. Unlike the
+// bare DELETE below (kept for backward compatibility), this always leaves a
+// correction record instead of silently discarding what was believed.
+
+router.post(
+  '/character-links/:id/retract',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from('character_relationships')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (existingError) throw existingError;
+    if (!existing) return res.status(404).json({ error: 'Relationship not found' });
+
+    const projection = await getCurrentCharacterRelationship(userId, existing.source_character_id, existing.target_character_id);
+    if (projection.current && !projection.current.isMigratedBaseline) {
+      const latest = projection.history[projection.history.length - 1];
+      if (latest) {
+        await correctRelationshipAssertion({
+          userId,
+          sourceCharacterId: existing.source_character_id,
+          targetCharacterId: existing.target_character_id,
+          correctsHistoryId: latest.id,
+          authority: 'USER_EXPLICIT',
+        }).catch((err) => {
+          logger.warn({ err, relationshipId: id }, 'Relationship retraction write failed (row deleted anyway)');
+        });
+      }
+    }
+
+    const { error } = await supabaseAdmin
+      .from('character_relationships')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+
+    return res.json({ success: true });
   })
 );
 
