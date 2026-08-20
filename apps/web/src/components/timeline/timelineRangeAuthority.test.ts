@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ChronologyEntry } from '../../types/timelineV2';
 import type { LifeArc } from '../../hooks/useLifeArcs';
 import {
+  computeFullTimelineSpan,
   computeReliableTimelineSpan,
   defaultScaleForSpanDays,
   shouldDrawSwimlaneArcBar,
@@ -91,6 +92,33 @@ describe('timelineRangeAuthority', () => {
     const span = computeReliableTimelineSpan([], [], new Date('2026-07-25T12:00:00.000Z'));
     expect(span.usedFallback).toBe(true);
     expect(span.spanDays).toBe(45);
+  });
+
+  it('computeFullTimelineSpan still reaches genuine older history that computeReliableTimelineSpan drops', () => {
+    // A real user with months of recent, well-dated activity plus older,
+    // vaguely-remembered events (year precision, lower confidence) — not
+    // noise, just genuinely less precise. The reliable-only span should
+    // stay tight to the recent activity (so Month/Season picks a sane
+    // default), but the full span must still reach back far enough for
+    // 5-year/Life scale to actually show that older history.
+    const entries = [
+      entry({
+        id: 'old-memory',
+        start_time: '2019-01-01T00:00:00.000Z',
+        time_precision: 'year',
+        time_confidence: 0.4,
+      }),
+      entry({ id: 'recent1', start_time: '2026-06-04T12:00:00.000Z' }),
+      entry({ id: 'recent2', start_time: '2026-07-18T12:00:00.000Z' }),
+    ];
+    const today = new Date('2026-08-20T12:00:00.000Z');
+
+    const reliable = computeReliableTimelineSpan(entries, [], today);
+    expect(reliable.start.getFullYear()).toBe(2026);
+
+    const full = computeFullTimelineSpan(entries, [], today);
+    expect(full.start.getFullYear()).toBeLessThanOrEqual(2019);
+    expect(full.start.getTime()).toBeLessThan(reliable.start.getTime());
   });
 
   it('picks month scale for ~7 week reliable spans', () => {

@@ -105,6 +105,29 @@ export function computeReliableTimelineSpan(
   return { start, end: today, spanDays: 45, usedFallback: true };
 }
 
+/**
+ * Full canvas span — every dated entry/arc, reliability aside. Use this for
+ * the swimlane canvas's actual start boundary, not computeReliableTimelineSpan:
+ * the reliability filter exists to stop one noisy low-confidence outlier from
+ * choosing a bad *default* scale on load, but it isn't a signal that the
+ * older content doesn't belong on the canvas. Older, more vaguely-remembered
+ * history routinely resolves to year-only precision or lower confidence —
+ * that's genuine history, not noise, and picking a wide scale (5 years,
+ * Life) is the user explicitly asking to see all of it.
+ */
+export function computeFullTimelineSpan(
+  entries: ChronologyEntry[],
+  arcs: LifeArc[],
+  today = new Date(),
+): { start: Date; end: Date; spanDays: number; usedFallback: boolean } {
+  const allDates = collectAllDates(entries, arcs);
+  if (allDates.length > 0) return paddedSpan(allDates, today, false);
+
+  const start = new Date(today);
+  start.setDate(start.getDate() - 45);
+  return { start, end: today, spanDays: 45, usedFallback: true };
+}
+
 export function defaultScaleForSpanDays(spanDays: number): TimelineZoomScaleId {
   if (spanDays <= 45) return 'month';
   if (spanDays <= 120) return 'season';
