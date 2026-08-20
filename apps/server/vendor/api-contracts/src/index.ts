@@ -50,6 +50,11 @@ export {
 } from "./chat/closedScopeIntent";
 
 export {
+  parseNamedChatSubject,
+  subjectNamesMatch,
+} from "./chat/namedChatSubject";
+
+export {
   CHARACTER_QUERY_SECTIONS,
   CHARACTER_QUERY_CORE_SECTIONS,
   type CharacterQuerySectionName,
