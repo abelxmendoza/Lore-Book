@@ -6,13 +6,13 @@
 export const LIFE_STORY_CHAT_HINT = 'Chat first — that is how moments get saved.';
 
 export const LIFE_STORY_SIDEBAR_BLURB =
-  'Moments are things that happened. Timeline is when. Anchors are chapters that keep coming back. Life Saga is the story.';
+  'Timeline is when things happened — including your moment library. Anchors are chapters that keep coming back. Life Saga is the story.';
 
 export const LIFE_STORY_JOB = {
   moments:
-    'These are your moments — things that happened. Timeline puts the same moments in time.',
+    'This is your moment library — things that happened. Chronology puts the same moments in time.',
   timeline:
-    'This is when things happened. Anchors are the chapters that keep mattering. Life Saga is the story you read.',
+    'This is when things happened. Moments is the library. Anchors are the chapters that keep mattering. Life Saga is the story you read.',
   anchors:
     'These are chapters your life keeps returning to — people, work, family, places. Timeline is the date list. Life Saga is the book.',
   saga:
@@ -20,7 +20,7 @@ export const LIFE_STORY_JOB = {
 } as const;
 
 export const LIFE_STORY_HINT = {
-  moments: 'Things that happened',
+  moments: 'Your moment library',
   timeline: 'When they happened',
   anchors: 'Chapters that keep coming back',
   saga: 'Read it as a story',

@@ -52,9 +52,9 @@ export const routeToSurface: Record<string, SurfaceKey> = {
   '/lorebook/library': 'lorebook',
   '/lorebookLibrary': 'lorebook',
   '/photos': 'photos',
-  '/memories': 'events',
+  '/memories': 'timeline',
   '/perceptions': 'perceptions',
-  '/events': 'events',
+  '/events': 'timeline',
   '/entities': 'entities',
   '/organizations': 'organizations',
   '/family': 'family',
@@ -155,6 +155,18 @@ export function getRouteFromSurface(surface: SurfaceKey): string {
 export function getRuntimeRouteFromSurface(surface: SurfaceKey, demoRuntime: boolean): string {
   const route = getRouteFromSurface(surface);
   return demoRuntime ? `/demo${route}` : route;
+}
+
+/** Old Life Log URLs (`/events`, `/memories`) now live on Timeline Moments. */
+export function lifeLogRedirectToTimeline(pathname: string, search = '', demoRuntime = false): string | null {
+  const raw = pathname.split('?')[0].split('#')[0];
+  const path = raw.startsWith('/demo/') ? raw.slice('/demo'.length) : raw;
+  if (path !== '/events' && path !== '/memories') return null;
+  const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+  params.set('view', 'moments');
+  const qs = params.toString();
+  const base = getRuntimeRouteFromSurface('timeline', demoRuntime);
+  return `${base}?${qs}`;
 }
 
 /** True when pathname is an App shell route (not public marketing). */

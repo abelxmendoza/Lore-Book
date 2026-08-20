@@ -279,27 +279,6 @@ const SidebarContent = ({
           <p className="mt-4 mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40 px-1">Explore your story</p>
           <p className="px-1 mb-2 text-[11px] leading-relaxed text-white/40">{LIFE_STORY_SIDEBAR_BLURB}</p>
           <button
-            type="button"
-            onClick={() => handleSurfaceChange('events')}
-            aria-label="Open life log"
-            aria-current={activeSurface === 'events' ? 'page' : undefined}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
-              activeSurface === 'events'
-                ? 'border-primary bg-primary/10 text-white'
-                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-            )}
-          >
-            <Sparkles className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-            <span className="flex-1 min-w-0 text-left">
-              <span className="block">Life Log</span>
-              <span className="mt-0.5 block text-[11px] leading-snug text-white/40">{LIFE_STORY_HINT.moments}</span>
-            </span>
-            {counts && counts.events > 0 && (
-              <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.events}</span>
-            )}
-          </button>
-          <button
             onClick={() => {
               navigate(runtimeRoute('/timeline'));
               onSurfaceChange?.('timeline');

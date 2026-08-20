@@ -14,7 +14,7 @@ const SURFACES: Array<{
   search?: string;
   icon: typeof Sparkles;
 }> = [
-  { id: 'moments', label: 'Moments', route: 'events', icon: Sparkles },
+  { id: 'moments', label: 'Moments', route: 'timeline', search: '?view=moments', icon: Sparkles },
   { id: 'timeline', label: 'Timeline', route: 'timeline', search: '?view=events', icon: CalendarDays },
   { id: 'anchors', label: 'Anchors', route: 'anchors', icon: Compass },
   { id: 'saga', label: 'Life Saga', route: 'saga', icon: BookOpen },

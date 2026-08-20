@@ -5,7 +5,7 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { LayoutTemplate, Search, Sparkles, Menu, CalendarDays, Calendar, X, Clock3, ChevronLeft } from 'lucide-react';
+import { LayoutTemplate, Search, Sparkles, Menu, CalendarDays, Calendar, X, Clock3, ChevronLeft, Repeat2 } from 'lucide-react';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useLifeArcs, type LifeArc } from '../../hooks/useLifeArcs';
 import { useStitchedTimeline } from '../../hooks/useStitchedTimeline';
@@ -36,6 +36,7 @@ import { OmniTimelineErrorBanner } from './OmniTimelineErrorBanner';
 import { UniversalTimelineSearch } from './UniversalTimelineSearch';
 import { KnowledgeBaseCreator, type LorebookCreatorPrefill } from '../lorebook/KnowledgeBaseCreator';
 import { StorySurfaceLinks } from '../story/StorySurfaceLinks';
+import { EventsBook } from '../events/EventsBook';
 import { lorebookLibraryUrl } from '../../lib/lorebookLibrary';
 import { stitchedItemsToChronology } from '../../lib/unifiedTimeline';
 import { useLoreReadiness } from '../../hooks/useLoreReadiness';
@@ -50,17 +51,19 @@ import { findTimelineSubjectCharacter } from '../../lib/timelineCharacterSubject
 import { mockDataService } from '../../services/mockDataService';
 import { useGoBack } from '../../hooks/useGoBack';
 import { isDemoRuntimeActive } from '../../lib/demoRuntime';
-import { getRuntimeRouteFromSurface } from '../../utils/routeMapping';
+import { getRuntimeRouteFromSurface, lifeLogRedirectToTimeline } from '../../utils/routeMapping';
 import './OmniTimeline.css';
 
 type View = OmniTimelineView;
 type GenPhase = 'idle' | 'generating' | 'revealed';
 
 const VIEWS: { id: View; label: string; shortLabel: string; Icon: React.ElementType; desc: string }[] = [
-  { id: 'swimlanes', label: 'Swimlanes', shortLabel: 'Lanes', Icon: LayoutTemplate, desc: 'Moments across parallel tracks' },
   { id: 'events',    label: 'Chronology', shortLabel: 'Chronology', Icon: CalendarDays,  desc: 'Date list of moments — not the story' },
-  { id: 'calendar',  label: 'Calendar',  shortLabel: 'Calendar', Icon: Calendar,  desc: 'Moments by day' },
-  { id: 'library',   label: 'Library',   shortLabel: 'Library', Icon: Clock3,       desc: 'Timelines you have generated' },
+  { id: 'swimlanes', label: 'Lanes',      shortLabel: 'Lanes',      Icon: LayoutTemplate, desc: 'Moments across parallel tracks' },
+  { id: 'calendar',  label: 'Calendar',   shortLabel: 'Calendar',   Icon: Calendar,  desc: 'Moments by day' },
+  { id: 'moments',   label: 'Moments',    shortLabel: 'Moments',    Icon: Sparkles,  desc: 'Browse and manage your moment library' },
+  { id: 'patterns',  label: 'Patterns',   shortLabel: 'Patterns',   Icon: Repeat2,   desc: 'Rhythms that keep showing up' },
+  { id: 'library',   label: 'Library',    shortLabel: 'Library',    Icon: Clock3,    desc: 'Timelines you have generated' },
 ];
 
 const BOTTOM_NAV = VIEWS.map(({ id, shortLabel, Icon }) => ({
@@ -85,9 +88,11 @@ type OmniTimelineProps = {
   onOpenAppSidebar?: () => void;
 };
 
-const VALID_VIEWS = new Set<View>(['swimlanes', 'events', 'calendar', 'library']);
+const VALID_VIEWS = new Set<View>(['swimlanes', 'events', 'calendar', 'library', 'moments', 'patterns']);
 
-function viewFromSearchParams(params: URLSearchParams): View {
+function viewFromSearchParams(params: URLSearchParams, pathname = ''): View {
+  const path = pathname.replace(/^\/demo/, '');
+  if (path === '/events' || path === '/memories') return 'moments';
   const raw = params.get('view');
   // `search` opens Universal Timeline Search (overlay), not a peer view tab.
   if (raw === 'search') return 'swimlanes';
@@ -112,7 +117,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
     searchParams.get('date') ??
     (/^\d{4}-\d{2}-\d{2}$/.test(urlQuery) ? urlQuery : null);
   const isMobile = useIsMobile();
-  const [view, setViewState] = useState<View>(() => viewFromSearchParams(searchParams));
+  const [view, setViewState] = useState<View>(() => viewFromSearchParams(searchParams, location.pathname));
   const [stitchedArc, setStitchedArc] = useState<LifeArc | null>(null);
   const [lorebookPrefill, setLorebookPrefill] = useState<LorebookCreatorPrefill | null>(null);
 
@@ -140,9 +145,19 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
 
   // Keep view in sync with ?view= so Life Log / deep links share one calendar.
   useEffect(() => {
-    const next = viewFromSearchParams(searchParams);
+    const next = viewFromSearchParams(searchParams, location.pathname);
     setViewState((prev) => (prev === next ? prev : next));
-  }, [searchParams]);
+  }, [searchParams, location.pathname]);
+
+  useEffect(() => {
+    const dest = lifeLogRedirectToTimeline(
+      location.pathname,
+      location.search,
+      isDemoRuntimeActive(),
+    );
+    if (!dest) return;
+    navigate(dest, { replace: true });
+  }, [location.pathname, location.search, navigate]);
 
   useEffect(() => {
     const viewParam =
@@ -835,14 +850,27 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
             onOpenDayInTimeline={handleOpenDayInTimeline}
           />
         );
+      case 'moments':
+      case 'patterns':
+        return (
+          <div
+            className="omni-timeline-moments"
+            data-testid={view === 'patterns' ? 'timeline-patterns-view' : 'timeline-moments-view'}
+          >
+            <EventsBook embedded mode={view === 'patterns' ? 'recurring' : 'events'} />
+          </div>
+        );
       default:
         return null;
     }
   };
 
+  const storyCurrent = view === 'moments' || view === 'patterns' ? 'moments' : 'timeline';
+  const hideTimelineUtilities = view === 'library' || view === 'moments' || view === 'patterns';
+
   return (
     <div
-      className={`omni-timeline-root${view === 'events' ? ' omni-timeline-root--chronology' : ''}${view === 'calendar' ? ' omni-timeline-root--calendar' : ''}${view === 'library' ? ' omni-timeline-root--library' : ''}`}
+      className={`omni-timeline-root${view === 'events' ? ' omni-timeline-root--chronology' : ''}${view === 'calendar' ? ' omni-timeline-root--calendar' : ''}${view === 'library' || view === 'moments' || view === 'patterns' ? ' omni-timeline-root--library' : ''}${view === 'moments' || view === 'patterns' ? ' omni-timeline-root--moments' : ''}`}
       data-testid="omni-timeline"
     >
       {/* ── Mobile header ──────────────────────────────────────────────── */}
@@ -889,7 +917,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
               {genQuery && (
                 <p className="omni-timeline-gen-label">Showing: {genQuery}</p>
               )}
-              <StorySurfaceLinks current="timeline" className="mt-1.5" />
+              <StorySurfaceLinks current={storyCurrent} className="mt-1.5" />
             </div>
             <button
               type="button"
@@ -945,7 +973,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
                   {entries.length} {entries.length === 1 ? 'moment' : 'moments'}
                 </p>
               )}
-              <StorySurfaceLinks current="timeline" className="mt-2" />
+              <StorySurfaceLinks current={storyCurrent} className="mt-2" />
             </div>
 
             <div className="omni-timeline-view-tabs" role="tablist" aria-label="Timeline views">
@@ -973,7 +1001,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
           <OmniTimelineErrorBanner message={dataError} onRetry={handleRetryData} />
         )}
 
-        {!isMobile && view !== 'library' && (
+        {!isMobile && !hideTimelineUtilities && (
           <UniversalTimelineSearch
             genInput={genInput}
             genQuery={genQuery}
@@ -989,7 +1017,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
           />
         )}
 
-        {view !== 'library' && !loading && !genQuery && activeArcs.length > 0 && (
+        {!hideTimelineUtilities && !loading && !genQuery && activeArcs.length > 0 && (
           <div className="omni-timeline-active-arcs">
             <p className="omni-timeline-section-label">Active now</p>
             <div className="flex flex-wrap gap-2">
@@ -1031,7 +1059,7 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
         )}
 
       {/* ── Life Chapters strip — birth-year-anchored life eras ──────────── */}
-      {view !== 'library' && !loading && !genQuery && lifeEras.length > 0 && (
+      {!hideTimelineUtilities && !loading && !genQuery && lifeEras.length > 0 && (
         <div className="omni-timeline-life-chapters">
           <div className="flex items-center gap-2">
             <span className="omni-timeline-section-label shrink-0 mb-0">Life Chapters</span>

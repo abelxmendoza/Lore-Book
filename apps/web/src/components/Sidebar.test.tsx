@@ -136,7 +136,6 @@ describe('Sidebar', () => {
     expect(screen.getAllByRole('button', { name: /Open love and relationships/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open groups view/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open locations view/i }).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByRole('button', { name: /Open life log/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open skills view/i }).length).toBeGreaterThanOrEqual(1);
 
     const focusButtons = screen
@@ -223,7 +222,6 @@ describe('Sidebar', () => {
       .map((btn) => btn.getAttribute('aria-label') ?? '')
       .filter((label) =>
         [
-          'Open life log',
           'Open timeline view',
           'Open Timelines Library',
           'Open narrative anchors',
@@ -233,15 +231,15 @@ describe('Sidebar', () => {
       );
 
     // Desktop + mobile drawers both render the cluster; assert the first one.
-    expect(exploreButtons.slice(0, 6)).toEqual([
-      'Open life log',
+    expect(exploreButtons.slice(0, 5)).toEqual([
       'Open timeline view',
       'Open Timelines Library',
       'Open narrative anchors',
       'Open life saga',
       'Open quests',
     ]);
-    expect(screen.getAllByText(/Moments are things that happened/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByRole('button', { name: /Open life log/i })).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Timeline is when things happened/i).length).toBeGreaterThanOrEqual(1);
   });
 
   it('nests Timelines Library under Timeline and deep-links to the library view', async () => {

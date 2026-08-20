@@ -187,7 +187,7 @@ export function CharacterStoryPanel({
     if (copyTimer.current) clearTimeout(copyTimer.current);
   }, []);
 
-  const lifeLogHref = `/events?q=${encodeURIComponent(characterName)}`;
+  const lifeLogHref = `/timeline?view=moments&q=${encodeURIComponent(characterName)}`;
   const omniHref = `/timeline?view=events&characterId=${encodeURIComponent(characterId)}`;
 
   const openEventDetail = useCallback(async (event: CharTimelineEvent) => {
@@ -602,7 +602,7 @@ export function CharacterStoryPanel({
                     )}
                     {(mockMode || event.eventId) && (
                       <span className="text-[10px] text-white/35 ml-auto">
-                        {mockMode ? 'Open moment' : 'Open in Life Log'}
+                        {mockMode ? 'Open moment' : 'Open in Moments'}
                       </span>
                     )}
                   </div>
@@ -691,7 +691,7 @@ export function CharacterStoryPanel({
                 className="inline-flex items-center gap-1 text-emerald-300/80 hover:text-emerald-200"
               >
                 <ExternalLink className="h-3 w-3" />
-                Life Log
+                Moments
               </Link>
               <Link
                 to={omniHref}
@@ -699,7 +699,7 @@ export function CharacterStoryPanel({
                 className="inline-flex items-center gap-1 text-sky-300/80 hover:text-sky-200"
               >
                 <CalendarRange className="h-3 w-3" />
-                Omni Timeline
+                Timeline
               </Link>
               <EntityLorebookCompileControl
                 subjectLabel={characterName}

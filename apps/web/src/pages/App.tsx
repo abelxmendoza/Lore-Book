@@ -50,7 +50,7 @@ import { TrialBanner } from '../components/subscription/TrialBanner';
 import { PricingPage } from '../components/subscription/PricingPage';
 import { ModeBadge } from '../components/ModeBadge';
 import { PrivacySecurityPage } from '../components/security/PrivacySecurityPage';
-import { EventsBook } from '../components/events/EventsBook';
+import { SagaScreen } from '../components/saga/SagaScreen';
 import { NarrativeAnchorsBook } from '../components/narrative/NarrativeAnchorsBook';
 import { IntelligenceDashboard } from '../components/diagnostics/IntelligenceDashboard';
 import { EntityResolutionBook } from '../components/entities/EntityResolutionBook';
@@ -68,7 +68,6 @@ import { DemoModeBootstrap } from '../components/DemoModeBootstrap';
 import { LoveAndRelationshipsView } from '../components/love/LoveAndRelationshipsView';
 import { QuestBoard } from '../components/quests/QuestBoard';
 import { KnowledgeGapDashboard } from '../components/voids/KnowledgeGapDashboard';
-import { SagaScreen } from '../components/saga/SagaScreen';
 import { ContinuityDashboard } from '../components/continuity/ContinuityDashboard';
 import { HomeScreen } from '../components/HomeScreen';
 import { PhotoGallery } from '../components/PhotoGallery';
@@ -326,7 +325,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
       lorebook: 'LoreBooks',
       photos: 'Photo Album',
       perceptions: 'Perceptions',
-      events: 'Life Log',
+      events: 'Timeline',
       entities: 'Entities',
       organizations: 'Groups & Organizations',
       family: 'Family',
@@ -440,7 +439,7 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
           </>
         )}
         {/* Still surface guest/trial banners on book pages without the Home header. */}
-        {(activeSurface === 'characters' || activeSurface === 'love' || activeSurface === 'family' || activeSurface === 'locations' || activeSurface === 'organizations' || activeSurface === 'events' || activeSurface === 'anchors') && (
+        {(activeSurface === 'characters' || activeSurface === 'love' || activeSurface === 'family' || activeSurface === 'locations' || activeSurface === 'organizations' || activeSurface === 'anchors') && (
           <>
             <GuestBanner />
             <TrialBanner />
@@ -483,14 +482,13 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
                             <PhotoAlbum />
                           </div>
                         )}
-                        {/* Memories now live inside the Life Log surface. */}
+                        {/* Life Log redirects onto Timeline Moments. */}
                         {activeSurface === 'perceptions' && (
                           <div data-route-scroll-root className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-x-hidden overflow-y-auto p-3 sm:p-6 min-w-0">
                             <PerceptionsView showCreateButton={true} />
                           </div>
                         )}
 
-                        {activeSurface === 'events' && <EventsBook />}
                         {activeSurface === 'anchors' && (
                           <div data-route-scroll-root className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-hidden">
                             <NarrativeAnchorsBook />

@@ -119,7 +119,7 @@ describe('EventsBook', () => {
     expect(screen.queryByRole('button', { name: /^Browse$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Search facts$/i })).toBeInTheDocument();
     expect(screen.getByText(/Browse every moment/i)).toBeInTheDocument();
-    expect(screen.getByTestId('life-story-job')).toHaveTextContent(/Timeline puts the same moments in time/i);
+    expect(screen.getByTestId('life-story-job')).toHaveTextContent(/Chronology puts the same moments in time/i);
     expect(screen.getByLabelText(/How to look at your life/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Timeline/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Anchors/i })).toBeInTheDocument();
@@ -244,5 +244,14 @@ describe('EventsBook', () => {
     const copied = writeText.mock.calls[0][0] as string;
     expect(copied).toContain('Life Log / Patterns');
     expect(copied).toContain('Punk Shows');
+  });
+
+  it('hides Life Log chrome when embedded as a Timeline tab', async () => {
+    render(<EventsBook embedded mode="events" />);
+    await screen.findByText('Night out with Jamie');
+    expect(screen.queryByText('Life Log')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/How to look at your life/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Patterns$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Post a moment/i })).toBeInTheDocument();
   });
 });

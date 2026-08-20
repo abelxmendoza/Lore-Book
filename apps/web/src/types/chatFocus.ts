@@ -81,7 +81,7 @@ export const CHAT_FOCUS_SOURCE_LABELS: Record<ChatFocusSourceSurface, string> = 
   skills: 'Skills',
   quests: 'Quests',
   family: 'Family',
-  events: 'Life Log',
+  events: 'Timeline',
   perceptions: 'Perceptions',
   lorebook: 'Lorebooks',
   timeline: 'Timeline',

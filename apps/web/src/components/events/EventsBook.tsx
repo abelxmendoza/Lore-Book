@@ -638,10 +638,20 @@ const MOCK_SCENES: RecurringScene[] = [
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export const EventsBook: React.FC = () => {
+export type EventsBookMode = 'events' | 'recurring';
+
+type EventsBookProps = {
+  /** Hide Life Log page chrome when this library is a Timeline tab. */
+  embedded?: boolean;
+  /** When set, Moments vs Patterns is controlled by the Timeline tab. */
+  mode?: EventsBookMode;
+};
+
+export const EventsBook: React.FC<EventsBookProps> = ({ embedded = false, mode } = {}) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [viewMode, setViewMode] = useState<ViewMode>('events');
+  const [internalViewMode, setViewMode] = useState<ViewMode>(mode ?? 'events');
+  const viewMode = mode ?? internalViewMode;
   const [momentsLayout, setMomentsLayout] = useState<MomentsLayout>('grid');
   const [cardViewMode, setCardViewMode] = useState<CardViewMode>(() =>
     readStoredCardViewMode(EVENTS_CARD_VIEW_STORAGE_KEY, 'grid'),
@@ -900,11 +910,35 @@ export const EventsBook: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      {embedded ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-white/40">
+            {events.length} {events.length === 1 ? 'moment' : 'moments'}
+            {recurringScenes.length > 0 && (
+              <>
+                {' · '}
+                {recurringScenes.length} {recurringScenes.length === 1 ? 'pattern' : 'patterns'}
+              </>
+            )}
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            className="h-9 bg-amber-500/20 border border-amber-400/35 text-amber-50 hover:bg-amber-500/30"
+            onClick={() => setShowPostComposer(true)}
+            data-testid="events-book-post-event"
+            aria-label="Post a moment"
+          >
+            <Plus className="h-3.5 w-3.5 mr-1.5" />
+            Post a moment
+          </Button>
+        </div>
+      ) : (
       <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-black/70 via-purple-950/25 to-black/60">
         <CardContent className="p-4 sm:p-6">
           <div className="min-w-0">
             <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-primary/70">
-              Life Log
+              Timeline
             </p>
             <h2 className="mt-1 text-xl sm:text-2xl font-semibold text-white">
               Moments
@@ -938,6 +972,7 @@ export const EventsBook: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {error && (
         <Card className="border-amber-500/50 bg-amber-500/10">
@@ -953,7 +988,8 @@ export const EventsBook: React.FC = () => {
         </Card>
       )}
 
-      {/* ── Primary content switch: Moments | Patterns ── */}
+      {/* ── Primary content switch: Moments | Patterns (standalone only) ── */}
+      {!embedded && (
       <div className="flex items-center gap-1 p-1 bg-black/40 border border-border/50 rounded-lg w-full sm:w-auto sm:inline-flex">
         {VIEWS.map(({ value, label, icon: Icon }) => (
           <button
@@ -976,6 +1012,7 @@ export const EventsBook: React.FC = () => {
           </button>
         ))}
       </div>
+      )}
 
       {/* ── Moment search + filters (grid layout only) ── */}
       {viewMode === 'events' && momentsLayout === 'grid' && <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

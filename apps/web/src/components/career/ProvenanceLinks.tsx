@@ -4,7 +4,6 @@ import { ExternalLink, Loader2 } from 'lucide-react';
 import { fetchFileProvenance, type ProvenanceLink } from '../../api/profileClaims';
 
 const ROUTE_LABEL: Record<string, string> = {
-  '/events': 'Life Log',
   '/timeline': 'Timeline',
   '/documents': 'Documents',
   '/skills': 'Skills',

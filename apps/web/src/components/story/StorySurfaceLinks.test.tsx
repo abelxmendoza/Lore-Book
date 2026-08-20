@@ -23,6 +23,12 @@ describe('StorySurfaceLinks', () => {
     expect(window.location.pathname + window.location.search).toBe('/timeline?view=events');
   });
 
+  it('navigates to the Timeline moment library from saga', () => {
+    render(<StorySurfaceLinks current="saga" showJob={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /Moments/i }));
+    expect(window.location.pathname + window.location.search).toBe('/timeline?view=moments');
+  });
+
   it('navigates to Life Saga from timeline', () => {
     render(<StorySurfaceLinks current="timeline" />);
     fireEvent.click(screen.getByRole('button', { name: /Life Saga/i }));

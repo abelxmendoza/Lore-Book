@@ -3,6 +3,7 @@ import {
   getSurfaceFromRoute,
   getRouteFromSurface,
   getRuntimeRouteFromSurface,
+  lifeLogRedirectToTimeline,
   routeToSurface,
   surfaceToRoute,
   isAppShellRoute,
@@ -42,8 +43,16 @@ describe('routeMapping', () => {
       expect(getSurfaceFromRoute('/timeline?view=search#section')).toBe('timeline');
     });
 
-    it('maps /memories to events (Life Log)', () => {
-      expect(getSurfaceFromRoute('/memories')).toBe('events');
+    it('maps retired Life Log routes onto Timeline', () => {
+      expect(getSurfaceFromRoute('/memories')).toBe('timeline');
+      expect(getSurfaceFromRoute('/events')).toBe('timeline');
+      expect(getSurfaceFromRoute('/demo/events')).toBe('timeline');
+      expect(lifeLogRedirectToTimeline('/events', '?q=Jamie', false)).toBe(
+        '/timeline?q=Jamie&view=moments',
+      );
+      expect(lifeLogRedirectToTimeline('/demo/memories', '', true)).toBe(
+        '/demo/timeline?view=moments',
+      );
     });
 
     it('returns correct surface for /family', () => {

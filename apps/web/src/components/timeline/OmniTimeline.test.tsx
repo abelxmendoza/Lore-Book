@@ -119,6 +119,14 @@ vi.mock('./TimelineCalendarView', () => ({
   TimelineCalendarView: () => <div data-testid="timeline-calendar-view">Calendar view</div>,
 }));
 
+vi.mock('../events/EventsBook', () => ({
+  EventsBook: ({ mode }: { mode?: string }) => (
+    <div data-testid="events-book-embedded">
+      {mode === 'recurring' ? 'Patterns library' : 'Moments library'}
+    </div>
+  ),
+}));
+
 vi.mock('./TimelineGeneratingSimulation', () => ({
   TimelineGeneratingSimulation: ({
     query,
@@ -238,6 +246,12 @@ describe('OmniTimeline layout and navigation', () => {
 
     await user.click(screen.getByRole('tab', { name: /calendar/i }));
     expect(screen.getByTestId('timeline-calendar-view')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: /^moments$/i }));
+    expect(screen.getByTestId('timeline-moments-view')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: /^patterns$/i }));
+    expect(screen.getByTestId('timeline-patterns-view')).toBeInTheDocument();
   });
 
   it('does not offer a Story tab — story reading lives in Life Saga', () => {
@@ -274,6 +288,23 @@ describe('OmniTimeline layout and navigation', () => {
   it('opens calendar from ?view=calendar deep link', () => {
     renderOmniTimeline('/timeline?view=calendar');
     expect(screen.getByTestId('timeline-calendar-view')).toBeInTheDocument();
+  });
+
+  it('opens the moment library from ?view=moments', () => {
+    renderOmniTimeline('/timeline?view=moments');
+    expect(screen.getByTestId('timeline-moments-view')).toBeInTheDocument();
+  });
+
+  it('sends old Life Log URLs to Timeline Moments', async () => {
+    render(
+      <MemoryRouter initialEntries={['/events?q=Jamie']}>
+        <OmniTimeline />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('location-probe').textContent).toMatch(/\/timeline\?q=Jamie&view=moments$/);
+    });
   });
 
   it('opens Timelines Library from ?view=library deep link', () => {

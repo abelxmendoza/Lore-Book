@@ -70,7 +70,7 @@ describe('CharacterTimelinePanel', () => {
 
     const lifeLog = screen.getByTestId('character-timeline-open-life-log');
     const omni = screen.getByTestId('character-timeline-open-omni');
-    expect(lifeLog.getAttribute('href')).toContain('/events?q=Jerry%20Medina');
+    expect(lifeLog.getAttribute('href')).toContain('/timeline?view=moments&q=Jerry%20Medina');
     // Real character-scoped deep link (filters by character_id server-side) —
     // not the old free-text "?q=" search, which could fall back to mock data.
     expect(omni.getAttribute('href')).toBe('/timeline?view=events&characterId=c1');

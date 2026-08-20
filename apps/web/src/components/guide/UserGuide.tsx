@@ -179,7 +179,7 @@ const GUIDE_SECTIONS: GuideSection[] = [
           items={[
             'Timeline — when things happened (chronology, swimlanes, calendar)',
             'Life Saga — read the same life as a story of chapters and arcs',
-            'Moments in Life Log link back to people and places',
+            'Moments on Timeline link back to people and places',
           ]}
         />
       </div>

@@ -16,7 +16,7 @@ const SURFACE_LABELS: Record<SurfaceKey, string> = {
   lorebook: 'Lorebooks',
   photos: 'Photo Album',
   perceptions: 'Perceptions',
-  events: 'Life Log',
+  events: 'Timeline',
   entities: 'Entities',
   organizations: 'Groups & Organizations',
   family: 'Family',

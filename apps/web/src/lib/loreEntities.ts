@@ -214,7 +214,7 @@ export function routeForLoreKind(kind: LoreEntityKind): string | undefined {
     organizations: '/organizations',
     skills: '/skills',
     projects: '/projects',
-    events: '/events',
+    events: '/timeline?view=moments',
     lorebook: '/lorebook',
     love: '/love',
   };
