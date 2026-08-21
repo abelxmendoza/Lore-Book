@@ -81,9 +81,9 @@ vi.mock('../familyTreeService', () => ({
   },
 }));
 
-vi.mock('../conversationCentered/characterTimelineBuilder', () => ({
-  characterTimelineBuilder: {
-    buildTimelines: vi.fn().mockResolvedValue({ sharedExperiences: [], lore: [] }),
+vi.mock('../chronologyV2/stitchedTimelineService', () => ({
+  stitchedTimelineService: {
+    getStitchedTimeline: vi.fn().mockResolvedValue({ items: [] }),
   },
 }));
 
@@ -218,5 +218,60 @@ describe('getCharacterQuery', () => {
     expect(query!.sections.relationships?.['genni-id']?.current?.type).toBe('estranged');
     expect(query!.sections.relationships?.['genni-id']?.history).toHaveLength(1);
     expect(getCurrentCharacterRelationship).toHaveBeenCalledWith('user-1', 'c1', 'genni-id');
+  });
+
+  it('loads timelines from character-scoped stitched chronology, not character_timeline_events', async () => {
+    const { stitchedTimelineService } = await import('../chronologyV2/stitchedTimelineService');
+    (stitchedTimelineService.getStitchedTimeline as any).mockResolvedValue({
+      items: [
+        {
+          id: 'event:evt-vanguard',
+          kind: 'event',
+          sourceId: 'evt-vanguard',
+          sourceIds: ['evt-vanguard'],
+          sourceKind: 'resolved_event',
+          sourceType: 'resolved_event',
+          sortTime: '2026-06-01T12:00:00.000Z',
+          userSortIndex: null,
+          title: 'Vanguard Robotics demo',
+          body: 'Marcus presented MemoVault.',
+          userPresence: 'attended',
+        },
+      ],
+    });
+
+    const { getCharacterQuery } = await import('./characterQueryService');
+    const query = await getCharacterQuery('user-1', 'c1', { sections: 'identity,timelines' });
+
+    expect(stitchedTimelineService.getStitchedTimeline).toHaveBeenCalledWith('user-1', {
+      scope_type: 'global',
+      character_id: 'c1',
+    });
+    expect(query!.sections.timelines?.sharedExperiences).toEqual([
+      expect.objectContaining({
+        id: 'event:evt-vanguard',
+        eventId: 'evt-vanguard',
+        sourceId: 'evt-vanguard',
+        eventTitle: 'Vanguard Robotics demo',
+        userWasPresent: true,
+      }),
+    ]);
+    expect(query!.sections.timelines?.lore).toEqual([]);
+  });
+
+  it('keeps character timelines empty when stitched chronology has no matches', async () => {
+    const { stitchedTimelineService } = await import('../chronologyV2/stitchedTimelineService');
+    (stitchedTimelineService.getStitchedTimeline as any).mockResolvedValue({ items: [] });
+
+    const { getCharacterQuery } = await import('./characterQueryService');
+    const query = await getCharacterQuery('user-1', 'c1', { sections: 'identity,timelines' });
+
+    expect(query!.sections.timelines?.sharedExperiences).toEqual([]);
+    expect(query!.sections.timelines?.lore).toEqual([]);
+    expect(query!.sections.timelines?.summary).toEqual({
+      sharedCount: 0,
+      loreCount: 0,
+      recent: [],
+    });
   });
 });
