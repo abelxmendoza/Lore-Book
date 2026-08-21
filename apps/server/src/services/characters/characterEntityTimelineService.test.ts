@@ -383,19 +383,19 @@ describe('character entity timeline — shared projection', () => {
 
   it('16. entity scope is the requested entityId, not a display name', () => {
     const item = stitched({
-      id: 'event:tio',
-      title: 'Tío Juan at MemoVault',
+      id: 'event:uncle',
+      title: 'Uncle Marcus at MemoVault',
       occurredAt: '2026-08-10T18:00:00.000Z',
       temporal: temporal('2026-08-10T18:00:00.000Z'),
     });
     const modal = projectCharacterTimelineFromSources({
-      entityId: 'char-oscuridad-juan',
+      entityId: 'char-marcus-uncle',
       timezone: LA,
       now: NOW,
       stitchedItems: [item],
     });
-    expect(modal.sharedExperiences[0]?.entityId).toBe('char-oscuridad-juan');
-    expect(modal.sharedExperiences[0]?.entityId).not.toBe('Tío Juan');
+    expect(modal.sharedExperiences[0]?.entityId).toBe('char-marcus-uncle');
+    expect(modal.sharedExperiences[0]?.entityId).not.toBe('Uncle Marcus');
   });
 
   it('17. a dated unmatched legacy row is not chronology and does not move summaries', () => {
