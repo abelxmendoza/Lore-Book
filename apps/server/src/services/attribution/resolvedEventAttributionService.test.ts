@@ -4,7 +4,7 @@ const h = vi.hoisted(() => ({
   calls: [] as Array<{ table: string; op: string; args: unknown[] }>,
   eventRow: {
     id: 'evt-concert',
-    title: 'Club Metro outing',
+    title: 'Northwind Hall outing',
     summary: 'I went with Maya.',
     people: ['char-maya', 'char-priya'],
     locations: ['loc-catch-one'],

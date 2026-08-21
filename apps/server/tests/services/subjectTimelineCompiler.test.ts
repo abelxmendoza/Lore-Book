@@ -211,7 +211,7 @@ describe('subject timeline compiler', () => {
           id: 'event:concert',
           sourceId: 'concert',
           sourceIds: ['concert'],
-          title: 'Club Metro outing',
+          title: 'Northwind Hall outing',
           body: 'I went to a concert with Maya. I thought about Priya afterward.',
           sortTime: '2026-06-01T09:00:00.000Z',
         }),

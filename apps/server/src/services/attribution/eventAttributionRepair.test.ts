@@ -5,14 +5,14 @@ const MAYA = { id: 'char-maya', names: ['Maya'] };
 const PRIYA = { id: 'char-priya', names: ['Priya'] };
 const CATCH_ONE = { id: 'loc-catch-one', names: ['Catch One'] };
 const DISNEYLAND = { id: 'loc-disneyland', names: ['Disneyland'] };
-const CLUB_METRO = { id: 'loc-club-metro', names: ['Club Metro'] };
+const NORTHWIND_HALL = { id: 'loc-northwind-hall', names: ['Northwind Hall'] };
 
 describe('planResolvedEventAttributionRepair', () => {
   it('removes a thought-about person from a contaminated people[] without changing the event id', () => {
     const plan = planResolvedEventAttributionRepair(
       {
         id: 'evt-concert',
-        title: 'Club Metro outing',
+        title: 'Northwind Hall outing',
         summary: 'I went to a concert with Maya. I thought about Priya afterward.',
         people: ['char-maya', 'char-priya'],
         locations: [],
@@ -99,7 +99,7 @@ describe('planResolvedEventAttributionRepair', () => {
     const plan = planResolvedEventAttributionRepair(
       {
         id: 'evt-concert',
-        title: 'Club Metro outing',
+        title: 'Northwind Hall outing',
         summary: 'I went to a concert with Maya.',
         people: ['char-maya'],
         locations: [],
@@ -132,7 +132,7 @@ describe('planResolvedEventAttributionRepair', () => {
     const plan = planResolvedEventAttributionRepair(
       {
         id: 'evt-stamp',
-        title: 'Club Metro outing',
+        title: 'Northwind Hall outing',
         summary: 'I went to a concert with Maya.',
         people: ['char-maya'],
         locations: [],
@@ -151,20 +151,20 @@ describe('planResolvedEventAttributionRepair', () => {
       {
         id: 'evt-night',
         title: 'Night out',
-        summary: 'I went to Club Metro with Maya.',
+        summary: 'I went to Northwind Hall with Maya.',
         people: ['char-maya'],
-        locations: ['loc-club-metro'],
+        locations: ['loc-northwind-hall'],
         metadata: {
           attributionCorrections: [
-            { action: 'replace_place', entityId: 'loc-catch-one', replacementEntityId: 'loc-club-metro' },
+            { action: 'replace_place', entityId: 'loc-catch-one', replacementEntityId: 'loc-northwind-hall' },
           ],
         },
       },
       [MAYA],
-      [CATCH_ONE, CLUB_METRO],
+      [CATCH_ONE, NORTHWIND_HALL],
     );
     expect(plan.eventId).toBe('evt-night');
-    expect(plan.locations).toEqual(['loc-club-metro']);
+    expect(plan.locations).toEqual(['loc-northwind-hall']);
     expect(plan.locations).not.toContain('loc-catch-one');
   });
 });

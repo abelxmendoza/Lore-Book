@@ -67,7 +67,7 @@ describe('planEntityBackfill', () => {
   it('does not backfill a person who is only thought about', () => {
     expect(
       planEntityBackfill(
-        { title: 'Club Metro outing', summary: 'I thought about Priya afterward', people: [], locations: [] },
+        { title: 'Northwind Hall outing', summary: 'I thought about Priya afterward', people: [], locations: [] },
         [{ id: 'char-priya', names: ['Priya'] }],
         [],
       ),

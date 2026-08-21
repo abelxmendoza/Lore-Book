@@ -15,11 +15,10 @@ const MAYA = { id: 'char-maya', type: 'PERSON', primary_name: 'Maya' };
 const PRIYA = { id: 'char-priya', type: 'PERSON', primary_name: 'Priya' };
 const JORDAN = { id: 'char-jordan', type: 'PERSON', primary_name: 'Jordan Skasby' };
 const KHALIL = { id: 'char-khalil', type: 'PERSON', primary_name: 'Khalil' };
-const SHYLA = { id: 'char-shyla', type: 'PERSON', primary_name: 'Shyla' };
-const GENNI = { id: 'char-genni', type: 'PERSON', primary_name: 'Genni' };
+const ONLINE_JORDAN = { id: 'char-jordan-online', type: 'PERSON', primary_name: 'Jordan' };
 const CATCH_ONE = { id: 'loc-catch-one', type: 'LOCATION', primary_name: 'Catch One' };
 const DISNEYLAND = { id: 'loc-disneyland', type: 'LOCATION', primary_name: 'Disneyland' };
-const CLUB_METRO = { id: 'loc-club-metro', type: 'LOCATION', primary_name: 'Club Metro' };
+const NORTHWIND_HALL = { id: 'loc-northwind-hall', type: 'LOCATION', primary_name: 'Northwind Hall' };
 const USC = { id: 'loc-usc', type: 'LOCATION', primary_name: 'USC' };
 const RIVIAN = { id: 'org-rivian', type: 'ORG', primary_name: 'Rivian' };
 const CLAUDE = { id: 'app-claude-code', type: 'APP', primary_name: 'Claude Code' };
@@ -81,23 +80,23 @@ describe('event entity attribution contract', () => {
     expect(row.reason).toBe('possessive_owner');
   });
 
-  it('10. “Shyla\'s friend” → not automatically Shyla', () => {
-    const row = classifyPersonAttribution('Shyla', "Shyla's friend was there.");
+  it('10. “Jordan\'s friend” → not automatically Jordan', () => {
+    const row = classifyPersonAttribution('Jordan', "Jordan's friend was there.");
     expect(row.accepted).toBe(false);
     expect(row.role).toBe('unresolved');
     expect(row.reason).toBe('relational_description');
   });
 
   it('11. Person later in the same message does not contaminate the earlier event', () => {
-    const text = 'I went to Club Metro with Maya. Later I was thinking about Priya because we hadn\'t talked in months.';
+    const text = 'I went to Northwind Hall with Maya. Later I was thinking about Priya because we hadn\'t talked in months.';
     const { peopleIds } = selectCanonicalPeople([MAYA, PRIYA], text);
     expect(peopleIds).toEqual(['char-maya']);
   });
 
   it('12–13. Episode/thread co-mention is not event participation', () => {
     const outing = 'I interviewed with Rivian today.';
-    const later = 'Later Genni posted something online.';
-    expect(selectCanonicalPeople([GENNI, MAYA], `${outing} ${later}`).peopleIds).toEqual([]);
+    const later = 'Later Jordan posted something online.';
+    expect(selectCanonicalPeople([ONLINE_JORDAN, MAYA], `${outing} ${later}`).peopleIds).toEqual([]);
   });
 
   it('14. Explicit event participant survives', () => {
@@ -142,8 +141,8 @@ describe('event entity attribution contract', () => {
   });
 
   it('20. Organization employer relationship does not attach unrelated people', () => {
-    const text = 'Conner recruits for Rivian. Later Genni posted something online.';
-    expect(selectCanonicalPeople([GENNI], text).peopleIds).toEqual([]);
+    const text = 'Conner recruits for Rivian. Later Jordan posted something online.';
+    expect(selectCanonicalPeople([ONLINE_JORDAN], text).peopleIds).toEqual([]);
     expect(classifyOrganizationAttribution('Rivian', text).role).toBe('employer');
     expect(classifyOrganizationAttribution('Rivian', text).accepted).toBe(false);
   });
@@ -159,7 +158,7 @@ describe('event entity attribution contract', () => {
   it('22. Character chronology only receives grounded associated events', () => {
     const concert = {
       id: 'evt-concert',
-      title: 'Club Metro outing',
+      title: 'Northwind Hall outing',
       summary: 'I went to a concert with Maya. I thought about Priya afterward.',
       people: ['char-maya', 'char-priya'],
       metadata: {
@@ -228,11 +227,11 @@ describe('event entity attribution contract', () => {
       {
         action: 'replace_place',
         entityId: 'loc-catch-one',
-        replacementEntityId: 'loc-club-metro',
-        replacementName: 'Club Metro',
+        replacementEntityId: NORTHWIND_HALL.id,
+        replacementName: 'Northwind Hall',
       },
     );
-    expect(result.locations).toEqual(['loc-club-metro']);
+    expect(result.locations).toEqual([NORTHWIND_HALL.id]);
     expect(result.eventId).toBe('evt-night');
   });
 
@@ -247,13 +246,13 @@ describe('event entity attribution contract', () => {
   it('29. Legacy contaminated compatibility row cannot override canonical association', () => {
     const event = {
       id: 'evt-legacy',
-      title: 'Club Metro outing',
-      summary: 'I went to Club Metro with Maya. Later I was thinking about Priya.',
+      title: 'Northwind Hall outing',
+      summary: 'I went to Northwind Hall with Maya. Later I was thinking about Priya.',
       people: ['char-maya', 'char-priya'],
       metadata: {
         entityAttributions: attributeNamedEntities(
           [MAYA, PRIYA],
-          'I went to Club Metro with Maya. Later I was thinking about Priya.',
+          'I went to Northwind Hall with Maya. Later I was thinking about Priya.',
         ),
       },
     };
@@ -285,8 +284,8 @@ describe('event entity attribution contract', () => {
       {
         action: 'replace_place',
         entityId: CATCH_ONE.id,
-        replacementEntityId: CLUB_METRO.id,
-        replacementName: 'Club Metro',
+        replacementEntityId: NORTHWIND_HALL.id,
+        replacementName: 'Northwind Hall',
       },
     );
     expect(first.eventId).toBe('evt-stable');
@@ -310,13 +309,13 @@ describe('event entity attribution contract', () => {
   it('diagnostics explain why an event is or is not on a character timeline', () => {
     const event = {
       id: 'evt-diag',
-      title: 'Club Metro outing',
-      summary: 'I went to Club Metro with Maya. I thought about Priya afterward.',
+      title: 'Northwind Hall outing',
+      summary: 'I went to Northwind Hall with Maya. I thought about Priya afterward.',
       people: ['char-maya', 'char-priya'],
       metadata: {
         entityAttributions: attributeNamedEntities(
           [MAYA, PRIYA],
-          'I went to Club Metro with Maya. I thought about Priya afterward.',
+          'I went to Northwind Hall with Maya. I thought about Priya afterward.',
         ),
       },
     };
