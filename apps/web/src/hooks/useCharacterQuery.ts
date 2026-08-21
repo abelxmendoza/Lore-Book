@@ -143,7 +143,7 @@ export function useCharacterQuery(
       const targeted = characterIds.length > 0;
       const matches = targeted
         ? characterIds.includes(characterId)
-        : scopes.includes('all') || scopes.includes('characters');
+        : scopes.includes('all') || scopes.includes('characters') || scopes.includes('relationships');
       if (!matches) return;
       invalidateCache(`/api/characters/${characterId}/query`);
       invalidateCache(`/api/characters/${characterId}/profile-bundle`);
