@@ -809,7 +809,10 @@ describe('CharacterDetailModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Shy La')).toBeInTheDocument());
       expect(storyUpdates).toContainEqual(
-        expect.objectContaining({ scopes: ['characters'], characterIds: expect.arrayContaining(['dummy-conn-char', 'char-2']) }),
+        expect.objectContaining({
+          scopes: expect.arrayContaining(['characters', 'relationships']),
+          characterIds: expect.arrayContaining(['dummy-conn-char', 'char-2']),
+        }),
       );
 
       window.removeEventListener(STORY_DATA_UPDATED, onStoryUpdate);
@@ -874,7 +877,7 @@ describe('CharacterDetailModal', () => {
         />
       );
 
-      await userEvent.click(await screen.findByLabelText('Remove connection with Fictional Ally'));
+      await userEvent.click(await screen.findByLabelText('End relationship with Fictional Ally'));
       await waitFor(() => expect(screen.queryByText('Fictional Ally')).not.toBeInTheDocument());
       expect(vi.mocked(fetchJson)).toHaveBeenCalledWith(
         `/api/relationships/character-links/${storyId}`,
@@ -911,14 +914,17 @@ describe('CharacterDetailModal', () => {
         />
       );
 
-      await userEvent.click(await screen.findByLabelText('Remove connection with Shy La'));
+      await userEvent.click(await screen.findByLabelText('End relationship with Shy La'));
       await waitFor(() => expect(screen.queryByText('Shy La')).not.toBeInTheDocument());
       expect(vi.mocked(fetchJson)).toHaveBeenCalledWith(
         '/api/relationships/character-links/rel-1',
         expect.objectContaining({ method: 'DELETE' }),
       );
       expect(storyUpdates).toContainEqual(
-        expect.objectContaining({ scopes: ['characters'], characterIds: expect.arrayContaining(['dummy-conn-char', 'char-2']) }),
+        expect.objectContaining({
+          scopes: expect.arrayContaining(['characters', 'relationships']),
+          characterIds: expect.arrayContaining(['dummy-conn-char', 'char-2']),
+        }),
       );
 
       window.removeEventListener(STORY_DATA_UPDATED, onStoryUpdate);
@@ -1235,6 +1241,368 @@ describe('CharacterDetailModal', () => {
         );
       });
       expect(await screen.findByText('Amazon')).toBeInTheDocument();
+    });
+  });
+
+  describe('relationship authority Connections', () => {
+    const jamieId = '22222222-2222-4222-8222-222222222222';
+    const marcusId = '11111111-1111-4111-8111-111111111111';
+    const linkId = '33333333-3333-4333-8333-333333333333';
+    const jamie: Character = {
+      ...mockCharacter,
+      id: jamieId,
+      name: 'Jamie',
+      metadata: { distinct_from_self: true },
+      relationships: [
+        {
+          id: linkId,
+          character_id: marcusId,
+          character_name: 'Marcus',
+          relationship_type: 'friend',
+          status: 'active',
+          summary: 'Music scene',
+        },
+      ],
+    };
+
+    function friendThenEstrangedQuery() {
+      return {
+        characterId: jamieId,
+        subject: 'other' as const,
+        generatedAt: '2026-08-01T00:00:00Z',
+        sections: {
+          relationships: {
+            [marcusId]: {
+              current: {
+                type: 'estranged',
+                status: 'inactive',
+                authority: 'USER_EXPLICIT',
+                changedAt: '2026-07-01T00:00:00Z',
+                confidence: null,
+                evidenceIds: [],
+                isMigratedBaseline: false,
+              },
+              history: [
+                {
+                  id: 'h1',
+                  fromRelationshipType: null,
+                  fromStatus: null,
+                  toRelationshipType: 'friend',
+                  toStatus: 'active',
+                  changedAt: '2026-06-01T00:00:00Z',
+                  recordedAt: '2026-06-01T00:00:00Z',
+                  validUntil: null,
+                  changeKind: 'CREATED',
+                  authority: 'USER_EXPLICIT',
+                  evidenceIds: [],
+                  confidence: null,
+                  relationshipId: linkId,
+                  correctsHistoryId: null,
+                },
+                {
+                  id: 'h2',
+                  fromRelationshipType: 'friend',
+                  fromStatus: 'active',
+                  toRelationshipType: 'estranged',
+                  toStatus: 'inactive',
+                  changedAt: '2026-07-01T00:00:00Z',
+                  recordedAt: '2026-07-01T00:00:00Z',
+                  validUntil: null,
+                  changeKind: 'TRANSITIONED',
+                  authority: 'USER_EXPLICIT',
+                  evidenceIds: [],
+                  confidence: null,
+                  relationshipId: linkId,
+                  correctsHistoryId: null,
+                },
+              ],
+              correctedAssertions: [],
+              unresolvedConflicts: [],
+            },
+          },
+        },
+      };
+    }
+
+    it('loads the relationships Character Query section when Connections opens', () => {
+      render(
+        <CharacterDetailModal
+          character={jamie}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+          initialTab="relationships"
+        />,
+      );
+      expect(characterQueryMock.state.loadSections).toHaveBeenCalledWith(['family', 'relationships']);
+    });
+
+    it('renders Current Estranged and Previously Friend from authority, not Friend · active', async () => {
+      characterQueryMock.state.query = friendThenEstrangedQuery();
+      render(
+        <CharacterDetailModal
+          character={jamie}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+          initialTab="relationships"
+        />,
+      );
+      expect(await screen.findByTestId('relationship-current')).toHaveTextContent('Estranged');
+      expect(screen.getByTestId('relationship-previously')).toHaveTextContent('Friend');
+      expect(screen.queryByText(/Friend · active/)).not.toBeInTheDocument();
+      expect(screen.getByTestId('relationship-shared-through')).toHaveTextContent('Music scene');
+    });
+
+    it('does not show Friend as Previously after a we-were-never-friends correction', async () => {
+      characterQueryMock.state.query = {
+        characterId: jamieId,
+        subject: 'other',
+        generatedAt: '2026-08-01T00:00:00Z',
+        sections: {
+          relationships: {
+            [marcusId]: {
+              current: null,
+              history: [],
+              correctedAssertions: [
+                {
+                  id: 'friend-claim',
+                  fromRelationshipType: null,
+                  fromStatus: null,
+                  toRelationshipType: 'friend',
+                  toStatus: 'active',
+                  changedAt: '2026-06-01T00:00:00Z',
+                  recordedAt: '2026-06-01T00:00:00Z',
+                  validUntil: null,
+                  changeKind: 'CREATED',
+                  authority: 'SYSTEM_DERIVED',
+                  evidenceIds: [],
+                  confidence: null,
+                  relationshipId: linkId,
+                  correctsHistoryId: null,
+                },
+              ],
+              unresolvedConflicts: [],
+            },
+          },
+        },
+      };
+      render(
+        <CharacterDetailModal
+          character={jamie}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+          initialTab="relationships"
+        />,
+      );
+      expect(await screen.findByTestId('relationship-current')).toHaveTextContent('Not friends');
+      expect(screen.queryByTestId('relationship-previously')).not.toBeInTheDocument();
+    });
+
+    it('keeps cousin in Family relationship and does not invent Social stranger', async () => {
+      characterQueryMock.state.query = {
+        characterId: jamieId,
+        subject: 'other',
+        generatedAt: '2026-08-01T00:00:00Z',
+        sections: { relationships: {} },
+      };
+      render(
+        <CharacterDetailModal
+          character={{
+            ...jamie,
+            relationships: [
+              {
+                id: linkId,
+                character_id: marcusId,
+                character_name: 'Marcus',
+                relationship_type: 'cousin',
+                status: 'active',
+              },
+            ],
+          }}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+          initialTab="relationships"
+        />,
+      );
+      expect(await screen.findByTestId('family-relationship-section')).toHaveTextContent('cousin');
+      expect(screen.queryByTestId(`relationship-authority-card-${marcusId}`)).not.toBeInTheDocument();
+      expect(screen.queryByText(/stranger/i)).not.toBeInTheDocument();
+    });
+
+    it('7/11. Change relationship calls PATCH then canonical relationships refetch', async () => {
+      const { fetchJson } = await import('../../lib/api');
+      vi.mocked(fetchJson).mockImplementation(async (input: RequestInfo, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.url;
+        if (url === `/api/relationships/character-links/${linkId}` && init?.method === 'PATCH') {
+          return {
+            success: true,
+            relationship: {
+              id: linkId,
+              character_id: marcusId,
+              character_name: 'Marcus',
+              relationship_type: 'acquaintance',
+              status: 'active',
+            },
+          } as never;
+        }
+        throw new Error('Not found');
+      });
+      characterQueryMock.state.query = friendThenEstrangedQuery();
+      render(
+        <CharacterDetailModal
+          character={jamie}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+          initialTab="relationships"
+        />,
+      );
+      await userEvent.click(await screen.findByLabelText('Change relationship with Marcus'));
+      await userEvent.clear(screen.getByLabelText('New relationship with Marcus'));
+      await userEvent.type(screen.getByLabelText('New relationship with Marcus'), 'acquaintance');
+      await userEvent.click(screen.getByTestId('relationship-change-save'));
+      await waitFor(() => {
+        expect(vi.mocked(fetchJson)).toHaveBeenCalledWith(
+          `/api/relationships/character-links/${linkId}`,
+          expect.objectContaining({ method: 'PATCH' }),
+        );
+      });
+      expect(characterQueryMock.state.reload).toHaveBeenCalledWith(
+        expect.objectContaining({ sections: 'relationships', silent: true }),
+      );
+    });
+
+    it('8. End relationship uses the governed end route and preserves history', async () => {
+      const { fetchJson } = await import('../../lib/api');
+      vi.mocked(fetchJson).mockImplementation(async (input: RequestInfo, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.url;
+        if (url === `/api/relationships/character-links/${linkId}/end` && init?.method === 'POST') {
+          return {
+            success: true,
+            relationship: {
+              id: linkId,
+              character_id: marcusId,
+              character_name: 'Marcus',
+              relationship_type: 'friend',
+              status: 'ended',
+            },
+          } as never;
+        }
+        throw new Error('Not found');
+      });
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      characterQueryMock.state.query = {
+        characterId: jamieId,
+        subject: 'other',
+        generatedAt: '2026-08-01T00:00:00Z',
+        sections: {
+          relationships: {
+            [marcusId]: {
+              current: {
+                type: 'friend',
+                status: 'active',
+                authority: 'USER_EXPLICIT',
+                changedAt: '2026-06-01T00:00:00Z',
+                confidence: null,
+                evidenceIds: [],
+                isMigratedBaseline: false,
+              },
+              history: [
+                {
+                  id: 'h1',
+                  fromRelationshipType: null,
+                  fromStatus: null,
+                  toRelationshipType: 'friend',
+                  toStatus: 'active',
+                  changedAt: '2026-06-01T00:00:00Z',
+                  recordedAt: '2026-06-01T00:00:00Z',
+                  validUntil: null,
+                  changeKind: 'CREATED',
+                  authority: 'USER_EXPLICIT',
+                  evidenceIds: [],
+                  confidence: null,
+                  relationshipId: linkId,
+                  correctsHistoryId: null,
+                },
+              ],
+              correctedAssertions: [],
+              unresolvedConflicts: [],
+            },
+          },
+        },
+      };
+      render(
+        <CharacterDetailModal
+          character={jamie}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+          initialTab="relationships"
+        />,
+      );
+      await userEvent.click(await screen.findByLabelText('End relationship with Marcus'));
+      await waitFor(() => {
+        expect(vi.mocked(fetchJson)).toHaveBeenCalledWith(
+          `/api/relationships/character-links/${linkId}/end`,
+          expect.objectContaining({ method: 'POST' }),
+        );
+      });
+      expect(characterQueryMock.state.reload).toHaveBeenCalledWith(
+        expect.objectContaining({ sections: 'relationships', silent: true }),
+      );
+    });
+
+    it('9. Correct mistake uses retract, not delete as the default', async () => {
+      const { fetchJson } = await import('../../lib/api');
+      vi.mocked(fetchJson).mockImplementation(async (input: RequestInfo, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.url;
+        if (url === `/api/relationships/character-links/${linkId}/retract` && init?.method === 'POST') {
+          return { success: true } as never;
+        }
+        throw new Error('Not found');
+      });
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      characterQueryMock.state.query = friendThenEstrangedQuery();
+      render(
+        <CharacterDetailModal
+          character={jamie}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+          initialTab="relationships"
+        />,
+      );
+      await userEvent.click(await screen.findByLabelText('Correct mistaken relationship with Marcus'));
+      await waitFor(() => {
+        expect(vi.mocked(fetchJson)).toHaveBeenCalledWith(
+          `/api/relationships/character-links/${linkId}/retract`,
+          expect.objectContaining({ method: 'POST' }),
+        );
+      });
+      expect(vi.mocked(fetchJson)).not.toHaveBeenCalledWith(
+        `/api/relationships/character-links/${linkId}`,
+        expect.objectContaining({ method: 'DELETE' }),
+      );
+    });
+
+    it('13. Modal → chat keeps the canonical character UUID', async () => {
+      const user = userEvent.setup();
+      render(
+        <CharacterDetailModal
+          character={jamie}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+        />,
+      );
+      await user.click(screen.getAllByRole('button', { name: /intelligent chat/i })[0]!);
+      await user.click(
+        screen.getByRole('button', { name: /I need to talk about what happened with Jamie/i }),
+      );
+      expect(mockOpenChatWithFocus).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityId: jamieId,
+          entityType: 'character',
+        }),
+      );
+      expect(mockOpenChatWithFocus.mock.calls[0][0].entityId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      );
     });
   });
 

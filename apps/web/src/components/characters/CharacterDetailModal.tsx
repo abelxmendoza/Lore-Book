@@ -35,7 +35,15 @@ import { CreateGroupFromCharacterPanel } from './CreateGroupFromCharacterPanel';
 import { fetchCharacterList } from '../../api/characterList';
 import { fetchCharacterLoreProfile, type CharacterLoreProfile } from '../../api/characterLoreProfile';
 import { formatEpistemicPercent } from '../../lib/epistemicLabels';
-import { onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
+import { onStoryDataUpdated, dispatchStoryDataUpdated, RELATIONSHIP_STORY_SCOPES } from '../../lib/storyRefresh';
+import {
+  describeCurrentRelationship,
+  isRelationshipLinkUuid,
+  listPreviousGroundedStates,
+  partitionConnectionsByDimension,
+  type RelationshipProjection,
+} from '../../lib/relationshipAuthority';
+import { RelationshipAuthorityCard } from './RelationshipAuthorityCard';
 import { UnknownField } from '../ui/UnknownField';
 import { InsufficientData } from '../ui/InsufficientData';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
@@ -365,6 +373,7 @@ export const CharacterDetailModal = ({
     loading: characterQueryLoading,
     error: characterQueryError,
     loadSections,
+    reload: reloadCharacterQuery,
   } = useCharacterQuery(character.id, {
     enabled: characterQueryEnabled,
     sections: 'core',
@@ -683,7 +692,24 @@ export const CharacterDetailModal = ({
     // but no listener is mounted for it right now to pick up the dispatch below.
     if (otherCharacterId && otherCharacterId !== character.id) invalidateCache(otherCharacterId);
     invalidateCache('/api/characters');
+    invalidateCache(`/api/characters/${character.id}/query`);
+    invalidateCache(`/api/characters/${character.id}/profile-bundle`);
+    if (otherCharacterId) {
+      invalidateCache(`/api/characters/${otherCharacterId}/query`);
+      invalidateCache(`/api/characters/${otherCharacterId}/profile-bundle`);
+    }
     invalidateCache('/api/conversation/romantic-relationships');
+  };
+
+  const refreshCanonicalRelationships = async (otherCharacterId?: string) => {
+    invalidateRelationshipViews(otherCharacterId);
+    if (characterQueryEnabled) {
+      await reloadCharacterQuery({ sections: 'relationships', silent: true });
+    }
+    dispatchStoryDataUpdated({
+      scopes: RELATIONSHIP_STORY_SCOPES,
+      characterIds: otherCharacterId ? [character.id, otherCharacterId] : [character.id],
+    });
   };
 
   const upsertLocalRelationship = (nextRelationship: Relationship) => {
@@ -716,15 +742,13 @@ export const CharacterDetailModal = ({
       }
     );
     upsertLocalRelationship(response.relationship);
-    invalidateRelationshipViews(targetCharacterId);
-    dispatchStoryDataUpdated({ scopes: ['characters'], characterIds: [character.id, targetCharacterId] });
+    await refreshCanonicalRelationships(targetCharacterId);
     // Manual "People in their world" add is recorded with user_confirmed + manual flags in backend.
     // This feeds entity authority, continuity, biography, and lorebook so the system learns the connection
     // as high-confidence ground truth for identity and long-term narrative.
     if (isMainCharacter && !isMockDataEnabled) {
       selfCharacterApi.ensureSelf().catch(() => {});
       selfCharacterApi.repairIdentity().catch(() => {});
-      dispatchStoryDataUpdated({ scopes: ['characters'], characterIds: [character.id, targetCharacterId] });
     }
   };
 
@@ -741,11 +765,7 @@ export const CharacterDetailModal = ({
       }
     );
     upsertLocalRelationship(response.relationship);
-    invalidateRelationshipViews(response.relationship.character_id);
-    dispatchStoryDataUpdated({
-      scopes: ['characters'],
-      characterIds: [character.id, response.relationship.character_id],
-    });
+    await refreshCanonicalRelationships(response.relationship.character_id);
     // Manual update learned by system (high authority for continuity/identity).
   };
 
@@ -764,19 +784,11 @@ export const CharacterDetailModal = ({
         relationship_count: relationships.length,
       };
     });
-    invalidateRelationshipViews(otherCharacterId);
-    dispatchStoryDataUpdated({
-      scopes: ['characters'],
-      characterIds: otherCharacterId ? [character.id, otherCharacterId] : [character.id],
-    });
+    await refreshCanonicalRelationships(otherCharacterId);
     // Delete from "People in their world" is a user correction — system treats removal as authoritative for graph/continuity.
     if (isMainCharacter && !isMockDataEnabled) {
       selfCharacterApi.ensureSelf().catch(() => {});
       selfCharacterApi.repairIdentity().catch(() => {});
-      dispatchStoryDataUpdated({
-        scopes: ['characters'],
-        characterIds: otherCharacterId ? [character.id, otherCharacterId] : [character.id],
-      });
     }
   };
 
@@ -2283,7 +2295,7 @@ export const CharacterDetailModal = ({
   useEffect(() => {
     if (!characterQueryEnabled || !character.id) return;
     if (activeTab === 'relationships' || activeTab === 'social') {
-      void loadSections('family');
+      void loadSections(['family', 'relationships']);
     } else if (activeTab === 'timeline') {
       void loadSections('timelines');
     } else if (activeTab === 'photos' || activeTab === 'messages') {
@@ -2453,6 +2465,7 @@ export const CharacterDetailModal = ({
   const [connectionTargetId, setConnectionTargetId] = useState('');
   const [connectionType, setConnectionType] = useState('friend');
   const [connectionSaving, setConnectionSaving] = useState(false);
+  const [connectionBusyId, setConnectionBusyId] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const [orgAddOpen, setOrgAddOpen] = useState(false);
@@ -2498,18 +2511,11 @@ export const CharacterDetailModal = ({
         }),
       });
       const rel = res.relationship;
-      setEditedCharacter((prev) => ({
-        ...prev,
-        relationships: [
-          ...(prev.relationships ?? []).filter((r) => r.character_id !== rel.character_id),
-          rel,
-        ],
-      }));
+      upsertLocalRelationship(rel);
       setConnectionTargetId('');
       setConnectionType('friend');
       setConnectionAddOpen(false);
-      invalidateRelationshipViews(rel.character_id);
-      dispatchStoryDataUpdated({ scopes: ['characters'], characterIds: [character.id, rel.character_id] });
+      await refreshCanonicalRelationships(rel.character_id);
     } catch (error) {
       setConnectionError(error instanceof Error ? error.message : 'Could not add connection.');
     } finally {
@@ -2517,23 +2523,81 @@ export const CharacterDetailModal = ({
     }
   };
 
-  const removeConnection = async (rel: { id?: string; character_id?: string; character_name?: string }) => {
+  const changeConnection = async (
+    rel: { id?: string; character_id?: string; character_name?: string },
+    nextType: string,
+  ) => {
+    if (!rel.id || !isRelationshipLinkUuid(rel.id)) return;
+    setConnectionBusyId(rel.id);
+    setConnectionError(null);
+    try {
+      const res = await fetchJson<{ success: boolean; relationship: NonNullable<Character['relationships']>[number] }>(
+        `/api/relationships/character-links/${rel.id}`,
+        { method: 'PATCH', body: JSON.stringify({ relationship_type: nextType }) },
+      );
+      upsertLocalRelationship(res.relationship);
+      await refreshCanonicalRelationships(rel.character_id);
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : 'Could not change relationship.');
+    } finally {
+      setConnectionBusyId(null);
+    }
+  };
+
+  const endConnection = async (rel: { id?: string; character_id?: string; character_name?: string }) => {
     if (!rel.id) return;
     const who = rel.character_name ?? 'this person';
-    if (!window.confirm(`Remove the connection with ${who}? Their character card stays in your book.`)) return;
+    if (!window.confirm(`End the relationship with ${who}? History is kept.`)) return;
+    setConnectionBusyId(rel.id);
+    setConnectionError(null);
     try {
-      await fetchJson(`/api/relationships/character-links/${rel.id}`, { method: 'DELETE' });
+      if (isRelationshipLinkUuid(rel.id)) {
+        const res = await fetchJson<{
+          success: boolean;
+          relationship?: NonNullable<Character['relationships']>[number];
+        }>(`/api/relationships/character-links/${rel.id}/end`, { method: 'POST' });
+        if (res.relationship) upsertLocalRelationship(res.relationship);
+      } else {
+        await fetchJson(`/api/relationships/character-links/${rel.id}`, { method: 'DELETE' });
+        setEditedCharacter((prev) => ({
+          ...prev,
+          relationships: (prev.relationships ?? []).filter((r) => r.id !== rel.id),
+        }));
+      }
+      await refreshCanonicalRelationships(rel.character_id);
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : 'Could not end relationship.');
+    } finally {
+      setConnectionBusyId(null);
+    }
+  };
+
+  const correctConnection = async (rel: { id?: string; character_id?: string; character_name?: string }) => {
+    if (!rel.id) return;
+    const who = rel.character_name ?? 'this person';
+    if (
+      !window.confirm(
+        `Correct the relationship with ${who}? LoreBook will treat the current label as a mistake, not as something that happened.`,
+      )
+    )
+      return;
+    setConnectionBusyId(rel.id);
+    setConnectionError(null);
+    try {
+      if (isRelationshipLinkUuid(rel.id)) {
+        await fetchJson(`/api/relationships/character-links/${rel.id}/retract`, { method: 'POST' });
+      } else {
+        await fetchJson(`/api/relationships/character-links/${rel.id}`, { method: 'DELETE' });
+      }
       setEditedCharacter((prev) => ({
         ...prev,
         relationships: (prev.relationships ?? []).filter((r) => r.id !== rel.id),
       }));
-      invalidateRelationshipViews(rel.character_id);
-      dispatchStoryDataUpdated({
-        scopes: ['characters'],
-        characterIds: rel.character_id ? [character.id, rel.character_id] : [character.id],
-      });
+      await refreshCanonicalRelationships(rel.character_id);
     } catch (error) {
-      setConnectionError(error instanceof Error ? error.message : 'Could not remove connection.');
+      setConnectionError(error instanceof Error ? error.message : 'Could not correct relationship.');
+    } finally {
+      setConnectionBusyId(null);
     }
   };
 
@@ -2911,8 +2975,21 @@ export const CharacterDetailModal = ({
   const kinshipConnections = allConnections.filter(isKinshipConnection);
   // Parents / children / pets get their own labelled lists, so keep them out of
   // the flat list instead of listing every person twice.
-  const uniqueConnections = allConnections.filter((rel) => !isKinshipConnection(rel));
+  const remainingConnections = allConnections.filter((rel) => !isKinshipConnection(rel));
+  const relationshipProjections = (characterQuery?.sections?.relationships ?? null) as
+    | Record<string, RelationshipProjection>
+    | null;
+  const partitionedConnections = partitionConnectionsByDimension(remainingConnections, relationshipProjections);
+  const socialConnections = partitionedConnections.social;
+  const familyDimensionConnections = partitionedConnections.family;
   const storyGroups = (isMockDataEnabled ? getMockOrganizations() : characterOrganizations);
+
+  const youRelationship = (editedCharacter.relationships ?? []).find(
+    (rel) => rel.character_name === 'You' || !rel.character_name,
+  );
+  const youProjection = youRelationship?.character_id
+    ? relationshipProjections?.[youRelationship.character_id]
+    : undefined;
 
   const resolvedRomanticRelationship = useMemo(() => {
     if (relationship) return relationship;
@@ -3749,23 +3826,39 @@ export const CharacterDetailModal = ({
                             <p className="text-white/80 text-sm mt-1">{editedCharacter.summary}</p>
                           </div>
                         )}
+                        {youProjection && (
+                          <div data-testid="relationship-to-you-authority">
+                            <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">Current</span>
+                            <p className="text-white font-medium mt-0.5" data-testid="relationship-current">
+                              {describeCurrentRelationship(youProjection).headline}
+                            </p>
+                            {listPreviousGroundedStates(youProjection).length > 0 && (
+                              <div className="mt-2">
+                                <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">Previously</span>
+                                <p className="text-white/75 text-sm mt-0.5" data-testid="relationship-previously">
+                                  {listPreviousGroundedStates(youProjection).join(' → ')}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
                         {editedCharacter.relationships && editedCharacter.relationships.length > 0 && (
                           <div>
                             <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">Closeness</span>
-                            {editedCharacter.relationships.find(r => r.character_name === 'You' || !r.character_name) && (
+                            {youRelationship && (
                               <div className="mt-1.5">
                                 <div className="flex items-center gap-2">
                                   <div className="flex-1 bg-black/40 rounded-full h-2">
                                     <div
                                       className="bg-primary h-2 rounded-full"
                                       style={{
-                                        width: `${((editedCharacter.relationships.find(r => r.character_name === 'You' || !r.character_name)?.closeness_score || 0) / 10) * 100}%`
-                                      }}
-                                    />
-                                  </div>
-                                  <span className="text-sm text-white/70">
-                                    {editedCharacter.relationships.find(r => r.character_name === 'You' || !r.character_name)?.closeness_score || 0}/10
-                                  </span>
+                                      width: `${((youRelationship?.closeness_score || 0) / 10) * 100}%`
+                                    }}
+                                  />
+                                </div>
+                                <span className="text-sm text-white/70">
+                                  {youRelationship?.closeness_score || 0}/10
+                                </span>
                                 </div>
                               </div>
                             )}
@@ -3844,6 +3937,32 @@ export const CharacterDetailModal = ({
                     relationships={kinshipConnections}
                     onOpen={(rel) => void openCharacterByRelationship(rel)}
                   />
+                )}
+
+                {!isPet && familyDimensionConnections.length > 0 && (
+                  <div className="pt-8 border-t border-white/[0.06]" data-testid="family-relationship-section">
+                    <ConnectionSectionHeader icon={TreePine} title="Family relationship" />
+                    <div className="space-y-2">
+                      {familyDimensionConnections.map((rel) => (
+                        <Card
+                          key={rel.character_id ?? rel.id}
+                          className="bg-black/40 border-border/50 cursor-pointer hover:border-primary/50 hover:bg-black/60 transition-all"
+                          onClick={() => void openCharacterByRelationship(rel)}
+                        >
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-medium text-white">{rel.character_name}</p>
+                                <p className="text-sm text-white/70 mt-0.5" data-testid="family-relationship-type">
+                                  {rel.relationship_type}
+                                </p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
                 )}
 
                 {/* Friends & Other Connections */}
@@ -3931,50 +4050,27 @@ export const CharacterDetailModal = ({
                       <p className="text-xs text-red-400 mb-2">{connectionError}</p>
                     )}
                     <div className="space-y-2">
-                      {uniqueConnections.map((rel) => (
-                          <Card 
-                            key={rel.character_id ?? rel.id} 
-                            className="bg-black/40 border-border/50 cursor-pointer hover:border-primary/50 hover:bg-black/60 transition-all"
-                            onClick={() => void openCharacterByRelationship(rel)}
-                          >
-                            <CardContent className="p-4">
-                              <div className="flex items-center justify-between">
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <p className="font-medium text-white">{rel.character_name}</p>
-                                    <Tooltip content={`Relationship Type: "${rel.relationship_type}" describes how ${rel.character_name} relates to ${editedCharacter.name}. This is automatically detected from your conversations when you describe their connection.`}>
-                                      <span className="text-xs text-primary/70 px-2 py-0.5 rounded bg-primary/10 border border-primary/20 cursor-help">
-                                      {rel.relationship_type}
-                                    </span>
-                                    </Tooltip>
-                                  </div>
-                                  {rel.summary && <p className="text-sm text-white/60 mt-1">{rel.summary}</p>}
-                                </div>
-                                {rel.closeness_score !== undefined && (
-                                  <div className="text-right ml-4">
-                                    <span className="text-xs text-white/50 block">Closeness</span>
-                                    <span className="text-sm font-medium text-primary">{rel.closeness_score}/10</span>
-                                  </div>
-                                )}
-                                {!isMockDataEnabled && rel.id && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="ml-2 h-7 w-7 p-0 text-white/30 hover:text-red-400"
-                                    aria-label={`Remove connection with ${rel.character_name}`}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      void removeConnection(rel);
-                                    }}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                )}
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      {uniqueConnections.length === 0 && (
+                      {socialConnections.map(({ edge: rel, projection }) => (
+                        <RelationshipAuthorityCard
+                          key={rel.character_id ?? rel.id}
+                          canonicalCharacterId={editedCharacter.id}
+                          model={{
+                            counterpartId: rel.character_id || rel.id || rel.character_name || 'unknown',
+                            name: rel.character_name || 'Unknown',
+                            summary: rel.summary,
+                            closenessScore: rel.closeness_score,
+                            linkId: rel.id,
+                            projection,
+                            sharedContext: rel.summary ?? null,
+                          }}
+                          busy={Boolean(rel.id && connectionBusyId === rel.id)}
+                          onOpen={() => void openCharacterByRelationship(rel)}
+                          onChange={(nextType) => void changeConnection(rel, nextType)}
+                          onEnd={() => void endConnection(rel)}
+                          onCorrect={() => void correctConnection(rel)}
+                        />
+                      ))}
+                      {socialConnections.length === 0 && (
                         <div className="text-center py-8 text-white/40">
                           <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
                           <p>No connections tracked yet</p>
@@ -4012,7 +4108,23 @@ export const CharacterDetailModal = ({
 
                 {/* Groups & Organizations */}
                 {(() => {
-                  const orgs = isMockDataEnabled ? getMockOrganizations() : characterOrganizations;
+                  const fetched = isMockDataEnabled ? getMockOrganizations() : characterOrganizations;
+                  const primary = (editedCharacter as Character).primary_organization;
+                  const orgs =
+                    primary?.id && !fetched.some((org: { id?: string }) => org.id === primary.id)
+                      ? [
+                          ...fetched,
+                          {
+                            id: primary.id,
+                            name: primary.name,
+                            group_type: primary.group_type,
+                            character_role: primary.role,
+                            user_relationship: 'member',
+                            user_is_member: true,
+                            members: [],
+                          },
+                        ]
+                      : fetched;
                   const shared = orgs.filter((o: any) => o.user_is_member);
                   const theirs = orgs.filter((o: any) => !o.user_is_member);
                   const OrgCard = ({ org, isShared }: { org: any; isShared: boolean }) => (
