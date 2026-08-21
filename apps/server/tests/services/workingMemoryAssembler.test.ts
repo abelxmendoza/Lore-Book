@@ -921,7 +921,7 @@ describe('Working Memory Assembler', () => {
     tableResults.characters = {
       data: [
         { id: 'char-me', name: 'Me', alias: [], summary: null, metadata: {}, importance_score: 100, updated_at: '2026-01-01T00:00:00Z' },
-        { id: 'char-genni', name: 'Genni', alias: [], summary: null, metadata: {}, importance_score: 50, updated_at: '2026-01-01T00:00:00Z' },
+        { id: 'char-jordan', name: 'Jordan', alias: [], summary: null, metadata: {}, importance_score: 50, updated_at: '2026-01-01T00:00:00Z' },
       ],
       error: null,
     };
@@ -933,7 +933,7 @@ describe('Working Memory Assembler', () => {
           status: 'active',
           metadata: {},
           source_character_id: 'char-me',
-          target_character_id: 'char-genni',
+          target_character_id: 'char-jordan',
           updated_at: '2026-06-01T00:00:00Z',
         },
       ],
@@ -943,14 +943,14 @@ describe('Working Memory Assembler', () => {
     tableResults.character_relationship_history = {
       data: [
         {
-          id: 'h1', user_id: 'user-1', source_character_id: 'char-me', target_character_id: 'char-genni',
+          id: 'h1', user_id: 'user-1', source_character_id: 'char-me', target_character_id: 'char-jordan',
           from_relationship_type: null, from_status: null, to_relationship_type: 'friend', to_status: 'active',
           changed_at: '2026-06-01T00:00:00Z', recorded_at: '2026-06-01T00:00:00Z', valid_until: null,
           change_kind: 'CREATED', authority: 'SYSTEM_DERIVED', evidence_ids: [], confidence: null,
           relationship_id: 'rel-1', corrects_history_id: null,
         },
         {
-          id: 'h2', user_id: 'user-1', source_character_id: 'char-me', target_character_id: 'char-genni',
+          id: 'h2', user_id: 'user-1', source_character_id: 'char-me', target_character_id: 'char-jordan',
           from_relationship_type: 'friend', from_status: 'active', to_relationship_type: 'estranged', to_status: 'inactive',
           changed_at: '2026-07-15T00:00:00Z', recorded_at: '2026-07-15T00:00:00Z', valid_until: null,
           change_kind: 'TRANSITIONED', authority: 'USER_EXPLICIT', evidence_ids: [], confidence: null,
@@ -962,7 +962,7 @@ describe('Working Memory Assembler', () => {
 
     const result = await assembleWorkingMemory({
       userId: 'user-1',
-      question: 'What is my relationship with Genni?',
+      question: 'What is my relationship with Jordan?',
     });
 
     const relationshipText = result.relationships.map((e) => `${e.title} ${e.content}`).join('\n');
@@ -1020,7 +1020,7 @@ describe('Working Memory Assembler', () => {
       data: [
         {
           id: 'chat-plain',
-          content: 'Talking about Genni and the old apartment.',
+          content: 'Talking about Jordan and the old apartment.',
           created_at: '2026-06-01T00:00:00Z',
           session_id: 'thread-y',
           role: 'user',
@@ -1031,7 +1031,7 @@ describe('Working Memory Assembler', () => {
 
     const result = await assembleWorkingMemory({
       userId: 'user-1',
-      question: 'What have we said about Genni?',
+      question: 'What have we said about Jordan?',
     });
 
     const chatItem = result.episodes.find((item) => item.id === 'chat:chat-plain');
@@ -1042,7 +1042,7 @@ describe('Working Memory Assembler', () => {
   it('a character memory linked to a low-confidence (write-time-fallback) journal date is not presented as a precise occurrence', async () => {
     tableResults.characters = {
       data: [
-        { id: 'char-target', name: 'Genni', alias: [], summary: null, metadata: {}, importance_score: 60, updated_at: '2026-06-01T00:00:00Z' },
+        { id: 'char-target', name: 'Jordan', alias: [], summary: null, metadata: {}, importance_score: 60, updated_at: '2026-06-01T00:00:00Z' },
       ],
       error: null,
     };
@@ -1050,7 +1050,7 @@ describe('Working Memory Assembler', () => {
       data: [
         {
           id: 'mem-1',
-          summary: 'Something about Genni',
+          summary: 'Something about Jordan',
           journal_entry_id: 'entry-unreliable',
           created_at: '2026-08-01T00:00:00Z',
           metadata: {},
@@ -1062,7 +1062,7 @@ describe('Working Memory Assembler', () => {
 
     const result = await assembleWorkingMemory({
       userId: 'user-1',
-      question: 'What do you know about Genni?',
+      question: 'What do you know about Jordan?',
     });
 
     const memoryItem = result.episodes.find((item) => item.id === 'memory:mem-1');

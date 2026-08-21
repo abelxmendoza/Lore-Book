@@ -1,4 +1,5 @@
 import { getDisplayTitle } from '../utils/displayTitle';
+import { projectMemoryCardTemporal } from '../lib/journalMemoryTemporal';
 
 export type ContentType = 
   | 'standard'
@@ -21,11 +22,14 @@ export type MemoryCard = {
   date: string;
   // How trustworthy `date` is as OCCURRENCE evidence rather than recording
   // time — see journal_entries.time_confidence. Below ~0.3 means `date` is
-  // effectively a write-time stamp (the entry was saved with no reliable
-  // date evidence), not a claim about when this actually happened. Absent
-  // when the source (e.g. an already-hydrated legacy path) doesn't carry it —
-  // treat as unknown, not as high confidence, in that case.
+  // effectively a write-time stamp, not a claim about when this happened.
   dateConfidence?: number | null;
+  occurredAt?: string | null;
+  mentionedAt?: string | null;
+  recordedAt?: string | null;
+  occurrenceStatus?: 'confirmed' | 'range' | 'unresolved';
+  canonicalEventId?: string | null;
+  recordingFallbackRejected?: boolean;
   tags: string[];
   mood?: string;
   source: 'journal' | 'x' | 'task' | 'photo' | 'calendar' | 'chat' | 'manual' | 'api' | 'system';
@@ -75,7 +79,8 @@ export type MemoryFilters = {
 
 export function memoryEntryToCard(entry: {
   id: string;
-  date: string;
+  date: string | null;
+  created_at?: string | null;
   content: string;
   summary?: string | null;
   tags: string[];
@@ -86,7 +91,14 @@ export function memoryEntryToCard(entry: {
   original_content?: string | null;
   preserve_original_language?: boolean;
   metadata?: Record<string, unknown>;
+  time_precision?: string | null;
   time_confidence?: number | null;
+  occurred_at?: string | null;
+  mentioned_at?: string | null;
+  recorded_at?: string | null;
+  occurrence_status?: 'confirmed' | 'range' | 'unresolved';
+  canonical_event_id?: string | null;
+  recording_fallback_rejected?: boolean;
 }): MemoryCard {
   const title = getDisplayTitle({
     title: entry.summary,
@@ -127,12 +139,31 @@ export function memoryEntryToCard(entry: {
     });
   }
 
+  const temporal = projectMemoryCardTemporal({
+    date: entry.date,
+    createdAt: entry.created_at,
+    content: entry.content,
+    metadata: entry.metadata,
+    occurredAt: entry.occurred_at,
+    mentionedAt: entry.mentioned_at,
+    recordedAt: entry.recorded_at,
+    occurrenceStatus: entry.occurrence_status,
+    canonicalEventId: entry.canonical_event_id,
+    recordingFallbackRejected: entry.recording_fallback_rejected,
+  });
+
   return {
     id: entry.id,
     title,
     content: entry.content,
-    date: entry.date,
+    date: temporal.occurredAt ?? entry.date ?? '',
     dateConfidence: typeof entry.time_confidence === 'number' ? entry.time_confidence : null,
+    occurredAt: temporal.occurredAt,
+    mentionedAt: temporal.mentionedAt,
+    recordedAt: temporal.recordedAt,
+    occurrenceStatus: temporal.occurrenceStatus,
+    canonicalEventId: temporal.canonicalEventId,
+    recordingFallbackRejected: temporal.recordingFallbackRejected,
     tags: entry.tags || [],
     mood: entry.mood || undefined,
     source,

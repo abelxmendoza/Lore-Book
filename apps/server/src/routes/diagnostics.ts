@@ -202,6 +202,84 @@ router.get('/cognition-health', requireAuth, requireAdmin, async (_req: Request,
 });
 
 /**
+ * GET /api/diagnostics/journal-memory-temporal
+ * Why is this journal memory on this date? Occurrence vs mention vs recording.
+ */
+router.get('/journal-memory-temporal', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as AuthenticatedRequest).user!.id;
+    const journalId = typeof req.query.journalId === 'string' ? req.query.journalId : '';
+    const eventId = typeof req.query.eventId === 'string' ? req.query.eventId : '';
+    if (!journalId && !eventId) {
+      return res.status(400).json({ error: 'journalId or eventId is required' });
+    }
+    const { classifyJournalMemoryTemporal, explainJournalMemoryTemporal } = await import(
+      '../services/temporal/journalMemoryTemporal'
+    );
+    let journal: Record<string, unknown> | null = null;
+    if (journalId) {
+      const { data, error } = await supabaseAdmin
+        .from('journal_entries')
+        .select('id, date, created_at, content, summary, metadata, time_precision, time_confidence')
+        .eq('user_id', userId)
+        .eq('id', journalId)
+        .maybeSingle();
+      if (error) throw error;
+      journal = data;
+      if (!journal) return res.status(404).json({ error: 'Journal entry not found' });
+    }
+    let event: Record<string, unknown> | null = null;
+    if (eventId) {
+      const { data, error } = await supabaseAdmin
+        .from('resolved_events')
+        .select('id, start_time, created_at, title, summary, temporal_precision, temporal_source, metadata')
+        .eq('user_id', userId)
+        .eq('id', eventId)
+        .maybeSingle();
+      if (error) throw error;
+      event = data;
+    }
+    if (!event && journalId) {
+      const { data } = await supabaseAdmin
+        .from('resolved_events')
+        .select('id, start_time, created_at, title, summary, temporal_precision, temporal_source, metadata')
+        .eq('user_id', userId)
+        .eq('metadata->>source_entry_id', journalId)
+        .limit(1);
+      event = data?.[0] ?? null;
+    }
+    const meta = (journal?.metadata as Record<string, unknown> | undefined) ?? {};
+    const view = classifyJournalMemoryTemporal({
+      journalId: journalId || null,
+      canonicalEventId: typeof event?.id === 'string' ? event.id : null,
+      content: typeof journal?.content === 'string'
+        ? journal.content
+        : typeof journal?.summary === 'string'
+          ? journal.summary
+          : typeof event?.summary === 'string'
+            ? event.summary
+            : null,
+      title: typeof event?.title === 'string' ? event.title : null,
+      claimedDate: typeof journal?.date === 'string' ? journal.date : null,
+      createdAt: typeof journal?.created_at === 'string'
+        ? journal.created_at
+        : typeof event?.created_at === 'string'
+          ? event.created_at
+          : null,
+      temporalSource: typeof meta.temporal_source === 'string' ? meta.temporal_source : null,
+      timePrecision: typeof journal?.time_precision === 'string' ? journal.time_precision : null,
+      timeConfidence: journal?.time_confidence == null ? null : Number(journal.time_confidence),
+      canonicalOccurredAt: typeof event?.start_time === 'string' ? event.start_time : null,
+      canonicalPrecision: typeof event?.temporal_precision === 'string' ? event.temporal_precision : null,
+      canonicalTemporalSource: typeof event?.temporal_source === 'string' ? event.temporal_source : null,
+    });
+    return res.json(explainJournalMemoryTemporal(view));
+  } catch (err) {
+    res.status(500).json({ error: 'Journal memory temporal diagnostics failed', detail: String(err) });
+  }
+});
+
+/**
  * GET /api/diagnostics/graph-recovery
  * Proves live graph recovery ran: returns the last live relationship/event
  * recovery for the authenticated user with before/after counts and deltas.

@@ -1,3 +1,4 @@
+import { clocksFromJournalEntry } from '../temporal/journalMemoryTemporal';
 import { logger } from '../../logger';
 
 import type { MoneyMindsetInsight, MoneyMindsetType } from './types';
@@ -28,6 +29,9 @@ export class MoneyMindsetDetector {
       for (const entry of entries) {
         const content = entry.content || entry.text || '';
         if (!content) continue;
+        const clocks = clocksFromJournalEntry(entry);
+        const timestamp = clocks.occurredAt ?? clocks.observedAt;
+        if (!timestamp) continue;
 
         for (const pattern of patterns) {
           if (pattern.regex.test(content)) {
@@ -36,9 +40,10 @@ export class MoneyMindsetDetector {
               type: pattern.type,
               evidence: content.substring(0, 300),
               confidence: pattern.confidence,
-              timestamp: entry.date || entry.created_at || entry.timestamp || new Date().toISOString(),
+              timestamp,
               metadata: {
                 source_entry_id: entry.id,
+                occurrence_unknown: !clocks.occurredAt,
               },
             });
             break; // Only count each entry once per pattern type

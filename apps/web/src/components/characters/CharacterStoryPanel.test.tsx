@@ -198,11 +198,6 @@ describe('CharacterStoryPanel', () => {
   }
 
   it('a recording-only memory does not sort between two dated events merely because it was recorded that day — it sinks to the end', async () => {
-    // Default mock provides two dated, canonical events: "Graduated college"
-    // (2020-05-15) and "Dinner with Jerry" (2024-06-01). This memory's own
-    // `date` (2022-01-01) falls chronologically between them, but its
-    // dateConfidence marks it as a write-time fallback with no real
-    // occurrence evidence — it must NOT slot in at 2022.
     const recordingOnlyMemory: MemoryCard = {
       ...sampleMemory,
       id: 'mem-recording-only',
@@ -224,9 +219,9 @@ describe('CharacterStoryPanel', () => {
     await waitFor(() => expect(screen.getByText('Dinner with Jerry')).toBeInTheDocument());
     const order = storyItemOrder(container);
     expect(order).toEqual([
-      'character-timeline-event-cte-2', // Graduated college, 2020
-      'character-timeline-event-cte-1', // Dinner with Jerry, 2024
-      'character-story-memory-mem-recording-only', // sunk to the end, not 2022's position
+      'character-timeline-event-cte-2',
+      'character-timeline-event-cte-1',
+      'character-story-memory-mem-recording-only',
     ]);
   });
 
@@ -251,10 +246,76 @@ describe('CharacterStoryPanel', () => {
     await waitFor(() => expect(screen.getByText('Dinner with Jerry')).toBeInTheDocument());
     const order = storyItemOrder(container);
     expect(order).toEqual([
-      'character-timeline-event-cte-2', // 2020
-      'character-story-memory-mem-mid-2022', // 2022 — correctly interleaved
-      'character-timeline-event-cte-1', // 2024
+      'character-timeline-event-cte-2',
+      'character-story-memory-mem-mid-2022',
+      'character-timeline-event-cte-1',
     ]);
+  });
+
+  it('orders by occurrence and keeps an unresolved journal memory undated', async () => {
+    const lateRecording: MemoryCard = {
+      id: 'mem-undated',
+      title: 'Thinking about Maya',
+      content: 'Last month I went to a concert with Maya.',
+      date: '',
+      occurredAt: null,
+      recordedAt: '2026-08-20T18:00:00.000Z',
+      occurrenceStatus: 'unresolved',
+      recordingFallbackRejected: true,
+      tags: [],
+      source: 'journal',
+      sourceIcon: 'book',
+      characters: ['Maya'],
+    };
+    const julyMemory: MemoryCard = {
+      id: 'mem-july',
+      title: 'Concert night',
+      content: 'I went to a concert with Maya.',
+      date: '2026-07-15T20:00:00.000Z',
+      occurredAt: '2026-07-15T20:00:00.000Z',
+      recordedAt: '2026-08-20T18:00:00.000Z',
+      occurrenceStatus: 'confirmed',
+      tags: [],
+      source: 'journal',
+      sourceIcon: 'book',
+      characters: ['Maya'],
+    };
+    render(
+      <MemoryRouter>
+        <CharacterStoryPanel
+          characterId="c1"
+          characterName="Maya"
+          active
+          memories={[lateRecording, julyMemory]}
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText('Concert night')).toBeInTheDocument());
+    expect(screen.getByText('Date unknown')).toBeInTheDocument();
+    expect(screen.getByText(/Recorded Aug 20, 2026/)).toBeInTheDocument();
+  });
+
+  it('dedupes a journal memory that shares a canonical event id', async () => {
+    const linkedMemory: MemoryCard = {
+      id: 'mem-linked',
+      title: 'Journal of the dinner',
+      content: 'I went to dinner with Jerry.',
+      date: '2024-06-01T00:00:00.000Z',
+      occurredAt: '2024-06-01T00:00:00.000Z',
+      canonicalEventId: 'evt-1',
+      occurrenceStatus: 'confirmed',
+      tags: [],
+      source: 'journal',
+      sourceIcon: 'book',
+      characters: ['Jerry Medina'],
+    };
+    render(
+      <MemoryRouter>
+        <CharacterStoryPanel characterId="c1" characterName="Jerry Medina" active memories={[linkedMemory]} />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText('Dinner with Jerry')).toBeInTheDocument());
+    expect(screen.queryByText('Journal of the dinner')).not.toBeInTheDocument();
   });
 
   it('shows relationship arc stages when provided', async () => {

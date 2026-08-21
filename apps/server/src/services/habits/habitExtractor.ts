@@ -1,3 +1,4 @@
+import { clocksFromJournalEntry } from '../temporal/journalMemoryTemporal';
 import { logger } from '../../logger';
 
 import type { Habit, HabitContext } from './types';
@@ -23,10 +24,11 @@ export class HabitExtractor {
           const action = this.extractAction(content);
           const category = this.categorizeHabit(action);
 
+          const clocks = clocksFromJournalEntry(entry);
           habits.push({
             id: `habit_${entry.id}_${Date.now()}`,
             action,
-            last_performed: entry.date || entry.created_at || entry.timestamp,
+            last_performed: clocks.occurredAt ?? undefined,
             category,
             metadata: {
               source_entry_id: entry.id,

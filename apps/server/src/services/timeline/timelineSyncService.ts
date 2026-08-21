@@ -31,6 +31,7 @@ import type { ProjectEvent } from './normalizers/projectNormalizer';
 import type { RelationshipEvent } from './normalizers/relationshipNormalizer';
 import { TimelineEngine } from './timelineEngine';
 import { JOURNAL_COLS } from '../../db/journalEntryColumns';
+import { clocksFromJournalEntry } from '../temporal/journalMemoryTemporal';
 
 export class TimelineSyncService {
   constructor(private timelineEngine: TimelineEngine) {}
@@ -152,10 +153,12 @@ export class TimelineSyncService {
       return [];
     }
 
-    return (entries || []).flatMap(entry => 
-      normalizeJournalEntry({
+    return (entries || []).flatMap(entry => {
+      const clocks = clocksFromJournalEntry(entry);
+      if (!clocks.occurredAt) return [];
+      return normalizeJournalEntry({
         id: entry.id,
-        date: entry.date || entry.timestamp || entry.created_at,
+        date: clocks.occurredAt,
         content: entry.content || '',
         summary: entry.summary,
         tags: entry.tags || [],
@@ -164,8 +167,8 @@ export class TimelineSyncService {
         chapter_id: entry.chapter_id,
         source: entry.source,
         metadata: entry.metadata
-      })
-    );
+      });
+    });
   }
 
   /**

@@ -58,7 +58,7 @@ export class CharacterTimelineBuilder {
           id: event.id,
           eventId: event.event_id,
           eventTitle: event.event_title || 'Untitled Event',
-          eventDate: event.event_date || event.created_at,
+          eventDate: event.event_date || '',
           eventSummary: event.event_summary,
           eventType: event.event_type,
           timelineType: event.timeline_type as TimelineType,

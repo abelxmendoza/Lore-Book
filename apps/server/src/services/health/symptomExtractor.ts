@@ -1,3 +1,4 @@
+import { clocksFromJournalEntry } from '../temporal/journalMemoryTemporal';
 import { logger } from '../../logger';
 
 import type { SymptomEvent, SymptomType } from './types';
@@ -30,6 +31,10 @@ export class SymptomExtractor {
         const content = entry.content || entry.text || '';
         if (!content) continue;
 
+        const clocks = clocksFromJournalEntry(entry);
+        const timestamp = clocks.occurredAt ?? clocks.observedAt;
+        if (!timestamp) continue;
+
         const contentLower = content.toLowerCase();
         const sentiment = entry.sentiment || this.estimateSentiment(content);
 
@@ -42,7 +47,7 @@ export class SymptomExtractor {
 
             symptoms.push({
               id: `symptom_${entry.id}_${pattern.type}_${Date.now()}`,
-              timestamp: entry.date || entry.created_at || entry.timestamp || new Date().toISOString(),
+              timestamp,
               type: pattern.type,
               intensity,
               evidence: content.substring(0, 500),
@@ -51,6 +56,7 @@ export class SymptomExtractor {
               metadata: {
                 source_entry_id: entry.id,
                 sentiment,
+                occurrence_unknown: !clocks.occurredAt,
               },
             });
           }

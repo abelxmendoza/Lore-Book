@@ -1,3 +1,4 @@
+import { clocksFromJournalEntry } from '../temporal/journalMemoryTemporal';
 import { logger } from '../../logger';
 
 import type { FinancialTransaction, TransactionCategory } from './types';
@@ -76,9 +77,12 @@ export class TransactionExtractor {
             }
           }
 
+          const clocks = clocksFromJournalEntry(entry);
+          const timestamp = clocks.occurredAt ?? clocks.observedAt;
+          if (!timestamp) continue;
           transactions.push({
             id: `transaction_${entry.id}_${Date.now()}_${Math.random()}`,
-            timestamp: entry.date || entry.created_at || entry.timestamp || new Date().toISOString(),
+            timestamp,
             category,
             amount,
             direction,
@@ -87,6 +91,7 @@ export class TransactionExtractor {
             metadata: {
               source_entry_id: entry.id,
               extracted_amount: amountStr,
+              occurrence_unknown: !clocks.occurredAt,
             },
           });
         }

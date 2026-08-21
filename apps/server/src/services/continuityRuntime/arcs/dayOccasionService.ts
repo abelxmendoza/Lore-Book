@@ -8,6 +8,7 @@ import { logger } from '../../../logger';
 import { supabaseAdmin } from '../../supabaseClient';
 
 import { guardTrackFromText } from '../../chronologyAuthority/domainRoutingGuards';
+import { classifyJournalMemoryTemporal, utcDay } from '../../temporal/journalMemoryTemporal';
 import { arcRelationshipService } from './arcRelationshipService';
 import { arcService, type ArcTrack } from './arcService';
 
@@ -32,6 +33,9 @@ type JournalRow = {
   content: string;
   date: string | null;
   created_at: string;
+  metadata?: Record<string, unknown> | null;
+  time_precision?: string | null;
+  time_confidence?: number | null;
 };
 
 type DayCluster = {
@@ -315,13 +319,25 @@ export class DayOccasionService {
 
     const { data: journalRows } = await supabaseAdmin
       .from('journal_entries')
-      .select('id, content, date, created_at')
+      .select('id, content, date, created_at, metadata, time_precision, time_confidence')
       .eq('user_id', userId)
       .gte('date', dayStart.toISOString())
       .lte('date', dayEnd.toISOString())
       .order('date', { ascending: true });
 
-    const moments = (journalRows ?? []) as JournalRow[];
+    const moments = ((journalRows ?? []) as JournalRow[]).filter((row) => {
+      const meta = (row.metadata ?? {}) as Record<string, unknown>;
+      const view = classifyJournalMemoryTemporal({
+        journalId: row.id,
+        content: row.content,
+        claimedDate: row.date,
+        createdAt: row.created_at,
+        temporalSource: typeof meta.temporal_source === 'string' ? meta.temporal_source : null,
+        timePrecision: row.time_precision,
+        timeConfidence: row.time_confidence == null ? null : Number(row.time_confidence),
+      });
+      return utcDay(view.occurredAt) === cluster.day;
+    });
     const proposal = await proposeOccasionTitle(cluster, moments, userId);
     const wr = weekendRange(cluster.day);
 
@@ -404,15 +420,25 @@ export class DayOccasionService {
     }
 
     for (const m of moments) {
-      const sortTime = m.date ?? m.created_at;
-      const t = new Date(sortTime);
+      const meta = (m.metadata ?? {}) as Record<string, unknown>;
+      const view = classifyJournalMemoryTemporal({
+        journalId: m.id,
+        content: m.content,
+        claimedDate: m.date,
+        createdAt: m.created_at,
+        temporalSource: typeof meta.temporal_source === 'string' ? meta.temporal_source : null,
+        timePrecision: m.time_precision,
+        timeConfidence: m.time_confidence == null ? null : Number(m.time_confidence),
+      });
+      if (!view.occurredAt) continue;
+      const t = new Date(view.occurredAt);
       links.push({
         user_id: userId,
         arc_id: arcId,
         journal_entry_id: m.id,
         user_presence: cluster.presence,
         temporal_role: inferTemporalRole(t, anchorStart, anchorEnd),
-        sort_time: sortTime,
+        sort_time: view.occurredAt,
         importance_score: 0.55,
       });
     }

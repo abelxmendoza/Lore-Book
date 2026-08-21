@@ -142,6 +142,12 @@ type CharacterDetail = Character & {
     id: string;
     entry_id: string;
     date: string;
+    occurred_at?: string | null;
+    mentioned_at?: string | null;
+    recorded_at?: string | null;
+    occurrence_status?: 'confirmed' | 'range' | 'unresolved';
+    canonical_event_id?: string | null;
+    recording_fallback_rejected?: boolean;
     summary?: string;
   }>;
 };
@@ -2169,9 +2175,12 @@ export const CharacterDetailModal = ({
           networkSize: relationshipCount >= 10 ? 'Large Network' : relationshipCount >= 5 ? 'Medium Network' : relationshipCount >= 1 ? 'Small Network' : 'Isolated',
           keyThemes: editedCharacter.tags?.slice(0, 5) || [],
           relationshipType: editedCharacter.metadata?.relationship_type || editedCharacter.archetype || 'Unknown',
-          lastInteraction: editedCharacter.shared_memories && editedCharacter.shared_memories.length > 0 
-            ? editedCharacter.shared_memories[editedCharacter.shared_memories.length - 1].date 
-            : null,
+          lastInteraction: (() => {
+            const dated = (editedCharacter.shared_memories ?? [])
+              .map((memory) => memory.occurred_at || memory.date)
+              .filter((value) => Boolean(value));
+            return dated.length ? dated[dated.length - 1] : null;
+          })(),
           insights: [
             closenessScore >= 80 && `You have a ${closenessScore >= 90 ? 'very close' : 'close'} relationship with ${editedCharacter.name} (${closenessScore}/100)`,
             memoryCount > 0 && `You've shared ${memoryCount} ${memoryCount === 1 ? 'memory' : 'memories'} together`,
@@ -2686,7 +2695,18 @@ export const CharacterDetailModal = ({
     }
   };
 
-  const loadSharedMemories = async (sharedMemories: Array<{ id: string; entry_id: string; date: string; summary?: string }>) => {
+  const loadSharedMemories = async (sharedMemories: Array<{
+    id: string;
+    entry_id: string;
+    date: string;
+    occurred_at?: string | null;
+    mentioned_at?: string | null;
+    recorded_at?: string | null;
+    occurrence_status?: 'confirmed' | 'range' | 'unresolved';
+    canonical_event_id?: string | null;
+    recording_fallback_rejected?: boolean;
+    summary?: string;
+  }>) => {
     setLoadingMemories(true);
     try {
       // Fetch full entry details for each shared memory
@@ -2695,6 +2715,7 @@ export const CharacterDetailModal = ({
           const entry = await fetchJson<{
             id: string;
             date: string;
+            created_at?: string;
             content: string;
             summary?: string | null;
             tags: string[];
@@ -2703,14 +2724,28 @@ export const CharacterDetailModal = ({
             source: string;
             metadata?: Record<string, unknown>;
           }>(`/api/entries/${memory.entry_id}`);
-          return memoryEntryToCard(entry);
+          return memoryEntryToCard({
+            ...entry,
+            occurred_at: memory.occurred_at,
+            mentioned_at: memory.mentioned_at,
+            recorded_at: memory.recorded_at ?? entry.created_at,
+            occurrence_status: memory.occurrence_status,
+            canonical_event_id: memory.canonical_event_id,
+            recording_fallback_rejected: memory.recording_fallback_rejected,
+          });
         } catch (error) {
           console.error(`Failed to load entry ${memory.entry_id}:`, error);
           return {
             id: memory.id,
             title: memory.summary || `Memory with ${character.name}`,
             content: memory.summary || `Mentioned ${character.name}`,
-            date: memory.date,
+            date: memory.occurred_at || '',
+            occurredAt: memory.occurred_at ?? null,
+            mentionedAt: memory.mentioned_at ?? null,
+            recordedAt: memory.recorded_at ?? memory.date,
+            occurrenceStatus: memory.occurrence_status ?? 'unresolved',
+            canonicalEventId: memory.canonical_event_id ?? null,
+            recordingFallbackRejected: memory.recording_fallback_rejected,
             tags: ['character-memory'],
             source: 'journal',
             sourceIcon: '📖',

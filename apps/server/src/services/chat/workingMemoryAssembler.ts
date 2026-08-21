@@ -21,6 +21,7 @@ import {
   occurredInWindow,
   type ResolvedTemporalQuery,
 } from '../temporal/temporalQueryService';
+import { classifyJournalMemoryTemporal } from '../temporal/journalMemoryTemporal';
 
 import {
   classifyComposerIntentFast,
@@ -1105,10 +1106,7 @@ async function loadPersonCandidates(
       title: `Memory involving ${target}`,
       content: memText,
       source: 'character_memories',
-      date: memoryDate,
-      // Below the memoryService threshold for a real occurrence signal (see
-      // mapSuggestionPrecision/saveEntry), or no linked journal entry at all —
-      // don't imply an exact date, label it as unresolved instead.
+      date: memoryDateConfidence !== null && memoryDateConfidence < 0.3 ? undefined : memoryDate,
       dateLabel:
         memoryDateConfidence !== null && memoryDateConfidence < 0.3
           ? 'date uncertain'
@@ -1475,11 +1473,11 @@ async function loadTextualCandidates(
       () => {
         let q = supabaseAdmin
           .from('journal_entries')
-          .select('id, content, summary, date, tags, source, metadata')
+          .select('id, content, summary, date, tags, source, metadata, created_at, time_precision, time_confidence')
           .eq('user_id', userId);
-        q = applyDateRange(q, 'date');
-        return q.order('date', { ascending: false }).limit(
-          temporal ? 12 : intent === 'CAREER_QUERY' ? 20 : intent === 'LIFE_REVIEW' ? 8 : 6,
+        if (!temporal) q = applyDateRange(q, 'date');
+        return q.order('created_at', { ascending: false }).limit(
+          temporal ? 24 : intent === 'CAREER_QUERY' ? 20 : intent === 'LIFE_REVIEW' ? 8 : 6,
         );
       }
     ),
@@ -1566,7 +1564,17 @@ async function loadTextualCandidates(
     const displayText = summaryText && (!wantsTarget || includeByIntent(summaryText))
       ? summaryText
       : matchText || summaryText || bodyText;
-    if (temporalWindow && !occurredInWindow(entry.date, temporalWindow)) continue;
+    const meta = (entry.metadata ?? {}) as Record<string, unknown>;
+    const view = classifyJournalMemoryTemporal({
+      journalId: entry.id,
+      content: matchText,
+      claimedDate: entry.date,
+      createdAt: entry.created_at ?? (typeof meta.created_at === 'string' ? meta.created_at : null),
+      temporalSource: typeof meta.temporal_source === 'string' ? meta.temporal_source : null,
+      timePrecision: entry.time_precision,
+      timeConfidence: entry.time_confidence == null ? null : Number(entry.time_confidence),
+    });
+    if (temporalWindow && !occurredInWindow(view.occurredAt, temporalWindow)) continue;
     if (wantsTarget && !matchesTarget && !['LIFE_REVIEW', 'IDENTITY_QUERY'].includes(intent)) continue;
     out.push({
       id: `episode:${entry.id}`,
@@ -1574,7 +1582,12 @@ async function loadTextualCandidates(
       title: entry.summary ? String(entry.summary).slice(0, 80) : 'Journal episode',
       content: displayText.slice(0, 700),
       source: 'journal_entries',
-      date: entry.date,
+      date: view.occurredAt ?? undefined,
+      dateLabel: view.occurredAt
+        ? undefined
+        : view.recordedAt
+          ? `wrote ${String(view.recordedAt).slice(0, 10)}; when it happened is unknown`
+          : 'date unknown',
       confidence: 0.72,
       relevance: temporal ? 0.95 : wantsTarget ? (matchesTarget ? 0.84 : 0.35) : 0.7,
       importance: 0.5,

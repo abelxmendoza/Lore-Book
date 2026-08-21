@@ -6,13 +6,11 @@ import type {
   ChapterTimeline,
   EntryRelationship,
   JournalQuery,
-  JournalTimePrecision,
   MemoryEntry,
   MemorySource,
   MonthGroup,
   ResolvedMemoryEntry
 } from '../types';
-import type { DateSuggestion } from './dateAssignmentService';
 
 import { deriveEmotionalIntensity } from '../utils/emotionalIntensity';
 import { JOURNAL_COLS } from '../db/journalEntryColumns';
@@ -30,24 +28,13 @@ import { projectSuggestionService } from './projects/projectSuggestionService';
 import { supabaseAdmin } from './supabaseClient';
 import { ingestJournalEntry } from './unifiedErIngestion';
 import { dateAssignmentService } from './dateAssignmentService';
+import {
+  applyOccurrenceWriteToMetadata,
+  resolveJournalOccurrenceWrite,
+} from './temporal/journalOccurrenceStorage';
 
 const ENTRY_LIST_CACHE_TTL_MS = 30_000;
 const BOOTSTRAP_ENTRY_FETCH_LIMIT = 500;
-
-function mapSuggestionPrecision(precision: DateSuggestion['precision']): JournalTimePrecision {
-  switch (precision) {
-    case 'year':
-      return 'year';
-    case 'month':
-      return 'month';
-    case 'day':
-      return 'day';
-    default:
-      // hour/minute/second — dateAssignmentService's finest grain maps onto
-      // journal_entries.time_precision's 'exact', the finest grain it has.
-      return 'exact';
-  }
-}
 
 export type TimelineEndpointTiming = {
   totalMs: number;
@@ -89,7 +76,7 @@ type EntryListCacheEntry = {
 export type SaveEntryPayload = {
   userId: string;
   content: string;
-  date?: string;
+  date?: string | null;
   tags?: string[];
   chapterId?: string | null;
   mood?: string | null;
@@ -149,50 +136,30 @@ class MemoryService {
       }
     }
 
-    // If no date supplied, ask dateAssignmentService to infer one from content.
-    // Only use the suggestion when confidence is reasonable (≥0.5); otherwise keep now().
-    //
-    // time_precision/time_confidence (existing columns, previously always left
-    // at their schema DEFAULTs of 'exact'/1.0 no matter where `date` actually
-    // came from) now carry the real evidence class, so downstream chronology
-    // code can tell "user explicitly dated this" apart from "the app silently
-    // stamped now() because nothing else was available" — see MemoryEntry's
-    // doc comment in types.ts.
-    let entryDate = payload.date;
-    let timePrecision: JournalTimePrecision = 'exact';
-    let timeConfidence = 1.0;
-    if (!entryDate) {
-      if (payload.content && payload.content.length > 20) {
-        try {
-          const suggestion = await dateAssignmentService.suggestDate(payload.userId, payload.content);
-          if (suggestion.confidence >= 0.5 && suggestion.source !== 'default') {
-            entryDate = suggestion.date.toISOString();
-            timePrecision = mapSuggestionPrecision(suggestion.precision);
-            timeConfidence = suggestion.confidence;
-          } else {
-            // Suggestion exists but wasn't confident enough to use as the date
-            // itself — falls through to the now() fallback below, and that
-            // fallback genuinely carries no occurrence evidence.
-            timePrecision = 'approximate';
-            timeConfidence = Math.min(suggestion.confidence, 0.2);
-          }
-        } catch (error) {
-          logger.debug({ error }, 'Date suggestion failed, using current date');
-          timePrecision = 'approximate';
-          timeConfidence = 0.1;
-        }
-      } else {
-        // No content to infer from at all — pure write-time fallback.
-        timePrecision = 'approximate';
-        timeConfidence = 0.1;
+    // Occurrence is optional. Recording time is created_at. Never mint date from now().
+    let suggestion = null;
+    if (!payload.date && payload.content && payload.content.length > 20) {
+      try {
+        suggestion = await dateAssignmentService.suggestDate(payload.userId, payload.content);
+      } catch (error) {
+        logger.debug({ error }, 'Date suggestion failed; occurrence stays unanchored');
       }
     }
+
+    const recordedNow = new Date().toISOString();
+    const occurrence = resolveJournalOccurrenceWrite({
+      explicitDate: payload.date ?? null,
+      suggestion,
+      recordedAt: recordedNow,
+      metadata,
+    });
+    Object.assign(metadata, applyOccurrenceWriteToMetadata(metadata, occurrence));
 
     const entry: MemoryEntry = {
       id: uuid(),
       user_id: payload.userId,
       content: payload.content,
-      date: entryDate ?? new Date().toISOString(),
+      date: occurrence.date,
       tags: payload.tags ?? [],
       chapter_id: payload.chapterId ?? null,
       mood: payload.mood ?? null,
@@ -202,8 +169,8 @@ class MemoryService {
       original_content: payload.original_content ?? null,
       preserve_original_language: payload.preserve_original_language ?? false,
       metadata,
-      time_precision: timePrecision,
-      time_confidence: timeConfidence,
+      time_precision: occurrence.time_precision,
+      time_confidence: occurrence.time_confidence,
     };
 
     if (!isEncrypted) {
@@ -218,8 +185,11 @@ class MemoryService {
     const insertRow: Record<string, unknown> = { ...entry };
     if (payload.narrativeOrder != null) insertRow.narrative_order = payload.narrativeOrder;
     if (payload.derivedFromEntryId != null) insertRow.derived_from_entry_id = payload.derivedFromEntryId;
-    // Derive emotional intensity at ingestion — high-emotion entries decay slower (see migration 20260529000007)
     insertRow.emotional_intensity = deriveEmotionalIntensity(payload.content, payload.mood);
+    insertRow.date = occurrence.date;
+    insertRow.timestamp = occurrence.timestamp;
+    insertRow.time_precision = occurrence.time_precision;
+    insertRow.time_confidence = occurrence.time_confidence;
 
     const { error } = await supabaseAdmin.from('journal_entries').insert(insertRow);
     if (error) {
@@ -439,7 +409,14 @@ class MemoryService {
     };
 
     if (updates.content !== undefined) updateData.content = updates.content;
-    if (updates.date !== undefined) updateData.date = updates.date;
+    if (updates.date !== undefined) {
+      updateData.date = updates.date;
+      updateData.timestamp = updates.date;
+      if (updates.date === null) {
+        updateData.time_precision = 'unknown';
+        updateData.time_confidence = 0;
+      }
+    }
     if (updates.tags !== undefined) updateData.tags = updates.tags;
     if (updates.chapterId !== undefined) updateData.chapter_id = updates.chapterId;
     if (updates.mood !== undefined) updateData.mood = updates.mood;
@@ -511,7 +488,7 @@ class MemoryService {
         const rows = await matchJournalEntries(userId, embedding, threshold, limit, yearShardMin);
         return rows.map((row) => ({
           ...row,
-          date: row.date instanceof Date ? row.date.toISOString() : row.date,
+          date: row.date instanceof Date ? row.date.toISOString() : row.date ?? null,
         })) as MemoryEntry[];
       } catch (drizzleError) {
         logger.warn({ error: drizzleError }, 'Drizzle semantic search failed; falling back to RPC');
@@ -541,7 +518,7 @@ class MemoryService {
 
   private groupByMonth(entries: MemoryEntry[]): MonthGroup[] {
     const grouped = entries.reduce<Record<string, MemoryEntry[]>>((acc, entry) => {
-      const month = format(parseISO(entry.date), 'yyyy MMMM');
+      const month = entry.date ? format(parseISO(entry.date), 'yyyy MMMM') : 'Date unknown';
       acc[month] = acc[month] ?? [];
       acc[month].push(entry);
       return acc;
@@ -1117,7 +1094,8 @@ class MemoryService {
         }
       }
 
-      // Temporal proximity (±5 days)
+      // Temporal proximity (±5 days) — occurrence clock only; skip unresolved.
+      if (entry.date) {
       const entryDate = new Date(entry.date);
       const fiveDaysBefore = new Date(entryDate.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString();
       const fiveDaysAfter = new Date(entryDate.getTime() + 5 * 24 * 60 * 60 * 1000).toISOString();
@@ -1138,6 +1116,7 @@ class MemoryService {
             linkedMemories.push(m as MemoryEntry);
           }
         });
+      }
       }
 
       // Same source

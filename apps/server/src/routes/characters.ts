@@ -17,6 +17,7 @@ import { characterRegistry } from '../services/characterRegistry';
 import { entityAttributeDetector } from '../services/conversationCentered/entityAttributeDetector';
 import { peoplePlacesService } from '../services/peoplePlacesService';
 import { supabaseAdmin } from '../services/supabaseClient';
+import { classifyJournalMemoryTemporal } from '../services/temporal/journalMemoryTemporal';
 import { characterAvatarUrl, avatarStyleFor } from '../utils/avatar';
 import { cacheAvatar } from '../utils/cacheAvatar';
 import { incrementAiRequestCount } from '../services/usageTracking';
@@ -1183,8 +1184,33 @@ router.get(['/', '/list'], requireAuth, async (req: AuthenticatedRequest, res) =
       const { data: allMemories } = await supabaseAdmin
         .from('character_memories')
         .select('id, character_id, journal_entry_id, created_at, summary')
+        .eq('user_id', req.user!.id)
         .in('character_id', characterIds)
         .order('created_at', { ascending: false });
+
+      const journalIds = [...new Set((allMemories ?? []).map((mem) => mem.journal_entry_id).filter(Boolean))];
+      const [{ data: journalRows }, { data: linkedEventRows }] = await Promise.all([
+        journalIds.length
+          ? supabaseAdmin
+              .from('journal_entries')
+              .select('id, date, created_at, content, summary, metadata, time_precision, time_confidence')
+              .eq('user_id', req.user!.id)
+              .in('id', journalIds)
+          : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+        journalIds.length
+          ? supabaseAdmin
+              .from('resolved_events')
+              .select('id, start_time, temporal_precision, temporal_source, metadata')
+              .eq('user_id', req.user!.id)
+              .in('metadata->>source_entry_id', journalIds)
+          : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+      ]);
+      const journalById = new Map((journalRows ?? []).map((row) => [row.id as string, row]));
+      const eventByJournalId = new Map<string, Record<string, unknown>>();
+      for (const row of linkedEventRows ?? []) {
+        const sourceEntryId = (row.metadata as Record<string, unknown> | null)?.source_entry_id;
+        if (typeof sourceEntryId === 'string') eventByJournalId.set(sourceEntryId, row);
+      }
 
       // Group memories by character
       const memoriesByCharacter = new Map<string, typeof allMemories>();
@@ -1261,12 +1287,36 @@ router.get(['/', '/list'], requireAuth, async (req: AuthenticatedRequest, res) =
                 };
               }),
           ),
-          shared_memories: memories.map((mem) => ({
-            id: mem.id,
-            entry_id: mem.journal_entry_id,
-            date: mem.created_at,
-            summary: mem.summary || undefined
-          }))
+          shared_memories: memories.map((mem) => {
+            const journal = journalById.get(mem.journal_entry_id);
+            const linked = eventByJournalId.get(mem.journal_entry_id);
+            const meta = (journal?.metadata as Record<string, unknown> | undefined) ?? {};
+            const view = classifyJournalMemoryTemporal({
+              journalId: mem.journal_entry_id,
+              canonicalEventId: typeof linked?.id === 'string' ? linked.id : null,
+              content: typeof journal?.content === 'string' ? journal.content : typeof journal?.summary === 'string' ? journal.summary : mem.summary,
+              claimedDate: typeof journal?.date === 'string' ? journal.date : null,
+              createdAt: (typeof journal?.created_at === 'string' ? journal.created_at : mem.created_at) ?? null,
+              temporalSource: typeof meta.temporal_source === 'string' ? meta.temporal_source : null,
+              timePrecision: typeof journal?.time_precision === 'string' ? journal.time_precision : null,
+              timeConfidence: journal?.time_confidence == null ? null : Number(journal.time_confidence),
+              canonicalOccurredAt: typeof linked?.start_time === 'string' ? linked.start_time : null,
+              canonicalPrecision: typeof linked?.temporal_precision === 'string' ? linked.temporal_precision : null,
+              canonicalTemporalSource: typeof linked?.temporal_source === 'string' ? linked.temporal_source : null,
+            });
+            return {
+              id: mem.id,
+              entry_id: mem.journal_entry_id,
+              date: view.occurredAt ?? '',
+              occurred_at: view.occurredAt,
+              mentioned_at: view.mentionedAt,
+              recorded_at: view.recordedAt,
+              occurrence_status: view.occurrenceStatus,
+              canonical_event_id: view.canonicalEventId,
+              recording_fallback_rejected: view.recordingFallbackRejected,
+              summary: mem.summary || undefined,
+            };
+          }),
         };
 
         // Calculate analytics (async, don't block)

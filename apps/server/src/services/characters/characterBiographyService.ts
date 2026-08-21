@@ -93,17 +93,8 @@ export async function buildCharacterBiography(
   const relTypes = (rels ?? []).map((r) => r.relationship_type as string);
   const roleInStory = inferRoleInStory(character.name, relTypes, character.summary);
 
-  const firstSeen =
-    timeline?.[0]?.event_date ??
-    memories?.[0]?.created_at ??
-    character.first_appearance ??
-    character.created_at ??
-    null;
-
-  const lastSeen =
-    timeline?.[timeline.length - 1]?.event_date ??
-    memories?.[memories.length - 1]?.created_at ??
-    null;
+  const firstSeen = timeline?.[0]?.event_date ?? null;
+  const lastSeen = timeline?.[timeline.length - 1]?.event_date ?? null;
 
   const majorMoments = [
     ...(timeline ?? []).slice(-5).map((t) => t.event_title as string),
