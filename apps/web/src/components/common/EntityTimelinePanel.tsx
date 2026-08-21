@@ -177,7 +177,7 @@ export function EntityTimelinePanel<E extends TimelinePanelEvent, L extends { id
       <div className="min-w-0 w-full max-w-full overflow-x-hidden">
       {viewMode === 'list' ? (
         loading ? (
-          <div className="h-48 flex items-center justify-center text-white/50 text-sm">
+          <div className="h-48 flex items-center justify-center text-white/50 text-sm" data-testid="entity-timeline-loading">
             <Loader2 className="h-4 w-4 animate-spin mr-2" />
             Loading timeline…
           </div>
