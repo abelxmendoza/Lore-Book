@@ -6,6 +6,7 @@
  */
 
 import { supabaseAdmin } from './supabaseClient';
+import { countCanonicalEventsForCharacter } from './characters/canonicalCharacterEventCount';
 
 export type CharacterInfluence = {
   characterId: string;
@@ -63,11 +64,7 @@ class CharacterInfluenceService {
           .select('id', { count: 'exact', head: true })
           .eq('user_id', userId)
           .or(`source_character_id.eq.${char.id},target_character_id.eq.${char.id}`),
-        supabaseAdmin
-          .from('character_timeline_events')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', userId)
-          .eq('character_id', char.id),
+        countCanonicalEventsForCharacter(userId, char.id),
         supabaseAdmin
           .from('character_memories')
           .select('id', { count: 'exact', head: true })
@@ -78,7 +75,7 @@ class CharacterInfluenceService {
 
       const episodeCount = memRes.count ?? 0;
       const relationshipCount = relRes.count ?? 0;
-      const eventCount = eventRes.count ?? 0;
+      const eventCount = eventRes;
       const recentMentions = recentMemRes.count ?? 0;
 
       let daysSinceLastMention: number | null = null;

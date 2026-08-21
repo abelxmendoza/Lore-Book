@@ -7,6 +7,7 @@
  */
 
 import { supabaseAdmin } from '../supabaseClient';
+import { stitchedTimelineService } from '../chronologyV2/stitchedTimelineService';
 import {
   fetchCharacterRoster,
   fetchFamilyMembers,
@@ -251,22 +252,19 @@ async function fetchFamilyContext(userId: string): Promise<string> {
 }
 
 async function fetchTemporalContext(userId: string): Promise<string> {
-  const { data: events } = await supabaseAdmin
-    .from('character_timeline_events')
-    .select('event_title, event_type, event_date, event_summary')
-    .eq('user_id', userId)
-    .order('event_date', { ascending: false })
-    .limit(5);
-
+  const stitched = await stitchedTimelineService.getStitchedTimeline(userId, { limit: 5 });
   const lines: string[] = ['## RECENT TIMELINE'];
-  if (events?.length) {
-    for (const ev of events) {
-      const date = ev.event_date ? new Date(ev.event_date).toDateString() : '';
-      lines.push(`• ${date}: ${ev.event_title} [${ev.event_type}]`);
-      if (ev.event_summary) lines.push(`  ${ev.event_summary.slice(0, 150)}`);
+  const items = stitched.items ?? [];
+  if (items.length) {
+    for (const item of items) {
+      const occurred = item.occurredAt ?? item.temporalProjection?.occurredStart ?? null;
+      const unresolved = item.occurrenceStatus === 'unresolved' || item.temporalProjection?.isUnresolved || !occurred;
+      const when = unresolved ? 'date unresolved' : occurred;
+      lines.push(`• ${when}: ${item.title}`);
+      if (item.body) lines.push(`  ${item.body.slice(0, 150)}`);
     }
   } else {
-    lines.push('No timeline events recorded yet.');
+    lines.push('No verified timeline events are currently linked.');
   }
   return lines.join('\n');
 }
@@ -511,7 +509,7 @@ export async function buildRecallCoverageReport(userId: string): Promise<
     fetchCharacterRoster(userId),
     fetchFamilyMembers(userId),
     supabaseAdmin.from('character_relationships').select('id').eq('user_id', userId).limit(1),
-    supabaseAdmin.from('character_timeline_events').select('id').eq('user_id', userId).limit(1),
+    supabaseAdmin.from('resolved_events').select('id').eq('user_id', userId).limit(1),
     supabaseAdmin.from('character_memories').select('id').eq('user_id', userId).limit(1),
   ]);
 

@@ -4,6 +4,7 @@
 
 import { supabaseAdmin } from '../supabaseClient';
 import { logger } from '../../logger';
+import { buildCanonicalCharacterTimeline } from './characterEntityTimelineService';
 
 export type CharacterBiography = {
   roleInStory: string;
@@ -70,7 +71,7 @@ export async function buildCharacterBiography(
 
   if (!character) return null;
 
-  const [{ data: rels }, { data: memories }, { data: timeline }] = await Promise.all([
+  const [{ data: rels }, { data: memories }, canonical] = await Promise.all([
     supabaseAdmin
       .from('character_relationships')
       .select('relationship_type, summary')
@@ -82,12 +83,7 @@ export async function buildCharacterBiography(
       .eq('user_id', userId)
       .eq('character_id', characterId)
       .order('created_at', { ascending: true }),
-    supabaseAdmin
-      .from('character_timeline_events')
-      .select('event_title, event_date')
-      .eq('user_id', userId)
-      .eq('character_id', characterId)
-      .order('event_date', { ascending: true }),
+    buildCanonicalCharacterTimeline(userId, characterId),
   ]);
 
   const relTypes = (rels ?? []).map((r) => r.relationship_type as string);
@@ -105,15 +101,16 @@ export async function buildCharacterBiography(
   );
 
   const occurrenceTimes = [
-    ...(timeline ?? []).map((t) => t.event_date as string | null).filter((d): d is string => Boolean(d)),
+    canonical.summary.firstKnownOccurrenceAt,
+    canonical.summary.lastKnownOccurrenceAt,
     ...memoryClocks.map((m) => m.occurredAt).filter((d): d is string => Boolean(d)),
-  ].sort();
+  ].filter((d): d is string => Boolean(d)).sort();
 
   const firstSeen = occurrenceTimes[0] ?? null;
   const lastSeen = occurrenceTimes[occurrenceTimes.length - 1] ?? null;
 
   const majorMoments = [
-    ...(timeline ?? []).slice(-5).map((t) => t.event_title as string),
+    ...canonical.sharedExperiences.slice(-5).map((t) => t.eventTitle),
     ...(memories ?? [])
       .filter((m) => m.summary)
       .slice(-3)

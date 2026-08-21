@@ -4,6 +4,7 @@
 
 import { supabaseAdmin } from '../supabaseClient';
 import { logger } from '../../logger';
+import { countCanonicalEventsForCharacter } from './canonicalCharacterEventCount';
 
 export type ImportanceLevel = 'legendary' | 'major' | 'supporting' | 'minor' | 'background';
 
@@ -108,23 +109,14 @@ async function gatherInputs(userId: string, characterId: string): Promise<Import
   const meta = (character?.metadata ?? {}) as Record<string, unknown>;
   const isSelf = meta.is_self === true || /^you$/i.test(character?.name ?? '');
 
-  const [{ count: memoryCount }, { count: eventCount }, { count: timelineCount }, { data: rels }] =
+  const [{ count: memoryCount }, eventCount, { data: rels }] =
     await Promise.all([
       supabaseAdmin
         .from('character_memories')
         .select('id', { count: 'exact', head: true })
         .eq('user_id', userId)
         .eq('character_id', characterId),
-      supabaseAdmin
-        .from('character_timeline_events')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', userId)
-        .eq('character_id', characterId),
-      supabaseAdmin
-        .from('character_timeline_events')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', userId)
-        .eq('character_id', characterId),
+      countCanonicalEventsForCharacter(userId, characterId),
       supabaseAdmin
         .from('character_relationships')
         .select('relationship_type')
@@ -176,8 +168,8 @@ async function gatherInputs(userId: string, characterId: string): Promise<Import
   return {
     mentionCount,
     distinctMemories: memoryCount ?? 0,
-    distinctEvents: eventCount ?? 0,
-    timelineAppearances: timelineCount ?? 0,
+    distinctEvents: eventCount,
+    timelineAppearances: eventCount,
     relationshipCount: rels?.length ?? 0,
     conversationFrequency,
     recencyDays,

@@ -229,7 +229,7 @@ router.get('/event-attribution', requireAuth, async (req: Request, res: Response
  * POST /api/diagnostics/event-attribution/repair
  * Tenant-scoped historical attribution repair. Dry-run by default.
  * Pass apply=true (query or body) to write people/locations + entityAttributions.
- * Never rebuilds character_timeline_events and never accepts another user's id.
+ * Never writes the retired Character compatibility table and never accepts another user's id.
  */
 router.post('/event-attribution/repair', requireAuth, async (req: Request, res: Response) => {
   try {
@@ -900,7 +900,7 @@ router.post('/recover-relationships', requireAuth, async (req: Request, res: Res
 
 /**
  * POST /api/diagnostics/recover-events
- * Backfill character_timeline_events from chat, facts, and thread summaries.
+ * Backfill missing canonical resolved_events from chat, facts, and thread summaries.
  */
 router.post('/recover-events', requireAuth, async (req: Request, res: Response) => {
   try {

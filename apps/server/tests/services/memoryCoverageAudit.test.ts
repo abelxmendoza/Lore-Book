@@ -46,7 +46,7 @@ describe('memoryCoverageAudit', () => {
         error: null,
       },
       character_memories: { data: [{ character_id: 'char-covered' }], error: null },
-      character_timeline_events: { data: [{ character_id: 'char-covered' }], error: null },
+      resolved_events: { data: [{ people: ['char-covered'] }], error: null },
       character_relationships: {
         data: [{ source_character_id: 'char-covered', target_character_id: 'self' }],
         error: null,

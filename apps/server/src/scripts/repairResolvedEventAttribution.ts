@@ -3,7 +3,7 @@
  *
  * Reclassifies mention vs participation from title + summary + linked unit
  * text, writes metadata.entityAttributions, and prunes contaminated arrays.
- * Never creates a new canonical event. Does not rebuild character_timeline_events.
+ * Never creates a new canonical event. Does not write the retired Character compatibility table.
  *
  * Dry-run (default):
  *   cd apps/server && npx tsx src/scripts/repairResolvedEventAttribution.ts --user <uuid>

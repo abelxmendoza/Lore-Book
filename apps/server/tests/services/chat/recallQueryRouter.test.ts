@@ -26,6 +26,12 @@ vi.mock('../../../src/services/supabaseClient', () => ({
   supabaseAdmin: { from: (...args: unknown[]) => fromMock(...args) },
 }));
 
+vi.mock('../../../src/services/chronologyV2/stitchedTimelineService', () => ({
+  stitchedTimelineService: {
+    getStitchedTimeline: vi.fn(async () => ({ items: [], unresolved_items: [] })),
+  },
+}));
+
 const { getIdentitySnapshotMock, composeIdentityRecallMock, getNarrativeIdentityRecallMock } = vi.hoisted(() => ({
   getIdentitySnapshotMock: vi.fn(),
   composeIdentityRecallMock: vi.fn(),
@@ -91,11 +97,11 @@ describe('Sprint AF — foundation recall', () => {
         ],
         error: null,
       },
-      character_timeline_events: {
+      resolved_events: {
         data: [
-          { character_id: 'c2' },
-          { character_id: 'c3' },
-          { character_id: 'c3' },
+          { people: ['c2'] },
+          { people: ['c3'] },
+          { people: ['c3'] },
         ],
         error: null,
       },
@@ -236,7 +242,7 @@ describe('routeRecallQuery — character list intent (Sprint H fix)', () => {
         error: null,
       },
       character_memories: { data: [], error: null },
-      character_timeline_events: { data: [], error: null },
+      resolved_events: { data: [], error: null },
       character_relationships: { data: [], error: null },
       narrative_accounts: { data: { narrative_text: 'Some narrative.', metadata: {} }, error: null },
     };

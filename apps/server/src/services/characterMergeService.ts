@@ -34,6 +34,7 @@ import { recordEntityConsolidation } from './consolidationProtocol';
 import { supabaseAdmin } from './supabaseClient';
 import { incrementEntityResolutionMetric } from './entities/entityResolutionMetrics';
 import { assertEntityMergeAuthorized } from './entities/entityTypeCompatibility';
+import { rewriteResolvedEventPeopleCharacterIds } from './characters/resolvedEventPeopleRewrite';
 
 export interface MergeReport {
   sourceId: string;
@@ -309,7 +310,7 @@ class CharacterMergeService {
 
     await this.mergeRelationships(userId, sourceId, targetId, report);
     await this.mergeMemories(userId, sourceId, targetId, report);
-    await this.mergeTimelineEvents(userId, sourceId, targetId, report);
+    await this.mergeResolvedEventPeople(userId, sourceId, targetId);
     await this.mergeRpgTraits(userId, sourceId, targetId, report);
     await this.mergeEntityFacts(userId, sourceId, targetId, report);
     await this.mergeEntityAttributes(userId, sourceId, targetId, report);
@@ -461,28 +462,12 @@ class CharacterMergeService {
     }
   }
 
-  /** Reassign character_timeline_events; unique(user_id, character_id, event_id, timeline_type). */
-  private async mergeTimelineEvents(userId: string, sourceId: string, targetId: string, report: MergeReport) {
-    const [{ data: sourceRows }, { data: targetRows }] = await Promise.all([
-      supabaseAdmin.from('character_timeline_events').select('id, event_id, timeline_type').eq('user_id', userId).eq('character_id', sourceId),
-      supabaseAdmin.from('character_timeline_events').select('event_id, timeline_type').eq('user_id', userId).eq('character_id', targetId),
-    ]);
-    const targetKeys = new Set((targetRows ?? []).map((r: any) => `${r.event_id}:${r.timeline_type}`));
-    for (const row of (sourceRows ?? []) as any[]) {
-      if (targetKeys.has(`${row.event_id}:${row.timeline_type}`)) {
-        await supabaseAdmin.from('character_timeline_events').delete().eq('id', row.id);
-        report.collisionsDropped++;
-      } else {
-        const { error } = await supabaseAdmin.from('character_timeline_events').update({ character_id: targetId }).eq('id', row.id);
-        if (!error) report.timelineEventsMoved++;
-        else { await supabaseAdmin.from('character_timeline_events').delete().eq('id', row.id); report.collisionsDropped++; }
-      }
-    }
-    // Secondary reference (no uniqueness involved)
-    await supabaseAdmin.from('character_timeline_events')
-      .update({ connection_character_id: targetId })
-      .eq('user_id', userId)
-      .eq('connection_character_id', sourceId);
+  /**
+   * Canonical participation lives on resolved_events.people[]. Rewrite the
+   * absorbed Character id onto the survivor before the source card is deleted.
+   */
+  private async mergeResolvedEventPeople(userId: string, sourceId: string, targetId: string) {
+    await rewriteResolvedEventPeopleCharacterIds(userId, sourceId, targetId);
   }
 
   /** rpg_character_traits is unique per character — keep target's if present. */

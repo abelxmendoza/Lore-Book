@@ -55,7 +55,6 @@ import { relationshipDriftDetector } from './relationshipDriftDetector';
 import { relationshipCycleDetector } from './relationshipCycleDetector';
 import { breakupDetector } from './breakupDetector';
 import { extractAndLogInteraction } from './romanticInteractionExtractor';
-import { characterTimelineBuilder } from './characterTimelineBuilder';
 import {
   organizationTimelineBuilder,
   locationTimelineBuilder,
@@ -2560,33 +2559,7 @@ export class ConversationIngestionPipeline {
                       );
                     }
 
-                    // Step 12.8: Build character timelines (shared experiences and lore)
                     if (fullEvent.people && fullEvent.people.length > 0) {
-                      characterTimelineBuilder
-                        .processEventForCharacters(
-                          userId,
-                          fullEvent.id,
-                          {
-                            title: fullEvent.title,
-                            summary: fullEvent.summary,
-                            type: fullEvent.type,
-                            start_time: fullEvent.start_time,
-                            people: fullEvent.people,
-                            metadata: fullEvent.metadata,
-                          },
-                          impact?.impactType,
-                          impact?.connectionCharacterId
-                        )
-                        .then(() => {
-                          logger.debug(
-                            { userId, eventId: fullEvent.id, characters: fullEvent.people.length },
-                            'Processed event for character timelines'
-                          );
-                        })
-                        .catch(err => {
-                          logger.warn({ err }, 'Character timeline processing failed (non-blocking)');
-                        });
-
                       // Step 12.8b: Build organization timelines (member overlap with fullEvent.people)
                       getOrganizationIdsForCharacters(userId, fullEvent.people)
                         .then(orgIds => {
