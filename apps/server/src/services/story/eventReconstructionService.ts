@@ -81,7 +81,7 @@ export async function reconstructEventByQuery(
         facts: items.map((item) => item.body || item.title).filter(Boolean) as string[],
         people: [char.name],
         timeline: items.map((item) => ({
-          date: item.occurredAt ?? item.temporalProjection?.occurredStart ?? null,
+          date: item.occurredAt ?? null,
           label: item.title,
         })),
         meaning: null,

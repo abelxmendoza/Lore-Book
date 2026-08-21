@@ -103,15 +103,14 @@ async function buildDailyRecall(
 
   const stitched = await stitchedTimelineService.getStitchedTimeline(userId, { limit: 5 });
   const dated = (stitched.items ?? []).filter((item) => {
-    const occurred = item.occurredAt ?? item.temporalProjection?.occurredStart ?? null;
-    return Boolean(occurred) && item.occurrenceStatus !== 'unresolved' && !item.temporalProjection?.isUnresolved;
+    return Boolean(item.occurredAt) && item.occurrenceStatus !== 'unresolved';
   });
 
   const recentEvents =
     dated.length
       ? dated
           .slice(0, 5)
-          .map((item) => `• ${item.title} (${item.occurredAt ?? item.temporalProjection?.occurredStart})`)
+          .map((item) => `• ${item.title} (${item.occurredAt})`)
           .join('\n')
       : null;
 
