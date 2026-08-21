@@ -28,6 +28,19 @@ test('active migration chain starts from the production schema baseline', () => 
     '20260807040300_optimize_assertion_evidence_rls.sql',
     '20260807093500_system_knowledge_content_tracking_explanation.sql',
     '20260814043224_temporal_parallelism.sql',
+    '20260814064107_cross_thread_canonical_chronology.sql',
+    '20260815000000_organizations_add_software_group_type.sql',
+    '20260815010000_organization_relationship_temporal_history.sql',
+    '20260816000000_conversation_sessions_primary_entity.sql',
+    '20260816010000_entity_timeline_events.sql',
+    '20260817000000_entity_timeline_events_org_fields.sql',
+    '20260817010000_episodes_primary_entity.sql',
+    '20260817020000_character_timeline_events_thread_source.sql',
+    '20260817030000_entity_timeline_events_episode_source.sql',
+    '20260817060000_organization_relationship_history_rls.sql',
+    '20260820010000_character_relationship_history.sql',
+    '20260821120000_journal_occurrence_nullable.sql',
+    '20260821194550_drop_character_timeline_events.sql',
   ]);
 });
 

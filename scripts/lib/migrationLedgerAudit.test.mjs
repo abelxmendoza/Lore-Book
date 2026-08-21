@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { auditMigrationLedger, parseLocalMigrationFilename } from './migrationLedgerAudit.mjs';
+import {
+  auditMigrationLedger,
+  parseLocalMigrationFilename,
+  PRODUCTION_LEDGER_CANON,
+  readLocalMigrations,
+} from './migrationLedgerAudit.mjs';
+
+const migrationsDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '../../supabase/migrations');
 
 test('parses canonical migration filenames', () => {
   assert.deepEqual(parseLocalMigrationFilename('20260806010101_add_assertions.sql'), {
@@ -60,6 +69,31 @@ test('matches by both version and name when local timestamps collide', () => {
   assert.equal(result.exact[0].local.name, 'first_change');
   assert.deepEqual(result.localOnly.map((row) => row.name), ['second_change']);
   assert.equal(result.ambiguousMappings.length, 0);
+});
+
+test('production Character Timeline DROP is an exact ledger match, not a retimestamp', () => {
+  const drop = readLocalMigrations(migrationsDirectory).find(
+    (row) => row.name === 'drop_character_timeline_events',
+  );
+  assert.ok(drop, 'drop_character_timeline_events.sql must exist in supabase/migrations');
+  assert.equal(drop.version, PRODUCTION_LEDGER_CANON.drop_character_timeline_events);
+  assert.equal(drop.filename, '20260821194550_drop_character_timeline_events.sql');
+
+  const result = auditMigrationLedger([drop], [
+    { version: '20260821194550', name: 'drop_character_timeline_events' },
+  ]);
+  assert.equal(result.exact.length, 1);
+  assert.equal(result.retimestamped.length, 0);
+  assert.equal(result.remoteOnly.length, 0);
+  assert.equal(result.localOnly.length, 0);
+  assert.equal(result.safeForAutomaticPush, true);
+
+  const stale = auditMigrationLedger(
+    [parseLocalMigrationFilename('20260821140000_drop_character_timeline_events.sql')],
+    [{ version: '20260821194550', name: 'drop_character_timeline_events' }],
+  );
+  assert.equal(stale.retimestamped.length, 1);
+  assert.equal(stale.safeForAutomaticPush, false);
 });
 
 test('fails closed when a nameless remote row maps to colliding local versions', () => {
