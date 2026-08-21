@@ -222,10 +222,13 @@ class XService {
         ...this.extractTags(post.text, post.entities?.hashtags)
       ];
 
+      const importedAt = new Date().toISOString();
       const entry = await memoryService.saveEntry({
         userId,
         content,
-        date: post.created_at,
+        mentionedAt: post.created_at,
+        sourceCreatedAt: post.created_at,
+        importedAt,
         tags,
         source: 'x',
         metadata: {
@@ -234,6 +237,8 @@ class XService {
           x_url: `https://x.com/${options.handle}/status/${post.id}`,
           public_metrics: post.public_metrics,
           raw_post: post,
+          sourceCreatedAt: post.created_at,
+          importedAt,
           ...(media.length > 0 ? { x_media: media } : {})
         }
       });

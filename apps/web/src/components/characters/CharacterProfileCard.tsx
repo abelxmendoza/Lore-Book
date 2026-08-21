@@ -80,6 +80,11 @@ export type Character = {
     entry_id: string;
     date: string;
     summary?: string;
+    occurredAt?: string | null;
+    mentionedAt?: string | null;
+    recordedAt?: string | null;
+    occurrenceStatus?: 'confirmed' | 'range' | 'unresolved';
+    canonicalEventId?: string | null;
   }>;
   importance_level?: 'protagonist' | 'major' | 'supporting' | 'minor' | 'background' | null;
   importance_score?: number | null;

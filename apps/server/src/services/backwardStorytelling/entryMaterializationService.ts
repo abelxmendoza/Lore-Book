@@ -22,13 +22,13 @@ export type MaterializeInput = {
   source: 'chat' | 'journal';
   sourceEntryId?: string;
   tags?: string[];
-  /** Fallback when a segment has no resolved date */
+  /** Fallback when a segment has a resolved date the caller wants to force. Do not pass now(). */
   defaultDate?: string;
 };
 
 /**
  * Materialize segments + times into journal entries (story slices).
- * Each slice is saved as a normal journal entry with date = "when it happened".
+ * Each slice is saved as a normal journal entry with date = "when it happened" only if known.
  * Returns slices with entry_id = id of the saved entry.
  */
 export async function materializeStorySlices(input: MaterializeInput): Promise<StorySlice[]> {
@@ -39,20 +39,24 @@ export async function materializeStorySlices(input: MaterializeInput): Promise<S
     source,
     sourceEntryId,
     tags = [],
-    defaultDate = new Date().toISOString(),
+    defaultDate,
   } = input;
 
   const slices: StorySlice[] = [];
 
   for (const segment of segments) {
     const time = findTimeForSegment(segment.segment_id, resolvedTimes);
-    const when = (time?.start_date ? `${time.start_date}T12:00:00.000Z` : defaultDate).slice(0, 19) + 'Z';
+    const resolved = time?.start_date
+      ? `${time.start_date}T12:00:00.000Z`.slice(0, 19) + 'Z'
+      : defaultDate;
+    const when = resolved ? resolved.slice(0, 19) + (resolved.endsWith('Z') ? '' : 'Z') : undefined;
 
     try {
       const entry = await memoryService.saveEntry({
         userId,
         content: segment.text,
         date: when,
+        temporalSource: when ? 'document_stated' : undefined,
         tags: [...tags, 'story_slice'],
         source,
         narrativeOrder: segment.narrative_order,
@@ -75,7 +79,7 @@ export async function materializeStorySlices(input: MaterializeInput): Promise<S
       slices.push({
         entry_id: entry.id,
         content: segment.text,
-        date: when,
+        date: when ?? entry.date ?? '',
         narrative_order: segment.narrative_order,
         source,
         derived_from_entry_id: sourceEntryId,
@@ -83,11 +87,9 @@ export async function materializeStorySlices(input: MaterializeInput): Promise<S
         inference_confidence: time?.confidence,
       });
     } catch (error) {
-      logger.error({ error, segmentId: segment.segment_id, userId }, 'Failed to save story-slice entry');
-      throw error;
+      logger.warn({ error, segmentId: segment.segment_id }, 'Failed to materialize story slice');
     }
   }
 
-  logger.info({ userId, sliceCount: slices.length, source }, 'Story slices materialized');
   return slices;
 }

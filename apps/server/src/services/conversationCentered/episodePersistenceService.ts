@@ -8,6 +8,7 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { filterEpisodeParticipantNames, isPollutingPlaceLabel } from '../actors/entityLabelPollution';
+import { classifyPersonAttribution, classifyPlaceAttribution } from '../attribution/eventEntityAttribution';
 import { segmentEpisodes, type Episode, type SegMessage } from './episodeSegmentationCore';
 import { loadThreadMessages } from './threadContentService';
 import { characterTimelineBuilder } from './characterTimelineBuilder';
@@ -154,25 +155,46 @@ async function resolveRealEntityMembership(
 }
 
 /**
- * Pick the episode's "primary" entity — location first (matches
- * buildEpisodeTitle's location-first convention), else the first participant
- * that resolves to a real (promoted) character rather than an unpromoted
- * omega-only mention. Null when nothing resolves.
+ * Pick the episode's "primary" entity from grounded SUBJECT/PARTICIPANT
+ * evidence. Location wins only when it is a locative destination, not a
+ * referenced place. Characters win only as participants. First mention,
+ * mention count, thread focus, possessives, and timing phrases never qualify.
+ * Null when nothing is safely grounded.
  */
 export function resolvePrimaryEntity(
   ep: Episode,
   realCharacterIds: Set<string>,
-  realLocationIds: Set<string>
-): PrimaryEntity | null {
-  const loc = ep.locations[0];
-  if (loc && UUID_RE.test(loc) && realLocationIds.has(loc)) {
-    return { type: 'location', id: loc };
+  realLocationIds: Set<string>,
+  opts?: {
+    text?: string;
+    namesById?: Map<string, string>;
   }
+): PrimaryEntity | null {
+  const text = opts?.text?.trim() ?? '';
+  const namesById = opts?.namesById ?? new Map<string, string>();
 
-  for (const participantId of ep.participants) {
-    if (UUID_RE.test(participantId) && realCharacterIds.has(participantId)) {
-      return { type: 'character', id: participantId };
+  if (text) {
+    for (const loc of ep.locations) {
+      if (!UUID_RE.test(loc) || !realLocationIds.has(loc)) continue;
+      const name = namesById.get(loc);
+      if (!name) continue;
+      const decision = classifyPlaceAttribution(name, text, { entityId: loc });
+      if (decision.canonical && decision.accepted) {
+        return { type: 'location', id: loc };
+      }
     }
+
+    for (const participantId of ep.participants) {
+      if (!UUID_RE.test(participantId) || !realCharacterIds.has(participantId)) continue;
+      const name = namesById.get(participantId);
+      if (!name) continue;
+      const decision = classifyPersonAttribution(name, text, { entityId: participantId });
+      if (decision.canonical && decision.accepted) {
+        return { type: 'character', id: participantId };
+      }
+    }
+
+    return null;
   }
 
   return null;
@@ -244,8 +266,15 @@ export async function persistEpisodesForThread(
     const messageIds = ep.messageIds.filter((id) => UUID_RE.test(id));
     if (messageIds.length === 0) continue;
 
+    const episodeText = segMessages
+      .filter((m) => messageIds.includes(m.id))
+      .map((m) => m.content)
+      .join('\n');
     const sourceEventIds = await resolveEventIds(userId, ep.startAt, ep.endAt, participantIds);
-    const primaryEntity = resolvePrimaryEntity(ep, realCharacterIds, realLocationIds);
+    const primaryEntity = resolvePrimaryEntity(ep, realCharacterIds, realLocationIds, {
+      text: episodeText,
+      namesById: nameById,
+    });
 
     rows.push({
       user_id: userId,

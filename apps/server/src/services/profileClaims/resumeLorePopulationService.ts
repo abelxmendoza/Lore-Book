@@ -20,9 +20,11 @@ import type {
   ResumeLorePopulationResult,
   ResumeProject,
 } from './resumeStructuredTypes';
-import { normalizeResumeDate } from './resumeDateUtils';
+import { normalizeResumeDate, resumeDatePrecision } from './resumeDateUtils';
 import { resumeCharacterEnrichmentService } from './resumeCharacterEnrichmentService';
 import { conflictedCompanyKeys, resumeRoleConflictService } from './resumeRoleConflictService';
+import type { TemporalPrecision, TemporalSource } from '../temporal/temporalEvidence';
+import { occurrenceDate } from '../temporal/explicitOccurrence';
 
 export { normalizeResumeDate } from './resumeDateUtils';
 
@@ -32,6 +34,28 @@ const PROVENANCE = (sourceFileId: string, resumeDocumentId: string) => ({
   resume_document_id: resumeDocumentId,
   provenance: 'resume_lore_population',
 });
+
+function resumeOccurrenceFields(
+  rawStart?: string | null,
+  rawEnd?: string | null,
+): {
+  date?: string;
+  occurredEnd?: string;
+  occurrencePrecision?: TemporalPrecision;
+  temporalSource?: TemporalSource;
+} {
+  const start = occurrenceDate(normalizeResumeDate(rawStart));
+  const end = occurrenceDate(normalizeResumeDate(rawEnd));
+  const date = start ?? end;
+  if (!date) return {};
+  const precision = resumeDatePrecision(rawStart) ?? resumeDatePrecision(rawEnd) ?? undefined;
+  return {
+    date,
+    occurredEnd: end && end !== start ? end : undefined,
+    occurrencePrecision: precision,
+    temporalSource: 'document_stated',
+  };
+}
 
 function monthsBetween(start: string, end: string): number {
   const a = new Date(start);
@@ -225,32 +249,37 @@ class ResumeLorePopulationService {
       }
     }
 
-    // Chronological timeline items
+    // Chronological timeline items — include undated items so they persist as unresolved occurrence.
     type TimelineItem =
-      | { kind: 'job'; date: string; job: ResumeEmployment }
-      | { kind: 'education'; date: string; edu: ResumeEducation }
-      | { kind: 'project'; date: string; project: ResumeProject }
-      | { kind: 'gap'; date: string; gap: ResumeEmploymentGap };
+      | { kind: 'job'; date: string | null; job: ResumeEmployment }
+      | { kind: 'education'; date: string | null; edu: ResumeEducation }
+      | { kind: 'project'; date: string | null; project: ResumeProject }
+      | { kind: 'gap'; date: string | null; gap: ResumeEmploymentGap };
 
     const items: TimelineItem[] = [];
 
     for (const job of parsed.employment) {
       const date = normalizeResumeDate(job.startDate) ?? normalizeResumeDate(job.endDate);
-      if (date) items.push({ kind: 'job', date, job });
+      items.push({ kind: 'job', date, job });
     }
     for (const edu of parsed.education) {
       const date = normalizeResumeDate(edu.endDate) ?? normalizeResumeDate(edu.startDate);
-      if (date) items.push({ kind: 'education', date, edu });
+      items.push({ kind: 'education', date, edu });
     }
     for (const project of parsed.projects) {
       const date = normalizeResumeDate(project.endDate) ?? normalizeResumeDate(project.startDate);
-      if (date) items.push({ kind: 'project', date, project });
+      items.push({ kind: 'project', date, project });
     }
     for (const gap of parsed.employmentGaps) {
-      items.push({ kind: 'gap', date: gap.startDate, gap });
+      items.push({ kind: 'gap', date: gap.startDate ?? null, gap });
     }
 
-    items.sort((a, b) => a.date.localeCompare(b.date));
+    items.sort((a, b) => {
+      if (!a.date && !b.date) return 0;
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return a.date.localeCompare(b.date);
+    });
 
     for (const item of items) {
       if (item.kind === 'job') {
@@ -306,7 +335,6 @@ class ResumeLorePopulationService {
       const entry = await memoryService.saveEntry({
         userId,
         content: `Career summary (from resume):\n\n${parsed.summary.trim()}`,
-        date: new Date().toISOString(),
         tags: ['resume', 'career', 'summary'],
         source: 'document_upload',
         metadata: meta,
@@ -375,7 +403,6 @@ class ResumeLorePopulationService {
     const entry = await memoryService.saveEntry({
       userId,
       content: `Contact information (from resume):\n${lines.join('\n')}`,
-      date: new Date().toISOString(),
       tags: ['resume', 'contact'],
       source: 'document_upload',
       metadata: { ...meta, section: 'header', contact },
@@ -523,7 +550,7 @@ class ResumeLorePopulationService {
         const entry = await memoryService.saveEntry({
           userId,
           content: `Additional detail on your ${job.title} role at ${job.company} (from a different resume): ${job.description}`,
-          date: start ?? new Date().toISOString(),
+          ...resumeOccurrenceFields(job.startDate, job.isCurrent ? null : job.endDate),
           tags: ['resume', 'career', 'employment', 'variant', job.company.toLowerCase().replace(/\s+/g, '-')],
           source: 'document_upload',
           summary: `${job.company} — additional resume detail`,
@@ -548,7 +575,7 @@ class ResumeLorePopulationService {
     const entry = await memoryService.saveEntry({
       userId,
       content,
-      date: start ?? end ?? new Date().toISOString(),
+      ...resumeOccurrenceFields(job.startDate, job.isCurrent ? null : job.endDate),
       tags: ['resume', 'career', 'employment', job.company.toLowerCase().replace(/\s+/g, '-')],
       source: 'document_upload',
       summary: `${job.title} at ${job.company}`,
@@ -600,7 +627,6 @@ class ResumeLorePopulationService {
       return { entryId: null, eventId: existingEventId, reconciled: true };
     }
 
-    const date = end ?? start ?? new Date().toISOString();
     const parts = [
       edu.degree,
       edu.field ? `in ${edu.field}` : null,
@@ -609,7 +635,7 @@ class ResumeLorePopulationService {
     const entry = await memoryService.saveEntry({
       userId,
       content: `Education: ${parts.join(' ')}${edu.gpa ? ` (GPA: ${edu.gpa})` : ''}.`,
-      date,
+      ...resumeOccurrenceFields(edu.startDate, edu.endDate),
       tags: ['resume', 'education', edu.institution?.toLowerCase().replace(/\s+/g, '-') ?? 'school'],
       source: 'document_upload',
       summary: `Education at ${edu.institution}`,
@@ -646,15 +672,11 @@ class ResumeLorePopulationService {
     project: ResumeProject,
     meta: Record<string, unknown>
   ): Promise<string> {
-    const date =
-      normalizeResumeDate(project.endDate) ??
-      normalizeResumeDate(project.startDate) ??
-      new Date().toISOString();
     const tech = project.technologies?.length ? `\nTechnologies: ${project.technologies.join(', ')}` : '';
     const entry = await memoryService.saveEntry({
       userId,
       content: `Project: ${project.name}.${project.description ? ` ${project.description}` : ''}${tech}${project.url ? `\n${project.url}` : ''}`,
-      date,
+      ...resumeOccurrenceFields(project.startDate, project.endDate),
       tags: ['resume', 'project'],
       source: 'document_upload',
       summary: project.name,
@@ -671,7 +693,7 @@ class ResumeLorePopulationService {
     const entry = await memoryService.saveEntry({
       userId,
       content: `Period between jobs (${gap.label}): ${gap.startDate} to ${gap.endDate}.`,
-      date: gap.startDate,
+      ...resumeOccurrenceFields(gap.startDate, gap.endDate),
       tags: ['resume', 'career', 'unemployment'],
       source: 'document_upload',
       summary: 'Between jobs',

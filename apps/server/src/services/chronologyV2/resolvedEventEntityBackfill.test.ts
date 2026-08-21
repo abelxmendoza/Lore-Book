@@ -55,12 +55,22 @@ describe('planEntityBackfill', () => {
     ).toBeNull();
   });
 
-  it('scans title and summary together', () => {
+  it('scans title and summary together for grounded participation, not mere mention', () => {
     const plan = planEntityBackfill(
-      { title: 'Family visit', summary: 'Grandma Nell told stories all evening', people: [], locations: [] },
+      { title: 'Family visit', summary: 'I went with Grandma Nell and she told stories all evening', people: [], locations: [] },
       [quinn, nell],
       [],
     );
     expect(plan).toEqual({ peopleToAdd: ['char-nell'], locationsToAdd: [] });
+  });
+
+  it('does not backfill a person who is only thought about', () => {
+    expect(
+      planEntityBackfill(
+        { title: 'Northwind Hall outing', summary: 'I thought about Priya afterward', people: [], locations: [] },
+        [{ id: 'char-priya', names: ['Priya'] }],
+        [],
+      ),
+    ).toBeNull();
   });
 });

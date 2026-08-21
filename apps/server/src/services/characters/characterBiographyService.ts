@@ -78,7 +78,7 @@ export async function buildCharacterBiography(
       .or(`source_character_id.eq.${characterId},target_character_id.eq.${characterId}`),
     supabaseAdmin
       .from('character_memories')
-      .select('summary, created_at')
+      .select('id, journal_entry_id, summary, created_at')
       .eq('user_id', userId)
       .eq('character_id', characterId)
       .order('created_at', { ascending: true }),
@@ -93,17 +93,24 @@ export async function buildCharacterBiography(
   const relTypes = (rels ?? []).map((r) => r.relationship_type as string);
   const roleInStory = inferRoleInStory(character.name, relTypes, character.summary);
 
-  const firstSeen =
-    timeline?.[0]?.event_date ??
-    memories?.[0]?.created_at ??
-    character.first_appearance ??
-    character.created_at ??
-    null;
+  const { mapCharacterMemoriesToTemporalRefs } = await import('../temporal/journalMemoryTemporalLoader');
+  const memoryClocks = await mapCharacterMemoriesToTemporalRefs(
+    userId,
+    (memories ?? []).map((mem) => ({
+      id: mem.id as string,
+      journal_entry_id: mem.journal_entry_id as string,
+      created_at: mem.created_at as string | null,
+      summary: mem.summary as string | null,
+    })),
+  );
 
-  const lastSeen =
-    timeline?.[timeline.length - 1]?.event_date ??
-    memories?.[memories.length - 1]?.created_at ??
-    null;
+  const occurrenceTimes = [
+    ...(timeline ?? []).map((t) => t.event_date as string | null).filter((d): d is string => Boolean(d)),
+    ...memoryClocks.map((m) => m.occurredAt).filter((d): d is string => Boolean(d)),
+  ].sort();
+
+  const firstSeen = occurrenceTimes[0] ?? null;
+  const lastSeen = occurrenceTimes[occurrenceTimes.length - 1] ?? null;
 
   const majorMoments = [
     ...(timeline ?? []).slice(-5).map((t) => t.event_title as string),

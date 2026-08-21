@@ -43,6 +43,16 @@ export function normalizeResumeDate(raw?: string | null, fallbackToNow = false):
   return parseMonthYearToken(raw.trim());
 }
 
+export function resumeDatePrecision(raw?: string | null): 'year' | 'month' | 'date' | null {
+  if (!raw || /^present|current|now$/i.test(raw.trim())) return null;
+  const t = raw.trim();
+  if (/^\d{4}$/.test(t)) return 'year';
+  if (/^\d{4}-\d{2}$/.test(t)) return 'month';
+  if (/^[A-Za-z]+\s+\d{4}$/.test(t)) return 'month';
+  if (normalizeResumeDate(t)) return 'date';
+  return null;
+}
+
 /** Parse "Apr 2026 – Present" or "Jan 2025 – Dec 2025" into start/end. */
 export function parseDateRange(range: string): { start: string | null; end: string | null; isCurrent: boolean } {
   const parts = range.split(/\s{0,40}[–—-]\s{0,40}/);

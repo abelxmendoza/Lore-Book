@@ -543,10 +543,13 @@ async function persistXImports(
       continue;
     }
 
+    const importedAt = new Date().toISOString();
     const entry = await memoryService.saveEntry({
       userId,
       content: summary.text ?? summary.summary,
-      date: summary.timestamp,
+      mentionedAt: summary.timestamp,
+      sourceCreatedAt: summary.timestamp,
+      importedAt,
       tags: Array.from(new Set(['x-import', summary.type, ...(summary.tags ?? [])])),
       summary: summary.milestone ?? summary.summary,
       source: PROVIDER,
@@ -556,7 +559,8 @@ async function persistXImports(
         provider: PROVIDER,
         sourceId: summary.sourceId,
         url: summary.url,
-        importedAt: new Date().toISOString(),
+        importedAt,
+        sourceCreatedAt: summary.timestamp ?? null,
         eventType: summary.type,
         imageUrl: summary.imageUrl,
         x: summary.metadata ?? {},
