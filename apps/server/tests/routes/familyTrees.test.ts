@@ -37,10 +37,12 @@ vi.mock('../../src/services/familyTreeService', () => ({
 }));
 
 vi.mock('../../src/services/conversationCentered/characterTimelineBuilder', () => ({
-  characterTimelineBuilder: { rebuildTimelinesForCharacter: vi.fn() },
+  characterTimelineBuilder: { buildTimelines: vi.fn() },
 }));
 
 import familyTreesRouter from '../../src/routes/familyTrees';
+import { familyTreeService } from '../../src/services/familyTreeService';
+import { characterTimelineBuilder } from '../../src/services/conversationCentered/characterTimelineBuilder';
 
 function app() {
   const a = express();
@@ -141,5 +143,18 @@ describe('family-tree member mutation routes', () => {
       m.ensureMemberCard.mockResolvedValue(null);
       await request(app()).post('/api/family-trees/member/name-0/ensure-card').send({ name: 'x' }).expect(422);
     });
+  });
+});
+
+describe('POST /character/:id/rebuild', () => {
+  it('rebuilds kinship without rewriting character chronology', async () => {
+    vi.mocked(familyTreeService.getCharacterFamilyTree).mockResolvedValue({
+      members: [],
+      branches: [],
+      self_id: 'char-1',
+    } as never);
+    await request(app()).post('/api/family-trees/character/char-1/rebuild').expect(200);
+    expect(familyTreeService.getCharacterFamilyTree).toHaveBeenCalledWith('user-1', 'char-1', { rebuild: true });
+    expect(characterTimelineBuilder.buildTimelines).not.toHaveBeenCalled();
   });
 });

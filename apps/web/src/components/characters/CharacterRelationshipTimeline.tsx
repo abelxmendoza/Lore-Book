@@ -204,9 +204,6 @@ export const CharacterRelationshipTimeline: React.FC<CharacterRelationshipTimeli
   const rebuildTimelines = async () => {
     setLoading(true);
     try {
-      await fetchJson(`/api/conversation/characters/${characterId}/rebuild-timelines`, {
-        method: 'POST',
-      });
       await loadTimelines();
     } catch (error) {
       console.error('Failed to rebuild timelines:', error);

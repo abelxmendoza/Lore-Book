@@ -26,6 +26,8 @@ import {
   computeSourceInputVersion,
   isProjectionStale,
 } from './projectionVersion';
+import { buildCanonicalCharacterTimeline } from './characters/characterEntityTimelineService';
+import { stitchedTimelineService } from './chronologyV2/stitchedTimelineService';
 
 // ── Fact types ────────────────────────────────────────────────────────────────
 
@@ -259,22 +261,22 @@ class BiographyFoundationService {
       };
     });
 
-    // ── Key events from timeline ─────────────────────────────────────────────
-    const { data: cteRows } = await supabaseAdmin
-      .from('character_timeline_events')
-      .select('event_id, event_title, event_type, event_date, connection_character_id, confidence, source_entry_ids')
-      .eq('user_id', userId)
-      .eq('character_id', protagonist?.id ?? '')
-      .order('event_date', { ascending: true });
-
-    const keyEvents: BiographyFacts['keyEvents'] = (cteRows ?? []).map(e => ({
-      title: e.event_title,
-      eventType: e.event_type,
-      date: e.event_date,
-      connection: e.connection_character_id ? (charNameMap.get(e.connection_character_id) ?? null) : null,
-      confidence: e.confidence,
-      sourceEntryIds: e.source_entry_ids ?? [],
-    }));
+    // ── Key events from canonical character chronology ───────────────────────
+    const keyEvents: BiographyFacts['keyEvents'] = [];
+    if (protagonist?.id) {
+      const modal = await buildCanonicalCharacterTimeline(userId, protagonist.id);
+      for (const item of [...modal.sharedExperiences, ...modal.lore]) {
+        if (item.legacyOnly || item.isUnresolved || !item.occurredStart) continue;
+        keyEvents.push({
+          title: item.eventTitle,
+          eventType: item.eventType ?? item.timelineType,
+          date: item.occurredStart,
+          connection: item.connectionCharacter ?? null,
+          confidence: item.confidence,
+          sourceEntryIds: [],
+        });
+      }
+    }
 
     // ── Living situation ─────────────────────────────────────────────────────
     const livingSituationEntry = allEntries.find(e =>
@@ -287,8 +289,7 @@ class BiographyFoundationService {
 
     // ── Current focus (live structured sources — never hardcoded company names)
     // Active quests and future-dated timeline events stay current as the user moves on.
-    const todayIso = new Date().toISOString().slice(0, 10);
-    const [{ data: activeQuests }, { data: futureEvents }] = await Promise.all([
+    const [{ data: activeQuests }, stitched] = await Promise.all([
       supabaseAdmin
         .from('quests')
         .select('title, updated_at')
@@ -296,13 +297,7 @@ class BiographyFoundationService {
         .eq('status', 'active')
         .order('updated_at', { ascending: false })
         .limit(5),
-      supabaseAdmin
-        .from('character_timeline_events')
-        .select('event_title, event_date')
-        .eq('user_id', userId)
-        .gte('event_date', todayIso)
-        .order('event_date', { ascending: true })
-        .limit(5),
+      stitchedTimelineService.getStitchedTimeline(userId, { limit: 40 }),
     ]);
 
     const upcomingEvents: string[] = [];
@@ -317,7 +312,13 @@ class BiographyFoundationService {
     };
 
     for (const quest of activeQuests ?? []) pushFocus(quest.title);
-    for (const event of futureEvents ?? []) pushFocus(event.event_title);
+    for (const item of stitched.items ?? []) {
+      const occurred = item.occurredAt ?? item.temporalProjection?.occurredStart;
+      if (!occurred) continue;
+      if (item.occurrenceStatus === 'unresolved' || item.temporalProjection?.isUnresolved) continue;
+      if (Date.parse(occurred) <= Date.now()) continue;
+      pushFocus(item.title);
+    }
 
     return {
       identity: {
@@ -433,22 +434,24 @@ class BiographyFoundationService {
    * Identify life periods from the chronological spread of timeline events.
    */
   async identifyLifePeriods(userId: string): Promise<LifePeriod[]> {
-    const { data: events } = await supabaseAdmin
-      .from('character_timeline_events')
-      .select('event_date, event_type, event_title')
-      .eq('user_id', userId)
-      .order('event_date', { ascending: true });
+    const stitched = await stitchedTimelineService.getStitchedTimeline(userId);
+    const dated = (stitched.items ?? [])
+      .map((item) => {
+        if (item.occurrenceStatus === 'unresolved' || item.temporalProjection?.isUnresolved) return null;
+        const occurred = item.occurredAt ?? item.temporalProjection?.occurredStart ?? null;
+        return occurred ? { item, occurred } : null;
+      })
+      .filter((row): row is { item: (typeof stitched.items)[number]; occurred: string } => Boolean(row));
 
-    if (!events?.length) return [];
+    if (!dated.length) return [];
 
-    // Group by month/year
-    const buckets = new Map<string, { events: typeof events; types: string[] }>();
-    for (const ev of events) {
-      const d = new Date(ev.event_date);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const buckets = new Map<string, { events: typeof dated; types: string[] }>();
+    for (const row of dated) {
+      const d = new Date(row.occurred);
+      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
       if (!buckets.has(key)) buckets.set(key, { events: [], types: [] });
-      buckets.get(key)!.events.push(ev);
-      buckets.get(key)!.types.push(ev.event_type);
+      buckets.get(key)!.events.push(row);
+      buckets.get(key)!.types.push(row.item.canonicalEventType ?? row.item.sourceType);
     }
 
     // Build named periods

@@ -8,6 +8,7 @@
 import { supabaseAdmin } from '../supabaseClient';
 import { resolveCharacterByName } from '../chat/foundationRecallDataService';
 import { extractSignificanceFromText } from '../chat/significanceRecall';
+import { countCanonicalEventsForCharacter } from '../characters/canonicalCharacterEventCount';
 
 export type SceneReconstruction = {
   summary: string;
@@ -153,11 +154,7 @@ export async function reconstructSceneByPerson(
           .eq('character_id', char.id)
       : Promise.resolve({ count: 0 }),
     char
-      ? supabaseAdmin
-          .from('character_timeline_events')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', userId)
-          .eq('character_id', char.id)
+      ? countCanonicalEventsForCharacter(userId, char.id).then((count) => ({ count }))
       : Promise.resolve({ count: 0 }),
   ]);
 

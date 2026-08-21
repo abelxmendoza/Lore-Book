@@ -192,7 +192,7 @@ export interface OrganizationLocation {
 
 // ── Conversation-derived context ──────────────────────────────────────
 // Events & locations inferred from a group's MEMBERS appearing in the
-// user's chat threads / journal entries (character_timeline_events +
+// user's chat threads / journal entries (resolved_events.people[] +
 // locations.associated_character_ids). Read-only; recomputed on demand so
 // they always reflect the latest conversations without manual entry.
 export interface DerivedGroupEvent {
@@ -1631,52 +1631,45 @@ export class OrganizationService {
     return 'without_user';
   }
 
-  /** Events members took part in, from character_timeline_events. */
+  /** Events members took part in, from resolved_events.people[]. */
   private async deriveEvents(
     userId: string,
     characterIds: string[],
     idToName: Map<string, string>
   ): Promise<DerivedGroupEvent[]> {
+    if (characterIds.length === 0) return [];
     const { data, error } = await supabaseAdmin
-      .from('character_timeline_events')
-      .select('event_id, character_id, event_title, event_date, event_summary, event_type, user_was_present')
+      .from('resolved_events')
+      .select('id, title, start_time, summary, type, people')
       .eq('user_id', userId)
-      .in('character_id', characterIds)
-      .order('event_date', { ascending: false })
+      .overlaps('people', characterIds)
+      .order('start_time', { ascending: false })
       .limit(400);
     if (error || !data) return [];
 
-    // Collapse rows that describe the SAME event (multiple members → one card).
     const byEvent = new Map<string, DerivedGroupEvent>();
     for (const row of data as Array<{
-      event_id: string | null;
-      character_id: string;
-      event_title: string | null;
-      event_date: string | null;
-      event_summary: string | null;
-      event_type: string | null;
-      user_was_present: boolean | null;
+      id: string;
+      title: string | null;
+      start_time: string | null;
+      summary: string | null;
+      type: string | null;
+      people: string[] | null;
     }>) {
-      const title = (row.event_title ?? '').trim();
+      const title = (row.title ?? '').trim();
       if (!title) continue;
-      const key = row.event_id ?? `${title.toLowerCase()}|${row.event_date ?? ''}`;
-      const memberName = idToName.get(row.character_id);
-      const existing = byEvent.get(key);
-      if (existing) {
-        if (memberName && !existing.involved.includes(memberName)) existing.involved.push(memberName);
-        if (row.user_was_present) existing.user_was_present = true;
-      } else {
-        byEvent.set(key, {
-          id: key,
-          title,
-          date: row.event_date ?? null,
-          type: row.event_type ?? 'other',
-          summary: row.event_summary ?? undefined,
-          involved: memberName ? [memberName] : [],
-          user_was_present: row.user_was_present ?? undefined,
-          source: 'conversation',
-        });
-      }
+      const involved = (row.people ?? [])
+        .map((id) => idToName.get(id))
+        .filter((name): name is string => Boolean(name));
+      byEvent.set(row.id, {
+        id: row.id,
+        title,
+        date: row.start_time ?? null,
+        type: row.type ?? 'other',
+        summary: row.summary ?? undefined,
+        involved,
+        source: 'conversation',
+      });
     }
 
     return [...byEvent.values()]
