@@ -257,8 +257,8 @@ async function fetchTemporalContext(userId: string): Promise<string> {
   const items = stitched.items ?? [];
   if (items.length) {
     for (const item of items) {
-      const occurred = item.occurredAt ?? item.temporalProjection?.occurredStart ?? null;
-      const unresolved = item.occurrenceStatus === 'unresolved' || item.temporalProjection?.isUnresolved || !occurred;
+      const occurred = item.occurredAt ?? null;
+      const unresolved = item.occurrenceStatus === 'unresolved' || !occurred;
       const when = unresolved ? 'date unresolved' : occurred;
       lines.push(`• ${when}: ${item.title}`);
       if (item.body) lines.push(`  ${item.body.slice(0, 150)}`);

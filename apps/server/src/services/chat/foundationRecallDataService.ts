@@ -310,8 +310,8 @@ export async function fetchEntityProfile(userId: string, entityName: string): Pr
     relationshipToUser: relationshipLabelForCharacter(char.id, self?.id ?? null, rels),
     memoryCount: memoryCounts.get(char.id) ?? 0,
     timelineEvents: (stitched.items ?? []).map((item) => {
-      const occurred = item.occurredAt ?? item.temporalProjection?.occurredStart ?? null;
-      const unresolved = item.occurrenceStatus === 'unresolved' || item.temporalProjection?.isUnresolved || !occurred;
+      const occurred = item.occurredAt ?? null;
+      const unresolved = item.occurrenceStatus === 'unresolved' || !occurred;
       return {
         title: item.title,
         type: item.canonicalEventType ?? item.sourceType,

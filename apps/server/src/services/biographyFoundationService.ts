@@ -313,9 +313,9 @@ class BiographyFoundationService {
 
     for (const quest of activeQuests ?? []) pushFocus(quest.title);
     for (const item of stitched.items ?? []) {
-      const occurred = item.occurredAt ?? item.temporalProjection?.occurredStart;
+      const occurred = item.occurredAt;
       if (!occurred) continue;
-      if (item.occurrenceStatus === 'unresolved' || item.temporalProjection?.isUnresolved) continue;
+      if (item.occurrenceStatus === 'unresolved') continue;
       if (Date.parse(occurred) <= Date.now()) continue;
       pushFocus(item.title);
     }
@@ -437,8 +437,8 @@ class BiographyFoundationService {
     const stitched = await stitchedTimelineService.getStitchedTimeline(userId);
     const dated = (stitched.items ?? [])
       .map((item) => {
-        if (item.occurrenceStatus === 'unresolved' || item.temporalProjection?.isUnresolved) return null;
-        const occurred = item.occurredAt ?? item.temporalProjection?.occurredStart ?? null;
+        if (item.occurrenceStatus === 'unresolved') return null;
+        const occurred = item.occurredAt ?? null;
         return occurred ? { item, occurred } : null;
       })
       .filter((row): row is { item: (typeof stitched.items)[number]; occurred: string } => Boolean(row));

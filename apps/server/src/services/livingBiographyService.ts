@@ -322,9 +322,9 @@ export async function deriveCurrentFocus(userId: string, bio: BiographyOutput): 
   }
   for (const quest of quests ?? []) push(quest.title);
   for (const item of stitched.items ?? []) {
-    const occurred = item.occurredAt ?? item.temporalProjection?.occurredStart;
+    const occurred = item.occurredAt;
     if (!occurred) continue;
-    if (item.occurrenceStatus === 'unresolved' || item.temporalProjection?.isUnresolved) continue;
+    if (item.occurrenceStatus === 'unresolved') continue;
     if (Date.parse(occurred) <= Date.now()) continue;
     push(item.title);
   }
