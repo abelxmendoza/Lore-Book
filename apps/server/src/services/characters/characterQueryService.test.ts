@@ -177,7 +177,7 @@ describe('getCharacterQuery', () => {
             eq: () => ({
               or: () =>
                 Promise.resolve({
-                  data: [{ source_character_id: 'c1', target_character_id: 'genni-id' }],
+                  data: [{ source_character_id: 'c1', target_character_id: 'jamie-id' }],
                   error: null,
                 }),
             }),
@@ -215,8 +215,8 @@ describe('getCharacterQuery', () => {
     const { getCharacterQuery } = await import('./characterQueryService');
     const query = await getCharacterQuery('user-1', 'c1', { sections: 'identity,relationships' });
 
-    expect(query!.sections.relationships?.['genni-id']?.current?.type).toBe('estranged');
-    expect(query!.sections.relationships?.['genni-id']?.history).toHaveLength(1);
-    expect(getCurrentCharacterRelationship).toHaveBeenCalledWith('user-1', 'c1', 'genni-id');
+    expect(query!.sections.relationships?.['jamie-id']?.current?.type).toBe('estranged');
+    expect(query!.sections.relationships?.['jamie-id']?.history).toHaveLength(1);
+    expect(getCurrentCharacterRelationship).toHaveBeenCalledWith('user-1', 'c1', 'jamie-id');
   });
 });

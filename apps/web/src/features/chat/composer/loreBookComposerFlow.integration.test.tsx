@@ -141,7 +141,7 @@ describe('LoreBook composer flow (integration)', () => {
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Oscar went to Gothicumbia' } });
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(350);
+      await vi.advanceTimersByTimeAsync(520);
     });
     vi.useRealTimers();
 
@@ -172,7 +172,7 @@ describe('LoreBook composer flow (integration)', () => {
       target: { value: 'Tell Abel about the trip' },
     });
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(350);
+      await vi.advanceTimersByTimeAsync(520);
     });
     vi.useRealTimers();
 

@@ -34,7 +34,7 @@ describe('messageLexicalMetadataService', () => {
 
     const current = withCurrentLexicalSignals(
       { lexical_signals: prior, source_thread_id: 'thread-a' },
-      'What was my experience with karate?',
+      'How did karate class go last month?',
     );
 
     expect(current.metadata.source_thread_id).toBe('thread-a');

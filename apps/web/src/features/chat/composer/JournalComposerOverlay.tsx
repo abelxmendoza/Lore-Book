@@ -24,6 +24,7 @@ type JournalComposerOverlayProps = {
   loading?: boolean;
   onSubmit: () => void;
   onKeyDown?: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  onBlur?: () => void;
   onPreviewCorrectionsChange?: (corrections: CorrectedPreviewSpan[]) => void;
   viewportHeight: number;
   keyboardInset: number;
@@ -48,6 +49,7 @@ export const JournalComposerOverlay = ({
   loading,
   onSubmit,
   onKeyDown,
+  onBlur,
   onPreviewCorrectionsChange,
   viewportHeight,
   keyboardInset,
@@ -149,6 +151,7 @@ export const JournalComposerOverlay = ({
             placeholder={placeholder}
             disabled={disabled || loading}
             onKeyDown={onKeyDown}
+            onBlur={onBlur}
             className="journal-composer-overlay__field"
           />
         </div>

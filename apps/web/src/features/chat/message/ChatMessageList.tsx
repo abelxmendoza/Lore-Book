@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { ChatMessage, type Message, type ChatSource, type ChatSuggestedAction } from './ChatMessage';
 import { groupMessagesByDate } from '../utils/messageGrouping';
 import { scrollToMessage } from '../utils/scrollToMessage';
@@ -18,6 +18,8 @@ function buildThreadMentionContext(messages: Message[]): Map<string, EntityMenti
 
   return byMessage;
 }
+
+const EMPTY_THREAD_MENTIONS: EntityMentionRef[] = [];
 
 type ChatMessageListProps = {
   messages: Message[];
@@ -44,7 +46,7 @@ type ChatMessageListProps = {
   retryingKeys?: Set<string>;
 };
 
-export const ChatMessageList = ({
+export const ChatMessageList = memo(function ChatMessageList({
   messages,
   streamingMessageId,
   searchMessageId,
@@ -66,13 +68,13 @@ export const ChatMessageList = ({
   onCopyOriginalMessage,
   onDismissDeliveryNotice,
   retryingKeys,
-}: ChatMessageListProps) => {
+}: ChatMessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const previousLastMessageIdRef = useRef<string | null>(null);
   const previousCountRef = useRef(0);
   const [enteringIds, setEnteringIds] = useState<Set<string>>(() => new Set());
-  const groupedMessages = groupMessagesByDate(messages);
-  const threadMentionContext = buildThreadMentionContext(messages);
+  const groupedMessages = useMemo(() => groupMessagesByDate(messages), [messages]);
+  const threadMentionContext = useMemo(() => buildThreadMentionContext(messages), [messages]);
 
   // Animate newly appended messages (skip bulk thread hydration)
   useEffect(() => {
@@ -150,7 +152,7 @@ export const ChatMessageList = ({
               >
                 <ChatMessage
                   message={message}
-                  threadEntityMentions={threadMentionContext.get(message.id) ?? []}
+                  threadEntityMentions={threadMentionContext.get(message.id) ?? EMPTY_THREAD_MENTIONS}
                   highlightTerms={
                     message.id === searchMessageId && highlightTerms?.length
                       ? highlightTerms
@@ -183,4 +185,4 @@ export const ChatMessageList = ({
       </div>
     </div>
   );
-};
+});

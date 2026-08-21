@@ -921,7 +921,7 @@ describe('Working Memory Assembler', () => {
     tableResults.characters = {
       data: [
         { id: 'char-me', name: 'Me', alias: [], summary: null, metadata: {}, importance_score: 100, updated_at: '2026-01-01T00:00:00Z' },
-        { id: 'char-genni', name: 'Genni', alias: [], summary: null, metadata: {}, importance_score: 50, updated_at: '2026-01-01T00:00:00Z' },
+        { id: 'char-jamie', name: 'Jamie', alias: [], summary: null, metadata: {}, importance_score: 50, updated_at: '2026-01-01T00:00:00Z' },
       ],
       error: null,
     };
@@ -933,7 +933,7 @@ describe('Working Memory Assembler', () => {
           status: 'active',
           metadata: {},
           source_character_id: 'char-me',
-          target_character_id: 'char-genni',
+          target_character_id: 'char-jamie',
           updated_at: '2026-06-01T00:00:00Z',
         },
       ],
@@ -943,14 +943,14 @@ describe('Working Memory Assembler', () => {
     tableResults.character_relationship_history = {
       data: [
         {
-          id: 'h1', user_id: 'user-1', source_character_id: 'char-me', target_character_id: 'char-genni',
+          id: 'h1', user_id: 'user-1', source_character_id: 'char-me', target_character_id: 'char-jamie',
           from_relationship_type: null, from_status: null, to_relationship_type: 'friend', to_status: 'active',
           changed_at: '2026-06-01T00:00:00Z', recorded_at: '2026-06-01T00:00:00Z', valid_until: null,
           change_kind: 'CREATED', authority: 'SYSTEM_DERIVED', evidence_ids: [], confidence: null,
           relationship_id: 'rel-1', corrects_history_id: null,
         },
         {
-          id: 'h2', user_id: 'user-1', source_character_id: 'char-me', target_character_id: 'char-genni',
+          id: 'h2', user_id: 'user-1', source_character_id: 'char-me', target_character_id: 'char-jamie',
           from_relationship_type: 'friend', from_status: 'active', to_relationship_type: 'estranged', to_status: 'inactive',
           changed_at: '2026-07-15T00:00:00Z', recorded_at: '2026-07-15T00:00:00Z', valid_until: null,
           change_kind: 'TRANSITIONED', authority: 'USER_EXPLICIT', evidence_ids: [], confidence: null,
@@ -962,7 +962,7 @@ describe('Working Memory Assembler', () => {
 
     const result = await assembleWorkingMemory({
       userId: 'user-1',
-      question: 'What is my relationship with Genni?',
+      question: 'What is my relationship with Jamie?',
     });
 
     const relationshipText = result.relationships.map((e) => `${e.title} ${e.content}`).join('\n');

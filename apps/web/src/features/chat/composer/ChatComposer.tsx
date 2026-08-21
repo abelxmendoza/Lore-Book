@@ -100,6 +100,7 @@ export const ChatComposer = ({
   const {
     input,
     setInput,
+    handleComposerBlur,
     textareaRef,
     showCommandSuggestions,
     commandSuggestions,
@@ -550,6 +551,7 @@ export const ChatComposer = ({
               onFocus={() => setIsFocused(true)}
               onBlur={() => {
                 if (!input.trim()) setIsFocused(false);
+                handleComposerBlur();
               }}
               onKeyDown={handleKeyDown}
               className={cn(
@@ -708,6 +710,7 @@ export const ChatComposer = ({
           loading={loading}
           onSubmit={submitAndCloseJournal}
           onKeyDown={handleKeyDown}
+          onBlur={handleComposerBlur}
           onPreviewCorrectionsChange={setPreviewCorrections}
           viewportHeight={viewportHeight}
           keyboardInset={keyboardInset}

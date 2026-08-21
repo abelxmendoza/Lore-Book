@@ -142,7 +142,8 @@ describe('useEntityIndexer', () => {
     await waitFor(() => {
       expect(mockFetchLoreBookParseShared).toHaveBeenCalledWith(
         'Oscar Martinez joined the team',
-        undefined
+        undefined,
+        expect.any(AbortSignal)
       );
     });
     vi.useRealTimers();

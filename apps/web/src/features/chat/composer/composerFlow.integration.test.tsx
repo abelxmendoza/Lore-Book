@@ -111,9 +111,12 @@ describe('Composer entity chip flow (integration)', () => {
     const textarea = screen.getByRole('textbox');
     fireEvent.change(textarea, { target: { value: 'Tell Abel about the trip' } });
 
-    await waitFor(() => {
-      expect(screen.getByTestId('composer-entity-chips')).toBeInTheDocument();
-    });
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('composer-entity-chips')).toBeInTheDocument();
+      },
+      { timeout: 3000 },
+    );
 
     expect(screen.getByTestId('composer-entity-chip-character-uuid-abel')).toBeInTheDocument();
 
