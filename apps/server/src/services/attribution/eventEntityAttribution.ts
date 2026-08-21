@@ -570,6 +570,61 @@ export function canonicalLocationsFromAttributions(attributions: EntityAttributi
   )];
 }
 
+function uniqueIds(ids: Iterable<string>): string[] {
+  return [...new Set([...ids].filter(Boolean))];
+}
+
+function attributedIdsOfType(
+  attributions: EntityAttribution[],
+  entityType: AttributionEntityType,
+): Set<string> {
+  return new Set(
+    attributions
+      .filter((row) => row.entityType === entityType && row.entityId)
+      .map((row) => row.entityId as string),
+  );
+}
+
+/**
+ * Write-path people[] / locations[] stay aligned with canonical attributions
+ * without wiping grounded legacy members that never received an attribution row.
+ *
+ * Canonical accepted rows always win. IDs with a stored non-canonical
+ * attribution are dropped. Compatibility IDs with no attribution row are kept.
+ */
+export function peopleIdsForEventWrite(
+  compatibilityIds: Iterable<string>,
+  attributions: EntityAttribution[],
+): string[] {
+  const ids = uniqueIds(compatibilityIds);
+  if (attributions.length === 0) return ids;
+  const attributed = attributedIdsOfType(attributions, 'character');
+  const legacy = ids.filter((id) => !attributed.has(id));
+  return uniqueIds([...canonicalPeopleFromAttributions(attributions), ...legacy]);
+}
+
+export function locationIdsForEventWrite(
+  compatibilityIds: Iterable<string>,
+  attributions: EntityAttribution[],
+): string[] {
+  const ids = uniqueIds(compatibilityIds);
+  if (attributions.length === 0) return ids;
+  const attributed = attributedIdsOfType(attributions, 'location');
+  const legacy = ids.filter((id) => !attributed.has(id));
+  return uniqueIds([...canonicalLocationsFromAttributions(attributions), ...legacy]);
+}
+
+export function participantArraysForEventWrite(args: {
+  people: Iterable<string>;
+  locations: Iterable<string>;
+  attributions: EntityAttribution[];
+}): { people: string[]; locations: string[] } {
+  return {
+    people: peopleIdsForEventWrite(args.people, args.attributions),
+    locations: locationIdsForEventWrite(args.locations, args.attributions),
+  };
+}
+
 export function readStoredAttributions(metadata: Record<string, unknown> | null | undefined): EntityAttribution[] {
   const raw = metadata?.entityAttributions;
   return Array.isArray(raw) ? (raw as EntityAttribution[]) : [];
