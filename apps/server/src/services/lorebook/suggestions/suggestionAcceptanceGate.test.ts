@@ -25,14 +25,14 @@ describe('suggestionApplyDomains', () => {
 });
 
 describe('suggestionAcceptanceGate — synthetic contamination corpus', () => {
-  const personCanon = createCrossBookIndex({ characters: ['Shyla'] });
+  const personCanon = createCrossBookIndex({ characters: ['Priya'] });
   const orgCanon = createCrossBookIndex({ organizations: ['USC', 'University of Southern California'] });
 
   it('does not let a canonical person become a Place', () => {
     const result = evaluateSuggestionAcceptance({
-      name: 'Shyla',
+      name: 'Priya',
       domain: 'locations',
-      evidence: 'Shyla walked into the lounge',
+      evidence: 'Priya walked into the lounge',
       qualityContext: { crossBook: personCanon },
     });
     expect(result.accept).toBe(false);
@@ -298,16 +298,16 @@ describe('suggestionAcceptanceGate — synthetic contamination corpus', () => {
 
   it('keeps tenant canon from leaking across users', () => {
     const userA = evaluateSuggestionAcceptance({
-      name: 'Shyla',
+      name: 'Priya',
       domain: 'locations',
       evidence: 'We met at the lounge',
-      qualityContext: { userId: 'user-a', crossBook: createCrossBookIndex({ characters: ['Shyla'] }) },
+      qualityContext: { userId: 'user-a', crossBook: createCrossBookIndex({ characters: ['Priya'] }) },
     });
     const userB = evaluateSuggestionAcceptance({
       name: 'Harbor Pier',
       domain: 'locations',
       evidence: 'I went to Harbor Pier',
-      qualityContext: { userId: 'user-b', crossBook: createCrossBookIndex({ characters: ['Shyla'] }) },
+      qualityContext: { userId: 'user-b', crossBook: createCrossBookIndex({ characters: ['Priya'] }) },
     });
     expect(userA.accept).toBe(false);
     expect(userB.accept).toBe(true);
