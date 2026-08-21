@@ -28,6 +28,7 @@ import { fetchCharacterById } from '../../lib/hydrateBookEntity';
 import { resolveBookHighlightItem } from '../../lib/resolveBookHighlight';
 import { supabase, useAuth } from '../../lib/supabase';
 import { useCharactersBookData } from '../../store/hooks/useEntityBooks';
+import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { useGetOrganizationsQuery } from '../../store/api/entitiesApi';
 import { withPrimaryOrganizations } from '../../lib/primaryOrganization';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
@@ -3124,6 +3125,23 @@ export const CharacterBook = () => {
   // loadCharacters is stable within a render; user.id is the only dep that matters
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+
+  // Relationship edits write character_relationships / history, not the characters
+  // row — realtime on `characters` would miss them. Reuse storyRefresh so the
+  // book list/card updates after the modal mutates a connection.
+  useEffect(() => {
+    return onStoryDataUpdated((detail) => {
+      const scopes = detail.scopes ?? [];
+      const hits =
+        scopes.length === 0 ||
+        scopes.includes('all') ||
+        scopes.includes('characters') ||
+        scopes.includes('relationships');
+      if (!hits) return;
+      invalidateCharactersBook();
+      void refetchCharactersBook();
+    });
+  }, [invalidateCharactersBook, refetchCharactersBook]);
 
   const restoreCast = async () => {
     if (!user?.id || isMockDataEnabled) return;
