@@ -60,11 +60,6 @@ export type HydratedMemoryCard = CharacterSharedMemoryRef & {
   content?: string | null;
   tags?: string[];
   source?: string | null;
-  // How trustworthy `date` is as occurrence evidence — see
-  // memoryService.saveEntry / journal_entries.time_confidence. Below ~0.3
-  // means `date` is effectively a write-time stamp, not a claim about when
-  // the remembered thing happened.
-  dateConfidence?: number | null;
 };
 
 export type CharacterQuery = {
@@ -126,16 +121,31 @@ async function hydrateMemories(
     return refs.map((r) => ({ ...r }));
   }
 
-  const { data: entries } = await supabaseAdmin
-    .from('journal_entries')
-    .select('id, date, content, summary, tags, source, title, time_confidence')
-    .eq('user_id', userId)
-    .in('id', entryIds);
+  const [{ resolveJournalEntryClocks }, { data: entries }] = await Promise.all([
+    import('../temporal/journalMemoryTemporalLoader'),
+    supabaseAdmin
+      .from('journal_entries')
+      .select('id, date, created_at, content, summary, tags, source, title, metadata')
+      .eq('user_id', userId)
+      .in('id', entryIds),
+  ]);
 
+  const clocks = await resolveJournalEntryClocks(userId, entryIds);
   const byId = new Map((entries ?? []).map((e) => [e.id, e]));
   return refs.map((ref) => {
     const entry = byId.get(ref.entry_id);
-    if (!entry) return { ...ref };
+    const resolved = clocks.get(ref.entry_id);
+    if (!entry) {
+      return {
+        ...ref,
+        date: resolved ? (resolved.occurredAt ?? '') : '',
+        occurredAt: resolved?.occurredAt ?? null,
+        mentionedAt: resolved?.mentionedAt ?? ref.mentionedAt ?? null,
+        recordedAt: resolved?.recordedAt ?? ref.recordedAt ?? null,
+        occurrenceStatus: resolved?.occurrenceStatus ?? 'unresolved',
+        canonicalEventId: resolved?.canonicalEventId ?? ref.canonicalEventId ?? null,
+      };
+    }
     return {
       ...ref,
       title: (entry as { title?: string | null }).title ?? null,
@@ -143,8 +153,12 @@ async function hydrateMemories(
       summary: ref.summary ?? (typeof entry.summary === 'string' ? entry.summary : undefined),
       tags: Array.isArray(entry.tags) ? entry.tags : [],
       source: typeof entry.source === 'string' ? entry.source : null,
-      date: entry.date ?? ref.date,
-      dateConfidence: typeof entry.time_confidence === 'number' ? entry.time_confidence : null,
+      date: resolved?.occurredAt ?? '',
+      occurredAt: resolved?.occurredAt ?? null,
+      mentionedAt: resolved?.mentionedAt ?? null,
+      recordedAt: resolved?.recordedAt ?? (typeof entry.created_at === 'string' ? entry.created_at : null),
+      occurrenceStatus: resolved?.occurrenceStatus ?? 'unresolved',
+      canonicalEventId: resolved?.canonicalEventId ?? null,
     };
   });
 }

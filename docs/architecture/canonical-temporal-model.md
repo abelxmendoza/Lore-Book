@@ -51,9 +51,32 @@ No database migration or historical rewrite is part of this slice. A later
 materialization can add dedicated columns only after the migration ledger is
 safe and parity tests prove that the adapters preserve existing behavior.
 
+## Write-time contract
+
+`journal_entries.date` means occurrence only. It may be null.
+
+| Clock | Meaning | Storage |
+| --- | --- | --- |
+| `occurredAt` / `journal_entries.date` | When the real-world event happened | Nullable. Never `now()` just because occurrence is missing. |
+| `mentionedAt` | When the user spoke or wrote about it | Metadata / chat created_at |
+| `recordedAt` / `created_at` | When LoreBook persisted the row | Database insert time |
+
+Those three clocks may all differ. Example: on August 20 the user writes “Last month I went to a concert.” Occurrence is July (month precision), mention and recording are August 20.
+
+No temporal evidence, or “I don’t know when,” must store:
+
+- occurred = unknown (`date` null)
+- mentioned = today
+- recorded = today
+
+`chronology_index` indexes occurrence. Unknown occurrence is omitted from the dated index; it is not filled with `COALESCE(date, NOW())`.
+
+Until `20260821120000_journal_occurrence_nullable.sql` is applied, a NOT NULL `date` column may still force a transitional `recording_fallback` stamp. Canonical readers must reject that stamp as occurrence.
+
 ## Required invariants
 
 - `occurredAt` may be null; `recordedAt` may not fill it.
+- Never use `recordedAt` as `occurredAt` just because `occurredAt` is missing.
 - Relative expressions use the source message timestamp as the resolver anchor.
 - Unknown and coarse dates never gain fabricated display precision.
 - Global timelines contain canonical life events, not conversation prompts.

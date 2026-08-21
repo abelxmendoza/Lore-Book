@@ -377,7 +377,9 @@ function relationFor(
   const phase = phaseFor(text, intent.mode);
 
   if (intent.exactDate) {
-    if (item.sortTime.slice(0, 10) !== intent.exactDate) return null;
+    const occurredDay = (item.temporal?.occurred.start ?? item.occurredAt ?? '').slice(0, 10);
+    if (!occurredDay || item.temporalSource === 'recording_fallback') return null;
+    if (occurredDay !== intent.exactDate) return null;
     return { relation: 'DIRECT_EVENT', relevance: 1, reason: `Occurred on ${intent.exactDate}` };
   }
 
@@ -460,9 +462,12 @@ function compileEvent(
       ? 'related_context'
       : phaseFor(text, intent.mode);
   const focusedEvidence = extractFocusedEvidence(text, subjectTerms);
+  const occurredAt = item.temporalSource === 'recording_fallback'
+    ? null
+    : (item.temporal?.occurred.start ?? item.occurredAt ?? null);
   return {
     id: item.id,
-    start_time: item.sortTime,
+    start_time: occurredAt ?? '',
     end_time: null,
     title: item.title || phaseLabel(phase),
     content: focusedEvidence || compact(item.body || item.title),
@@ -473,8 +478,8 @@ function compileEvent(
     source_type: item.sourceType,
     time_precision: item.timePrecision ?? 'approximate',
     time_confidence: item.timeConfidence ?? item.confidence ?? 0.5,
-    occurrence_status: item.occurrenceStatus,
-    occurred_at: item.temporal?.occurred.start ?? item.occurredAt ?? item.sortTime,
+    occurrence_status: occurredAt ? item.occurrenceStatus : 'unresolved',
+    occurred_at: occurredAt,
     mentioned_at: item.temporal?.mentionedAt ?? item.mentionedAt ?? null,
     recorded_at: item.temporal?.recordedAt ?? item.recordedAt ?? null,
     known_from: item.temporal?.knownFrom ?? item.knownFrom ?? null,

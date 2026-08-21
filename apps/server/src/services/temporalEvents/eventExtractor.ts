@@ -37,7 +37,8 @@ export class EventExtractor {
         const text = entry.content || entry.text || '';
         if (!text) continue;
 
-        const timestamp = entry.date || entry.created_at || entry.timestamp;
+        const timestamp = entry.date || null;
+        if (!timestamp) continue;
 
         // Extract people, locations, activities from text (simple pattern matching)
         const people = this.extractPeople(text, entityMap);

@@ -102,7 +102,14 @@ function honestTemporal(item: ProjectableTimelineItem): {
 } {
   const tags = item.tags ?? [];
   const recovered = isImportOrRecoveryTag(tags);
-  const occurrence = item.occurredAt === undefined ? item.sortTime : item.occurredAt;
+  // A recording_fallback temporalSource means the caller already knows this
+  // item has no real occurrence evidence — falling back to sortTime here
+  // regardless (as this used to) let write-time leak back in as occurrence
+  // whenever occurredAt was left undefined rather than explicitly null.
+  const recordingFallback = recovered || item.temporalSource === 'recording_fallback';
+  const occurrence = recordingFallback
+    ? null
+    : (item.occurredAt === undefined ? item.sortTime : item.occurredAt);
   const rawSource = (item.temporalSource ??
     (recovered ? 'recording_fallback' : 'context_inferred')) as TemporalSource;
   const rawPrecision = (item.timePrecision ?? 'date') as TemporalPrecision;
@@ -198,9 +205,11 @@ export function projectCanonicalTimeline(items: ProjectableTimelineItem[]): {
     const temporal = honestTemporal(item);
     const temporalModel = canonicalTemporalFromLegacy({
       id: item.sourceId,
-      occurredAt: temporal.occurrenceStatus === 'unresolved' && item.occurredAt === null
+      occurredAt: item.temporalSource === 'recording_fallback' || isImportOrRecoveryTag(item.tags)
         ? null
-        : (item.occurredAt === undefined ? item.sortTime : item.occurredAt),
+        : temporal.occurrenceStatus === 'unresolved' && item.occurredAt === null
+          ? null
+          : (item.occurredAt === undefined ? item.sortTime : item.occurredAt),
       occurredEnd: item.occurredEnd,
       mentionedAt: item.mentionedAt,
       recordedAt: item.recordedAt,

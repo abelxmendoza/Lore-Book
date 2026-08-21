@@ -60,6 +60,7 @@ describe('photoService album membership', () => {
         }),
       }),
     );
+    expect(vi.mocked(memoryService.saveEntry).mock.calls[0][0].date).toBeUndefined();
   });
 
   it('ensurePhotoAlbumEntry skips when photoUrl missing', async () => {

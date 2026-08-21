@@ -19,7 +19,8 @@ export type JournalTimePrecision = 'exact' | 'day' | 'month' | 'year' | 'approxi
 export type MemoryEntry = {
   id: string;
   user_id: string;
-  date: string;
+  /** Occurrence time only. Null when unknown — never recording time. */
+  date: string | null;
   content: string;
   tags: string[];
   chapter_id?: string | null;

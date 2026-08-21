@@ -1186,17 +1186,22 @@ router.get(['/', '/list'], requireAuth, async (req: AuthenticatedRequest, res) =
         .in('character_id', characterIds)
         .order('created_at', { ascending: false });
 
-      // Group memories by character
-      const memoriesByCharacter = new Map<string, typeof allMemories>();
-      allMemories?.forEach(mem => {
+      const memoriesByCharacter = new Map<string, NonNullable<typeof allMemories>>();
+      allMemories?.forEach((mem) => {
         if (!memoriesByCharacter.has(mem.character_id)) {
           memoriesByCharacter.set(mem.character_id, []);
         }
         const charMemories = memoriesByCharacter.get(mem.character_id)!;
-        if (charMemories.length < 20) { // Limit to 20 per character
+        if (charMemories.length < 20) {
           charMemories.push(mem);
         }
       });
+
+      const { resolveJournalEntryClocks, sharedMemoryFromLink } = await import('../services/temporal/journalMemoryTemporalLoader');
+      const memoryClocks = await resolveJournalEntryClocks(
+        req.user!.id,
+        (allMemories ?? []).map((mem) => mem.journal_entry_id),
+      );
 
       // Map results back to characters (in-memory operation - FAST)
       const charactersWithStats = await Promise.all(charactersData.map(async (char) => {
@@ -1261,12 +1266,7 @@ router.get(['/', '/list'], requireAuth, async (req: AuthenticatedRequest, res) =
                 };
               }),
           ),
-          shared_memories: memories.map((mem) => ({
-            id: mem.id,
-            entry_id: mem.journal_entry_id,
-            date: mem.created_at,
-            summary: mem.summary || undefined
-          }))
+          shared_memories: memories.map((mem) => sharedMemoryFromLink(mem, memoryClocks.get(mem.journal_entry_id))),
         };
 
         // Calculate analytics (async, don't block)

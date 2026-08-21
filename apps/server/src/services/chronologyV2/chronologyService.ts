@@ -77,7 +77,7 @@ export class ChronologyService {
     try {
       const { data: entries, error } = await supabaseAdmin
         .from('journal_entries')
-        .select('id, user_id, date, end_time, time_precision, content')
+        .select('id, user_id, date, end_time, time_precision, content, metadata')
         .eq('user_id', userId);
 
       if (error) {
@@ -90,6 +90,12 @@ export class ChronologyService {
         // No date means no occurrence index row. created_at remains recording
         // provenance and must never be promoted into event time here.
         if (!entry.date) return [];
+        // A non-null date with an explicit recording_fallback tag (a
+        // low-confidence write-time stamp, not real occurrence evidence —
+        // see memoryService.saveEntry) must not backfill into the index as
+        // if it were a dated occurrence either.
+        const meta = (entry.metadata ?? {}) as Record<string, unknown>;
+        if (meta.temporal_source === 'recording_fallback') return [];
         const startIso = entry.date;
         const buckets = computeChronologyBuckets(new Date(startIso));
         return [{
@@ -101,6 +107,8 @@ export class ChronologyService {
           ...buckets,
         }];
       });
+
+      if (!rows.length) return 0;
 
       const { error: upsertError } = await supabaseAdmin
         .from('chronology_index')

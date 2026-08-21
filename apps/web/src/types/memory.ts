@@ -18,14 +18,13 @@ export type MemoryCard = {
   id: string;
   title: string;
   content: string;
+  /** Occurrence date only. Empty when unresolved — never recording time. */
   date: string;
-  // How trustworthy `date` is as OCCURRENCE evidence rather than recording
-  // time — see journal_entries.time_confidence. Below ~0.3 means `date` is
-  // effectively a write-time stamp (the entry was saved with no reliable
-  // date evidence), not a claim about when this actually happened. Absent
-  // when the source (e.g. an already-hydrated legacy path) doesn't carry it —
-  // treat as unknown, not as high confidence, in that case.
-  dateConfidence?: number | null;
+  occurredAt?: string | null;
+  mentionedAt?: string | null;
+  recordedAt?: string | null;
+  occurrenceStatus?: 'confirmed' | 'range' | 'unresolved';
+  canonicalEventId?: string | null;
   tags: string[];
   mood?: string;
   source: 'journal' | 'x' | 'task' | 'photo' | 'calendar' | 'chat' | 'manual' | 'api' | 'system';
@@ -73,6 +72,23 @@ export type MemoryFilters = {
   dateTo?: string;
 };
 
+export function memoryOccurrenceIso(memory: Pick<MemoryCard, 'date' | 'occurredAt' | 'occurrenceStatus'>): string | null {
+  if (memory.occurrenceStatus === 'unresolved') return null;
+  const iso = memory.occurredAt ?? memory.date;
+  if (!iso) return null;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? iso : null;
+}
+
+export function compareMemoriesByOccurrence(a: MemoryCard, b: MemoryCard): number {
+  const aIso = memoryOccurrenceIso(a);
+  const bIso = memoryOccurrenceIso(b);
+  if (aIso && bIso) return Date.parse(aIso) - Date.parse(bIso);
+  if (aIso) return -1;
+  if (bIso) return 1;
+  return 0;
+}
+
 export function memoryEntryToCard(entry: {
   id: string;
   date: string;
@@ -86,7 +102,6 @@ export function memoryEntryToCard(entry: {
   original_content?: string | null;
   preserve_original_language?: boolean;
   metadata?: Record<string, unknown>;
-  time_confidence?: number | null;
 }): MemoryCard {
   const title = getDisplayTitle({
     title: entry.summary,
@@ -132,7 +147,13 @@ export function memoryEntryToCard(entry: {
     title,
     content: entry.content,
     date: entry.date,
-    dateConfidence: typeof entry.time_confidence === 'number' ? entry.time_confidence : null,
+    occurredAt: typeof entry.metadata?.occurredAt === 'string' ? entry.metadata.occurredAt : entry.date,
+    mentionedAt: typeof entry.metadata?.mentionedAt === 'string' ? entry.metadata.mentionedAt : null,
+    recordedAt: typeof entry.metadata?.recordedAt === 'string' ? entry.metadata.recordedAt : null,
+    occurrenceStatus: entry.metadata?.occurrenceStatus === 'unresolved' || entry.metadata?.occurrenceStatus === 'range' || entry.metadata?.occurrenceStatus === 'confirmed'
+      ? entry.metadata.occurrenceStatus
+      : undefined,
+    canonicalEventId: typeof entry.metadata?.canonicalEventId === 'string' ? entry.metadata.canonicalEventId : null,
     tags: entry.tags || [],
     mood: entry.mood || undefined,
     source,

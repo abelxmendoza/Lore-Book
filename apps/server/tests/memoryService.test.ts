@@ -137,6 +137,11 @@ describe('MemoryService', () => {
 
     beforeEach(() => {
       insertedRows = [];
+      // A queued mockResolvedValueOnce that a test's primary text-based
+      // occurrence classifier ends up never needing (because it already
+      // resolved a date on its own) would otherwise leak into the next
+      // test's first real call to suggestDate. Full reset avoids that.
+      vi.mocked(dateAssignmentService.suggestDate).mockReset();
       vi.mocked(supabaseAdmin.from).mockImplementation((table: string) => {
         if (table === 'journal_entries') {
           return {
@@ -159,13 +164,13 @@ describe('MemoryService', () => {
       });
     });
 
-    it('an explicit caller-supplied date is treated as exact, full confidence', async () => {
+    it('an explicit caller-supplied date is treated as high-confidence, day-level occurrence evidence', async () => {
       await memoryService.saveEntry({
         userId: 'u1',
         content: 'Short note.',
         date: '2026-07-04T00:00:00.000Z',
       });
-      expect(insertedRows[0]).toMatchObject({ time_precision: 'exact', time_confidence: 1.0 });
+      expect(insertedRows[0]).toMatchObject({ time_precision: 'day', time_confidence: 0.95 });
     });
 
     it('a confident, explicit date extracted from content carries its real precision/confidence through', async () => {
@@ -198,18 +203,20 @@ describe('MemoryService', () => {
       expect(insertedRows[0].time_confidence as number).toBeLessThan(0.3);
     });
 
-    it('no content to infer from at all (pure write-time fallback) is marked approximate with low confidence, never exact/1.0', async () => {
+    it('no content to infer from at all (pure write-time fallback) is marked approximate with zero confidence, never a confident date', async () => {
       await memoryService.saveEntry({ userId: 'u1', content: 'short' });
-      expect(insertedRows[0]).toMatchObject({ time_precision: 'approximate', time_confidence: 0.1 });
+      expect(insertedRows[0]).toMatchObject({ time_precision: 'approximate', time_confidence: 0 });
+      expect(insertedRows[0].date).toBeNull();
     });
 
-    it('a dateAssignmentService failure does not silently claim full confidence', async () => {
+    it('a dateAssignmentService failure does not silently claim a confident date', async () => {
       vi.mocked(dateAssignmentService.suggestDate).mockRejectedValueOnce(new Error('boom'));
       await memoryService.saveEntry({
         userId: 'u1',
-        content: 'A long enough entry that will trigger date suggestion, which then fails.',
+        content: 'A long enough entry with genuinely no temporal expression, so the text classifier finds nothing and the fallback also fails.',
       });
-      expect(insertedRows[0]).toMatchObject({ time_precision: 'approximate', time_confidence: 0.1 });
+      expect(insertedRows[0]).toMatchObject({ time_precision: 'approximate', time_confidence: 0 });
+      expect(insertedRows[0].date).toBeNull();
     });
   });
 

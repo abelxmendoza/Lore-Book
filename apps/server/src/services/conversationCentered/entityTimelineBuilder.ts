@@ -21,6 +21,8 @@ export interface EntityTimelineEvent {
   sourceEpisodeId?: string;
   eventTitle: string;
   eventDate: string;
+  recordedAt?: string | null;
+  occurrenceStatus?: 'confirmed' | 'range' | 'unresolved';
   eventSummary?: string;
   eventType?: string;
   timelineType: TimelineType;
@@ -91,7 +93,9 @@ export class EntityTimelineBuilder {
           sourceThreadId: row.source_thread_id ?? undefined,
           sourceEpisodeId: row.source_episode_id ?? undefined,
           eventTitle: row.event_title || 'Untitled',
-          eventDate: row.event_date || row.created_at,
+          eventDate: row.event_date || '',
+          recordedAt: row.created_at ?? null,
+          occurrenceStatus: row.event_date ? 'confirmed' : 'unresolved',
           eventSummary: row.event_summary,
           eventType: row.event_type,
           timelineType: row.timeline_type as TimelineType,

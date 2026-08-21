@@ -22,6 +22,10 @@ export type CharacterMemory = {
   date: string;
   title: string;
   summary?: string;
+  occurredAt?: string | null;
+  mentionedAt?: string | null;
+  recordedAt?: string | null;
+  occurrenceStatus?: 'confirmed' | 'range' | 'unresolved';
 };
 
 export const fetchCharacterProfile = (id: string) =>

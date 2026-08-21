@@ -8,6 +8,8 @@ import { factExtractionService, type ExtractedFact } from './factExtractionServi
 import { ruleBasedFactExtractionService } from './ruleBasedFactExtraction';
 import { supabaseAdmin } from './supabaseClient';
 import { truthVerificationService } from './truthVerificationService';
+import { memoryService } from './memoryService';
+import { occurrenceDate, parseSourceTimestamp } from './temporal/explicitOccurrence';
 
 import { openai } from './openaiClient';
 
@@ -20,7 +22,13 @@ export type ImportedFact = {
   evidence?: Array<{ entryId: string; text: string }>;
   source: string;
   extractedFact?: ExtractedFact;
+  /** Source message timestamp. Mention/source time, not occurrence. */
+  sourceCreatedAt?: string | null;
 };
+
+export function chatGptSourceTimestamp(raw: unknown): string | null {
+  return parseSourceTimestamp(raw);
+}
 
 class ChatGPTImportService {
   /**
@@ -54,7 +62,8 @@ class ChatGPTImportService {
               contradictions: verification.contradictions,
               evidence: verification.evidence,
               source: `${message.role === 'user' ? 'Your message' : 'ChatGPT response'}: "${message.content.substring(0, 100)}..."`,
-              extractedFact: fact
+              extractedFact: fact,
+              sourceCreatedAt: message.createdAt ?? null,
             });
           }
         }
@@ -65,16 +74,17 @@ class ChatGPTImportService {
         const aiExtracted = await this.extractFactsWithAI(conversation);
         for (const fact of aiExtracted) {
           const verification = await this.verifyFact(userId, fact, conversation);
-          extractedFacts.push({
-            id: uuid(),
-            text: this.formatFactText(fact),
-            confidence: 'medium' as const,
-            verificationStatus: verification.status,
-            contradictions: verification.contradictions,
-            evidence: verification.evidence,
-            source: 'AI-extracted from conversation',
-            extractedFact: fact
-          });
+            extractedFacts.push({
+              id: uuid(),
+              text: this.formatFactText(fact),
+              confidence: 'medium' as const,
+              verificationStatus: verification.status,
+              contradictions: verification.contradictions,
+              evidence: verification.evidence,
+              source: 'AI-extracted from conversation',
+              extractedFact: fact,
+              sourceCreatedAt: message.createdAt ?? null,
+            });
         }
       }
 
@@ -108,33 +118,28 @@ class ChatGPTImportService {
           verified++;
         }
 
-        // Create a journal entry from the fact
-        const entryId = uuid();
+        const importedAt = new Date().toISOString();
+        const sourceCreatedAt = occurrenceDate(fact.sourceCreatedAt);
         const entryContent = `[Imported from ChatGPT] ${fact.text}`;
 
-        // Store the entry
-        const { error: entryError } = await supabaseAdmin
-          .from('journal_entries')
-          .insert({
-            id: entryId,
-            user_id: userId,
-            content: entryContent,
-            date: new Date().toISOString().split('T')[0],
-            source: 'chatgpt_import',
-            metadata: {
-              imported: true,
-              originalFact: fact.extractedFact,
-              verificationStatus: fact.verificationStatus,
-              source: fact.source
-            },
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
-
-        if (entryError) {
-          logger.warn({ error: entryError, fact }, 'Failed to create entry from imported fact');
-          continue;
-        }
+        const saved = await memoryService.saveEntry({
+          userId,
+          content: entryContent,
+          source: 'api',
+          mentionedAt: sourceCreatedAt,
+          sourceCreatedAt,
+          importedAt,
+          metadata: {
+            imported: true,
+            import_channel: 'chatgpt',
+            originalFact: fact.extractedFact,
+            verificationStatus: fact.verificationStatus,
+            source: fact.source,
+            sourceCreatedAt: sourceCreatedAt ?? null,
+            importedAt,
+          },
+        });
+        const entryId = saved.id;
 
         // Store fact claims if we have extracted fact
         if (fact.extractedFact) {
@@ -177,8 +182,8 @@ class ChatGPTImportService {
   /**
    * Parse ChatGPT conversation format
    */
-  private parseChatGPTConversation(conversation: string): Array<{ role: 'user' | 'assistant'; content: string }> {
-    const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  private parseChatGPTConversation(conversation: string): Array<{ role: 'user' | 'assistant'; content: string; createdAt?: string | null }> {
+    const messages: Array<{ role: 'user' | 'assistant'; content: string; createdAt?: string | null }> = [];
     
     // Try to parse different ChatGPT formats
     // Format 1: "You: ..." / "ChatGPT: ..." or "User: ..." / "Assistant: ..."
@@ -202,8 +207,9 @@ class ChatGPTImportService {
             const parsed = JSON.parse(jsonCandidate);
             if (Array.isArray(parsed)) {
               return parsed.map((msg: any) => ({
-                role: msg.role === 'user' ? 'user' : 'assistant',
-                content: msg.content || msg.text || ''
+                role: (msg.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+                content: msg.content || msg.text || '',
+                createdAt: chatGptSourceTimestamp(msg.create_time ?? msg.created_at ?? msg.timestamp),
               }));
             }
           }

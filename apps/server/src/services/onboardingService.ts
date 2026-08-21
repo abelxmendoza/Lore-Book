@@ -1,4 +1,3 @@
-import { formatISO } from 'date-fns';
 import { v4 as uuid } from 'uuid';
 
 import type { MemoryEntry } from '../types';
@@ -17,14 +16,14 @@ class OnboardingService {
       userId,
       content: 'Welcome to Lore Book. Book Zero has been created.',
       tags: ['onboarding', 'started_lorekeeper'],
-      source: 'system'
+      source: 'system',
+      metadata: { onboarding: true },
     });
     return { entry };
   }
 
   async importMemories(userId: string, payload: ImportPayload): Promise<{ imported: number }> {
     let imported = 0;
-    const now = formatISO(new Date());
 
     if (payload.files?.length) {
       for (const file of payload.files) {
@@ -33,8 +32,7 @@ class OnboardingService {
           content: file.content ?? `Imported ${file.name}`,
           tags: ['onboarding', 'imported'],
           source: 'api',
-          metadata: { file: file.name, type: 'import_wizard' },
-          date: now
+          metadata: { file: file.name, type: 'import_wizard', onboarding: true },
         });
         imported += 1;
       }
@@ -47,7 +45,6 @@ class OnboardingService {
         tags: ['onboarding', 'calendar'],
         source: 'calendar',
         metadata: { onboarding: true },
-        date: now
       });
       imported += 1;
     }
@@ -59,7 +56,6 @@ class OnboardingService {
         tags: ['onboarding', 'photos'],
         source: 'photo',
         metadata: { onboarding: true },
-        date: now
       });
       imported += 1;
     }
@@ -70,8 +66,7 @@ class OnboardingService {
         content: 'No imports selected. Generated sample onboarding data.',
         tags: ['onboarding', 'sample'],
         source: 'system',
-        date: now,
-        metadata: { id: uuid() }
+        metadata: { id: uuid(), onboarding: true },
       });
     }
 

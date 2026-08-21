@@ -1054,7 +1054,22 @@ describe('Working Memory Assembler', () => {
           journal_entry_id: 'entry-unreliable',
           created_at: '2026-08-01T00:00:00Z',
           metadata: {},
-          journal_entries: { date: '2026-08-01T00:00:00Z', time_confidence: 0.1 },
+        },
+      ],
+      error: null,
+    };
+    // resolveJournalEntryClocks (journalMemoryTemporalLoader) resolves the
+    // linked journal entry's temporal clocks by a separate lookup, not a
+    // nested join — an explicit recording_fallback tag is the clearest way
+    // to mark "no real occurrence evidence" for this entry.
+    tableResults.journal_entries = {
+      data: [
+        {
+          id: 'entry-unreliable',
+          date: '2026-08-01T00:00:00Z',
+          created_at: '2026-08-01T00:00:00Z',
+          source: 'manual',
+          metadata: { temporal_source: 'recording_fallback' },
         },
       ],
       error: null,
