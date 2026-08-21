@@ -102,7 +102,14 @@ function honestTemporal(item: ProjectableTimelineItem): {
 } {
   const tags = item.tags ?? [];
   const recovered = isImportOrRecoveryTag(tags);
-  const occurrence = item.occurredAt === undefined ? item.sortTime : item.occurredAt;
+  // A recording_fallback temporalSource means the caller already knows this
+  // item has no real occurrence evidence — falling back to sortTime here
+  // regardless (as this used to) let write-time leak back in as occurrence
+  // whenever occurredAt was left undefined rather than explicitly null.
+  const recordingFallback = recovered || item.temporalSource === 'recording_fallback';
+  const occurrence = recordingFallback
+    ? null
+    : (item.occurredAt === undefined ? item.sortTime : item.occurredAt);
   const rawSource = (item.temporalSource ??
     (recovered ? 'recording_fallback' : 'context_inferred')) as TemporalSource;
   const rawPrecision = (item.timePrecision ?? 'date') as TemporalPrecision;
@@ -198,9 +205,11 @@ export function projectCanonicalTimeline(items: ProjectableTimelineItem[]): {
     const temporal = honestTemporal(item);
     const temporalModel = canonicalTemporalFromLegacy({
       id: item.sourceId,
-      occurredAt: temporal.occurrenceStatus === 'unresolved' && item.occurredAt === null
+      occurredAt: item.temporalSource === 'recording_fallback' || isImportOrRecoveryTag(item.tags)
         ? null
-        : (item.occurredAt === undefined ? item.sortTime : item.occurredAt),
+        : temporal.occurrenceStatus === 'unresolved' && item.occurredAt === null
+          ? null
+          : (item.occurredAt === undefined ? item.sortTime : item.occurredAt),
       occurredEnd: item.occurredEnd,
       mentionedAt: item.mentionedAt,
       recordedAt: item.recordedAt,
@@ -291,15 +300,34 @@ export function projectCanonicalTimeline(items: ProjectableTimelineItem[]): {
   for (const j of journals) {
     const jDay = dayKey(j.sortTime);
     const jTokens = new Set(significantTokens(`${j.title} ${j.body}`));
-    const looseMatch = events.some((e) => {
-      if (dayKey(e.sortTime) !== jDay) return false;
-      const eTokens = significantTokens(`${e.title} ${e.body}`);
-      const overlap = eTokens.filter((w) => jTokens.has(w)).length;
-      return overlap >= 1 || normalizeTitle(e.title) === normalizeTitle(j.title);
-    });
+    // Stable-identity linkage is preferred and always wins outright when
+    // present: journal_entries carries no back-reference into resolved_events
+    // today (confirmed — no ingestion path populates one), so this is
+    // currently a no-op in practice, but it's checked first and unconditionally
+    // so a canonical event with real shared-source evidence is never
+    // second-guessed by the text heuristic below.
     const sharedSource = events.some(
       (e) => e.sourceIds?.includes(j.sourceId) || j.sourceIds?.includes(e.sourceId),
     );
+    // Fallback only: same-day text similarity. This must stay conservative —
+    // a single shared 5+-letter word (e.g. "session") was previously enough
+    // to collapse two genuinely distinct same-day events (two separate gym
+    // visits with different people both mentioning "session"). Require
+    // either an exact normalized title match, or *multiple* shared
+    // significant tokens covering at least half of the smaller side's
+    // vocabulary — a much weaker false-positive rate for "probably the same
+    // moment" without any new data source.
+    const looseMatch =
+      !sharedSource &&
+      events.some((e) => {
+        if (dayKey(e.sortTime) !== jDay) return false;
+        if (normalizeTitle(e.title) === normalizeTitle(j.title)) return true;
+        const eTokens = significantTokens(`${e.title} ${e.body}`);
+        if (eTokens.length === 0 || jTokens.size === 0) return false;
+        const overlap = eTokens.filter((w) => jTokens.has(w)).length;
+        const smallerSide = Math.min(eTokens.length, jTokens.size);
+        return overlap >= 2 && overlap / smallerSide >= 0.5;
+      });
     if (looseMatch || sharedSource) {
       evidenceHidden += 1;
       continue;

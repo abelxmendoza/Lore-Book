@@ -73,6 +73,7 @@ import {
   type TimelineZoomScaleId,
 } from './timelineZoomScale';
 import {
+  computeFullTimelineSpan,
   computeReliableTimelineSpan,
   defaultScaleForSpanDays,
   shouldDrawSwimlaneArcBar,
@@ -435,6 +436,14 @@ export const TimelineSwimlanes = ({
     () => computeReliableTimelineSpan(entries, arcs),
     [entries, arcs],
   );
+  // Full span (reliability aside) — the actual canvas boundary. reliableSpan
+  // stays reserved for picking a sane *default* scale on load; using it for
+  // the canvas itself was silently clipping genuine but lower-confidence or
+  // year-precision history off-canvas at every scale, including Life.
+  const fullSpan = useMemo(
+    () => computeFullTimelineSpan(entries, arcs),
+    [entries, arcs],
+  );
   const initialScaleId = useMemo(
     () => defaultScaleForSpanDays(reliableSpan.spanDays),
     // Only seed once from first reliable span; user can still change chips.
@@ -461,9 +470,9 @@ export const TimelineSwimlanes = ({
   const scale = getZoomScale(activeScale);
   const ppd = BASE_PPD * zoom;
 
-  // ── Time range (reliable dates only — outliers must not stretch the canvas) ─
+  // ── Time range (full history — every dated entry/arc, reliability aside) ──
   const today        = useMemo(() => new Date(), []);
-  const timelineStart = useMemo(() => reliableSpan.start, [reliableSpan.start]);
+  const timelineStart = useMemo(() => fullSpan.start, [fullSpan.start]);
 
   const totalDays  = useMemo(
     () => Math.max(14, daysBetween(timelineStart, today) + 14),

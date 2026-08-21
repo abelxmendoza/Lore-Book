@@ -18,6 +18,8 @@ const FILES = [
   'chat/streamEvents.ts',
   'chat/closedScopeIntent.ts',
   'chat/closedScopeIntent.test.ts',
+  'chat/namedChatSubject.ts',
+  'chat/namedChatSubject.test.ts',
   'characters/characterQuery.ts',
   'organizations/organizationQuery.ts',
   'family/familyQuery.ts',

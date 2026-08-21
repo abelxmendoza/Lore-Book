@@ -811,6 +811,7 @@ ${loreData.episodicEvents.slice(0, 20).map((ev: any) => {
 }).join('\n')}
 
 These are structured episodic memories — complete event units with confirmed start/end times. Reference them for "when did X happen?" and "what happened during [period]?" queries.
+When answering when something happened, use occurrence time. Journal created_at and chat timestamps are when it was written or saved. Only use those clocks if the user asked when they wrote about it or when LoreBook saved it.
 
 ` : ''}
 

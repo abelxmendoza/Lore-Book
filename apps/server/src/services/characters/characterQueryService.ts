@@ -17,6 +17,10 @@ import {
   type CharacterSharedMemoryRef,
 } from './characterIdentityLoader';
 import { loadCharacterChatMentions, type CharacterChatMention } from './characterChatMentions';
+import {
+  getCurrentCharacterRelationship,
+  type RelationshipProjection,
+} from './characterRelationshipAuthorityService';
 
 export const CHARACTER_QUERY_SECTIONS = [
   'identity',
@@ -27,6 +31,7 @@ export const CHARACTER_QUERY_SECTIONS = [
   'memories',
   'chatMentions',
   'provenance',
+  'relationships',
   'family',
   'timelines',
   'media',
@@ -45,6 +50,7 @@ export const CHARACTER_QUERY_CORE_SECTIONS: CharacterQuerySection[] = [
   'memories',
   'chatMentions',
   'provenance',
+  'relationships',
 ];
 
 export type { CharacterChatMention };
@@ -72,6 +78,7 @@ export type CharacterQuery = {
     memories?: HydratedMemoryCard[];
     chatMentions?: CharacterChatMention[];
     provenance?: Record<string, unknown>;
+    relationships?: Record<string, RelationshipProjection>;
     family?: Record<string, unknown>;
     timelines?: {
       sharedExperiences: Array<Record<string, unknown>>;
@@ -114,16 +121,31 @@ async function hydrateMemories(
     return refs.map((r) => ({ ...r }));
   }
 
-  const { data: entries } = await supabaseAdmin
-    .from('journal_entries')
-    .select('id, date, content, summary, tags, source, title')
-    .eq('user_id', userId)
-    .in('id', entryIds);
+  const [{ resolveJournalEntryClocks }, { data: entries }] = await Promise.all([
+    import('../temporal/journalMemoryTemporalLoader'),
+    supabaseAdmin
+      .from('journal_entries')
+      .select('id, date, created_at, content, summary, tags, source, title, metadata')
+      .eq('user_id', userId)
+      .in('id', entryIds),
+  ]);
 
+  const clocks = await resolveJournalEntryClocks(userId, entryIds);
   const byId = new Map((entries ?? []).map((e) => [e.id, e]));
   return refs.map((ref) => {
     const entry = byId.get(ref.entry_id);
-    if (!entry) return { ...ref };
+    const resolved = clocks.get(ref.entry_id);
+    if (!entry) {
+      return {
+        ...ref,
+        date: resolved ? (resolved.occurredAt ?? '') : '',
+        occurredAt: resolved?.occurredAt ?? null,
+        mentionedAt: resolved?.mentionedAt ?? ref.mentionedAt ?? null,
+        recordedAt: resolved?.recordedAt ?? ref.recordedAt ?? null,
+        occurrenceStatus: resolved?.occurrenceStatus ?? 'unresolved',
+        canonicalEventId: resolved?.canonicalEventId ?? ref.canonicalEventId ?? null,
+      };
+    }
     return {
       ...ref,
       title: (entry as { title?: string | null }).title ?? null,
@@ -131,7 +153,12 @@ async function hydrateMemories(
       summary: ref.summary ?? (typeof entry.summary === 'string' ? entry.summary : undefined),
       tags: Array.isArray(entry.tags) ? entry.tags : [],
       source: typeof entry.source === 'string' ? entry.source : null,
-      date: entry.date ?? ref.date,
+      date: resolved?.occurredAt ?? '',
+      occurredAt: resolved?.occurredAt ?? null,
+      mentionedAt: resolved?.mentionedAt ?? null,
+      recordedAt: resolved?.recordedAt ?? (typeof entry.created_at === 'string' ? entry.created_at : null),
+      occurrenceStatus: resolved?.occurrenceStatus ?? 'unresolved',
+      canonicalEventId: resolved?.canonicalEventId ?? null,
     };
   });
 }
@@ -164,6 +191,39 @@ async function loadProvenanceSummary(userId: string, characterId: string) {
     sourceUtterances,
     mentionCount: provenanceReport.sourceMessageIds.length,
   };
+}
+
+/**
+ * Authority-aware current relationship projection for every counterpart this
+ * character has an edge with, keyed by counterpart character id. This is the
+ * canonical read the Connections tab should render — never
+ * character_relationships.status directly.
+ */
+async function loadRelationships(
+  userId: string,
+  characterId: string,
+): Promise<Record<string, RelationshipProjection>> {
+  const { data: rows, error } = await supabaseAdmin
+    .from('character_relationships')
+    .select('source_character_id, target_character_id')
+    .eq('user_id', userId)
+    .or(`source_character_id.eq.${characterId},target_character_id.eq.${characterId}`);
+  if (error) throw error;
+
+  const counterparts = new Set<string>();
+  for (const row of rows ?? []) {
+    if (row.source_character_id === characterId) counterparts.add(row.target_character_id);
+    else counterparts.add(row.source_character_id);
+  }
+
+  const entries = await Promise.all(
+    [...counterparts].map(async (counterpartId) => {
+      const projection = await getCurrentCharacterRelationship(userId, characterId, counterpartId);
+      return [counterpartId, projection] as const;
+    }),
+  );
+
+  return Object.fromEntries(entries);
 }
 
 async function loadDynamics(userId: string, characterId: string, characterName: string) {
@@ -325,6 +385,17 @@ export async function getCharacterQuery(
           loadProvenanceSummary(userId, characterId),
         );
         if (provenance) sections.provenance = provenance as Record<string, unknown>;
+      })(),
+    );
+  }
+
+  if (wanted.has('relationships')) {
+    tasks.push(
+      (async () => {
+        const relationships = await softSection('relationships', partialErrors, () =>
+          loadRelationships(userId, characterId),
+        );
+        if (relationships) sections.relationships = relationships;
       })(),
     );
   }

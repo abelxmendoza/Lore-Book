@@ -464,10 +464,12 @@ describe('Working Memory Assembler', () => {
     fromMock.mockClear();
     await assembleWorkingMemory({ userId: 'user-1', question: 'What do you know about Alex?' });
     const characterQueries = fromMock.mock.calls.filter(([table]) => table === 'characters').length;
-    // The character compiler loads identity, aliases, memberships, and
-    // relationship context through distinct projections. Guard against an
-    // unbounded fan-out while allowing those intentionally separate reads.
-    expect(characterQueries).toBeLessThanOrEqual(6);
+    // Person dossiers already used six character-table projections (identity,
+    // aliases, memberships, relationships, target record, filtered resolve).
+    // Canonical attribution adds one more: a tenant-scoped maybeSingle name
+    // lookup so stitched chronology can apply characterBelongsOnCanonicalEvent
+    // instead of treating people[] as attendance. Guard fan-out, not the old 6.
+    expect(characterQueries).toBeLessThanOrEqual(7);
   });
 
   it('reuses character cache for household relationship queries', async () => {
@@ -910,5 +912,178 @@ describe('Working Memory Assembler', () => {
     });
 
     expect(getUserTimezoneMock).toHaveBeenCalledWith('user-1');
+  });
+
+  it('reports the authority-projected current relationship, not a stale character_relationships cache row', async () => {
+    // Regression test for the original production bug: character_relationships
+    // still says "friend" (a stale system-inferred row from before a user
+    // correction), but the authority ledger has a later, higher-authority
+    // "estranged" transition. The relationship candidate chat retrieval sees
+    // must reflect the ledger, not the stale cache.
+    tableResults.characters = {
+      data: [
+        { id: 'char-me', name: 'Me', alias: [], summary: null, metadata: {}, importance_score: 100, updated_at: '2026-01-01T00:00:00Z' },
+        { id: 'char-jordan', name: 'Jordan', alias: [], summary: null, metadata: {}, importance_score: 50, updated_at: '2026-01-01T00:00:00Z' },
+      ],
+      error: null,
+    };
+    tableResults.character_relationships = {
+      data: [
+        {
+          id: 'rel-1',
+          relationship_type: 'friend',
+          status: 'active',
+          metadata: {},
+          source_character_id: 'char-me',
+          target_character_id: 'char-jordan',
+          updated_at: '2026-06-01T00:00:00Z',
+        },
+      ],
+      error: null,
+    };
+    tableResults.entity_relationships = { data: [], error: null };
+    tableResults.character_relationship_history = {
+      data: [
+        {
+          id: 'h1', user_id: 'user-1', source_character_id: 'char-me', target_character_id: 'char-jordan',
+          from_relationship_type: null, from_status: null, to_relationship_type: 'friend', to_status: 'active',
+          changed_at: '2026-06-01T00:00:00Z', recorded_at: '2026-06-01T00:00:00Z', valid_until: null,
+          change_kind: 'CREATED', authority: 'SYSTEM_DERIVED', evidence_ids: [], confidence: null,
+          relationship_id: 'rel-1', corrects_history_id: null,
+        },
+        {
+          id: 'h2', user_id: 'user-1', source_character_id: 'char-me', target_character_id: 'char-jordan',
+          from_relationship_type: 'friend', from_status: 'active', to_relationship_type: 'estranged', to_status: 'inactive',
+          changed_at: '2026-07-15T00:00:00Z', recorded_at: '2026-07-15T00:00:00Z', valid_until: null,
+          change_kind: 'TRANSITIONED', authority: 'USER_EXPLICIT', evidence_ids: [], confidence: null,
+          relationship_id: 'rel-1', corrects_history_id: null,
+        },
+      ],
+      error: null,
+    };
+
+    const result = await assembleWorkingMemory({
+      userId: 'user-1',
+      question: 'What is my relationship with Jordan?',
+    });
+
+    const relationshipText = result.relationships.map((e) => `${e.title} ${e.content}`).join('\n');
+    expect(relationshipText).toMatch(/estranged/i);
+    expect(relationshipText).not.toMatch(/friend/i);
+  });
+
+  it('a "what happened in July" temporal-window query never surfaces a chat message solely because it was SENT in July — occurrence, not send time, gates temporal windows', async () => {
+    // A chat message sent July 10 whose text describes something that
+    // happened at an unknown time — chat.created_at is send time, not
+    // occurrence, so it must not be treated as "this happened in July."
+    tableResults.chat_messages = {
+      data: [
+        {
+          id: 'chat-july-send',
+          content: 'unrelated message about something from ages ago, sent in July',
+          created_at: '2026-07-10T00:00:00Z',
+          session_id: 'thread-x',
+          role: 'user',
+        },
+      ],
+      error: null,
+    };
+    // A journal entry actually dated in July — genuine occurrence evidence —
+    // must still come through.
+    tableResults.journal_entries = {
+      data: [
+        {
+          id: 'entry-july-occurrence',
+          content: 'Went hiking with friends.',
+          summary: 'July hike',
+          date: '2026-07-15T00:00:00Z',
+          tags: [],
+          source: 'manual',
+          metadata: {},
+        },
+      ],
+      error: null,
+    };
+
+    const result = await assembleWorkingMemory({
+      userId: 'user-1',
+      question: 'What happened in July 2026?',
+    });
+
+    const allText = [...result.episodes, ...result.events]
+      .map((item) => `${item.id} ${item.title} ${item.content}`)
+      .join('\n');
+    expect(allText).not.toMatch(/chat-july-send|sent in July/);
+    expect(allText).toMatch(/entry-july-occurrence|July hike/);
+  });
+
+  it('outside a temporal window, chat candidates are still included but labeled as send time, not occurrence', async () => {
+    tableResults.chat_messages = {
+      data: [
+        {
+          id: 'chat-plain',
+          content: 'Talking about Jamie and the old apartment.',
+          created_at: '2026-06-01T00:00:00Z',
+          session_id: 'thread-y',
+          role: 'user',
+        },
+      ],
+      error: null,
+    };
+
+    const result = await assembleWorkingMemory({
+      userId: 'user-1',
+      question: 'What have we said about Jamie?',
+    });
+
+    const chatItem = result.episodes.find((item) => item.id === 'chat:chat-plain');
+    expect(chatItem).toBeTruthy();
+    expect((chatItem as unknown as { dateLabel?: string }).dateLabel).toBe('sent');
+  });
+
+  it('a character memory linked to a low-confidence (write-time-fallback) journal date is not presented as a precise occurrence', async () => {
+    tableResults.characters = {
+      data: [
+        { id: 'char-target', name: 'Jamie', alias: [], summary: null, metadata: {}, importance_score: 60, updated_at: '2026-06-01T00:00:00Z' },
+      ],
+      error: null,
+    };
+    tableResults.character_memories = {
+      data: [
+        {
+          id: 'mem-1',
+          summary: 'Something about Jamie',
+          journal_entry_id: 'entry-unreliable',
+          created_at: '2026-08-01T00:00:00Z',
+          metadata: {},
+        },
+      ],
+      error: null,
+    };
+    // resolveJournalEntryClocks (journalMemoryTemporalLoader) resolves the
+    // linked journal entry's temporal clocks by a separate lookup, not a
+    // nested join — an explicit recording_fallback tag is the clearest way
+    // to mark "no real occurrence evidence" for this entry.
+    tableResults.journal_entries = {
+      data: [
+        {
+          id: 'entry-unreliable',
+          date: '2026-08-01T00:00:00Z',
+          created_at: '2026-08-01T00:00:00Z',
+          source: 'manual',
+          metadata: { temporal_source: 'recording_fallback' },
+        },
+      ],
+      error: null,
+    };
+
+    const result = await assembleWorkingMemory({
+      userId: 'user-1',
+      question: 'What do you know about Jamie?',
+    });
+
+    const memoryItem = result.episodes.find((item) => item.id === 'memory:mem-1');
+    expect(memoryItem).toBeTruthy();
+    expect((memoryItem as unknown as { dateLabel?: string }).dateLabel).toBe('date uncertain');
   });
 });

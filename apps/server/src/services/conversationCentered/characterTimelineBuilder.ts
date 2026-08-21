@@ -5,6 +5,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { characterBelongsOnCanonicalEvent } from '../attribution/eventAttributionProjection';
 
 import { eventImpactDetector } from './eventImpactDetector';
 
@@ -15,6 +16,8 @@ export interface TimelineEvent {
   eventId: string;
   eventTitle: string;
   eventDate: string;
+  recordedAt?: string | null;
+  occurrenceStatus?: 'confirmed' | 'range' | 'unresolved';
   eventSummary?: string;
   eventType?: string;
   timelineType: TimelineType;
@@ -58,7 +61,9 @@ export class CharacterTimelineBuilder {
           id: event.id,
           eventId: event.event_id,
           eventTitle: event.event_title || 'Untitled Event',
-          eventDate: event.event_date || event.created_at,
+          eventDate: event.event_date || '',
+          recordedAt: event.created_at ?? null,
+          occurrenceStatus: event.event_date ? 'confirmed' : 'unresolved',
           eventSummary: event.event_summary,
           eventType: event.event_type,
           timelineType: event.timeline_type as TimelineType,
@@ -116,6 +121,7 @@ export class CharacterTimelineBuilder {
       type?: string;
       start_time: string;
       people: string[];
+      metadata?: Record<string, unknown> | null;
     },
     impactType?: string,
     connectionCharacterId?: string
@@ -151,6 +157,17 @@ export class CharacterTimelineBuilder {
 
       // Process each character in the event
       for (const characterId of event.people) {
+        const association = characterBelongsOnCanonicalEvent(
+          {
+            title: event.title,
+            summary: event.summary,
+            people: event.people,
+            metadata: event.metadata,
+          },
+          { id: characterId },
+        );
+        if (!association.associated) continue;
+
         // Skip if this is the user's character
         if (userCharacter && characterId === userCharacter.id) {
           continue;
@@ -296,6 +313,7 @@ export class CharacterTimelineBuilder {
             type: event.type,
             start_time: event.start_time,
             people: event.people || [],
+            metadata: event.metadata,
           },
           primaryImpact?.impactType,
           primaryImpact?.connectionCharacterId

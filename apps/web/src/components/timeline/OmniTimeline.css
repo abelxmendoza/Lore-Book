@@ -423,57 +423,6 @@
   border-radius: inherit;
 }
 
-/* Swimlanes + Calendar side by side — same tall-viewport escape hatch as
-   Story/Calendar alone, split into two scrollable columns. */
-.omni-timeline-main > .timeline-swimlanes-calendar-split {
-  height: max(560px, calc(100dvh - var(--omni-timeline-chrome) - 5.5rem));
-  min-height: max(480px, calc(100dvh - var(--omni-timeline-chrome) - 5.5rem));
-  max-height: none;
-  border-radius: inherit;
-  display: flex;
-  flex-direction: row;
-  gap: 1rem;
-  padding: 0.75rem;
-  overflow: hidden;
-}
-
-.timeline-swimlanes-calendar-split__swimlanes {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 100%;
-  overflow-y: auto;
-}
-
-.timeline-swimlanes-calendar-split__calendar {
-  flex: 0 0 22rem;
-  min-width: 18rem;
-  max-width: 26rem;
-  height: 100%;
-  overflow-y: auto;
-}
-
-.timeline-swimlanes-calendar-split__calendar .timeline-calendar-root {
-  height: 100%;
-  min-height: 0;
-}
-
-@media (max-width: 900px) {
-  .omni-timeline-main > .timeline-swimlanes-calendar-split {
-    flex-direction: column;
-    overflow-y: auto;
-  }
-
-  .timeline-swimlanes-calendar-split__swimlanes,
-  .timeline-swimlanes-calendar-split__calendar {
-    flex: none;
-    width: 100%;
-    max-width: none;
-    height: auto;
-    min-height: 360px;
-    overflow: visible;
-  }
-}
-
 .omni-timeline-root--calendar {
   --omni-timeline-chrome: 10rem;
 }

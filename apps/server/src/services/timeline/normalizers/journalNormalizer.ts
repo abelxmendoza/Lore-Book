@@ -6,7 +6,7 @@ import { NormalizedTimelineEvent, Normalizer } from './base';
 
 export interface JournalEntry {
   id: string;
-  date: string | Date;
+  date: string | Date | null;
   content: string;
   summary?: string | null;
   tags?: string[];
@@ -18,7 +18,10 @@ export interface JournalEntry {
 }
 
 export const normalizeJournalEntry: Normalizer<JournalEntry> = (entry: JournalEntry): NormalizedTimelineEvent[] => {
+  if (!entry.date) return [];
+  if (entry.metadata?.temporal_source === 'recording_fallback') return [];
   const eventDate = typeof entry.date === 'string' ? new Date(entry.date) : entry.date;
+  if (Number.isNaN(eventDate.getTime())) return [];
   const title = entry.summary || entry.content.substring(0, 100) || 'Journal Entry';
   
   return [{

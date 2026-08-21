@@ -91,6 +91,10 @@ vi.mock('../characterEvidenceService', () => ({
   getCharacterEvidenceLocker: vi.fn().mockResolvedValue({ items: [] }),
 }));
 
+vi.mock('./characterRelationshipAuthorityService', () => ({
+  getCurrentCharacterRelationship: vi.fn(),
+}));
+
 describe('getCharacterQuery', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -162,5 +166,57 @@ describe('getCharacterQuery', () => {
     expect(query!.sections.identity).toBeTruthy();
     expect(query!.sections.family).toEqual({ members: [], edges: [] });
     expect(query!.sections.lore).toBeUndefined();
+  });
+
+  it('returns the authority-aware current relationship projection per counterpart, not the raw cache row', async () => {
+    const { supabaseAdmin } = await import('../supabaseClient');
+    (supabaseAdmin as any).from = vi.fn((table: string) => {
+      if (table === 'character_relationships') {
+        return {
+          select: () => ({
+            eq: () => ({
+              or: () =>
+                Promise.resolve({
+                  data: [{ source_character_id: 'c1', target_character_id: 'jordan-id' }],
+                  error: null,
+                }),
+            }),
+          }),
+        };
+      }
+      return {
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              order: () => ({ limit: () => Promise.resolve({ data: [], error: null }) }),
+              in: () => ({ order: () => Promise.resolve({ data: [], error: null }) }),
+              maybeSingle: () => Promise.resolve({ data: null, error: null }),
+              single: () => Promise.resolve({ data: null, error: null }),
+            }),
+            in: () => Promise.resolve({ data: [], error: null }),
+            ilike: () => ({
+              order: () => ({ limit: () => Promise.resolve({ data: [], error: null }) }),
+              limit: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }),
+            }),
+            order: () => ({ limit: () => Promise.resolve({ data: [], error: null }) }),
+          }),
+        }),
+      };
+    });
+
+    const { getCurrentCharacterRelationship } = await import('./characterRelationshipAuthorityService');
+    (getCurrentCharacterRelationship as any).mockResolvedValue({
+      current: { type: 'estranged', status: 'inactive', authority: 'USER_EXPLICIT', changedAt: '2026-08-01T00:00:00Z', confidence: null, evidenceIds: [], isMigratedBaseline: false },
+      history: [{ toRelationshipType: 'friend', toStatus: 'active' }],
+      correctedAssertions: [],
+      unresolvedConflicts: [],
+    });
+
+    const { getCharacterQuery } = await import('./characterQueryService');
+    const query = await getCharacterQuery('user-1', 'c1', { sections: 'identity,relationships' });
+
+    expect(query!.sections.relationships?.['jordan-id']?.current?.type).toBe('estranged');
+    expect(query!.sections.relationships?.['jordan-id']?.history).toHaveLength(1);
+    expect(getCurrentCharacterRelationship).toHaveBeenCalledWith('user-1', 'c1', 'jordan-id');
   });
 });

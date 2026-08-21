@@ -220,6 +220,29 @@ describe('chronologyAuthority', () => {
     expect(result.excluded[0]?.speechAct).toBe('RECAP_REQUEST');
   });
 
+  it('does not treat recording_fallback sortTime as occurrence', () => {
+    const result = projectCanonicalTimeline([
+      {
+        id: 'journal-write',
+        kind: 'moment',
+        sourceId: 'je-1',
+        sortTime: '2026-08-20T18:42:13.001Z',
+        title: 'Last month I went to a concert with Jamie',
+        body: 'Last month I went to a concert with Jamie',
+        sourceKind: 'journal_entry',
+        sourceIds: ['je-1'],
+        sourceType: 'chat',
+        recordedAt: '2026-08-20T18:42:13.001Z',
+        mentionedAt: '2026-08-20T18:42:13.001Z',
+        occurredAt: null,
+        temporalSource: 'recording_fallback',
+      },
+    ]);
+    expect(result.canonical).toHaveLength(0);
+    expect(result.unresolved[0]?.temporal.occurred.start).toBeNull();
+    expect(result.unresolved[0]?.temporal.recordedAt).toContain('2026-08-20');
+  });
+
   it('keeps a user-stated year range canonical and preserves both endpoints', () => {
     const result = projectCanonicalTimeline([{
       id: 'relationship-range',

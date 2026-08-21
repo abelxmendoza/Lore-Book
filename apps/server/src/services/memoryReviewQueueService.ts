@@ -690,6 +690,7 @@ Only extract if there's a clear date reference. Return has_date: false if uncert
           userId,
           content: proposal.claim_text,
           date: response.date,
+          temporalSource: 'document_stated',
           tags: extractTags(text),
           source: 'system',
           metadata: {
