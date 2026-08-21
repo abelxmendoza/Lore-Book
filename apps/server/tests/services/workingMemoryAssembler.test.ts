@@ -1022,7 +1022,7 @@ describe('Working Memory Assembler', () => {
       data: [
         {
           id: 'chat-plain',
-          content: 'Talking about Genni and the old apartment.',
+          content: 'Talking about Taylor and the old apartment.',
           created_at: '2026-06-01T00:00:00Z',
           session_id: 'thread-y',
           role: 'user',
@@ -1033,7 +1033,7 @@ describe('Working Memory Assembler', () => {
 
     const result = await assembleWorkingMemory({
       userId: 'user-1',
-      question: 'What have we said about Genni?',
+      question: 'What have we said about Taylor?',
     });
 
     const chatItem = result.episodes.find((item) => item.id === 'chat:chat-plain');
@@ -1044,7 +1044,7 @@ describe('Working Memory Assembler', () => {
   it('a character memory linked to a low-confidence (write-time-fallback) journal date is not presented as a precise occurrence', async () => {
     tableResults.characters = {
       data: [
-        { id: 'char-target', name: 'Genni', alias: [], summary: null, metadata: {}, importance_score: 60, updated_at: '2026-06-01T00:00:00Z' },
+        { id: 'char-target', name: 'Taylor', alias: [], summary: null, metadata: {}, importance_score: 60, updated_at: '2026-06-01T00:00:00Z' },
       ],
       error: null,
     };
@@ -1052,7 +1052,7 @@ describe('Working Memory Assembler', () => {
       data: [
         {
           id: 'mem-1',
-          summary: 'Something about Genni',
+          summary: 'Something about Taylor',
           journal_entry_id: 'entry-unreliable',
           created_at: '2026-08-01T00:00:00Z',
           metadata: {},
@@ -1079,7 +1079,7 @@ describe('Working Memory Assembler', () => {
 
     const result = await assembleWorkingMemory({
       userId: 'user-1',
-      question: 'What do you know about Genni?',
+      question: 'What do you know about Taylor?',
     });
 
     const memoryItem = result.episodes.find((item) => item.id === 'memory:mem-1');
