@@ -25,7 +25,15 @@
 
 import { supabaseAdmin } from './supabaseClient';
 import { logger } from '../logger';
-import { stitchedTimelineService } from './chronologyV2/stitchedTimelineService';
+import { stitchedTimelineService, type StitchedTimelineItem } from './chronologyV2/stitchedTimelineService';
+
+/** Occurrence from CanonicalTemporalModel only — never sortTime / recordedAt. */
+function stitchedOccurredStart(item: StitchedTimelineItem): string | null {
+  if (item.occurrenceStatus === 'unresolved' || item.temporal?.occurred.status === 'unanchored') {
+    return null;
+  }
+  return item.temporal?.occurred.start ?? null;
+}
 import {
   biographyFoundationService,
   type BiographyOutput,
@@ -322,9 +330,8 @@ export async function deriveCurrentFocus(userId: string, bio: BiographyOutput): 
   }
   for (const quest of quests ?? []) push(quest.title);
   for (const item of stitched.items ?? []) {
-    const occurred = item.occurredAt;
+    const occurred = stitchedOccurredStart(item);
     if (!occurred) continue;
-    if (item.occurrenceStatus === 'unresolved') continue;
     if (Date.parse(occurred) <= Date.now()) continue;
     push(item.title);
   }

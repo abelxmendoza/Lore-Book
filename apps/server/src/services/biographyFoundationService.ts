@@ -27,7 +27,15 @@ import {
   isProjectionStale,
 } from './projectionVersion';
 import { buildCanonicalCharacterTimeline } from './characters/characterEntityTimelineService';
-import { stitchedTimelineService } from './chronologyV2/stitchedTimelineService';
+import { stitchedTimelineService, type StitchedTimelineItem } from './chronologyV2/stitchedTimelineService';
+
+/** Occurrence from CanonicalTemporalModel only — never sortTime / recordedAt. */
+function stitchedOccurredStart(item: StitchedTimelineItem): string | null {
+  if (item.occurrenceStatus === 'unresolved' || item.temporal?.occurred.status === 'unanchored') {
+    return null;
+  }
+  return item.temporal?.occurred.start ?? null;
+}
 
 // ── Fact types ────────────────────────────────────────────────────────────────
 
@@ -313,9 +321,8 @@ class BiographyFoundationService {
 
     for (const quest of activeQuests ?? []) pushFocus(quest.title);
     for (const item of stitched.items ?? []) {
-      const occurred = item.occurredAt;
+      const occurred = stitchedOccurredStart(item);
       if (!occurred) continue;
-      if (item.occurrenceStatus === 'unresolved') continue;
       if (Date.parse(occurred) <= Date.now()) continue;
       pushFocus(item.title);
     }
@@ -437,8 +444,7 @@ class BiographyFoundationService {
     const stitched = await stitchedTimelineService.getStitchedTimeline(userId);
     const dated = (stitched.items ?? [])
       .map((item) => {
-        if (item.occurrenceStatus === 'unresolved') return null;
-        const occurred = item.occurredAt ?? null;
+        const occurred = stitchedOccurredStart(item);
         return occurred ? { item, occurred } : null;
       })
       .filter((row): row is { item: (typeof stitched.items)[number]; occurred: string } => Boolean(row));

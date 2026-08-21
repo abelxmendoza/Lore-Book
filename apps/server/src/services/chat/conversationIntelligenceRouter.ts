@@ -19,7 +19,15 @@ import {
   buildEventStoryRecall,
   buildStoryRosterRecall,
 } from '../story/storyRecallService';
-import { stitchedTimelineService } from '../chronologyV2/stitchedTimelineService';
+import { stitchedTimelineService, type StitchedTimelineItem } from '../chronologyV2/stitchedTimelineService';
+
+/** Occurrence from CanonicalTemporalModel only — never sortTime / recordedAt. */
+function stitchedOccurredStart(item: StitchedTimelineItem): string | null {
+  if (item.occurrenceStatus === 'unresolved' || item.temporal?.occurred.status === 'unanchored') {
+    return null;
+  }
+  return item.temporal?.occurred.start ?? null;
+}
 
 type HistoryMessage = { role: string; content: string };
 
@@ -102,15 +110,13 @@ async function buildDailyRecall(
   const thread = await buildThreadRecall(userId, message, options);
 
   const stitched = await stitchedTimelineService.getStitchedTimeline(userId, { limit: 5 });
-  const dated = (stitched.items ?? []).filter((item) => {
-    return Boolean(item.occurredAt) && item.occurrenceStatus !== 'unresolved';
-  });
+  const dated = (stitched.items ?? []).filter((item) => stitchedOccurredStart(item) != null);
 
   const recentEvents =
     dated.length
       ? dated
           .slice(0, 5)
-          .map((item) => `• ${item.title} (${item.occurredAt})`)
+          .map((item) => `• ${item.title} (${stitchedOccurredStart(item)})`)
           .join('\n')
       : null;
 

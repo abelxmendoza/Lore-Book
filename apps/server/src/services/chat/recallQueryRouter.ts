@@ -7,7 +7,15 @@
  */
 
 import { supabaseAdmin } from '../supabaseClient';
-import { stitchedTimelineService } from '../chronologyV2/stitchedTimelineService';
+import { stitchedTimelineService, type StitchedTimelineItem } from '../chronologyV2/stitchedTimelineService';
+
+/** Occurrence from CanonicalTemporalModel only — never sortTime / recordedAt. */
+function stitchedOccurredStart(item: StitchedTimelineItem): string | null {
+  if (item.occurrenceStatus === 'unresolved' || item.temporal?.occurred.status === 'unanchored') {
+    return null;
+  }
+  return item.temporal?.occurred.start ?? null;
+}
 import {
   fetchCharacterRoster,
   fetchFamilyMembers,
@@ -257,8 +265,8 @@ async function fetchTemporalContext(userId: string): Promise<string> {
   const items = stitched.items ?? [];
   if (items.length) {
     for (const item of items) {
-      const occurred = item.occurredAt ?? null;
-      const unresolved = item.occurrenceStatus === 'unresolved' || !occurred;
+      const occurred = stitchedOccurredStart(item);
+      const unresolved = occurred == null;
       const when = unresolved ? 'date unresolved' : occurred;
       lines.push(`• ${when}: ${item.title}`);
       if (item.body) lines.push(`  ${item.body.slice(0, 150)}`);
