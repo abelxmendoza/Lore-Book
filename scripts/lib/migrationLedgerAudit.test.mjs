@@ -96,6 +96,42 @@ test('production Character Timeline DROP is an exact ledger match, not a retimes
   assert.equal(stale.safeForAutomaticPush, false);
 });
 
+test('production RPC lockdown and export-view hardening are exact ledger matches, not retimestamps', () => {
+  const rpcLockdown = readLocalMigrations(migrationsDirectory).find(
+    (row) => row.name === 'revoke_anon_security_definer_rpcs',
+  );
+  const exportHardening = readLocalMigrations(migrationsDirectory).find(
+    (row) => row.name === 'harden_export_views_and_epiphany_insert',
+  );
+  assert.ok(rpcLockdown, 'revoke_anon_security_definer_rpcs.sql must exist in supabase/migrations');
+  assert.ok(exportHardening, 'harden_export_views_and_epiphany_insert.sql must exist in supabase/migrations');
+  assert.equal(rpcLockdown.version, PRODUCTION_LEDGER_CANON.revoke_anon_security_definer_rpcs);
+  assert.equal(exportHardening.version, PRODUCTION_LEDGER_CANON.harden_export_views_and_epiphany_insert);
+
+  const result = auditMigrationLedger([rpcLockdown, exportHardening], [
+    { version: '20260820003718', name: 'revoke_anon_security_definer_rpcs' },
+    { version: '20260820015515', name: 'harden_export_views_and_epiphany_insert' },
+  ]);
+  assert.equal(result.exact.length, 2);
+  assert.equal(result.retimestamped.length, 0);
+  assert.equal(result.remoteOnly.length, 0);
+  assert.equal(result.localOnly.length, 0);
+  assert.equal(result.safeForAutomaticPush, true);
+
+  const stale = auditMigrationLedger(
+    [
+      parseLocalMigrationFilename('20260819000000_revoke_anon_security_definer_rpcs.sql'),
+      parseLocalMigrationFilename('20260819010000_harden_export_views_and_epiphany_insert.sql'),
+    ],
+    [
+      { version: '20260820003718', name: 'revoke_anon_security_definer_rpcs' },
+      { version: '20260820015515', name: 'harden_export_views_and_epiphany_insert' },
+    ],
+  );
+  assert.equal(stale.retimestamped.length, 2);
+  assert.equal(stale.safeForAutomaticPush, false);
+});
+
 test('fails closed when a nameless remote row maps to colliding local versions', () => {
   const local = [
     parseLocalMigrationFilename('20260806010101_first_change.sql'),
