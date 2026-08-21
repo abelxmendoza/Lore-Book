@@ -1,6 +1,7 @@
 import {
   useEffect,
   useLayoutEffect,
+  useRef,
   type CSSProperties,
   type KeyboardEvent,
   type RefObject,
@@ -8,7 +9,7 @@ import {
 import { Textarea } from '../../../components/ui/textarea';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
-import { useEntityCorrectionState } from '../../../hooks/useEntityCorrectionState';
+import type { useEntityCorrectionState } from '../../../hooks/useEntityCorrectionState';
 import { EntityClassificationPopover } from './EntityClassificationPopover';
 
 type EntityCorrectionState = ReturnType<typeof useEntityCorrectionState>;
@@ -19,7 +20,12 @@ type EntityHighlightedComposerProps = {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   matches: CertifiedEntityMatch[];
   threadId?: string;
-  correction?: EntityCorrectionState;
+  // Both callers (ChatComposer, JournalComposerOverlay) always own and pass
+  // their own useEntityCorrectionState instance — this must stay required.
+  // It used to be optional with a hook-call fallback here, which meant a
+  // second, fully independent debounced entity-correction pipeline (with its
+  // own remote fetch) ran on every keystroke and was always discarded.
+  correction: EntityCorrectionState;
   placeholder?: string;
   disabled?: boolean;
   className?: string;
@@ -64,9 +70,9 @@ export const EntityHighlightedComposer = ({
   value,
   onChange,
   textareaRef,
-  matches,
-  threadId,
-  correction: correctionProp,
+  // matches/threadId are accepted for prop-shape compatibility with both
+  // callers but are no longer read here directly — see `correction` above.
+  correction,
   placeholder,
   disabled,
   className = '',
@@ -76,9 +82,6 @@ export const EntityHighlightedComposer = ({
   onKeyDown,
   onPreviewCorrectionsChange,
 }: EntityHighlightedComposerProps) => {
-  const internalCorrection = useEntityCorrectionState(value, threadId, matches);
-  const correction = correctionProp ?? internalCorrection;
-
   const {
     activeCorrectedSpan,
     closeActiveSpan,
@@ -91,7 +94,17 @@ export const EntityHighlightedComposer = ({
     onPreviewCorrectionsChange?.(sendPayload);
   }, [sendPayload, onPreviewCorrectionsChange]);
 
+  // The textarea's own onChange handler already grows synchronously on user
+  // keystrokes (it reads the DOM's already-updated scrollHeight before React
+  // even re-renders). This effect exists for the OTHER case — `value`
+  // changing programmatically (draft restore, clear-on-send, slash-command
+  // insert, correction actions) — where onChange never fires. Skip the call
+  // here when the keystroke path already grew for this exact value, so a
+  // normal keystroke doesn't force a second synchronous layout reflow.
+  const lastAutoGrownValueRef = useRef<string | null>(null);
   useLayoutEffect(() => {
+    if (lastAutoGrownValueRef.current === value) return;
+    lastAutoGrownValueRef.current = value;
     autoGrowTextarea(textareaRef.current);
   }, [value, className, textareaRef]);
 
@@ -126,8 +139,10 @@ export const EntityHighlightedComposer = ({
         placeholder={placeholder}
         value={value}
         onChange={(e) => {
+          lastAutoGrownValueRef.current = e.target.value;
           onChange(e.target.value);
-          // Grow immediately on this frame (before paint if possible)
+          // Grow immediately on this frame (before paint if possible).
+          // Mark this value so the layout effect does not grow a second time.
           autoGrowTextarea(e.currentTarget);
         }}
         disabled={disabled}

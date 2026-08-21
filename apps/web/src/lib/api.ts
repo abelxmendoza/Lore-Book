@@ -95,6 +95,7 @@ export const fetchJson = async <T>(
   const fetchPromise = (async (): Promise<T> => {
     const controller = new AbortController();
     let timeoutId: NodeJS.Timeout | null = null;
+    let timedOut = false;
 
     // Routing diagnostics — log on every request in dev, or in prod when baseUrl is empty
     // (empty baseUrl in prod = misconfigured VITE_API_URL, requests hit Vercel instead of Railway)
@@ -141,11 +142,20 @@ export const fetchJson = async <T>(
         });
 
       timeoutId = setTimeout(
-        () => controller.abort(),
+        () => {
+          timedOut = true;
+          controller.abort();
+        },
         options?.timeoutMs ?? config.api.timeout
       );
 
-      let res = await fetch(url, { headers: buildHeaders(token), signal: controller.signal, ...init });
+      const userSignal = init?.signal;
+      if (userSignal) {
+        if (userSignal.aborted) controller.abort();
+        else userSignal.addEventListener('abort', () => controller.abort(), { once: true });
+      }
+
+      let res = await fetch(url, { headers: buildHeaders(token), ...init, signal: controller.signal });
 
       // 401 with a token usually means the access token expired while the tab
       // was asleep (session restored from storage as "authenticated", refresh
@@ -157,10 +167,13 @@ export const fetchJson = async <T>(
           log.debug(`[Auth] Refreshed stale session, retrying ${urlStr}`);
           if (timeoutId) clearTimeout(timeoutId);
           timeoutId = setTimeout(
-            () => controller.abort(),
+            () => {
+              timedOut = true;
+              controller.abort();
+            },
             options?.timeoutMs ?? config.api.timeout
           );
-          res = await fetch(url, { headers: buildHeaders(freshToken), signal: controller.signal, ...init });
+          res = await fetch(url, { headers: buildHeaders(freshToken), ...init, signal: controller.signal });
         }
       }
 
@@ -320,7 +333,11 @@ export const fetchJson = async <T>(
         throw networkError;
       }
 
-      if (error instanceof Error && error.name === 'AbortError') {
+      if (
+        (error instanceof Error && error.name === 'AbortError') ||
+        (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError')
+      ) {
+        if (!timedOut) throw error;
         const timeoutError = new Error('Request timed out. Please try again.');
         if (options?.onError) options.onError(timeoutError);
         throw timeoutError;

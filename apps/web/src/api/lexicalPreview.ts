@@ -30,10 +30,12 @@ export type LexicalPreviewResponse = {
 
 export async function fetchLexicalPreview(
   text: string,
-  threadId?: string
+  threadId?: string,
+  signal?: AbortSignal
 ): Promise<LexicalPreviewResponse> {
   return fetchJson<LexicalPreviewResponse>('/api/lexical/preview', {
     method: 'POST',
     body: JSON.stringify({ text, threadId, mode: 'composer_preview' }),
+    signal,
   });
 }

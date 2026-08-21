@@ -9,7 +9,7 @@ import {
   setComposerMatches,
   type ComposerState,
 } from './composerSlice';
-import { selectComposerMatchCounts, selectVisibleComposerMatches } from '../selectors/composerSelectors';
+import { selectComposerMatchCounts, selectComposerDraftIsEmpty, selectVisibleComposerMatches } from '../selectors/composerSelectors';
 import { makeStore } from '../index';
 
 const initial: ComposerState = {
@@ -88,5 +88,20 @@ describe('composerSelectors', () => {
       draft: 0,
       prefix: 0,
     });
+  });
+
+  it('only flips composer occupancy when the draft crosses empty', () => {
+    const store = makeStore();
+    expect(selectComposerDraftIsEmpty(store.getState())).toBe(true);
+
+    store.dispatch(setComposerDraft('M'));
+    expect(selectComposerDraftIsEmpty(store.getState())).toBe(false);
+    const occupied = selectComposerDraftIsEmpty(store.getState());
+
+    store.dispatch(setComposerDraft('Maya'));
+    expect(selectComposerDraftIsEmpty(store.getState())).toBe(occupied);
+
+    store.dispatch(setComposerDraft('   '));
+    expect(selectComposerDraftIsEmpty(store.getState())).toBe(true);
   });
 });

@@ -30,7 +30,7 @@ vi.mock('../../src/services/supabaseClient', () => ({
 import { previewLexicalSpans } from '../../src/services/lexical/lexicalPreviewService';
 import { inferWorkplaceAssociations } from '../../src/services/inference/work/workplaceInferenceService';
 import { applySkillFrequencyBoost, buildSkillGraphInferences } from '../../src/services/inference/work/skillGraphInferenceService';
-import { loadHistoryContext } from '../../src/services/inference/historyAssociationService';
+import { loadHistoryContext, resetHistoryContextCache } from '../../src/services/inference/historyAssociationService';
 import { inferenceAssociationService } from '../../src/services/inference/inferenceAssociationService';
 import { lexicalAnalyzerService } from '../../src/services/lexical/lexicalAnalyzerService';
 import { meaningResolutionService } from '../../src/services/meaning/meaningResolutionService';
@@ -51,6 +51,7 @@ describe('workplaceInference — robotics fixture', () => {
     mockCharacters = [];
     mockSkills = [];
     insertSpy.mockClear();
+    resetHistoryContextCache();
   });
 
   it('returns colored preview spans for org, role, people, skills, tasks, deployment site', async () => {

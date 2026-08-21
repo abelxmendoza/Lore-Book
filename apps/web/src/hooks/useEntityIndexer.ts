@@ -14,9 +14,9 @@ import {
 } from '../lib/certifiedEntityMatch';
 import { buildDemoCertifiedIndex } from '../lib/demoCertifiedIndex';
 import { detectDraftEntitiesInText } from '../lib/draftEntityDetect';
-import { fetchLexicalPreviewShared } from '../lib/lexicalPreviewCache';
+import { fetchLexicalPreviewShared, abortLexicalPreviewShared } from '../lib/lexicalPreviewCache';
 import { lexicalPreviewSpansToDraftMatches } from '../lib/lexicalPreviewToDraftMatches';
-import { fetchLoreBookParseShared } from '../lib/loreBookParseCache';
+import { fetchLoreBookParseShared, abortLoreBookParseShared } from '../lib/loreBookParseCache';
 import { loreBookParseToComposerMatches } from '../lib/loreBookParseToComposerMatches';
 import {
   findInstructionalExampleRanges,
@@ -218,6 +218,7 @@ export const useEntityIndexer = () => {
   const lastThreadIdRef = useRef<string | undefined>(undefined);
   const previewTimerRef = useRef<number | null>(null);
   const previewReqRef = useRef(0);
+  const previewAbortRef = useRef<AbortController | null>(null);
   const [retryTick, setRetryTick] = useState(0);
 
   const applyMatches = useCallback(
@@ -318,10 +319,30 @@ export const useEntityIndexer = () => {
     };
   }, []);
 
+  const abortInFlightPreview = useCallback(() => {
+    if (previewTimerRef.current) {
+      window.clearTimeout(previewTimerRef.current);
+      previewTimerRef.current = null;
+    }
+    previewAbortRef.current?.abort();
+    previewAbortRef.current = null;
+    abortLexicalPreviewShared();
+    abortLoreBookParseShared();
+  }, []);
+
+  /** Record the live draft immediately so an index that finishes loading
+   *  after the last keystroke can still match, without running the expensive
+   *  scan on the keystroke itself. */
+  const primeDraft = useCallback((text: string, threadId?: string) => {
+    lastTextRef.current = text;
+    lastThreadIdRef.current = threadId;
+  }, []);
+
   const analyze = useCallback(
     (text: string, threadId?: string) => {
       lastTextRef.current = text;
       lastThreadIdRef.current = threadId;
+      abortInFlightPreview();
       if (!text.trim()) {
         dispatch(setComposerMatches([]));
         return;
@@ -329,13 +350,15 @@ export const useEntityIndexer = () => {
       if (!sharedState.ready) return;
       applyMatches(text, sharedState.matchIndex, sharedState.entities);
 
-      if (previewTimerRef.current) window.clearTimeout(previewTimerRef.current);
       previewTimerRef.current = window.setTimeout(() => {
         const reqId = ++previewReqRef.current;
+        const controller = new AbortController();
+        previewAbortRef.current = controller;
         void Promise.allSettled([
-          fetchLexicalPreviewShared(text, threadId),
-          fetchLoreBookParseShared(text, threadId),
+          fetchLexicalPreviewShared(text, threadId, controller.signal),
+          fetchLoreBookParseShared(text, threadId, controller.signal),
         ]).then((results) => {
+          if (controller.signal.aborted) return;
           if (reqId !== previewReqRef.current) return;
           if (lastTextRef.current !== text) return;
           const preview =
@@ -351,7 +374,7 @@ export const useEntityIndexer = () => {
         });
       }, LEXICAL_PREVIEW_DEBOUNCE_MS);
     },
-    [applyMatches, dispatch, sharedState.matchIndex, sharedState.ready, sharedState.entities]
+    [abortInFlightPreview, applyMatches, dispatch, sharedState.matchIndex, sharedState.ready, sharedState.entities]
   );
 
   const retryLoad = useCallback(() => {
@@ -386,6 +409,8 @@ export const useEntityIndexer = () => {
     indexReady: sharedState.ready,
     indexError: sharedState.error,
     retryLoad,
+    abortInFlightPreview,
+    primeDraft,
     matches,
     characterMatches,
     locationMatches,
