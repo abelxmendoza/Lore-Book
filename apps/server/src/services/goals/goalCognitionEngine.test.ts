@@ -126,6 +126,25 @@ describe('Goal Cognition Engine', () => {
     expect(result.eligibility.eligible).toBe(true);
   });
 
+  it('accepts a named project milestone title as a complete quest', () => {
+    const result = evaluate('I need to finish the MemoVault launch', 'MemoVault launch');
+    expect(result.eligibility.semanticallyComplete).toBe(true);
+    expect(result.eligibility.eligible).toBe(true);
+    expect(result.eligibility.reasons).not.toContain('fragment_or_incomplete_title');
+  });
+
+  it('does not treat a failed launch report as a new quest', () => {
+    const result = evaluate('The MemoVault launch failed', 'MemoVault launch');
+    expect(result.eligibility.eligible).toBe(false);
+    expect(result.eligibility.intendedByUser).toBe(false);
+  });
+
+  it('still rejects a one-word project label as an incomplete quest title', () => {
+    const result = evaluate('MemoVault', 'MemoVault');
+    expect(result.eligibility.semanticallyComplete).toBe(false);
+    expect(result.eligibility.reasons).toContain('fragment_or_incomplete_title');
+  });
+
   it('routes a third-party assignment to obligation, not quest', () => {
     const result = evaluate(
       'Jesse told me to test four Ring devices.',
