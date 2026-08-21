@@ -655,7 +655,7 @@ describe('buildEventsBookClipboardText', () => {
       },
     ]);
 
-    expect(text).toContain('Life Log / Moments (1 item)');
+    expect(text).toContain('Timeline / Moments (1 item)');
     expect(text).toContain('1. Night out with Jamie');
     expect(text).toContain('People: Jamie');
     expect(text).toContain('Locations: Downtown');
@@ -681,7 +681,7 @@ describe('buildPatternsClipboardText', () => {
       },
     ]);
 
-    expect(text).toContain('Life Log / Patterns (1 item)');
+    expect(text).toContain('Timeline / Patterns (1 item)');
     expect(text).toContain('1. Punk Shows');
     expect(text).toContain('Occurrences: 6');
     expect(text).toContain('Continuity: Autobiographical (91%)');

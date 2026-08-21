@@ -15,7 +15,7 @@ Use these labels **everywhere** in product UI. Do not introduce synonyms in eyeb
 |--------|------------------------------------------|--------------------|---------------|
 | **Utterance** | A single thing you said or wrote in chat — the raw line LoreBook starts from. | **Message** *(only if evidence UI must name it; otherwise do not surface)* | Utterance, token, turn, fragment |
 | **Moment** | Something that happened in your life — a dated scene you can open, edit, or post. | **Moment** | Event, memory, occurrence, scene, episode, entry, happening |
-| **Timeline** | Your Moments arranged in time so you can see *when* life unfolded. | **Life Timeline** *(surface)* / **Timeline** *(short, in chrome)* | Life Log, Omni Timeline, Chronology, Memories, calendar-as-product-name |
+| **Timeline** | Your Moments arranged in time so you can see *when* life unfolded. | **Life Timeline** *(surface)* / **Timeline** *(short, in chrome)* | Life Log, Omni Timeline, Memories, calendar-as-product-name, Feed |
 | **Chapter** | A named stretch of your life that groups many Moments (an era or season). | **Chapter** | Period, era (as noun), life period, phase |
 | **Arc** | A storyline that runs through your life across Chapters (work, love, a place, a pursuit). | **Arc** | Storyline *(except inside Life Saga body copy if already shipped — prefer Arc)*, thread, track *(system-only)*, saga-item |
 
@@ -36,7 +36,7 @@ Use these labels **everywhere** in product UI. Do not introduce synonyms in eyeb
 | Omni Timeline / Timeline (as competing product name) | Life Timeline |
 | Post event | Post a moment |
 | Events / event card | Moments / Moment |
-| Chronology (tab) | Feed |
+| Feed | Chronology |
 | Memories / Memory book | *(remove)* or Facts *(subtool only)* |
 | Occurrence / co-occurrence | *(never in UI)* |
 | Scene (as Moment synonym) | Moment |
@@ -75,7 +75,7 @@ Canonical order:
 
 | Tab label | Short (mobile) | Purpose line (title attribute / hint) |
 |-----------|----------------|----------------------------------------|
-| **Feed** | Feed | Moments in time order |
+| **Chronology** | Chronology | Moments in time order |
 | **Lanes** | Lanes | Moments across parallel life tracks |
 | **Calendar** | Cal | Moments by day |
 | **Moments** | Moments | Browse and manage your Moment library |
@@ -85,7 +85,7 @@ Do **not** add a **Story** tab on Life Timeline. Story reading is **Life Saga**.
 
 ### 2.4 Empty states
 
-**Feed (no moments yet)**
+**Chronology (no moments yet)**
 - Title: **No Moments on your timeline yet**
 - Body: When you chat about your life — or post a Moment — it shows up here in time order.
 - CTA: **Post a moment**
@@ -153,7 +153,7 @@ Merge **Omni Timeline** + **Life Log** → **Life Timeline**. Keep **Life Saga**
 |--------------------|----------|-----|
 | **Calendar** view | **View-mode toggle** → tab **Calendar** | Core “when” job; one calendar only after merge. |
 | **Swimlanes** view | **View-mode toggle** → tab **Lanes** | Unique multi-track chronology; keep, rename for plain language. |
-| **Chronology** (stitched list) | **View-mode toggle** → tab **Feed** | Primary time-ordered stream; retire “Chronology” as a user word. |
+| **Chronology** (stitched list) | **View-mode toggle** → tab **Chronology** | Primary time-ordered stream. Keep the word Chronology — “Feed” is confusing. |
 | **Story** view (read arcs in Omni) | **Cut as a Timeline tab** → deep-link to **Life Saga** | Avoids a second story surface; Saga owns narrative reading. |
 | Generate / search-a-timeline control | **Keep** as chrome search on Life Timeline (not a tab) | Utility, not a competing browse mode. |
 | “memories” count in subtitle | **Cut / reword** → count **Moments** (and Chapters if shown) | Aligns with glossary; kills Memory collision. |
@@ -163,10 +163,10 @@ Merge **Omni Timeline** + **Life Log** → **Life Timeline**. Keep **Life Saga**
 
 | Current capability | Decision | Why |
 |--------------------|----------|-----|
-| **Moments** card library (grid browse) | **View-mode toggle** → tab **Moments** | Library/manage job is distinct from time-ordered Feed. |
+| **Moments** card library (grid browse) | **View-mode toggle** → tab **Moments** | Library/manage job is distinct from time-ordered Chronology. |
 | **Patterns** (recurring) tab | **View-mode toggle** → tab **Patterns** | Analysis of repetition; belongs on Timeline, not Saga. |
-| **Post event** composer | **Keep** as primary CTA **Post a moment** | Creation belongs on Life Timeline; feed + library both benefit. |
-| Category / impact / significance filters | **Keep** as filters inside **Moments** (and optionally Feed) | Browse controls, not separate surfaces. |
+| **Post event** composer | **Keep** as primary CTA **Post a moment** | Creation belongs on Life Timeline; chronology + library both benefit. |
+| Category / impact / significance filters | **Keep** as filters inside **Moments** (and optionally Chronology) | Browse controls, not separate surfaces. |
 | **Search facts** / Memory Explorer layout | **Keep as subtool** under **Moments** (not a top-level tab) | Facts are inside Moments; must not read as a fifth timeline. |
 | “Also see → Calendar” cross-link | **Cut** | Becomes an in-surface tab. |
 | “Also see → Narrative Anchors” | **Keep** as cross-link | Different product concern; not chronology. |
@@ -184,7 +184,7 @@ Merge **Omni Timeline** + **Life Log** → **Life Timeline**. Keep **Life Saga**
 
 ```
 Sidebar
-├── Life Timeline     ← when (Feed · Lanes · Calendar · Moments · Patterns)
+├── Life Timeline     ← when (Chronology · Lanes · Calendar · Moments · Patterns)
 └── Life Saga         ← story (Chapters · Arcs)
 
 Life Timeline primary verb:  Post a moment
@@ -200,7 +200,7 @@ Apply labels from this doc; do not invent alternatives.
 - [ ] Sidebar: single **Life Timeline** entry (replaces Omni Timeline + Life Log labels)
 - [ ] H1 / eyebrow / subtitle / first-time hint match §2.1
 - [ ] Primary CTA is **Post a moment** everywhere that previously said Post event
-- [ ] Tabs exactly: **Feed · Lanes · Calendar · Moments · Patterns** (no Story tab)
+- [ ] Tabs exactly: **Chronology · Lanes · Calendar · Moments · Patterns** (no Story tab; do not rename Chronology to Feed)
 - [ ] Empty states use §2.4 verbatim (or trim body only if space-constrained on mobile — keep titles)
 - [ ] Grep UI strings and eliminate banned terms in §1
 - [ ] Life Saga retains its own name; mutual “Also see” links use §2.6

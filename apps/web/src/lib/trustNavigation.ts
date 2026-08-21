@@ -9,7 +9,7 @@ const DOMAIN_BOOK_PATH: Record<TrustDomain, string> = {
   skills: '/skills',
   communities: '/organizations',
   relationships: '/love',
-  events: '/events',
+  events: '/timeline?view=moments',
   households: '/family',
 };
 

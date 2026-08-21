@@ -39,13 +39,13 @@ describe('demoFocusChat', () => {
     expect(text).toContain('Demo disclaimer');
   });
 
-  it('disclaims limited capability for Omni Timeline focus handoffs', () => {
+  it('disclaims limited capability for Timeline focus handoffs', () => {
     const focus: ChatFocus = {
       ...loveFocus,
       entityName: 'Street Photography',
       entityType: 'memory',
       sourceSurface: 'timeline',
-      sourceLabel: 'Omni Timeline',
+      sourceLabel: 'Timeline',
       relationshipId: undefined,
       baseline: undefined,
     };
@@ -53,7 +53,7 @@ describe('demoFocusChat', () => {
       "I'm focusing on my stitched timeline “Street Photography”.",
       focus,
     );
-    expect(text).toContain('Omni Timeline focus');
+    expect(text).toContain('Timeline focus');
     expect(text).toContain('Street Photography');
     expect(text).toMatch(/does \*\*not\*\* call the OpenAI API/i);
     expect(text).toMatch(/isn’t at full capability/i);

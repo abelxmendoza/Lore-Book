@@ -136,7 +136,6 @@ describe('Sidebar', () => {
     expect(screen.getAllByRole('button', { name: /Open love and relationships/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open groups view/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open locations view/i }).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByRole('button', { name: /Open life log/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open skills view/i }).length).toBeGreaterThanOrEqual(1);
 
     const focusButtons = screen
@@ -215,23 +214,35 @@ describe('Sidebar', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/login');
   });
 
-  it('lists Quests above Omni Timeline under Explore your story', () => {
+  it('lists life browse surfaces before Quests under Explore your story', () => {
     render(<Sidebar {...defaultProps} />);
 
     const exploreButtons = screen
       .getAllByRole('button')
       .map((btn) => btn.getAttribute('aria-label') ?? '')
-      .filter((label) => ['Open quests', 'Open timeline view', 'Open Timelines Library'].includes(label));
+      .filter((label) =>
+        [
+          'Open timeline view',
+          'Open Timelines Library',
+          'Open narrative anchors',
+          'Open life saga',
+          'Open quests',
+        ].includes(label),
+      );
 
     // Desktop + mobile drawers both render the cluster; assert the first one.
-    expect(exploreButtons.slice(0, 3)).toEqual([
-      'Open quests',
+    expect(exploreButtons.slice(0, 5)).toEqual([
       'Open timeline view',
       'Open Timelines Library',
+      'Open narrative anchors',
+      'Open life saga',
+      'Open quests',
     ]);
+    expect(screen.queryByRole('button', { name: /Open life log/i })).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Timeline is when things happened/i).length).toBeGreaterThanOrEqual(1);
   });
 
-  it('nests Timelines Library under Omni Timeline and deep-links to the library view', async () => {
+  it('nests Timelines Library under Timeline and deep-links to the library view', async () => {
     const user = userEvent.setup();
     render(<Sidebar {...defaultProps} />);
 

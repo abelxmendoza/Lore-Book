@@ -70,7 +70,7 @@ export function openOrgTimelineMomentChat(input: {
   });
 }
 
-/** True when this timeline row is a durable Life Log Event (vs detected stub). */
+/** True when this timeline row is a durable Timeline moment (vs detected stub). */
 export function isOpenableLifeLogTimelineEvent(event: OrgDerivedEvent): boolean {
   if (event.source === 'user_posted') return true;
   if (event.id.startsWith('demo-posted-event-')) return true;

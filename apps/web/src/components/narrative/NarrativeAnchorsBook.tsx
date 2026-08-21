@@ -494,7 +494,7 @@ export function NarrativeAnchorsBook() {
               </div>
               <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">Narrative Anchors</h1>
               <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/55 sm:text-base">
-                Chapters your memories keep returning to.
+                Chapters that keep coming back.
               </p>
               <StorySurfaceLinks current="anchors" className="mt-3" />
             </div>

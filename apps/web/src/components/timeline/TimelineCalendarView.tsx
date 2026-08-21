@@ -1,6 +1,6 @@
 /**
  * Canonical month calendar — occasions + stitched events/moments by day.
- * Single calendar for the app (Omni Timeline). Life Log links here.
+ * Single calendar for the app Timeline. Moments and old Life Log links land here.
  */
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
@@ -27,6 +27,7 @@ import { fetchJson } from '../../lib/api';
 import type { CalendarDayItem } from '../../api/calendarMonth';
 import type { Event } from '../events/EventProfileCard';
 import { EventDetailModal } from '../events/EventDetailModal';
+import { openTimelineItemDetail } from '../../lib/resolveTimelineItemDetail';
 import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 import { TimelineStitchedView } from './TimelineStitchedView';
 import { TimelineDateHeader, TimelineMonthBanner } from './TimelineDateDisplay';
@@ -166,53 +167,28 @@ export const TimelineCalendarView = ({
 
   const openDayItem = useCallback(
     async (item: CalendarDayItem) => {
-      const sourceId = item.sourceId ?? item.id;
-      const isJournal =
-        item.kind === 'moment' ||
-        item.sourceKind === 'journal_entry' ||
-        item.sourceType === 'journal';
       setOpenError(null);
-      if (isJournal) {
-        openMemory({
-          id: sourceId,
-          journal_entry_id: sourceId,
-          content: item.body || item.title,
-          date: item.sortTime,
-          title: item.title,
-        });
-        setDaySheetOpen(false);
-        return;
-      }
-
       setOpeningItemId(item.id);
       try {
-        const eventId =
-          item.sourceKind === 'resolved_event' || item.kind === 'event' ? sourceId : item.id;
-        const res = await fetchJson<{ success?: boolean; event?: Event }>(
-          `/api/conversation/events/${eventId}`,
-        );
-        if (res?.event) {
-          setSelectedEvent(res.event);
-          setDaySheetOpen(false);
-        } else {
-          setOpenError('Could not load that event. Opening as a memory instead.');
-          openMemory({
-            id: sourceId,
-            content: item.body || item.title,
-            date: item.sortTime,
-            title: item.title,
-          });
-          setDaySheetOpen(false);
+        const resolution = await openTimelineItemDetail(item, {
+          openEvent: (event) => {
+            setSelectedEvent(event);
+            setDaySheetOpen(false);
+          },
+          openMemory: (memory) => {
+            openMemory(memory);
+            setDaySheetOpen(false);
+          },
+          openLifeArc: (id, title) => {
+            setSelectedOccasion({ id, title: title ?? item.title });
+            setDaySheetOpen(false);
+          },
+        });
+        if (resolution.route === 'none') {
+          setOpenError('This item has no detail surface yet.');
         }
       } catch {
-        setOpenError('Could not load that event. Opening as a memory instead.');
-        openMemory({
-          id: sourceId,
-          content: item.body || item.title,
-          date: item.sortTime,
-          title: item.title,
-        });
-        setDaySheetOpen(false);
+        setOpenError('Could not open that item.');
       } finally {
         setOpeningItemId(null);
       }
@@ -264,8 +240,25 @@ export const TimelineCalendarView = ({
               key={o.id}
               type="button"
               onClick={() => {
-                setSelectedOccasion({ id: o.id, title: o.title });
-                setDaySheetOpen(false);
+                void openTimelineItemDetail(
+                  {
+                    id: `occasion:${o.id}`,
+                    kind: 'occasion',
+                    sourceKind: 'occasion',
+                    sourceId: o.id,
+                    lifeArcId: o.id,
+                    title: o.title,
+                    body: o.summary,
+                  },
+                  {
+                    openEvent: setSelectedEvent,
+                    openMemory,
+                    openLifeArc: (id, title) => {
+                      setSelectedOccasion({ id, title: title ?? o.title });
+                      setDaySheetOpen(false);
+                    },
+                  },
+                );
               }}
               className="w-full text-left rounded-xl border border-violet-500/30 bg-violet-500/10 p-3 active:bg-violet-500/15 touch-manipulation min-h-[44px]"
             >

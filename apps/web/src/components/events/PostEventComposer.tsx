@@ -1,6 +1,6 @@
 /**
- * Shared composer for posting a Life Log Event.
- * Easy path: write a story (and optional when / photos) → Post event → main chat.
+ * Shared composer for posting a moment on Timeline.
+ * Easy path: write a story (and optional when / photos) → Post a moment → main chat.
  * Extra fields live under "More details".
  */
 
@@ -224,8 +224,8 @@ export function PostEventComposer({ open, onClose, onCreated, prefill }: Props) 
       entityName: created.title,
       entityType: 'event',
       sourceSurface: 'events',
-      sourceLabel: 'Life Log',
-      knowledgeScope: 'process this posted event into timelines and knowledge bases',
+      sourceLabel: 'Timeline',
+      knowledgeScope: 'process this posted moment into timelines and knowledge bases',
       initialPrompt: prompt,
       autoSubmit: true,
       startNewThread: true,
@@ -328,14 +328,14 @@ export function PostEventComposer({ open, onClose, onCreated, prefill }: Props) 
       className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/70 p-0 sm:p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Post an event"
+      aria-label="Post a moment"
       data-testid="post-event-composer"
     >
       <div className="w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-white/12 bg-zinc-950 shadow-2xl">
         <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-white/10 bg-zinc-950/95 px-4 py-3 backdrop-blur">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-200/70">Life Log</p>
-            <h2 className="text-base font-semibold text-white">Post an event</h2>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-200/70">Timeline</p>
+            <h2 className="text-base font-semibold text-white">Post a moment</h2>
           </div>
           <button
             type="button"
@@ -546,7 +546,7 @@ export function PostEventComposer({ open, onClose, onCreated, prefill }: Props) 
           )}
 
           <p className="text-[11px] text-white/35">
-            Post event opens main chat so Lore can place it on your timeline and update your knowledge base.
+            Post a moment opens Chat so Lore can place it on your timeline and update your knowledge base.
           </p>
 
           {error && (
@@ -567,7 +567,7 @@ export function PostEventComposer({ open, onClose, onCreated, prefill }: Props) 
             disabled={saving || mediaCompressing}
             data-testid="post-event-submit"
           >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Post event'}
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Post moment'}
           </Button>
         </div>
       </div>

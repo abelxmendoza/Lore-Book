@@ -121,7 +121,7 @@ describe('MainCharacterDetailModal', () => {
     expect(screen.getByTestId('main-tab-chat')).toBeInTheDocument();
   });
 
-  it('timeline tab stays in the modal and hands off to Omni Timeline on CTA', async () => {
+  it('timeline tab stays in the modal and hands off to Timeline on CTA', async () => {
     const user = userEvent.setup();
     render(
       <MainCharacterDetailModal character={mainCharacter} onClose={onClose} />,

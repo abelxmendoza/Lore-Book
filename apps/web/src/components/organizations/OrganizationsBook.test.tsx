@@ -35,10 +35,6 @@ vi.mock('../groups/GroupMergePanel', () => ({
 
 import { fetchJson } from '../../lib/api';
 
-vi.mock('../timeline/ColorCodedTimeline', () => ({
-  ColorCodedTimeline: () => <div data-testid="color-coded-timeline" />,
-}));
-
 vi.mock('../ui/SearchWithAutocomplete', () => ({
   SearchWithAutocomplete: ({ onChange }: { onChange: (v: string) => void }) => (
     <input data-testid="search-autocomplete" onChange={e => onChange(e.target.value)} />

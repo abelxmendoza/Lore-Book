@@ -39,7 +39,7 @@ describe('buildPostedEventIngestPrompt', () => {
       photoCount: 0,
       storyOnly: true,
     });
-    expect(prompt).toMatch(/dumped a Life Log moment/i);
+    expect(prompt).toMatch(/dumped a Timeline moment/i);
     expect(prompt).toMatch(/Approximate dates/i);
   });
 });

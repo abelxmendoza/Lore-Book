@@ -30,6 +30,7 @@ import {
 import { NarrativeProvenancePanel } from '../narrative/NarrativeProvenancePanel';
 import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -976,7 +977,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
       entityName: displayTitle,
       entityType: 'event',
       sourceSurface: 'events',
-      sourceLabel: 'Life Log',
+      sourceLabel: CHAT_FOCUS_SOURCE_LABELS.events,
       knowledgeScope: 'event detail, participants, meaning, and connected evidence',
       initialPrompt:
         `Let’s talk about “${displayTitle}”. Start by giving me a grounded response about ` +

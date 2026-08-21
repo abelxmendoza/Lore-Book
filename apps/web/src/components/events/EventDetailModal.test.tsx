@@ -128,7 +128,7 @@ describe('EventDetailModal', () => {
       entityName: 'Test Event',
       entityType: 'event',
       sourceSurface: 'events',
-      sourceLabel: 'Life Log',
+      sourceLabel: 'Timeline',
       autoSubmit: true,
     });
     expect(handoff.detail.initialPrompt).toMatch(/start by giving me a grounded response/i);

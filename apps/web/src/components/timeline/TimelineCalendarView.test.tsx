@@ -1,10 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TimelineCalendarView } from './TimelineCalendarView';
 import type { CalendarMonthResult } from '../../api/calendarMonth';
 
-const reloadMock = vi.fn(async () => undefined);
+const { reloadMock, openMemoryMock, fetchJsonMock } = vi.hoisted(() => ({
+  reloadMock: vi.fn(async () => undefined),
+  openMemoryMock: vi.fn(),
+  fetchJsonMock: vi.fn(),
+}));
 
 vi.mock('../../hooks/useCalendarMonth', () => ({
   useCalendarMonth: vi.fn(),
@@ -15,19 +19,23 @@ vi.mock('../../hooks/useIsMobile', () => ({
 }));
 
 vi.mock('../../contexts/EntityModalContext', () => ({
-  useEntityModal: () => ({ openMemory: vi.fn() }),
+  useEntityModal: () => ({ openMemory: openMemoryMock }),
 }));
 
 vi.mock('../../lib/api', () => ({
-  fetchJson: vi.fn(),
+  fetchJson: fetchJsonMock,
 }));
 
 vi.mock('./TimelineStitchedView', () => ({
-  TimelineStitchedView: () => <div data-testid="stitched-overlay" />,
+  TimelineStitchedView: ({ lifeArcId }: { lifeArcId?: string }) => (
+    <div data-testid="stitched-overlay">{lifeArcId}</div>
+  ),
 }));
 
 vi.mock('../events/EventDetailModal', () => ({
-  EventDetailModal: () => null,
+  EventDetailModal: ({ event }: { event: { title: string } }) => (
+    <div data-testid="event-detail-modal">{event.title}</div>
+  ),
 }));
 
 import { useCalendarMonth } from '../../hooks/useCalendarMonth';
@@ -71,6 +79,16 @@ function monthResult(overrides?: Partial<CalendarMonthResult>): CalendarMonthRes
             sourceId: 'journal-1',
             body: 'Wrote down what happened.',
           },
+          {
+            id: 'event:evt-1',
+            kind: 'event',
+            title: 'Vanguard Robotics demo',
+            sortTime: `${FIXED_DATE}T16:00:00.000Z`,
+            userPresence: 'attended',
+            sourceKind: 'resolved_event',
+            sourceId: 'evt-1',
+            body: 'Marcus presented MemoVault.',
+          },
         ],
         attendedCount: 2,
         heardAboutCount: 0,
@@ -84,6 +102,11 @@ function monthResult(overrides?: Partial<CalendarMonthResult>): CalendarMonthRes
 describe('TimelineCalendarView', () => {
   beforeEach(() => {
     reloadMock.mockClear();
+    openMemoryMock.mockClear();
+    fetchJsonMock.mockReset();
+    fetchJsonMock.mockResolvedValue({
+      event: { id: 'evt-1', title: 'Vanguard Robotics demo' },
+    });
     const data = monthResult();
     useCalendarMonthMock.mockReturnValue({
       data,
@@ -104,7 +127,7 @@ describe('TimelineCalendarView', () => {
       expect(detail).toHaveTextContent('Team dinner');
     });
     expect(detail).toHaveTextContent('Late notes');
-    expect(detail).toHaveTextContent(/2 items/i);
+    expect(detail).toHaveTextContent(/3 items/i);
   });
 
   it('surfaces load errors with retry', async () => {
@@ -176,5 +199,34 @@ describe('TimelineCalendarView', () => {
     expect(neighborhood).toHaveTextContent('overlapping chapters');
     expect(neighborhood).toHaveTextContent('Martial arts');
     expect(neighborhood).toHaveTextContent('Relationships');
+  });
+
+  it('opens a journal-backed moment as memory detail, not resolved-event detail', async () => {
+    const user = userEvent.setup();
+    render(<TimelineCalendarView initialDate={FIXED_DATE} />);
+    await user.click(screen.getByText('Late notes'));
+    expect(openMemoryMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'journal-1', journal_entry_id: 'journal-1' }),
+    );
+    expect(fetchJsonMock).not.toHaveBeenCalledWith('/api/conversation/events/journal-1');
+  });
+
+  it('opens a resolved event by source id', async () => {
+    const user = userEvent.setup();
+    render(<TimelineCalendarView initialDate={FIXED_DATE} />);
+    await user.click(screen.getByText('Vanguard Robotics demo'));
+    await waitFor(() => {
+      expect(fetchJsonMock).toHaveBeenCalledWith('/api/conversation/events/evt-1');
+    });
+    expect(await screen.findByTestId('event-detail-modal')).toHaveTextContent('Vanguard Robotics demo');
+  });
+
+  it('opens an occasion as the life-arc container', async () => {
+    const user = userEvent.setup();
+    render(<TimelineCalendarView initialDate={FIXED_DATE} />);
+    const detail = screen.getByTestId('calendar-day-detail');
+    await user.click(within(detail).getByText('Team dinner'));
+    expect(await screen.findByTestId('stitched-overlay')).toHaveTextContent('occ-1');
+    expect(fetchJsonMock).not.toHaveBeenCalledWith('/api/conversation/events/occ-1');
   });
 });

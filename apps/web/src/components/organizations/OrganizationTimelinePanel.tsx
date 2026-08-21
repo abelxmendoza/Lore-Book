@@ -25,7 +25,9 @@ type OrgSwimEvent = SwimlaneEvent & {
   source: OrgDerivedEvent['source'];
 };
 
-/** Shape of a row from GET /api/organizations/:id/timelines (entityTimelineBuilder.ts's EntityTimelineEvent). */
+/** Shape of a row from GET /api/organizations/:id/timelines (entityTimelineBuilder.ts's EntityTimelineEvent).
+ *  Stitched chronology has no organization_id / organizationIds seam yet, so this
+ *  panel stays on the org timeline island until that adapter exists. */
 type EntityTimelineEntry = {
   id: string;
   eventId?: string;

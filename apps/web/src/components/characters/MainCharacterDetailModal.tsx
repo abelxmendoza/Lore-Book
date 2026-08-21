@@ -1341,7 +1341,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                 </div>
               </TabsContent>
 
-              {/* Timeline — hand off to Omni Timeline (no in-modal timeline body) */}
+              {/* Timeline — hand off to Timeline (no in-modal timeline body) */}
               <TabsContent value="timeline" className={tabPanelClass}>
                 <div
                   className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-8 text-center space-y-4"
@@ -1349,10 +1349,10 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                 >
                   <Clock className="h-10 w-10 mx-auto text-amber-300/70" />
                   <div className="space-y-1.5">
-                    <h3 className="text-base font-semibold text-white">Your life on Omni Timeline</h3>
+                    <h3 className="text-base font-semibold text-white">Your life on Timeline</h3>
                     <p className="text-sm text-white/50 max-w-md mx-auto">
-                      Chronology, arcs, and event search live in Omni Timeline — open it to explore
-                      your story across time.
+                      Chronology, lanes, and your moment library live in Timeline — open it to see
+                      when things happened.
                     </p>
                   </div>
                   <Button
@@ -1362,7 +1362,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                     data-testid="main-character-open-omni-timeline"
                   >
                     <Clock className="h-4 w-4" />
-                    Open Omni Timeline
+                    Open Timeline
                   </Button>
                 </div>
               </TabsContent>

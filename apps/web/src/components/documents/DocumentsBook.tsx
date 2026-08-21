@@ -333,10 +333,10 @@ export function DocumentsBook() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => navigate('/events')}
+                      onClick={() => navigate('/timeline?view=moments')}
                       className="text-xs text-primary hover:underline"
                     >
-                      Open life log
+                      Open moments
                     </button>
                   </div>
                 </div>

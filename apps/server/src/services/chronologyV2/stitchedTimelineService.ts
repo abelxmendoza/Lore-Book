@@ -70,6 +70,9 @@ export type StitchedTimelineItem = {
   validUntil?: string | null;
   /** Independent temporal coordinates; sortTime remains a compatibility field. */
   temporal?: CanonicalTemporalModel;
+  peopleIds?: string[];
+  locationIds?: string[];
+  organizationIds?: string[];
 };
 
 export type NarrativeChapterData = {
@@ -472,6 +475,9 @@ function projectStitchedItems(items: StitchedTimelineItem[]): {
       temporalRole: original?.temporalRole,
       mergedCount: original?.mergedCount,
       mergedTitles: original?.mergedTitles,
+      peopleIds: original?.peopleIds,
+      locationIds: original?.locationIds,
+      organizationIds: original?.organizationIds,
     };
   };
   return {
@@ -526,6 +532,12 @@ export class StitchedTimelineService {
        * so they're excluded rather than guessed at.
        */
       character_id?: string;
+      /**
+       * Restrict the global scope to events involving this location (matched
+       * against resolved_events.locations). Journals and timeline_events are
+       * excluded when they lack location ids rather than inferred by name.
+       */
+      location_id?: string;
       /**
        * Cap the final item count after sorting/clustering (applied last, so a
        * cap never discards dedup accuracy). Undefined = unbounded, matching
@@ -632,7 +644,7 @@ export class StitchedTimelineService {
         eventIds.length
           ? supabaseAdmin
               .from('resolved_events')
-              .select('id, title, summary, start_time, confidence, metadata, tags, temporal_precision, temporal_source, temporal_confidence, created_at')
+              .select('id, title, summary, start_time, confidence, metadata, tags, people, locations, temporal_precision, temporal_source, temporal_confidence, created_at')
               .in('id', eventIds)
           : Promise.resolve({ data: [] as any[] }),
         journalIds.length
@@ -679,6 +691,8 @@ export class StitchedTimelineService {
             knownFrom: (temporalMeta.known_from as string | undefined) ?? (e.created_at as string | null) ?? null,
             userPresence: (link.user_presence as StitchedTimelineItem['userPresence']) ?? 'unknown',
             temporalRole: link.temporal_role ?? undefined,
+            peopleIds: (e.people as string[]) ?? [],
+            locationIds: (e.locations as string[]) ?? [],
           });
           seenEventIds.add(e.id);
         }
@@ -716,7 +730,7 @@ export class StitchedTimelineService {
     } else if (isNarrativeConsolidationArc && narrativeEventIds.length > 0) {
       const { data: linkedEvents } = await supabaseAdmin
         .from('resolved_events')
-        .select('id, title, summary, start_time, confidence, metadata, tags, temporal_precision, temporal_source, temporal_confidence, created_at')
+        .select('id, title, summary, start_time, confidence, metadata, tags, people, locations, temporal_precision, temporal_source, temporal_confidence, created_at')
         .eq('user_id', userId)
         .in('id', narrativeEventIds);
 
@@ -749,6 +763,8 @@ export class StitchedTimelineService {
           userPresence: (meta.user_presence as StitchedTimelineItem['userPresence']) ?? 'unknown',
           temporalRole: primaryRole,
           contribution: chapter?.contributionScores[e.id],
+          peopleIds: (e.people as string[]) ?? [],
+          locationIds: (e.locations as string[]) ?? [],
         });
         seenEventIds.add(e.id);
       }
@@ -756,7 +772,7 @@ export class StitchedTimelineService {
       if (chapter?.backgroundEventIds.length) {
         const { data: backgroundRows } = await supabaseAdmin
           .from('resolved_events')
-          .select('id, title, summary, start_time, confidence, metadata')
+          .select('id, title, summary, start_time, confidence, metadata, people, locations')
           .eq('user_id', userId)
           .in('id', chapter.backgroundEventIds);
         chapterBackground = (backgroundRows ?? []).map((event) => ({
@@ -772,13 +788,17 @@ export class StitchedTimelineService {
           sourceType: 'resolved_event',
           confidence: Number(event.confidence ?? 1),
           contribution: chapter?.contributionScores[event.id as string],
+          peopleIds: (event.people as string[]) ?? [],
+          locationIds: (event.locations as string[]) ?? [],
         }));
       }
     } else {
       const candidatesByKey = new Map<string, CohesionCandidate>();
       const characterId = opts.character_id;
+      const locationId = opts.location_id;
+      const entityScoped = Boolean(characterId || locationId);
 
-      for (const m of characterId ? [] : moments) {
+      for (const m of entityScoped ? [] : moments) {
         const sourceId = m.journal_entry_id || m.id;
         const key = `moment:${sourceId}`;
         items.push({
@@ -824,21 +844,29 @@ export class StitchedTimelineService {
           .maybeSingle();
         characterName = (characterRow?.name as string | undefined) ?? undefined;
       }
-      const scopedResolvedRows = characterId
-        ? (resolvedRows ?? []).filter((e) =>
-            characterBelongsOnCanonicalEvent(
+      const scopedResolvedRows = (resolvedRows ?? []).filter((e) => {
+        const people = (e.people as string[] | null) ?? [];
+        const locations = (e.locations as string[] | null) ?? [];
+        if (characterId) {
+          if (
+            !characterBelongsOnCanonicalEvent(
               {
                 id: e.id as string,
                 title: (e.title as string | null) ?? null,
                 summary: (e.summary as string | null) ?? null,
-                people: (e.people as string[] | null) ?? [],
-                locations: (e.locations as string[] | null) ?? [],
+                people,
+                locations,
                 metadata: (e.metadata as Record<string, unknown> | null) ?? {},
               },
               { id: characterId, name: characterName },
-            ).associated,
-          )
-        : (resolvedRows ?? []);
+            ).associated
+          ) {
+            return false;
+          }
+        }
+        if (locationId && !locations.includes(locationId)) return false;
+        return true;
+      });
       const datedResolved = scopedResolvedRows.filter(
         (e) => typeof e.start_time === 'string' && e.start_time.length > 0,
       );
@@ -871,6 +899,8 @@ export class StitchedTimelineService {
           knownFrom: (e.created_at as string | null) ?? null,
           occurrenceStatus: 'unresolved',
           projectionRole: 'unresolved',
+          peopleIds: (e.people as string[]) ?? [],
+          locationIds: (e.locations as string[]) ?? [],
         });
         seenEventIds.add(e.id as string);
       }
@@ -940,6 +970,8 @@ export class StitchedTimelineService {
           ...(cluster.members.length > 1
             ? { mergedCount: cluster.members.length, mergedTitles: cluster.mergedTitles }
             : {}),
+          peopleIds: cluster.peopleIds,
+          locationIds: cluster.locationIds,
         });
         candidatesByKey.set(key, {
           key,
@@ -952,7 +984,7 @@ export class StitchedTimelineService {
         });
       }
 
-      for (const e of characterId ? [] : eventRows ?? []) {
+      for (const e of entityScoped ? [] : eventRows ?? []) {
         if (seenEventIds.has(e.id)) continue;
         const occurredAt = e.occurred_at ?? e.event_date ?? null;
         const sortTime = occurredAt ?? e.created_at ?? new Date(0).toISOString();

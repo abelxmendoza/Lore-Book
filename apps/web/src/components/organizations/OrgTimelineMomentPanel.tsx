@@ -139,7 +139,7 @@ export function OrgTimelineMomentPanel({
               data-testid="org-moment-post-as-event"
             >
               <Calendar className="h-3.5 w-3.5 mr-1.5" />
-              Post as Life Log Event
+              Post as Timeline moment
             </Button>
           )}
         </div>

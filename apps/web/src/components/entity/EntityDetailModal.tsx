@@ -9,8 +9,14 @@ import { ChatMessage, type Message } from '../../features/chat/message/ChatMessa
 import { useChatStream } from '../../hooks/useChatStream';
 import { fetchJson } from '../../lib/api';
 import { fetchCharacterList } from '../../api/characterList';
-import { searchTimelines, fetchTimeline } from '../../api/timelineV2';
-import { useTimelineV2 } from '../../hooks/useTimelineV2';
+import { stitchedTimelineApi } from '../../api/stitchedTimeline';
+import { useLifeArcs } from '../../hooks/useLifeArcs';
+import {
+  associatedLifeArcs,
+  lifeArcToTimelineContainer,
+  searchLifeArcs,
+} from '../../lib/lifeArcTimelineAdapter';
+import { stitchedItemsToChronology } from '../../lib/unifiedTimeline';
 import type { ChronologyEntry, Timeline } from '../../types/timelineV2';
 import type { Character } from '../characters/CharacterProfileCard';
 import type { LocationProfile } from '../locations/LocationProfileCard';
@@ -84,7 +90,7 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
 
   const { streamChat } = useChatStream();
-  const { timelines: allTimelines } = useTimelineV2();
+  const { arcs } = useLifeArcs();
 
   // Load entity details and connections
   useEffect(() => {
@@ -137,64 +143,98 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
           if (scopes.success) {
             setEntityScopes(scopes.scopes);
           }
+          const matchedArcs = associatedLifeArcs(arcs, {
+            sourceId: entity.id,
+            entityIds: [entity.id],
+          });
+          setAssociatedTimelines(matchedArcs.map((arc) => lifeArcToTimelineContainer(arc)));
         } else if (entity.type === 'location' && entity.id) {
           const { location } = await fetchJson<{ location: LocationProfile }>(`/api/locations/${entity.id}`);
           setEntityData(prev => ({ ...prev, location }));
-        } else if (entity.type === 'memory' && entity.memory) {
-          // Memory connections - find related characters and locations
-          const memory = entity.memory;
-          
-          // Load full journal entry to get summary and other details
-          try {
-            const journalEntry = await fetchJson<{
-              id: string;
-              content: string;
-              date: string;
-              summary?: string | null;
-              tags?: string[];
-              mood?: string | null;
-              metadata?: Record<string, unknown>;
-            }>(`/api/entries/${memory.journal_entry_id}`);
-            
-            // Update entity data with full journal entry info
-            setEntityData(prev => ({
-              ...prev,
-              memory: {
-                ...memory,
-                summary: journalEntry.summary,
-                tags: journalEntry.tags,
-                mood: journalEntry.mood,
-                metadata: journalEntry.metadata
-              } as any
-            }));
-          } catch (error) {
-            console.error('Error loading journal entry:', error);
-          }
-          
-          if (memory.timeline_memberships && memory.timeline_memberships.length > 0) {
-          // Load timeline connections
-          const timelineConnections = memory.timeline_memberships.map(timelineId => ({
-            type: 'memory' as EntityType,
-            id: timelineId,
-            name: memory.timeline_names?.find((_, idx) => memory.timeline_memberships?.[idx] === timelineId) || 'Timeline',
-            relation: 'part of'
-          }));
-          setConnections(timelineConnections);
-
-          // Load full timeline data for associated timelines
-          const timelinePromises = memory.timeline_memberships.map(async (timelineId) => {
-            try {
-              const timelineData = await fetchTimeline(timelineId);
-              return timelineData.timeline;
-            } catch (error) {
-              // Fallback to finding in allTimelines if fetch fails
-              return allTimelines.find(t => t.id === timelineId);
-            }
+          const matchedArcs = associatedLifeArcs(arcs, {
+            sourceId: entity.id,
+            entityIds: [entity.id],
           });
-          const loadedTimelines = (await Promise.all(timelinePromises)).filter((t): t is Timeline => t !== undefined);
-          setAssociatedTimelines(loadedTimelines);
+          setAssociatedTimelines(matchedArcs.map((arc) => lifeArcToTimelineContainer(arc)));
+        } else if (entity.type === 'memory' && entity.memory) {
+          const memory = entity.memory;
+          let nextMemory: ChronologyEntry = { ...memory };
+
+          if (memory.journal_entry_id) {
+            try {
+              const journalEntry = await fetchJson<{
+                id: string;
+                content: string;
+                date: string;
+                summary?: string | null;
+                tags?: string[];
+                mood?: string | null;
+                metadata?: Record<string, unknown>;
+              }>(`/api/entries/${memory.journal_entry_id}`);
+              nextMemory = {
+                ...nextMemory,
+                summary: journalEntry.summary,
+                tags: journalEntry.tags ?? nextMemory.tags,
+                mood: journalEntry.mood,
+                metadata: journalEntry.metadata,
+              } as ChronologyEntry;
+            } catch (error) {
+              console.error('Error loading journal entry:', error);
+            }
+          }
+
+          try {
+            const occurredDay = (memory.start_time || entity.date || '').slice(0, 10);
+            const stitched = await stitchedTimelineApi.get({
+              scope_type: 'global',
+              ...(occurredDay ? { start_time: occurredDay, end_time: occurredDay } : {}),
+            });
+            const pool = [...stitched.items, ...(stitched.unresolved_items ?? [])];
+            const match = pool.find((item) =>
+              item.sourceId === entity.id
+              || item.id === entity.id
+              || (item.sourceIds ?? []).includes(entity.id)
+              || (memory.journal_entry_id != null && (
+                item.sourceId === memory.journal_entry_id
+                || (item.sourceIds ?? []).includes(memory.journal_entry_id)
+              )),
+            );
+            if (match) {
+              const [canonical] = stitchedItemsToChronology([match]);
+              nextMemory = {
+                ...nextMemory,
+                ...canonical,
+                id: nextMemory.id,
+                journal_entry_id: nextMemory.journal_entry_id || canonical.journal_entry_id,
+                content: canonical.content || nextMemory.content,
+                timeline_memberships: nextMemory.timeline_memberships ?? [],
+                timeline_names: canonical.timeline_names?.length
+                  ? canonical.timeline_names
+                  : nextMemory.timeline_names,
+              };
+            }
+          } catch (error) {
+            console.error('Error loading stitched moment:', error);
+          }
+
+          setEntityData((prev) => ({ ...prev, memory: nextMemory }));
+
+          const matchedArcs = associatedLifeArcs(arcs, {
+            sourceId: nextMemory.source_id ?? nextMemory.journal_entry_id ?? entity.id,
+            membershipIds: nextMemory.timeline_memberships,
+            entityIds: [
+              ...((nextMemory as { people_ids?: string[] }).people_ids ?? []),
+              ...((nextMemory as { location_ids?: string[] }).location_ids ?? []),
+            ],
+          });
+          setAssociatedTimelines(matchedArcs.map((arc) => lifeArcToTimelineContainer(arc)));
+          setConnections(matchedArcs.map((arc) => ({
+            type: 'memory' as EntityType,
+            id: arc.id,
+            name: arc.title,
+            relation: 'part of',
+          })));
         }
-      }
     } catch (error) {
       console.error('Error loading entity data:', error);
     } finally {
@@ -203,7 +243,7 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
   };
 
   loadEntityData();
-}, [entity, allTimelines]);
+}, [entity, arcs]);
 
   // Auto-scroll chat to bottom
   useEffect(() => {
@@ -421,16 +461,19 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
 
     setSearchLoading(true);
     try {
-      const results = await searchTimelines(query, 'natural');
+      const matches = searchLifeArcs(arcs, query);
       setSearchResults(
-        results.results.map(result => ({
-          id: result.timeline.id,
-          title: result.timeline.title,
-          type: result.timeline.timeline_type,
-          description: result.timeline.description || undefined,
-          start_date: result.timeline.start_date,
-          end_date: result.timeline.end_date || null
-        }))
+        matches.map((arc) => {
+          const container = lifeArcToTimelineContainer(arc);
+          return {
+            id: container.id,
+            title: container.title,
+            type: container.timeline_type,
+            description: container.description || undefined,
+            start_date: container.start_date,
+            end_date: container.end_date || null,
+          };
+        }),
       );
     } catch (error) {
       console.error('Timeline search error:', error);
@@ -438,7 +481,7 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
     } finally {
       setSearchLoading(false);
     }
-  }, []);
+  }, [arcs]);
 
   // Debounced search
   useEffect(() => {

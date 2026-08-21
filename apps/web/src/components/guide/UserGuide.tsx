@@ -177,9 +177,9 @@ const GUIDE_SECTIONS: GuideSection[] = [
         </p>
         <BulletList
           items={[
-            'Omni Timeline — calendar, swimlanes, and story views',
-            'Life Saga — long-form narrative arcs across your history',
-            'Events and scenes link back to people and places',
+            'Timeline — when things happened (chronology, swimlanes, calendar)',
+            'Life Saga — read the same life as a story of chapters and arcs',
+            'Moments on Timeline link back to people and places',
           ]}
         />
       </div>

@@ -8,6 +8,14 @@ import { buildLifeSagaClipboardText } from '../../lib/sagaClipboard';
 import { Button } from '../ui/button';
 import { ChapterDetailDrawer, type ChapterContext } from './ChapterDetailDrawer';
 import type { SagaOverview, SagaStoryline } from '../../api/saga';
+import { isDemoRuntimeActive } from '../../lib/demoRuntime';
+import {
+  LIFE_STORY_EMPTY_SAGA,
+  LIFE_STORY_JOB,
+  LIFE_STORY_SAGA_GLOSSARY,
+} from '../../lib/lifeStoryCopy';
+import { StorySurfaceLinks } from '../story/StorySurfaceLinks';
+import { ViewOnTimelineLink } from '../timeline/timelineSurfaceHandoff';
 
 // ─── Mock data ───────────────────────────────────────────────────────────────
 
@@ -252,6 +260,8 @@ export const SagaScreen = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void
                 {saga?.era && (
                   <p className="text-[11px] text-white/45 truncate mt-0.5">{saga.era}</p>
                 )}
+                <p className="text-[11px] text-white/40 leading-relaxed mt-1">{LIFE_STORY_JOB.saga}</p>
+                <StorySurfaceLinks current="saga" showJob={false} className="mt-1.5" />
               </div>
               {saga && (
                 <>
@@ -304,9 +314,21 @@ export const SagaScreen = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void
               >
                 {saga ? saga.era : 'Your Story'}
               </h1>
-              <p className="text-white/40 text-sm mt-1.5 max-w-xs">
-                The storylines, chapters, and turning points that make up your life narrative.
+              <p className="text-white/40 text-sm mt-1.5 max-w-xl leading-relaxed">
+                {LIFE_STORY_JOB.saga}
               </p>
+              <p className="text-white/35 text-xs mt-2 max-w-xl leading-relaxed">
+                {LIFE_STORY_SAGA_GLOSSARY}
+              </p>
+              {isDemoRuntimeActive() ? (
+                <p className="text-white/30 text-xs mt-2">
+                  Demo preview. Production uses reviewed memories, not this sample set.
+                </p>
+              ) : null}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <ViewOnTimelineLink />
+              </div>
+              <StorySurfaceLinks current="saga" showJob={false} className="mt-3" />
             </div>
 
             <div className="flex items-center gap-2 shrink-0 mt-1">
@@ -367,8 +389,8 @@ export const SagaScreen = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void
           {!loading && !saga && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <BookOpen className="h-12 w-12 text-white/15 mb-4" />
-              <p className="text-white/40 text-sm max-w-xs">
-                Your saga will appear here once you have life storylines and chapters. Start by chatting about your story.
+              <p className="text-white/40 text-sm max-w-md leading-relaxed">
+                {LIFE_STORY_EMPTY_SAGA}
               </p>
               <Button
                 variant="ghost"
@@ -379,6 +401,7 @@ export const SagaScreen = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void
                 <MessageSquare className="h-4 w-4 mr-1.5" />
                 Start in Chat
               </Button>
+              <StorySurfaceLinks current="saga" showJob={false} className="mt-4" />
             </div>
           )}
 

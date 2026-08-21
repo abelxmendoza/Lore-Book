@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { OmniTimeline } from './OmniTimeline';
@@ -119,8 +119,12 @@ vi.mock('./TimelineCalendarView', () => ({
   TimelineCalendarView: () => <div data-testid="timeline-calendar-view">Calendar view</div>,
 }));
 
-vi.mock('./TimelineStoryView', () => ({
-  TimelineStoryView: () => <div data-testid="timeline-story-view">Story view</div>,
+vi.mock('../events/EventsBook', () => ({
+  EventsBook: ({ mode }: { mode?: string }) => (
+    <div data-testid="events-book-embedded">
+      {mode === 'recurring' ? 'Patterns library' : 'Moments library'}
+    </div>
+  ),
 }));
 
 vi.mock('./TimelineGeneratingSimulation', () => ({
@@ -242,11 +246,65 @@ describe('OmniTimeline layout and navigation', () => {
 
     await user.click(screen.getByRole('tab', { name: /calendar/i }));
     expect(screen.getByTestId('timeline-calendar-view')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: /^moments$/i }));
+    expect(screen.getByTestId('timeline-moments-view')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: /^patterns$/i }));
+    expect(screen.getByTestId('timeline-patterns-view')).toBeInTheDocument();
+  });
+
+  it('does not offer a Story tab — story reading lives in Life Saga', () => {
+    renderOmniTimeline();
+    expect(screen.queryByRole('tab', { name: /^story$/i })).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/how to look at your life/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Life Saga/i })).toBeInTheDocument();
+  });
+
+  it('sends old ?view=story deep links to Life Saga', async () => {
+    render(
+      <MemoryRouter initialEntries={['/timeline?view=story']}>
+        <OmniTimeline />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('location-probe').textContent).toMatch(/\/saga$/);
+    });
+  });
+
+  it('opens Life Saga from the chronology handoff', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/timeline']}>
+        <OmniTimeline />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+    await user.click(screen.getByRole('button', { name: /Life Saga/i }));
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/saga');
   });
 
   it('opens calendar from ?view=calendar deep link', () => {
     renderOmniTimeline('/timeline?view=calendar');
     expect(screen.getByTestId('timeline-calendar-view')).toBeInTheDocument();
+  });
+
+  it('opens the moment library from ?view=moments', () => {
+    renderOmniTimeline('/timeline?view=moments');
+    expect(screen.getByTestId('timeline-moments-view')).toBeInTheDocument();
+  });
+
+  it('sends old Life Log URLs to Timeline Moments', async () => {
+    render(
+      <MemoryRouter initialEntries={['/events?q=Jamie']}>
+        <OmniTimeline />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('location-probe').textContent).toMatch(/\/timeline\?q=Jamie&view=moments$/);
+    });
   });
 
   it('opens Timelines Library from ?view=library deep link', () => {

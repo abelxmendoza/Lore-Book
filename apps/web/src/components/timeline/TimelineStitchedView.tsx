@@ -12,6 +12,7 @@ import { useMockData } from '../../contexts/MockDataContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useStitchedTimeline } from '../../hooks/useStitchedTimeline';
 import { isBackendConnectionError } from '../../lib/backendErrorDisplay';
+import { LIFE_STORY_CHRONOLOGY } from '../../lib/lifeStoryCopy';
 import type { LorebookContentMeterModel } from '../../lib/lorebookContentMeter';
 import type { LorebookForm } from '../../lib/lorebookTiers';
 import type { LoreReadinessSummary } from '../../lib/loreReadiness';
@@ -21,13 +22,15 @@ import {
   openStitchedTimelineChat,
 } from '../../lib/stitchedTimelineChat';
 import type { TimelineSubjectLorebookOffer } from '../../lib/timelineSubjectLorebook';
-import { sortStitchedItemsNewestFirst } from '../../lib/unifiedTimeline';
+import { resolveTimelineItemDetail } from '../../lib/resolveTimelineItemDetail';
 import { LorebookContentMeter } from '../lorebook/LorebookContentMeter';
 import { LorebookTierMenu } from '../lorebook/LorebookTierMenu';
 import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 
 import { TimelineInlineDate } from './TimelineDateDisplay';
 import { TimelineReorderableList } from './TimelineReorderableList';
+import { LifeSagaLink } from './timelineSurfaceHandoff';
+import './TimelineChronology.css';
 
 type TimelineStitchedViewProps = {
   lifeArcId?: string;
@@ -134,10 +137,12 @@ export const TimelineStitchedView = ({
 
   const handleSelect = (item: StitchedTimelineItem) => {
     setSelected(item);
-    if (item.kind === 'moment') {
+    const resolution = resolveTimelineItemDetail(item);
+    if (resolution.route === 'journal' || resolution.route === 'memory') {
+      if (!resolution.sourceId) return;
       openMemory({
-        id: item.sourceId,
-        journal_entry_id: item.sourceId,
+        id: resolution.sourceId,
+        journal_entry_id: resolution.sourceId,
         content: item.body,
         start_time: item.sortTime,
         date: item.sortTime,
@@ -155,7 +160,7 @@ export const TimelineStitchedView = ({
   };
 
   const shell = embedded
-    ? 'h-full flex flex-col min-h-0'
+    ? 'timeline-chronology-root h-full flex flex-col min-h-0'
     : 'fixed inset-0 z-50 flex flex-col bg-black/95 backdrop-blur-md';
 
   const displayError =
@@ -287,21 +292,29 @@ export const TimelineStitchedView = ({
                 : 'text-center flex flex-col items-center mx-auto max-w-xl px-10 sm:px-12',
             ].join(' ')}
           >
-            {!embedded && (
-              <div className="flex items-center justify-center gap-2 text-primary/80 mb-1">
-                <Layers className="h-4 w-4" />
-                <span className="text-[10px] uppercase tracking-widest font-mono">Stitched timeline</span>
-              </div>
+            <div className={`flex items-center gap-2 text-primary/80 mb-1 ${embedded ? '' : 'justify-center'}`}>
+              <Layers className="h-4 w-4" />
+              <span className="text-[10px] uppercase tracking-widest font-mono">
+                {embedded && !lifeArcId ? 'Chronology' : 'Stitched timeline'}
+              </span>
+            </div>
+            <div className={`flex flex-wrap items-center gap-2 ${embedded ? '' : 'justify-center'}`}>
+              <h2
+                className={`font-semibold text-white min-w-0 ${
+                  embedded
+                    ? 'text-base sm:text-lg truncate'
+                    : 'text-lg sm:text-xl text-balance'
+                }`}
+              >
+                {embedded && !lifeArcId ? 'What happened, in time' : title}
+              </h2>
+              {embedded && !lifeArcId && <LifeSagaLink compact />}
+            </div>
+            {embedded && !lifeArcId && (
+              <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-white/45 sm:text-xs">
+                {LIFE_STORY_CHRONOLOGY}
+              </p>
             )}
-            <h2
-              className={`font-semibold text-white ${
-                embedded
-                  ? 'text-base sm:text-lg truncate'
-                  : 'text-lg sm:text-xl text-balance'
-              }`}
-            >
-              {title}
-            </h2>
             <p
               className={`text-[11px] sm:text-xs text-white/40 mt-0.5 ${
                 embedded ? '' : 'text-center'
@@ -309,7 +322,7 @@ export const TimelineStitchedView = ({
             >
               {loading
                 ? 'Loading…'
-                : `${items.length} item${items.length !== 1 ? 's' : ''}${embedded ? '' : ' · moments & events woven together'}`}
+                : `${items.length} moment${items.length !== 1 ? 's' : ''}${embedded ? '' : ' · woven together in time'}`}
               {data?.has_user_order && !loading && ' · custom order saved'}
               {!loading && (data?.excluded_count ?? 0) > 0 && (
                 <span

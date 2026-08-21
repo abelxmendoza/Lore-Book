@@ -386,6 +386,7 @@ router.get(
     const endTime = req.query.end_time as string | undefined;
     const scopeType = req.query.scope_type as 'global' | 'life_arc' | undefined;
     const characterId = req.query.character_id as string | undefined;
+    const locationId = req.query.location_id as string | undefined;
 
     const result = await stitchedTimelineService.getStitchedTimeline(req.user!.id, {
       scope_type: scopeType,
@@ -393,6 +394,7 @@ router.get(
       start_time: startTime,
       end_time: endTime,
       character_id: characterId,
+      location_id: locationId,
     });
 
     res.json(result);
