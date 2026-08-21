@@ -7,7 +7,15 @@
 import { supabaseAdmin } from '../supabaseClient';
 import { resolveCharacterByName } from '../chat/foundationRecallDataService';
 import { extractSignificanceFromText } from '../chat/significanceRecall';
-import { stitchedTimelineService } from '../chronologyV2/stitchedTimelineService';
+import { stitchedTimelineService, type StitchedTimelineItem } from '../chronologyV2/stitchedTimelineService';
+
+/** Occurrence from CanonicalTemporalModel only — never sortTime / recordedAt. */
+function stitchedOccurredStart(item: StitchedTimelineItem): string | null {
+  if (item.occurrenceStatus === 'unresolved' || item.temporal?.occurred.status === 'unanchored') {
+    return null;
+  }
+  return item.temporal?.occurred.start ?? null;
+}
 
 export type EventReconstruction = {
   title: string;
@@ -81,7 +89,7 @@ export async function reconstructEventByQuery(
         facts: items.map((item) => item.body || item.title).filter(Boolean) as string[],
         people: [char.name],
         timeline: items.map((item) => ({
-          date: item.occurredAt ?? item.temporalProjection?.occurredStart ?? null,
+          date: stitchedOccurredStart(item),
           label: item.title,
         })),
         meaning: null,
