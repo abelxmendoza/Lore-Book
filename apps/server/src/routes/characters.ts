@@ -14,6 +14,7 @@ import { characterIdentityIndexService } from '../services/characterIdentityInde
 import { findSimilarCharacter } from '../services/characterDeduplicationService';
 import { characterMergeService } from '../services/characterMergeService';
 import { characterRegistry } from '../services/characterRegistry';
+import { countCanonicalEventsForCharacters } from '../services/characters/canonicalCharacterEventCount';
 import { entityAttributeDetector } from '../services/conversationCentered/entityAttributeDetector';
 import { peoplePlacesService } from '../services/peoplePlacesService';
 import { supabaseAdmin } from '../services/supabaseClient';
@@ -1082,10 +1083,7 @@ router.get(['/', '/list'], requireAuth, async (req: AuthenticatedRequest, res) =
         memoryCounts.set(mem.character_id, (memoryCounts.get(mem.character_id) || 0) + 1);
       });
 
-      const { data: timelineCountsData } = await supabaseAdmin
-        .from('character_timeline_events')
-        .select('character_id')
-        .in('character_id', characterIds);
+      const canonicalEventCounts = await countCanonicalEventsForCharacters(req.user!.id, characterIds);
 
       const { data: factCountsData } = await supabaseAdmin
         .from('entity_facts')
@@ -1105,7 +1103,7 @@ router.get(['/', '/list'], requireAuth, async (req: AuthenticatedRequest, res) =
         evidenceCounts.set(id, (evidenceCounts.get(id) || 0) + amount);
       };
       memoryCountsData?.forEach(mem => addEvidence(mem.character_id));
-      timelineCountsData?.forEach(event => addEvidence(event.character_id));
+      canonicalEventCounts.forEach((count, id) => addEvidence(id, count));
       factCountsData?.forEach(fact => addEvidence(fact.entity_id));
       perceptionCountsData?.forEach(perception => {
         addEvidence(perception.subject_person_id);

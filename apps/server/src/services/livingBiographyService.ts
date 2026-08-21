@@ -25,6 +25,7 @@
 
 import { supabaseAdmin } from './supabaseClient';
 import { logger } from '../logger';
+import { stitchedTimelineService } from './chronologyV2/stitchedTimelineService';
 import {
   biographyFoundationService,
   type BiographyOutput,
@@ -284,7 +285,6 @@ function deriveKeyPeople(bio: BiographyOutput): LivingBiographyPerson[] {
  * biography snapshot regenerate.
  */
 export async function deriveCurrentFocus(userId: string, bio: BiographyOutput): Promise<string[]> {
-  const todayIso = new Date().toISOString().slice(0, 10);
   const focus: string[] = [];
   const seen = new Set<string>();
 
@@ -297,7 +297,7 @@ export async function deriveCurrentFocus(userId: string, bio: BiographyOutput): 
     focus.push(trimmed);
   };
 
-  const [{ data: focusedProjects }, { data: quests }, { data: futureEvents }] = await Promise.all([
+  const [{ data: focusedProjects }, { data: quests }, stitched] = await Promise.all([
     supabaseAdmin
       .from('projects')
       .select('name, status, metadata')
@@ -312,13 +312,7 @@ export async function deriveCurrentFocus(userId: string, bio: BiographyOutput): 
       .eq('status', 'active')
       .order('updated_at', { ascending: false })
       .limit(MAX_FOCUS),
-    supabaseAdmin
-      .from('character_timeline_events')
-      .select('event_title')
-      .eq('user_id', userId)
-      .gte('event_date', todayIso)
-      .order('event_date', { ascending: true })
-      .limit(MAX_FOCUS),
+    stitchedTimelineService.getStitchedTimeline(userId, { limit: 40 }),
   ]);
 
   for (const project of focusedProjects ?? []) {
@@ -327,7 +321,13 @@ export async function deriveCurrentFocus(userId: string, bio: BiographyOutput): 
     }
   }
   for (const quest of quests ?? []) push(quest.title);
-  for (const event of futureEvents ?? []) push(event.event_title);
+  for (const item of stitched.items ?? []) {
+    const occurred = item.occurredAt ?? item.temporalProjection?.occurredStart;
+    if (!occurred) continue;
+    if (item.occurrenceStatus === 'unresolved' || item.temporalProjection?.isUnresolved) continue;
+    if (Date.parse(occurred) <= Date.now()) continue;
+    push(item.title);
+  }
 
   // Snapshot upcoming events only when live sources produced nothing —
   // never pad live focus with potentially stale snapshot strings.
@@ -489,7 +489,7 @@ export async function shouldRefreshBiography(userId: string, generatedAtIso: str
       .eq('user_id', userId)
       .gt('date', generatedAtIso),
     supabaseAdmin
-      .from('character_timeline_events')
+      .from('resolved_events')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
       .gt('created_at', generatedAtIso),

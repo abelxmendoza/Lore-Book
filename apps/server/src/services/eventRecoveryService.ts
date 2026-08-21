@@ -1,9 +1,8 @@
 /**
  * Event Recovery Service — mines chat, entity_facts, and thread metadata for
- * benchmark life events missing from character_timeline_events.
+ * benchmark life events missing from resolved_events.
  *
- * Uses the same resolved_events → character_timeline_events write path as
- * timelineFoundationService. No LLM, no parallel architecture.
+ * Writes canonical resolved_events with people[]. No character_timeline_events.
  */
 
 import { v4 as uuid } from 'uuid';
@@ -166,11 +165,11 @@ class EventRecoveryService {
       chars[0];
 
     const { data: existing } = await supabaseAdmin
-      .from('character_timeline_events')
-      .select('event_title')
+      .from('resolved_events')
+      .select('title')
       .eq('user_id', userId);
     const existingTitles = new Set(
-      (existing ?? []).map((e) => String(e.event_title ?? '').toLowerCase())
+      (existing ?? []).map((e) => String(e.title ?? '').toLowerCase())
     );
 
     const fallbackDate =
@@ -226,46 +225,7 @@ class EventRecoveryService {
       }
 
       ingestResolvedEvent(userId, resolvedId);
-
-      for (const characterId of charIds) {
-        const connectionNames = (pattern.people ?? []).filter((n) => !/^me$/i.test(n));
-        let connectionId: string | null = null;
-        for (const cn of connectionNames) {
-          const cid = resolveCharacterIdByName(cn, chars);
-          if (cid && cid !== characterId) {
-            connectionId = cid;
-            break;
-          }
-        }
-
-        const { error: cteErr } = await supabaseAdmin.from('character_timeline_events').insert({
-          id: uuid(),
-          user_id: userId,
-          character_id: characterId,
-          event_id: resolvedId,
-          timeline_type: pattern.timelineType,
-          user_was_present: true,
-          event_type: pattern.eventType,
-          event_title: pattern.title,
-          event_summary: summary,
-          event_date: eventDate,
-          emotional_impact: pattern.eventType === 'relationship_separation' ? 'negative' : 'neutral',
-          confidence: 0.72,
-          connection_character_id: connectionId,
-          source_entry_ids: [],
-          metadata: {
-            generated_by: 'event_recovery',
-            recovery_key: pattern.key,
-          },
-        });
-
-        if (cteErr) {
-          logger.warn({ error: cteErr, key: pattern.key }, 'event_recovery: CTE insert failed');
-        } else {
-          stats.created++;
-        }
-      }
-
+      stats.created++;
       stats.matched.push(pattern.key);
       existingTitles.add(pattern.title.toLowerCase());
     }
@@ -275,11 +235,11 @@ class EventRecoveryService {
 
   async benchmarkCoverage(userId: string): Promise<Record<string, boolean>> {
     const { data: events } = await supabaseAdmin
-      .from('character_timeline_events')
-      .select('event_title')
+      .from('resolved_events')
+      .select('title')
       .eq('user_id', userId);
 
-    const titles = (events ?? []).map((e) => String(e.event_title ?? '').toLowerCase()).join('\n');
+    const titles = (events ?? []).map((e) => String(e.title ?? '').toLowerCase()).join('\n');
     return Object.fromEntries(
       BENCHMARK_EVENT_PATTERNS.map((p) => [p.key, titles.includes(p.title.toLowerCase())])
     );

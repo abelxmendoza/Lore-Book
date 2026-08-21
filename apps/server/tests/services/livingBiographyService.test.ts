@@ -32,6 +32,12 @@ vi.mock('../../src/services/supabaseClient', () => ({
   },
 }));
 
+vi.mock('../../src/services/chronologyV2/stitchedTimelineService', () => ({
+  stitchedTimelineService: {
+    getStitchedTimeline: vi.fn(async () => ({ items: [], unresolved_items: [] })),
+  },
+}));
+
 const { getBiography, generateBiography } = vi.hoisted(() => ({
   getBiography: vi.fn(),
   generateBiography: vi.fn(),
@@ -116,7 +122,7 @@ describe('getLivingBiographyCard', () => {
     const bio = makeBio();
     getBiography.mockResolvedValue(bio);
     tableResults.journal_entries = { data: [], error: null, count: 0 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.resolved_events = { data: [], error: null, count: 0 };
     tableResults.quests = { data: [], error: null };
 
     const card = await getLivingBiographyCard('user-1');
@@ -137,7 +143,7 @@ describe('getLivingBiographyCard', () => {
     });
     getBiography.mockResolvedValue(bio);
     tableResults.journal_entries = { data: [], error: null, count: 0 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.resolved_events = { data: [], error: null, count: 0 };
     tableResults.quests = {
       data: [{ title: 'Finish career lore review' }, { title: 'Ship MemoVault beta' }],
       error: null,
@@ -157,7 +163,7 @@ describe('getLivingBiographyCard', () => {
     });
     getBiography.mockResolvedValue(bio);
     tableResults.journal_entries = { data: [], error: null, count: 0 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.resolved_events = { data: [], error: null, count: 0 };
     tableResults.quests = { data: [], error: null };
 
     const card = await getLivingBiographyCard('user-1');
@@ -170,7 +176,7 @@ describe('getLivingBiographyCard', () => {
     const bio = makeBio();
     getBiography.mockResolvedValue(bio);
     tableResults.journal_entries = { data: [], error: null, count: 0 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.resolved_events = { data: [], error: null, count: 0 };
     tableResults.quests = { data: [], error: null };
 
     const card = await getLivingBiographyCard('user-1');
@@ -194,7 +200,7 @@ describe('getLivingBiographyCard', () => {
     });
     getBiography.mockResolvedValue(bio);
     tableResults.journal_entries = { data: [], error: null, count: 0 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.resolved_events = { data: [], error: null, count: 0 };
     tableResults.quests = { data: [], error: null };
 
     const card = await getLivingBiographyCard('user-1');
@@ -207,7 +213,7 @@ describe('getLivingBiographyCard', () => {
     const bio = makeBio();
     getBiography.mockResolvedValue(bio);
     tableResults.journal_entries = { data: [], error: null, count: 0 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.resolved_events = { data: [], error: null, count: 0 };
     tableResults.quests = { data: [], error: null };
 
     const card = await getLivingBiographyCard('user-1');
@@ -266,7 +272,7 @@ describe('Narrative Recall v2 identity projection', () => {
     });
     getBiography.mockResolvedValue(bio);
     tableResults.journal_entries = { data: [], error: null, count: 0 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.resolved_events = { data: [], error: null, count: 0 };
     tableResults.quests = { data: [], error: null };
 
     const recall = await getNarrativeIdentityRecall('user-1');
@@ -351,7 +357,7 @@ describe('shouldRefreshBiography', () => {
   it('does not refresh within the minimum cooldown window, regardless of new evidence', async () => {
     const recent = new Date(Date.now() - 1 * 3_600_000).toISOString();
     tableResults.journal_entries = { data: [], error: null, count: 99 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 99 };
+    tableResults.resolved_events = { data: [], error: null, count: 99 };
 
     expect(await shouldRefreshBiography('user-1', recent)).toBe(false);
   });
@@ -359,7 +365,7 @@ describe('shouldRefreshBiography', () => {
   it('refreshes once the cooldown has passed and enough new journal entries exist', async () => {
     const stale = new Date(Date.now() - 48 * 3_600_000).toISOString();
     tableResults.journal_entries = { data: [], error: null, count: 5 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.resolved_events = { data: [], error: null, count: 0 };
 
     expect(await shouldRefreshBiography('user-1', stale)).toBe(true);
   });
@@ -367,7 +373,7 @@ describe('shouldRefreshBiography', () => {
   it('refreshes once the cooldown has passed and enough new timeline events exist', async () => {
     const stale = new Date(Date.now() - 48 * 3_600_000).toISOString();
     tableResults.journal_entries = { data: [], error: null, count: 0 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 3 };
+    tableResults.resolved_events = { data: [], error: null, count: 3 };
 
     expect(await shouldRefreshBiography('user-1', stale)).toBe(true);
   });
@@ -375,7 +381,7 @@ describe('shouldRefreshBiography', () => {
   it('does not refresh past cooldown when neither threshold is met', async () => {
     const stale = new Date(Date.now() - 48 * 3_600_000).toISOString();
     tableResults.journal_entries = { data: [], error: null, count: 1 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.resolved_events = { data: [], error: null, count: 0 };
 
     expect(await shouldRefreshBiography('user-1', stale)).toBe(false);
   });
@@ -383,7 +389,7 @@ describe('shouldRefreshBiography', () => {
   it('refreshes with a single new timeline event once cooldown has passed', async () => {
     const stale = new Date(Date.now() - 48 * 3_600_000).toISOString();
     tableResults.journal_entries = { data: [], error: null, count: 0 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 1 };
+    tableResults.resolved_events = { data: [], error: null, count: 1 };
 
     expect(await shouldRefreshBiography('user-1', stale)).toBe(true);
   });

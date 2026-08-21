@@ -11,7 +11,6 @@ import { filterEpisodeParticipantNames, isPollutingPlaceLabel } from '../actors/
 import { classifyPersonAttribution, classifyPlaceAttribution } from '../attribution/eventEntityAttribution';
 import { segmentEpisodes, type Episode, type SegMessage } from './episodeSegmentationCore';
 import { loadThreadMessages } from './threadContentService';
-import { characterTimelineBuilder } from './characterTimelineBuilder';
 import { locationTimelineBuilder } from './entityTimelineBuilder';
 
 export interface EpisodeRow {
@@ -313,11 +312,7 @@ export async function persistEpisodesForThread(
   }
 
   for (const episode of inserted) {
-    if (episode.primary_entity_type === 'character' && episode.primary_entity_id) {
-      void characterTimelineBuilder
-        .processEpisodeForCharacter(userId, episode.primary_entity_id, episode)
-        .catch((err) => logger.warn({ err, episodeId: episode.id }, 'Character episode-timeline fold failed (non-blocking)'));
-    } else if (episode.primary_entity_type === 'location' && episode.primary_entity_id) {
+    if (episode.primary_entity_type === 'location' && episode.primary_entity_id) {
       void locationTimelineBuilder
         .processEpisodeForEntity(userId, episode.primary_entity_id, episode)
         .catch((err) => logger.warn({ err, episodeId: episode.id }, 'Location episode-timeline fold failed (non-blocking)'));

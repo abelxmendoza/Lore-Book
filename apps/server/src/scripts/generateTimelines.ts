@@ -14,34 +14,26 @@ async function run(): Promise<void> {
 
   const { count: resolvedBefore } = await supabaseAdmin
     .from('resolved_events').select('id', { count: 'exact', head: true });
-  const { count: cteBefore } = await supabaseAdmin
-    .from('character_timeline_events').select('id', { count: 'exact', head: true });
 
-  logger.info({ resolved_events: resolvedBefore ?? 0, character_timeline_events: cteBefore ?? 0 }, 'BEFORE');
+  logger.info({ resolved_events: resolvedBefore ?? 0 }, 'BEFORE');
 
-  // Get all distinct users who have characters
   const { data: userRows } = await supabaseAdmin
     .from('characters').select('user_id');
   const userIds = [...new Set((userRows ?? []).map((r: any) => r.user_id as string))];
 
   let totalResolved = 0;
-  let totalCTE = 0;
 
   for (const userId of userIds) {
     const stats = await timelineFoundationService.generateTimelines(userId);
     totalResolved += stats.resolvedEventsCreated;
-    totalCTE += stats.timelineEventsCreated;
-    logger.info({ userId, ...stats }, 'User timeline generation complete');
+    logger.info({ userId, resolvedEventsCreated: stats.resolvedEventsCreated, skipped: stats.skipped }, 'User timeline generation complete');
   }
 
   const { count: resolvedAfter } = await supabaseAdmin
     .from('resolved_events').select('id', { count: 'exact', head: true });
-  const { count: cteAfter } = await supabaseAdmin
-    .from('character_timeline_events').select('id', { count: 'exact', head: true });
 
-  logger.info({ resolved_events: resolvedAfter ?? 0, character_timeline_events: cteAfter ?? 0 }, 'AFTER');
+  logger.info({ resolved_events: resolvedAfter ?? 0, resolvedEventsCreated: totalResolved }, 'AFTER');
 
-  // Validation: print timelines for each character of main user
   const validationUserId = process.env.TARGET_USER_ID;
   if (validationUserId) {
   const { data: chars } = await supabaseAdmin
@@ -51,7 +43,7 @@ async function run(): Promise<void> {
     const timeline = await timelineFoundationService.getCharacterTimeline(validationUserId, char.id);
     logger.info({
       character: char.name,
-      eventCount: timeline.length,
+      canonicalEventCount: timeline.length,
       events: timeline.map(e => ({
         date: e.date,
         type: e.eventType,
@@ -60,7 +52,7 @@ async function run(): Promise<void> {
         sources: e.sourceEntryIds.length,
         confidence: e.confidence,
       })),
-    }, `Timeline: ${char.name}`);
+    }, `Canonical timeline: ${char.name}`);
   }
   }
 

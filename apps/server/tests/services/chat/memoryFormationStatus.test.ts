@@ -7,6 +7,8 @@ function makeChain(result: TableResult) {
     eq: () => chain,
     or: () => chain,
     ilike: () => chain,
+    contains: () => chain,
+    overlaps: () => chain,
     limit: () => chain,
     maybeSingle: () => Promise.resolve({ data: result.data, error: result.error }),
     then: (resolve: (v: TableResult) => void) => resolve(result),
@@ -44,9 +46,8 @@ describe('memoryFormationStatusService — locations redirect', () => {
     hoisted.setTableResults({
       character_relationships: { data: null, error: null, count: 0 },
       character_memories: { data: null, error: null, count: 0 },
-      character_timeline_events: { data: null, error: null, count: 0 },
-      entity_facts: { data: null, error: null, count: 0 },
       resolved_events: { data: null, error: null, count: 0 },
+      entity_facts: { data: null, error: null, count: 0 },
       locations: { data: { id: 'l1', name: "Abuela's House" }, error: null },
     });
   });

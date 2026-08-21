@@ -39,6 +39,27 @@ vi.mock('../../src/services/supabaseClient', () => ({
   },
 }));
 
+vi.mock('../../src/services/chronologyV2/stitchedTimelineService', () => ({
+  stitchedTimelineService: {
+    getStitchedTimeline: vi.fn(async () => ({ items: [], unresolved_items: [] })),
+  },
+}));
+
+vi.mock('../../src/services/characters/characterEntityTimelineService', () => ({
+  buildCanonicalCharacterTimeline: vi.fn(async () => ({
+    sharedExperiences: [],
+    lore: [],
+    unresolved: [],
+    summary: {
+      firstKnownOccurrenceAt: null,
+      lastKnownOccurrenceAt: null,
+      firstMentionedAt: null,
+      lastMentionedAt: null,
+    },
+  })),
+  emptyCharacterTimelineResult: vi.fn(),
+}));
+
 import { biographyFoundationService } from '../../src/services/biographyFoundationService';
 
 const USER_ID = 'user-1';
@@ -91,7 +112,7 @@ function baseTables(overrides: Partial<Record<string, TableResult>> = {}) {
       ],
       error: null,
     },
-    character_timeline_events: { data: [], error: null },
+    resolved_events: { data: [], error: null },
     quests: { data: [], error: null },
     ...overrides,
   };

@@ -210,16 +210,16 @@ async function loadCrossBookIndexForUser(userId: string): Promise<CrossBookIndex
 
   try {
     const { data } = await supabaseAdmin
-      .from('character_timeline_events')
-      .select('event_title')
+      .from('resolved_events')
+      .select('title')
       .eq('user_id', userId)
       .limit(500);
     for (const row of data ?? []) {
-      const title = String(row.event_title ?? '').trim();
+      const title = String(row.title ?? '').trim();
       if (title) events.push(title);
     }
   } catch {
-    // timeline events optional
+    // resolved event titles optional
   }
 
   for (const { alias, entry } of glossaryAliases()) {

@@ -19,7 +19,7 @@ import {
   buildEventStoryRecall,
   buildStoryRosterRecall,
 } from '../story/storyRecallService';
-import { supabaseAdmin } from '../supabaseClient';
+import { stitchedTimelineService } from '../chronologyV2/stitchedTimelineService';
 
 type HistoryMessage = { role: string; content: string };
 
@@ -101,17 +101,18 @@ async function buildDailyRecall(
 ): Promise<ConversationIntelligenceResult> {
   const thread = await buildThreadRecall(userId, message, options);
 
-  const { data: events } = await supabaseAdmin
-    .from('character_timeline_events')
-    .select('event_title, event_date')
-    .eq('user_id', userId)
-    .gte('event_date', new Date().toISOString().slice(0, 10))
-    .order('event_date', { ascending: false })
-    .limit(5);
+  const stitched = await stitchedTimelineService.getStitchedTimeline(userId, { limit: 5 });
+  const dated = (stitched.items ?? []).filter((item) => {
+    const occurred = item.occurredAt ?? item.temporalProjection?.occurredStart ?? null;
+    return Boolean(occurred) && item.occurrenceStatus !== 'unresolved' && !item.temporalProjection?.isUnresolved;
+  });
 
   const recentEvents =
-    events?.length
-      ? events.map((e) => `• ${e.event_title}${e.event_date ? ` (${e.event_date})` : ''}`).join('\n')
+    dated.length
+      ? dated
+          .slice(0, 5)
+          .map((item) => `• ${item.title} (${item.occurredAt ?? item.temporalProjection?.occurredStart})`)
+          .join('\n')
       : null;
 
   const labeled = formatLabeledRecall({
@@ -122,7 +123,7 @@ async function buildDailyRecall(
   const evidence: EvidenceCounts = {
     thread: thread.hasContent ? 1 : 0,
     memory: 0,
-    event: events?.length ?? 0,
+    event: dated.length,
     character: 0,
   };
 

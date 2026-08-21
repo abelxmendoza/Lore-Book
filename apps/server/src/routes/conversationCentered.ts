@@ -4067,26 +4067,6 @@ router.get(
 );
 
 /**
- * POST /api/conversation/characters/:id/rebuild-timelines
- * Rebuild timelines for a character
- */
-router.post(
-  '/characters/:id/rebuild-timelines',
-  requireAuth,
-  asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const userId = req.user!.id;
-    const id = req.params.id as string;
-
-    await characterTimelineBuilder.rebuildTimelinesForCharacter(userId, id);
-
-    res.json({
-      success: true,
-      message: 'Timelines rebuilt',
-    });
-  })
-);
-
-/**
  * POST /api/conversation/romantic-relationships/:id/chat
  * Chat with relationship context - updates relationship through conversation
  */

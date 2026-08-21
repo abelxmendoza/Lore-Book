@@ -7,6 +7,7 @@
 import { supabaseAdmin } from '../supabaseClient';
 import { resolveCharacterByName } from '../chat/foundationRecallDataService';
 import { extractSignificanceFromText } from '../chat/significanceRecall';
+import { stitchedTimelineService } from '../chronologyV2/stitchedTimelineService';
 
 export type EventReconstruction = {
   title: string;
@@ -69,26 +70,23 @@ export async function reconstructEventByQuery(
 
   let targetEvents = events;
   if (targetEvents.length === 0 && char) {
-    const { data: linked } = await supabaseAdmin
-      .from('character_timeline_events')
-      .select('event_title, event_date, event_summary, resolved_event_id')
-      .eq('user_id', userId)
-      .eq('character_id', char.id)
-      .order('event_date', { ascending: false })
-      .limit(5);
-
-    if (linked?.length) {
+    const stitched = await stitchedTimelineService.getStitchedTimeline(userId, {
+      character_id: char.id,
+      limit: 5,
+    });
+    const items = stitched.items ?? [];
+    if (items.length) {
       return {
         title: `Story with ${char.name}`,
-        facts: linked.map((e) => e.event_summary ?? e.event_title).filter(Boolean) as string[],
+        facts: items.map((item) => item.body || item.title).filter(Boolean) as string[],
         people: [char.name],
-        timeline: linked.map((e) => ({
-          date: e.event_date as string | null,
-          label: e.event_title as string,
+        timeline: items.map((item) => ({
+          date: item.occurredAt ?? item.temporalProjection?.occurredStart ?? null,
+          label: item.title,
         })),
         meaning: null,
         currentRelevance: char.name ? `${char.name} remains part of your ongoing story.` : null,
-        evidence: { events: linked.length, memories: 0, meaning_cached: false },
+        evidence: { events: items.length, memories: 0, meaning_cached: false },
       };
     }
   }
