@@ -155,3 +155,23 @@ baseline, so no separate active migration is required.
 
 Normal migration comparison is safe again. A local-only migration now means a
 genuinely pending migration rather than unexplained historical drift.
+
+## Character Timeline DROP (closed 2026-08-21)
+
+Production applied `DROP TABLE IF EXISTS public.character_timeline_events CASCADE`
+and recorded it as:
+
+| Field | Value |
+| ----- | ----- |
+| version | `20260821194550` |
+| name | `drop_character_timeline_events` |
+
+The active repo file is `supabase/migrations/20260821194550_drop_character_timeline_events.sql`
+so ledger audit is an **exact** version match. Do not reintroduce
+`20260821140000_drop_character_timeline_events.sql`; that timestamp is retired
+authorship history, not the production ledger row.
+
+This DROP is closed infrastructure history. Do not treat it as an active
+release gate. Do not run `supabase db push` or re-apply the SQL because the
+filename moved. `DROP TABLE IF EXISTS` is idempotent if a stale environment
+still needs the production version recorded.

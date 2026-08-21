@@ -1,6 +1,7 @@
 -- Isolated replay for DROP public.character_timeline_events.
 -- Creates a throwaway schema, seeds canonical + hostile CTE rows, drops the
 -- table, then proves resolved_events and Character delete still work.
+-- Production ledger version: 20260821194550 (name drop_character_timeline_events).
 
 BEGIN;
 

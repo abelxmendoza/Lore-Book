@@ -10,7 +10,7 @@ const repoRoot = resolve(here, '../../../../../');
 const SQL = resolve(repoRoot, 'apps/server/scripts/replayCharacterTimelineDrop.sql');
 const MIGRATION = resolve(
   repoRoot,
-  'supabase/migrations/20260821140000_drop_character_timeline_events.sql',
+  'supabase/migrations/20260821194550_drop_character_timeline_events.sql',
 );
 
 function firstWorking(candidates: string[], args: string[]): string | null {
