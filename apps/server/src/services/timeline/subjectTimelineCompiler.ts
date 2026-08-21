@@ -69,7 +69,7 @@ export type ResolvedTimelineSubject = {
 
 export type CompiledSubjectTimelineEvent = {
   id: string;
-  start_time: string;
+  start_time: string | null;
   end_time?: string | null;
   title: string;
   content: string;
@@ -376,10 +376,14 @@ function relationFor(
   const workRelated = WORK_CUES.test(text);
   const phase = phaseFor(text, intent.mode);
 
-  if (intent.exactDate) {
-    if (item.sortTime.slice(0, 10) !== intent.exactDate) return null;
-    return { relation: 'DIRECT_EVENT', relevance: 1, reason: `Occurred on ${intent.exactDate}` };
-  }
+    const occurred =
+      item.temporal?.occurred.start
+      ?? item.occurredAt
+      ?? null;
+    if (intent.exactDate) {
+      if (!occurred || occurred.slice(0, 10) !== intent.exactDate) return null;
+      return { relation: 'DIRECT_EVENT', relevance: 1, reason: `Occurred on ${intent.exactDate}` };
+    }
 
   // A generic domain timeline ("my career timeline") has no entity to anchor
   // it, so domain evidence is mandatory. This prevents retrieval vocabulary
@@ -445,6 +449,13 @@ function relationFor(
   return null;
 }
 
+function compareStartTime(a: string | null, b: string | null): number {
+  if (!a && !b) return 0;
+  if (!a) return 1;
+  if (!b) return -1;
+  return a.localeCompare(b);
+}
+
 function compileEvent(
   item: StitchedTimelineItem,
   intent: SubjectTimelineIntent,
@@ -460,9 +471,12 @@ function compileEvent(
       ? 'related_context'
       : phaseFor(text, intent.mode);
   const focusedEvidence = extractFocusedEvidence(text, subjectTerms);
+  const occurred = item.temporal?.occurred.start ?? item.occurredAt ?? null;
+  const occurrenceStatus =
+    item.occurrenceStatus ?? (occurred ? 'confirmed' : 'unresolved');
   return {
     id: item.id,
-    start_time: item.sortTime,
+    start_time: occurred,
     end_time: null,
     title: item.title || phaseLabel(phase),
     content: focusedEvidence || compact(item.body || item.title),
@@ -471,10 +485,10 @@ function compileEvent(
     source_id: item.sourceId,
     source_ids: unique([item.sourceId, ...item.sourceIds]),
     source_type: item.sourceType,
-    time_precision: item.timePrecision ?? 'approximate',
+    time_precision: occurrenceStatus === 'unresolved' ? 'unresolved' : (item.timePrecision ?? 'approximate'),
     time_confidence: item.timeConfidence ?? item.confidence ?? 0.5,
-    occurrence_status: item.occurrenceStatus,
-    occurred_at: item.temporal?.occurred.start ?? item.occurredAt ?? item.sortTime,
+    occurrence_status: occurrenceStatus,
+    occurred_at: occurred,
     mentioned_at: item.temporal?.mentionedAt ?? item.mentionedAt ?? null,
     recorded_at: item.temporal?.recordedAt ?? item.recordedAt ?? null,
     known_from: item.temporal?.knownFrom ?? item.knownFrom ?? null,
@@ -515,17 +529,17 @@ export function compileSubjectTimeline(input: {
     (a, b) =>
       b.relevance - a.relevance
       || b.time_confidence - a.time_confidence
-      || a.start_time.localeCompare(b.start_time),
+      || compareStartTime(a.start_time, b.start_time),
   );
   const primary = ranked
     .filter((event) => event.subjectRelation !== 'INCIDENTAL_MENTION' && event.relevance >= 0.48)
     .slice(0, 30)
-    .sort((a, b) => a.start_time.localeCompare(b.start_time));
+    .sort((a, b) => compareStartTime(a.start_time, b.start_time));
   const contextEvents = ranked
     .filter((event) => event.subjectRelation === 'INCIDENTAL_MENTION' || event.relevance < 0.48)
     .slice(0, 8)
     .map((event) => ({ ...event, phase: 'related_context' as const }))
-    .sort((a, b) => a.start_time.localeCompare(b.start_time));
+    .sort((a, b) => compareStartTime(a.start_time, b.start_time));
 
   const coveredPhases = unique(primary.map((event) => event.phase)) as SubjectTimelinePhase[];
   const missingPhases = input.intent.expectedPhases.filter((phase) => !coveredPhases.includes(phase));
@@ -533,7 +547,7 @@ export function compileSubjectTimeline(input: {
     input.intent.expectedPhases.length === 0
       ? 1
       : (input.intent.expectedPhases.length - missingPhases.length) / input.intent.expectedPhases.length;
-  const dates = primary.map((event) => event.start_time).filter(Boolean).sort();
+  const dates = primary.map((event) => event.start_time).filter((value): value is string => Boolean(value)).sort();
   const sources = unique(primary.map((event) => event.source_type));
   const warnings: string[] = [];
   if (input.ambiguity?.length) {

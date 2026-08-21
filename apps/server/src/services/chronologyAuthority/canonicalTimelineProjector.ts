@@ -69,10 +69,6 @@ export type ProjectedTimelineItem = ProjectableTimelineItem & {
   temporal: CanonicalTemporalModel;
 };
 
-function dayKey(iso: string): string {
-  return iso.slice(0, 10);
-}
-
 function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 80);
 }
@@ -94,6 +90,12 @@ export function inferCanonicalEventType(title: string, body: string, tags?: stri
   return 'unknown';
 }
 
+function occurrenceFromItem(item: ProjectableTimelineItem): string | null {
+  if (item.temporalSource === 'recording_fallback' || item.occurredAt === null) return null;
+  if (item.occurredAt === undefined) return item.sortTime;
+  return item.occurredAt;
+}
+
 function honestTemporal(item: ProjectableTimelineItem): {
   precision: string;
   confidence: number;
@@ -102,7 +104,7 @@ function honestTemporal(item: ProjectableTimelineItem): {
 } {
   const tags = item.tags ?? [];
   const recovered = isImportOrRecoveryTag(tags);
-  const occurrence = item.occurredAt === undefined ? item.sortTime : item.occurredAt;
+  const occurrence = occurrenceFromItem(item);
   const rawSource = (item.temporalSource ??
     (recovered ? 'recording_fallback' : 'context_inferred')) as TemporalSource;
   const rawPrecision = (item.timePrecision ?? 'date') as TemporalPrecision;
@@ -198,9 +200,9 @@ export function projectCanonicalTimeline(items: ProjectableTimelineItem[]): {
     const temporal = honestTemporal(item);
     const temporalModel = canonicalTemporalFromLegacy({
       id: item.sourceId,
-      occurredAt: temporal.occurrenceStatus === 'unresolved' && item.occurredAt === null
+      occurredAt: temporal.occurrenceStatus === 'unresolved'
         ? null
-        : (item.occurredAt === undefined ? item.sortTime : item.occurredAt),
+        : (item.occurredAt === undefined ? occurrenceFromItem(item) : item.occurredAt),
       occurredEnd: item.occurredEnd,
       mentionedAt: item.mentionedAt,
       recordedAt: item.recordedAt,
@@ -289,7 +291,7 @@ export function projectCanonicalTimeline(items: ProjectableTimelineItem[]): {
   let evidenceHidden = 0;
   const keptJournals: ProjectedTimelineItem[] = [];
   for (const j of journals) {
-    const jDay = dayKey(j.sortTime);
+    const jDay = (j.occurredAt ?? j.temporal.occurred.start ?? '').slice(0, 10);
     const jTokens = new Set(significantTokens(`${j.title} ${j.body}`));
     // Stable-identity linkage is preferred and always wins outright when
     // present: journal_entries carries no back-reference into resolved_events
@@ -308,10 +310,13 @@ export function projectCanonicalTimeline(items: ProjectableTimelineItem[]): {
     // significant tokens covering at least half of the smaller side's
     // vocabulary — a much weaker false-positive rate for "probably the same
     // moment" without any new data source.
+    // Undated journals (empty jDay) must not match every undated event.
     const looseMatch =
+      Boolean(jDay) &&
       !sharedSource &&
       events.some((e) => {
-        if (dayKey(e.sortTime) !== jDay) return false;
+        const eDay = (e.occurredAt ?? e.temporal.occurred.start ?? e.sortTime ?? '').slice(0, 10);
+        if (!eDay || eDay !== jDay) return false;
         if (normalizeTitle(e.title) === normalizeTitle(j.title)) return true;
         const eTokens = significantTokens(`${e.title} ${e.body}`);
         if (eTokens.length === 0 || jTokens.size === 0) return false;

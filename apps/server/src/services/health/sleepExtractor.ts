@@ -1,3 +1,4 @@
+import { clocksFromJournalEntry } from '../temporal/journalMemoryTemporal';
 import { logger } from '../../logger';
 
 import type { SleepEvent } from './types';
@@ -58,15 +59,19 @@ export class SleepExtractor {
 
         // If sleep-related content found (hours or quality), create event
         if (hours !== null || quality !== null || this.isSleepRelated(contentLower)) {
+          const clocks = clocksFromJournalEntry(entry);
+          const timestamp = clocks.occurredAt ?? clocks.observedAt;
+          if (!timestamp) continue;
           sleepEvents.push({
             id: `sleep_${entry.id}_${Date.now()}`,
-            timestamp: entry.date || entry.created_at || entry.timestamp || new Date().toISOString(),
+            timestamp,
             hours,
             quality,
             evidence: content.substring(0, 500),
             entry_id: entry.id,
             metadata: {
               source_entry_id: entry.id,
+              occurrence_unknown: !clocks.occurredAt,
             },
           });
         }

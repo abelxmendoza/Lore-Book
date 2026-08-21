@@ -18,6 +18,7 @@ import {
   THREAD_RECALL_RE,
 } from './threadRecallService';
 import type { RecallResult as JournalRecall } from '../memoryRecall/types';
+import { classifyJournalMemoryTemporal, happenedPhrase, wroteAboutPhrase } from '../temporal/journalMemoryTemporal';
 
 export type ExplicitRecallResponse = {
   content: string;
@@ -202,11 +203,23 @@ function formatJournalArchivist(journalRecall: JournalRecall): string {
   const entries = journalRecall.entries
     .slice(0, 5)
     .map((entry) => {
-      const date = new Date(entry.date).toLocaleDateString();
+      const meta = (entry.metadata ?? {}) as Record<string, unknown>;
+      const view = classifyJournalMemoryTemporal({
+        journalId: entry.id,
+        content: entry.content,
+        claimedDate: entry.date,
+        createdAt:
+          typeof meta.recorded_at === 'string'
+            ? meta.recorded_at
+            : typeof meta.created_at === 'string'
+              ? meta.created_at
+              : null,
+        temporalSource: typeof meta.temporal_source === 'string' ? meta.temporal_source : null,
+      });
       const preview = entry.content.substring(0, 120);
-      return `• ${date} — ${preview}${entry.content.length > 120 ? '...' : ''}`;
+      return `• ${happenedPhrase(view)}; ${wroteAboutPhrase(view)} — ${preview}${entry.content.length > 120 ? '...' : ''}`;
     })
     .join('\n');
 
-  return `Relevant past entries were found at the following times:\n\n${entries}`;
+  return `Relevant past entries, with occurrence and writing times kept separate:\n\n${entries}`;
 }

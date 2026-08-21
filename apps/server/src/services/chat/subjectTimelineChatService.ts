@@ -12,7 +12,9 @@ export type SubjectTimelineChatResponse = {
 };
 
 function dateLabel(value: string, precision: string): string {
-  if (precision === 'sequence_only' || precision === 'unresolved') return 'Sequence only';
+  if (!value || precision === 'sequence_only' || precision === 'unresolved' || precision === 'unknown') {
+    return 'Date unknown';
+  }
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return 'Date unknown';
   return date.toLocaleDateString('en-US', {
@@ -24,9 +26,14 @@ function dateLabel(value: string, precision: string): string {
 }
 
 function eventLine(event: CompiledSubjectTimelineEvent): string {
-  const date = dateLabel(event.start_time, event.time_precision);
-  const status = event.occurrence_status === 'unresolved' ? ' · provisional' : '';
-  return `**${date} — ${event.title}**${status}\n${event.content}`;
+  const when = event.occurred_at ?? (event.occurrence_status === 'unresolved' ? '' : event.start_time);
+  const date = dateLabel(when, event.time_precision);
+  const status = event.occurrence_status === 'unresolved' ? ' · date unknown' : '';
+  const recorded =
+    event.occurrence_status === 'unresolved' && event.recorded_at
+      ? `\nRecorded ${dateLabel(event.recorded_at, 'date')}`
+      : '';
+  return `**${date} — ${event.title}**${status}${recorded}\n${event.content}`;
 }
 
 export async function buildSubjectTimelineChatResponse(input: {
@@ -103,7 +110,7 @@ export async function buildSubjectTimelineChatResponse(input: {
         id: event.source_id,
         title: event.title,
         snippet: event.focusedEvidence || event.content,
-        date: event.start_time,
+        date: event.occurred_at,
         relevanceScore: Math.round(event.relevance * 100),
         relevanceReasons: [event.whyIncluded],
         usage: 'supporting',

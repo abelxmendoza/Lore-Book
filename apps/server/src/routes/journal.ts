@@ -43,7 +43,7 @@ router.post('/create', requireAuth, async (req: AuthenticatedRequest, res) => {
   epiphanySessionManager.feedEntry(req.user!.id, {
     id: entry.id,
     content: payload.text,
-    date: entry.date ?? new Date().toISOString(),
+    date: entry.date ?? undefined,
   }).catch(err => logger.warn({ err }, 'epiphany feed failed (journal)'));
 
   res.status(201).json({ entry });

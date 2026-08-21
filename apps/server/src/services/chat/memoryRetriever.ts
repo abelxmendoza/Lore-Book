@@ -13,6 +13,7 @@ import { queryRewriter } from '../rag/queryRewriter';
 import { reranker } from '../rag/reranker';
 import { temporalWeighting } from '../rag/temporalWeighting';
 import { applyEpistemicWeights } from '../rag/epistemicWeighting';
+import { clocksFromJournalEntry } from '../temporal/journalMemoryTemporal';
 import { computeIdentityWeight } from './identityWeighting';
 import { resolveAllTemporalAnchorsInTimezone } from '../../utils/temporalAnchorResolver';
 import { getUserTimezone } from '../temporal/userTimezoneService';
@@ -505,11 +506,14 @@ export class MemoryRetriever {
           ...rewritten.entities,
           ...rewritten.original.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3),
         ];
-        const observations = finalEntries.map(e => ({
-          date: new Date((e as any).date || (e as any).created_at || Date.now()),
-          score: scoreEntryForTopic((e as any).content || '', keywords),
-          entryId: e.id,
-        }));
+        const observations = finalEntries.map(e => {
+          const clocks = clocksFromJournalEntry(e);
+          return {
+            date: new Date(clocks.occurredAt ?? clocks.observedAt ?? 0),
+            score: scoreEntryForTopic((e as any).content || '', keywords),
+            entryId: e.id,
+          };
+        });
         const onset = resolveOnset(observations);
         if (onset) {
           // Sort chronologically (oldest-first) so the LLM reads the origin story in order
@@ -719,7 +723,8 @@ export class MemoryRetriever {
       const ranked = entriesWithConfidence
         .map(entry => {
           const similarity = (entry as any).similarity || 0.5;
-          const recency = recencyWeight(entry.date || entry.created_at || new Date().toISOString());
+          const observed = clocksFromJournalEntry(entry).observedAt;
+          const recency = observed ? recencyWeight(observed) : 1.0;
           const confidence = entry._confidence || 0.5;
           const rankScore = similarity * recency * confidence;
 

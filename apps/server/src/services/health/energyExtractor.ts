@@ -1,3 +1,4 @@
+import { clocksFromJournalEntry } from '../temporal/journalMemoryTemporal';
 import { logger } from '../../logger';
 
 import type { EnergyEvent } from './types';
@@ -27,6 +28,9 @@ export class EnergyExtractor {
         const content = entry.content || entry.text || '';
         if (!content) continue;
 
+        const clocks = clocksFromJournalEntry(entry);
+        const timestamp = clocks.occurredAt ?? clocks.observedAt;
+        if (!timestamp) continue;
         const contentLower = content.toLowerCase();
 
         // Check for energy patterns
@@ -34,12 +38,13 @@ export class EnergyExtractor {
           if (pattern.regex.test(contentLower)) {
             energyEvents.push({
               id: `energy_${entry.id}_${Date.now()}`,
-              timestamp: entry.date || entry.created_at || entry.timestamp || new Date().toISOString(),
+              timestamp,
               level: pattern.val,
               evidence: content.substring(0, 500),
               entry_id: entry.id,
               metadata: {
                 source_entry_id: entry.id,
+                occurrence_unknown: !clocks.occurredAt,
               },
             });
             break; // Only count each entry once

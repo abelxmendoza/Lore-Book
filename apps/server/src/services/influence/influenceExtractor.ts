@@ -1,3 +1,4 @@
+import { clocksFromJournalEntry } from '../temporal/journalMemoryTemporal';
 import { logger } from '../../logger';
 
 import type { InfluenceEvent, InfluenceContext } from './types';
@@ -23,10 +24,14 @@ export class InfluenceExtractor {
         const sentiment = entry.sentiment || this.estimateSentiment(content);
         const behaviorTags = this.extractBehaviors(content);
 
+        const clocks = clocksFromJournalEntry(entry);
+        const observedAt = clocks.observedAt;
+        if (!observedAt) continue;
+
         for (const person of people) {
           events.push({
             id: `infl_${entry.id}_${person}_${Date.now()}`,
-            timestamp: entry.date || entry.created_at || entry.timestamp || new Date().toISOString(),
+            timestamp: observedAt,
             person,
             text: content.substring(0, 500), // Limit text length
             sentiment,

@@ -48,6 +48,7 @@
     "anchors:audit": "tsx src/scripts/narrativeAnchorsMigrate.ts",
     "anchors:migrate": "tsx src/scripts/narrativeAnchorsMigrate.ts --execute",
     "beliefs:audit": "tsx src/scripts/beliefQueueMigrate.ts",
+    "journal-temporal:audit": "tsx src/scripts/journalTemporalAudit.ts",
     "beliefs:migrate": "tsx src/scripts/beliefQueueMigrate.ts --execute",
     "self-facts:cleanup": "tsx src/scripts/cleanupSelfEntityFacts.ts",
     "self-facts:cleanup:apply": "tsx src/scripts/cleanupSelfEntityFacts.ts --apply",

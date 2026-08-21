@@ -14,12 +14,13 @@ export type ContentType =
   | 'promise'
   | 'declaration';
 
-export type JournalTimePrecision = 'exact' | 'day' | 'month' | 'year' | 'approximate';
+export type JournalTimePrecision = 'exact' | 'day' | 'month' | 'year' | 'approximate' | 'unknown';
 
 export type MemoryEntry = {
   id: string;
   user_id: string;
-  date: string;
+  /** Occurrence only. Null means the described event time is unknown. */
+  date: string | null;
   content: string;
   tags: string[];
   chapter_id?: string | null;

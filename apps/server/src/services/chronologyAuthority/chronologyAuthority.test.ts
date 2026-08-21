@@ -245,4 +245,45 @@ describe('chronologyAuthority', () => {
       precision: 'year',
     });
   });
+
+  it('does not treat a recording timestamp as occurrence, and does not collapse by recording day', () => {
+    const result = projectCanonicalTimeline([
+      {
+        id: 'concert',
+        kind: 'event',
+        sourceId: 'evt-concert',
+        sortTime: '2026-07-15T20:00:00.000Z',
+        title: 'Concert with Maya',
+        body: 'I went to a concert with Maya.',
+        sourceKind: 'resolved_event',
+        sourceIds: ['evt-concert'],
+        sourceType: 'resolved_event',
+        occurredAt: '2026-07-15T20:00:00.000Z',
+        recordedAt: '2026-08-20T18:00:00.000Z',
+        temporalSource: 'user_stated',
+        timePrecision: 'date',
+        timeConfidence: 0.9,
+      },
+      {
+        id: 'journal-later',
+        kind: 'moment',
+        sourceId: 'je-later',
+        sortTime: '2026-08-20T18:00:00.000Z',
+        title: 'Writing about Maya',
+        body: 'Last month I went to a concert with Maya.',
+        sourceKind: 'journal_entry',
+        sourceIds: ['je-later'],
+        sourceType: 'journal',
+        occurredAt: null,
+        recordedAt: '2026-08-20T18:00:00.000Z',
+        mentionedAt: '2026-08-20T18:00:00.000Z',
+        temporalSource: 'recording_fallback',
+        timePrecision: 'unknown',
+      },
+    ]);
+    expect(result.canonical.map((item) => item.sourceId)).toEqual(['evt-concert']);
+    expect(result.canonical[0].temporal.occurred.start).toBe('2026-07-15T20:00:00.000Z');
+    expect(result.unresolved[0]?.temporal.occurred.start).toBeNull();
+    expect(result.unresolved[0]?.recordedAt).toBe('2026-08-20T18:00:00.000Z');
+  });
 });

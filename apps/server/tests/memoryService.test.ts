@@ -159,13 +159,17 @@ describe('MemoryService', () => {
       });
     });
 
-    it('an explicit caller-supplied date is treated as exact, full confidence', async () => {
+    it('an explicit caller-supplied date is stored as occurrence, not recording time', async () => {
       await memoryService.saveEntry({
         userId: 'u1',
         content: 'Short note.',
         date: '2026-07-04T00:00:00.000Z',
       });
-      expect(insertedRows[0]).toMatchObject({ time_precision: 'exact', time_confidence: 1.0 });
+      expect(insertedRows[0]).toMatchObject({
+        date: '2026-07-04T00:00:00.000Z',
+        timestamp: '2026-07-04T00:00:00.000Z',
+      });
+      expect(insertedRows[0].time_confidence as number).toBeGreaterThanOrEqual(0.9);
     });
 
     it('a confident, explicit date extracted from content carries its real precision/confidence through', async () => {
@@ -182,7 +186,7 @@ describe('MemoryService', () => {
       expect(insertedRows[0]).toMatchObject({ time_precision: 'month', time_confidence: 0.85 });
     });
 
-    it('a low-confidence suggestion does not get promoted to exact/full confidence — falls through as approximate, low confidence', async () => {
+    it('a low-confidence suggestion does not mint today as occurrence', async () => {
       vi.mocked(dateAssignmentService.suggestDate).mockResolvedValueOnce({
         date: new Date(),
         precision: 'day',
@@ -194,22 +198,34 @@ describe('MemoryService', () => {
         userId: 'u1',
         content: 'A long enough entry with genuinely no date information anywhere in it at all.',
       });
-      expect(insertedRows[0].time_precision).toBe('approximate');
-      expect(insertedRows[0].time_confidence as number).toBeLessThan(0.3);
+      expect(insertedRows[0].date).toBeNull();
+      expect(insertedRows[0].timestamp).toBeNull();
+      expect(insertedRows[0].time_precision).toBe('unknown');
+      expect(insertedRows[0].time_confidence).toBe(0);
     });
 
-    it('no content to infer from at all (pure write-time fallback) is marked approximate with low confidence, never exact/1.0', async () => {
+    it('no content to infer from leaves occurrence null instead of stamping now()', async () => {
       await memoryService.saveEntry({ userId: 'u1', content: 'short' });
-      expect(insertedRows[0]).toMatchObject({ time_precision: 'approximate', time_confidence: 0.1 });
+      expect(insertedRows[0]).toMatchObject({
+        date: null,
+        timestamp: null,
+        time_precision: 'unknown',
+        time_confidence: 0,
+      });
     });
 
-    it('a dateAssignmentService failure does not silently claim full confidence', async () => {
+    it('a dateAssignmentService failure does not mint today as occurrence', async () => {
       vi.mocked(dateAssignmentService.suggestDate).mockRejectedValueOnce(new Error('boom'));
       await memoryService.saveEntry({
         userId: 'u1',
         content: 'A long enough entry that will trigger date suggestion, which then fails.',
       });
-      expect(insertedRows[0]).toMatchObject({ time_precision: 'approximate', time_confidence: 0.1 });
+      expect(insertedRows[0]).toMatchObject({
+        date: null,
+        timestamp: null,
+        time_precision: 'unknown',
+        time_confidence: 0,
+      });
     });
   });
 

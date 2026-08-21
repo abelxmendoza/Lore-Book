@@ -23,7 +23,7 @@ const vector1536 = customType<{ data: number[]; driverData: string }>({
 export const journalEntries = pgTable('journal_entries', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull(),
-  date: timestamp('date', { withTimezone: true }),
+  date: timestamp('date', { withTimezone: true }), // occurrence only; null = unknown
   content: text('content'),
   tags: text('tags').array(),
   chapterId: uuid('chapter_id'),

@@ -78,46 +78,53 @@ interface Props {
 }
 
 function fmtEventDate(iso: string): string {
+  if (!iso) return 'Date unknown';
   try {
     return format(parseISO(iso), 'MMM d, yyyy');
   } catch {
     const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? iso : format(d, 'MMM d, yyyy');
+    return Number.isNaN(d.getTime()) ? 'Date unknown' : format(d, 'MMM d, yyyy');
   }
 }
 
-// Below this, a memory's `date` is effectively a write-time stamp (see
-// journal_entries.time_confidence / memoryService.saveEntry) rather than
-// real occurrence evidence — LoreBook knows when the memory was recorded,
-// not when the remembered thing happened. Still shown (so the memory isn't
-// hidden), but labeled honestly rather than presented as "this happened on
-// this date."
 const UNRELIABLE_DATE_CONFIDENCE_THRESHOLD = 0.3;
 
-function isMemoryDateUnreliable(memory: { dateConfidence?: number | null }): boolean {
+function isMemoryDateUnreliable(memory: {
+  dateConfidence?: number | null;
+  occurredAt?: string | null;
+  occurrenceStatus?: 'confirmed' | 'range' | 'unresolved';
+  recordingFallbackRejected?: boolean;
+}): boolean {
+  if (memory.occurrenceStatus === 'unresolved' || memory.recordingFallbackRejected) return true;
+  if (memory.occurredAt === null && memory.occurrenceStatus) return true;
   return typeof memory.dateConfidence === 'number' && memory.dateConfidence < UNRELIABLE_DATE_CONFIDENCE_THRESHOLD;
 }
 
-function fmtMemoryDate(memory: { date: string; dateConfidence?: number | null }): string {
-  const formatted = fmtEventDate(memory.date);
+function fmtMemoryDate(memory: {
+  date: string;
+  dateConfidence?: number | null;
+  occurredAt?: string | null;
+  occurrenceStatus?: 'confirmed' | 'range' | 'unresolved';
+  recordingFallbackRejected?: boolean;
+}): string {
+  if (memory.occurrenceStatus === 'unresolved') return 'Date unknown';
+  const formatted = fmtEventDate(memory.occurredAt ?? memory.date);
   return isMemoryDateUnreliable(memory) ? `Recorded ${formatted}` : formatted;
 }
 
-// Ordering authority vs display authority, kept deliberately separate:
-// `memory.date` (via fmtMemoryDate above) is what the card SHOWS. This is
-// what decides where the item SORTS. For a recording-only memory these must
-// diverge — the card still shows "Recorded Aug 20" for transparency, but an
-// empty ordering date means it can never claim a chronological position next
-// to a real occurrence merely because it happened to be saved that day.
-// Both this component's own sort and EntityTimelinePanel's internal
-// sortTimelineEventsChronologically already sink an unparseable/empty date
-// to the end of the list, so this alone is enough to move the item into an
-// undated tail without adding a second timeline model.
-function memoryOrderDate(memory: { date: string; dateConfidence?: number | null }): string {
-  return isMemoryDateUnreliable(memory) ? '' : memory.date;
+// Ordering vs display stay separate: recording-only memories still show a
+// recorded label, but an empty ordering date sinks them out of chronology.
+function memoryOrderDate(memory: {
+  date: string;
+  dateConfidence?: number | null;
+  occurredAt?: string | null;
+  occurrenceStatus?: 'confirmed' | 'range' | 'unresolved';
+  recordingFallbackRejected?: boolean;
+}): string {
+  if (isMemoryDateUnreliable(memory)) return '';
+  return memory.occurredAt ?? memory.date;
 }
 
-/** Same "invalid sinks to the end" semantics as sortTimelineEventsChronologically, for StoryItem's `date` field directly. */
 function compareOrderDates(a: string, b: string, order: 'asc' | 'desc' = 'asc'): number {
   const ta = new Date(a).getTime();
   const tb = new Date(b).getTime();
@@ -329,6 +336,9 @@ export function CharacterStoryPanel({
 
   const storyItems = useMemo((): StoryItem[] => {
     const items: StoryItem[] = [];
+    const eventIds = new Set(
+      chronologicalEvents.map((event) => event.eventId).filter((id): id is string => Boolean(id)),
+    );
     if (scope !== 'memories') {
       for (const event of chronologicalEvents) {
         items.push({ kind: 'event', id: `event-${event.id}`, date: event.eventDate, event });
@@ -336,6 +346,9 @@ export function CharacterStoryPanel({
     }
     if (scope !== 'events') {
       for (const memory of sortedMemories) {
+        if (scope === 'all' && memory.canonicalEventId && eventIds.has(memory.canonicalEventId)) {
+          continue;
+        }
         let highlight: string | undefined;
         if (firstMemory && memory.id === firstMemory.id) highlight = 'First memory';
         else if (
@@ -346,11 +359,6 @@ export function CharacterStoryPanel({
         ) {
           highlight = 'Most significant';
         }
-        // `date` here is the ORDERING date (empty for a recording-only
-        // memory, sinking it out of the interleaved chronological stream —
-        // see memoryOrderDate). The card still displays memory.date via
-        // fmtMemoryDate in renderListItem; the two are deliberately
-        // independent so recording time can never masquerade as occurrence.
         items.push({ kind: 'memory', id: `memory-${memory.id}`, date: memoryOrderDate(memory), memory, highlight });
       }
     }
@@ -679,6 +687,9 @@ export function CharacterStoryPanel({
               >
                 <div className="flex flex-wrap items-center gap-2 mb-1">
                   <time className="text-xs font-mono text-primary/80">{fmtMemoryDate(memory)}</time>
+                  {memory.occurrenceStatus === 'unresolved' && memory.recordedAt ? (
+                    <span className="text-[10px] text-white/40">Recorded {fmtEventDate(memory.recordedAt)}</span>
+                  ) : null}
                   <Badge
                     variant="outline"
                     className="text-[10px] bg-amber-500/15 text-amber-200 border-amber-500/30"

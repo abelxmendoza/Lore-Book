@@ -15,6 +15,7 @@ import {
 } from './narrativeCohesion';
 import { projectCanonicalTimeline } from '../chronologyAuthority/canonicalTimelineProjector';
 import type { CanonicalTemporalModel } from '../temporal/canonicalTemporalModel';
+import { classifyJournalMemoryTemporal } from '../temporal/journalMemoryTemporal';
 import {
   buildHistoricalNeighborhoods,
   type HistoricalNeighborhood,
@@ -639,7 +640,7 @@ export class StitchedTimelineService {
         journalIds.length
           ? supabaseAdmin
               .from('journal_entries')
-              .select('id, content, date, source, tags, time_precision, time_confidence, created_at')
+              .select('id, content, date, source, tags, created_at, metadata, time_precision, time_confidence')
               .in('id', journalIds)
           : Promise.resolve({ data: [] as any[] }),
       ]);
@@ -688,12 +689,21 @@ export class StitchedTimelineService {
           if (!m) continue;
           const sourceId = m.id;
           const key = `moment:${sourceId}`;
-          const timeConfidence = typeof m.time_confidence === 'number' ? m.time_confidence : 1.0;
+          const meta = (m.metadata ?? {}) as Record<string, unknown>;
+          const classified = classifyJournalMemoryTemporal({
+            journalId: m.id,
+            content: m.content,
+            claimedDate: m.date,
+            createdAt: m.created_at,
+            temporalSource: typeof meta.temporal_source === 'string' ? meta.temporal_source : null,
+            timePrecision: m.time_precision,
+            timeConfidence: m.time_confidence == null ? null : Number(m.time_confidence),
+          });
           items.push({
             id: key,
             kind: 'moment',
             sourceId,
-            sortTime: link.sort_time ?? m.date ?? new Date().toISOString(),
+            sortTime: classified.occurredAt ?? new Date(0).toISOString(),
             userSortIndex: orderMap.get(key) ?? null,
             title: momentTitle(m.content),
             body: m.content,
@@ -701,16 +711,21 @@ export class StitchedTimelineService {
             sourceIds: [sourceId],
             sourceType: m.source ?? 'manual',
             tags: (m.tags as string[]) ?? [],
-            timePrecision: (m.time_precision as string) ?? 'exact',
-            timeConfidence,
-            // Same rule as the general sweep's moment handling: a low-confidence
-            // (write-time-fallback) date carries no occurrence claim at all.
-            temporalSource: timeConfidence < 0.3 ? 'recording_fallback' : 'user_stated',
-            occurredAt: timeConfidence < 0.3 ? null : m.date ?? null,
-            recordedAt: (m.created_at as string | null) ?? null,
-            knownFrom: (m.created_at as string | null) ?? null,
+            timePrecision: classified.precision,
+            timeConfidence:
+              classified.occurrenceStatus === 'unresolved'
+                ? 0
+                : m.time_confidence == null
+                  ? 1
+                  : Number(m.time_confidence),
+            temporalSource: classified.temporalSource,
+            occurredAt: classified.occurredAt,
+            mentionedAt: classified.mentionedAt,
+            recordedAt: classified.recordedAt,
+            knownFrom: classified.recordedAt,
             userPresence: (link.user_presence as StitchedTimelineItem['userPresence']) ?? 'attended',
             temporalRole: link.temporal_role ?? undefined,
+            occurrenceStatus: classified.occurrenceStatus,
           });
         }
       }
@@ -934,7 +949,7 @@ export class StitchedTimelineService {
       for (const e of characterId ? [] : eventRows ?? []) {
         if (seenEventIds.has(e.id)) continue;
         const occurredAt = e.occurred_at ?? e.event_date ?? null;
-        const sortTime = occurredAt ?? e.created_at ?? new Date(0).toISOString();
+        const sortTime = occurredAt ?? new Date(0).toISOString();
         const key = `event:${e.id}`;
         items.push({
           id: key,

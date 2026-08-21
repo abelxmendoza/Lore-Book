@@ -191,4 +191,82 @@ describe('subject timeline compiler', () => {
     expect(compilation.events.map((event) => event.source_id)).toEqual(['job']);
     expect(compilation.contextEvents).toHaveLength(0);
   });
+
+  it('filters “what happened on this date” by occurrence, not journal recording time', () => {
+    const compilation = compileSubjectTimeline({
+      query: '2026-07-15',
+      intent: interpretSubjectTimelineQuery('2026-07-15'),
+      subject: null,
+      items: [
+        item({
+          id: 'event:concert',
+          sourceId: 'evt-concert',
+          title: 'Concert with Maya',
+          body: 'I went to a concert with Maya.',
+          sortTime: '2026-08-20T18:00:00.000Z',
+          occurredAt: '2026-07-15T20:00:00.000Z',
+          recordedAt: '2026-08-20T18:00:00.000Z',
+        }),
+        item({
+          id: 'moment:journal',
+          sourceId: 'je-later',
+          sourceKind: 'journal_entry',
+          title: 'Journal about Maya',
+          body: 'Last month I went to a concert with Maya.',
+          sortTime: '2026-07-15T09:00:00.000Z',
+          occurredAt: null,
+          recordedAt: '2026-07-15T09:00:00.000Z',
+          temporalSource: 'recording_fallback',
+          occurrenceStatus: 'unresolved',
+        }),
+      ],
+    });
+    expect(compilation.intent.exactDate).toBe('2026-07-15');
+    expect(compilation.events.map((event) => event.source_id)).toEqual(['evt-concert']);
+    expect(compilation.events[0].occurred_at).toBe('2026-07-15T20:00:00.000Z');
+  });
+
+  it('does not place an unresolved journal on today via sortTime', () => {
+    const compilation = compileSubjectTimeline({
+      query: 'Maya',
+      intent: interpretSubjectTimelineQuery('Maya timeline'),
+      subject: {
+        entityId: '33333333-3333-4333-8333-333333333333',
+        entityType: 'person',
+        displayName: 'Maya',
+        aliases: [],
+        confidence: 0.9,
+      },
+      items: [
+        item({
+          id: 'moment:unknown',
+          sourceId: 'je-unknown',
+          sourceKind: 'journal_entry',
+          title: 'Thinking about Maya',
+          body: "I don't remember when this happened.",
+          sortTime: '2026-08-21T18:00:00.000Z',
+          occurredAt: null,
+          recordedAt: '2026-08-21T18:00:00.000Z',
+          temporalSource: 'unresolved',
+          occurrenceStatus: 'unresolved',
+        }),
+        item({
+          id: 'event:concert',
+          sourceId: 'evt-concert',
+          title: 'Concert with Maya',
+          body: 'I went to a concert with Maya.',
+          sortTime: '2026-07-15T20:00:00.000Z',
+          occurredAt: '2026-07-15T20:00:00.000Z',
+        }),
+      ],
+    });
+    const unknown = compilation.events.find((event) => event.source_id === 'je-unknown');
+    if (unknown) {
+      expect(unknown.start_time).not.toBe('2026-08-21T18:00:00.000Z');
+      expect(unknown.start_time).toBeNull();
+      expect(unknown.occurred_at).toBeNull();
+    }
+    expect(compilation.period?.start).toBe('2026-07-15T20:00:00.000Z');
+    expect(compilation.period?.end).not.toBe('2026-08-21T18:00:00.000Z');
+  });
 });

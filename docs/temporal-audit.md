@@ -3,6 +3,21 @@
 Status: Temporal Intelligence & Event Date Resolution Sprint — audit + canonical model.
 Note: temporal **query routing** is already in progress — `apps/server/src/services/temporal/temporalQueryService.ts` defines TODAY/YESTERDAY/THIS_WEEK/THIS_MONTH/TIME_RANGE/TEMPORAL_COMPARISON/TIMELINE query types (Phase 4 substantially landed). This doc covers Phase 1 (where occurrence time is confused with write time) and Phase 2 (the canonical model), and lists the ordering fixes Phases 6–7 need.
 
+**Superseded ordering rule:** do **not** use `date ?? created_at` as occurrence.
+Occurrence may be null. Recording (`created_at`) is a separate clock.
+
+Current contract: [`docs/architecture/canonical-temporal-model.md`](architecture/canonical-temporal-model.md)
+and `classifyJournalMemoryTemporal()`.
+
+```text
+OCCURRED     When the real-world event happened.
+MENTIONED    When the user told LoreBook about it.
+RECORDED     When LoreBook persisted the record.
+```
+
+These fields may all differ. `recordedAt` must never fill `occurredAt` merely
+because occurrence is unknown.
+
 ## Phase 1 — Where `created_at` proxies occurrence time
 
 Occurrence columns **already exist** on every relevant table — the bug is that retrieval/timeline/synthesis often ignore them:
@@ -13,23 +28,28 @@ Occurrence columns **already exist** on every relevant table — the bug is that
 | `event_records` | `event_date` (+ `event_date_end`) | `created_at` |
 | `character_timeline_events` | `event_date` | `created_at` |
 | `episodes` | `start_at` (+ `end_at`) | `created_at` |
-| `journal_entries` | `date` | `created_at` |
+| `journal_entries` | `date` (nullable; occurrence only) | `created_at` |
 
 ### Misuse sites (sort/group by write time instead of occurrence)
 | Location | Issue | Fix |
 | --- | --- | --- |
-| `services/timelineV2.ts:19` | timeline ordered by `created_at` | order by occurrence (`start_time`/`event_date`/`date`), `created_at` fallback |
-| `services/timeline/timelineSyncService.ts` (×6: 245,281,358,439,462,499) | sync/order by `created_at` | occurrence-first ordering |
+| `services/timelineV2.ts:19` | timeline ordered by `created_at` | order by occurrence (`start_time`/`event_date`/`date`); do not fall back to `created_at` as if it were occurrence |
+| `services/timeline/timelineSyncService.ts` | journal sync used `date \|\| created_at` | journal occurrence only; skip unresolved |
 | `services/eventRecoveryService.ts:107` | events fetched ordered by `created_at` | order by `start_time` |
-| `services/chat/memoryRetriever.ts:92`, `contextAwareMemoryRetrieval.ts:221` | recall ordered by `created_at` | occurrence-first for event/episode rows |
-| `services/chat/workingMemoryAssembler.ts:924,938` | journal/chat ordered by `created_at` | use `journal_entries.date` for episodes |
+| `services/chat/memoryRetriever.ts` | recall mixed `date \|\| created_at` | occurrence for onset; recording for recency ranking |
+| `services/chat/workingMemoryAssembler.ts` | journal/chat ordered by `created_at` | classified occurrence for episodes |
 
 ### The pattern that's already correct (propagate this everywhere)
-`services/continuityRuntime/arcs/dayOccasionService.ts:401`:
+`classifyJournalMemoryTemporal()` / `clocksFromJournalEntry()`:
+
 ```ts
-const sortTime = m.date ?? m.created_at;   // occurrence first, write time fallback
+occurredAt   // life chronology; may be null
+mentionedAt  // when the user told LoreBook
+recordedAt   // created_at; never copied into occurredAt
 ```
-This is the canonical ordering rule. It exists in one place; it must become universal.
+
+Do **not** use `const sortTime = m.date ?? m.created_at` as occurrence. That
+rule manufactured “it happened today” for unanchored journals.
 
 ## Phase 2 — Canonical temporal model
 
@@ -44,8 +64,10 @@ updated_at                   timestamptz
 ```
 
 Mapping onto today's columns (no big-bang rename — adopt a resolver):
-- `occurredAt(row) = row.event_occurred_at ?? row.start_time ?? row.event_date ?? row.date ?? row.start_at ?? row.created_at`
-- precision/source default to `UNKNOWN`/`SYSTEM` until the extraction engine (Phase 3) populates them.
+- `occurredAt(row) = row.event_occurred_at ?? row.start_time ?? row.event_date ?? row.date ?? row.start_at`
+- `recordedAt(row) = row.created_at`
+- Do **not** append `?? row.created_at` onto occurrence.
+- precision/source default to `UNKNOWN` / unresolved until extraction populates them.
 
 Examples (from the brief):
 - "I went to Club Metro on June 12" → occurred_at=2026-06-12, precision=DAY, source=USER_EXPLICIT
@@ -53,7 +75,9 @@ Examples (from the brief):
 
 ## Phase 6 — Timeline authority (the one rule)
 
-**Authoritative ordering = occurrence time, with `created_at` as fallback only.** A single helper `occurredAt(row)` (above) must back every timeline/episode/arc sort. Replace the misuse sites in the Phase 1 table with it.
+**Authoritative ordering = occurrence time.** Recording time is not a substitute
+occurrence. Unresolved items stay unresolved. Replace the misuse sites in the
+Phase 1 table with `classifyJournalMemoryTemporal()` / CanonicalTemporalModel.
 
 ## Phase 7 — Story intelligence
 

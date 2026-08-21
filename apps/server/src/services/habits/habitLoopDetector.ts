@@ -1,3 +1,4 @@
+import { clocksFromJournalEntry } from '../temporal/journalMemoryTemporal';
 import { logger } from '../../logger';
 
 import type { Habit, HabitInsight, HabitContext } from './types';
@@ -180,8 +181,8 @@ export class HabitLoopDetector {
     // Calculate frequency per week
     const firstMention = mentions[mentions.length - 1];
     const lastMention = mentions[0];
-    const firstDate = new Date(firstMention.date || firstMention.created_at);
-    const lastDate = new Date(lastMention.date || lastMention.created_at);
+    const firstDate = new Date(clocksFromJournalEntry(firstMention).observedAt ?? 0);
+    const lastDate = new Date(clocksFromJournalEntry(lastMention).observedAt ?? 0);
     const daysDiff = (lastDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24);
 
     if (daysDiff === 0) return mentions.length;

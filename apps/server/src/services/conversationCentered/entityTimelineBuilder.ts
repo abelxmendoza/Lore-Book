@@ -91,7 +91,7 @@ export class EntityTimelineBuilder {
           sourceThreadId: row.source_thread_id ?? undefined,
           sourceEpisodeId: row.source_episode_id ?? undefined,
           eventTitle: row.event_title || 'Untitled',
-          eventDate: row.event_date || row.created_at,
+          eventDate: row.event_date || '',
           eventSummary: row.event_summary,
           eventType: row.event_type,
           timelineType: row.timeline_type as TimelineType,

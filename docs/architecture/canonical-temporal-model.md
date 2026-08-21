@@ -3,6 +3,17 @@
 LoreBook treats time as evidence, not as a timestamp copied from the message
 that described an event.
 
+These three clocks are independent. They may all differ.
+
+```text
+OCCURRED     When the real-world event happened.
+MENTIONED    When the user told LoreBook about it.
+RECORDED     When LoreBook persisted the record.
+```
+
+`recordedAt` must never be used as `occurredAt` merely because `occurredAt`
+is unknown. Unknown means unknown. Recording time is provenance, not biography.
+
 ```text
 Source evidence
     |
@@ -17,6 +28,25 @@ Source evidence
 Each canonical temporal projection also carries precision, confidence, source,
 status, the original expression, and field-level provenance. Recording time is
 never promoted into occurrence time.
+
+## Journal storage
+
+`journal_entries.date` is **occurrence only** and is nullable.
+
+| Field | Clock |
+| --- | --- |
+| `journal_entries.date` / `timestamp` | OCCURRED (null = unknown) |
+| `journal_entries.created_at` | RECORDED |
+| `metadata.temporal_source` / `temporal_precision` / `temporal_expression` | evidence |
+| linked `resolved_events.start_time` via `metadata.source_entry_id` | canonical OCCURRED (wins) |
+
+Do not store `created_at` in `date` when occurrence is unknown.
+`sync_chronology_index` indexes dated occurrence only. A null date omits the
+row from `chronology_index`; it does not `COALESCE(date, NOW())`.
+
+Historical `date == created_at` rows without `temporal_source` are
+`ambiguous_legacy`. They are not silently rewritten. Use
+`npm run journal-temporal:audit -- --user-id <uuid>` (dry-run, never mutates).
 
 ## Precision
 
@@ -37,19 +67,13 @@ Mention and insertion order do not rewrite life chronology.
 
 ## Projection and migration strategy
 
-The first implementation is a read-compatible adapter over existing records:
+Journal occurrence is stored on `journal_entries.date` (nullable). Canonical
+events keep `CanonicalTemporalModel` on `resolved_events`. Journals that link
+through `metadata.source_entry_id` reuse that event id; they do not duplicate it.
 
-- the shared stitched feed exposes the canonical temporal object;
-- legacy `sortTime` remains temporarily for older UI consumers;
-- unknown occurrence stays null at the ingestion stage contract;
-- chat and conversation sources without temporal evidence are unresolved;
-- timeline speech-act gates exclude questions, recap prompts, commands, product
-  debugging, and other non-events;
-- subject compilers apply domain gates before building career timelines.
-
-No database migration or historical rewrite is part of this slice. A later
-materialization can add dedicated columns only after the migration ledger is
-safe and parity tests prove that the adapters preserve existing behavior.
+Unknown occurrence stays null at write time. `sync_chronology_index` omits
+undated journals from dated chronology. Stitched / Omni unresolved trays keep
+them retrievable without a start_time.
 
 ## Required invariants
 
