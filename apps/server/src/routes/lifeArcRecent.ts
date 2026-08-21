@@ -1,6 +1,9 @@
 /**
  * Recent life narrative — significant events, patterns, and LLM summary.
  * Distinct from /api/life-arcs (CRUD for arc containers).
+ *
+ * Live Discovery → LifeArcPanel now reads `/api/chronology/stitched`.
+ * This route is kept until that replacement is proven in production.
  */
 
 import { Router } from 'express';

@@ -50,6 +50,14 @@ import { EntityTimelinePanel } from '../common/EntityTimelinePanel';
 import type { SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
 import { Button } from '../ui/button';
 import { PostEventComposer } from '../events/PostEventComposer';
+import { EventDetailModal } from '../events/EventDetailModal';
+import type { Event } from '../events/EventProfileCard';
+import { stitchedTimelineApi, type StitchedTimelineItem } from '../../api/stitchedTimeline';
+import {
+  stitchedItemsToLocationTimelineEntries,
+  type LocationCanonicalTimelineEntry,
+} from '../../lib/locationStitchedTimelineAdapter';
+import { openTimelineItemDetail } from '../../lib/resolveTimelineItemDetail';
 import {
   listDemoUserPostedEventsForLocation,
 } from '../../mocks/userPostedEventsDemo';
@@ -377,9 +385,10 @@ export const LocationDetailModal = ({
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [loadingMemories, setLoadingMemories] = useState(false);
   const [memoryCards, setMemoryCards] = useState<MemoryCard[]>([]);
-  const [entityTimelineEntries, setEntityTimelineEntries] = useState<
-    Array<{ id: string; timestamp: string; title: string; summary?: string }>
-  >([]);
+  const [entityTimelineEntries, setEntityTimelineEntries] = useState<LocationCanonicalTimelineEntry[]>([]);
+  const [stitchedById, setStitchedById] = useState<Map<string, StitchedTimelineItem>>(() => new Map());
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [loadingTimeline, setLoadingTimeline] = useState(false);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date }>>([]);
@@ -598,43 +607,27 @@ export const LocationDetailModal = ({
     void loadLocationMemories();
   }, [location.entries, location.id, location.name, location.firstVisited, location.lastVisited, location.tagCounts, location.moods, location.relatedPeople]);
 
-  // Timeline tab data — separate from memoryCards (Memories tab): sourced
-  // from resolved_events/threads via entityTimelineBuilder, with real
-  // shared_experience/lore classification the raw journal-entry list above
-  // never had.
+  // Timeline tab data — canonical stitched chronology scoped by location_id.
+  // GET /api/locations/:id/timelines remains mounted for traffic comparison.
   useEffect(() => {
     if (isMockDataEnabled) return;
     let cancelled = false;
 
-    type TimelineEntry = { id: string; eventTitle: string; eventDate: string; eventSummary?: string };
-    const fetchTimelines = () =>
-      fetchJson<{ success: boolean; timelines: { sharedExperiences: TimelineEntry[]; lore: TimelineEntry[] } }>(
-        `/api/locations/${location.id}/timelines`,
-      );
-
     (async () => {
+      setLoadingTimeline(true);
       try {
-        const r = await fetchTimelines();
-        if (cancelled || !r.success) return;
-        let entries = [...r.timelines.sharedExperiences, ...r.timelines.lore];
-
-        // Pre-feature history never got backfilled — an empty first load
-        // likely means this location just hasn't been rebuilt yet.
-        if (entries.length === 0) {
-          await fetchJson(`/api/locations/${location.id}/rebuild-timelines`, { method: 'POST' });
-          if (cancelled) return;
-          const rebuilt = await fetchTimelines();
-          if (cancelled || !rebuilt.success) return;
-          entries = [...rebuilt.timelines.sharedExperiences, ...rebuilt.timelines.lore];
-        }
-
-        if (!cancelled) {
-          setEntityTimelineEntries(
-            entries.map((e) => ({ id: e.id, timestamp: e.eventDate, title: e.eventTitle, summary: e.eventSummary })),
-          );
-        }
+        const result = await stitchedTimelineApi.get({
+          scope_type: 'global',
+          location_id: location.id,
+        });
+        if (cancelled) return;
+        const pool = [...result.items, ...(result.unresolved_items ?? [])];
+        setStitchedById(new Map(pool.map((item) => [item.id, item])));
+        setEntityTimelineEntries(stitchedItemsToLocationTimelineEntries(pool));
       } catch {
         // keep prior state on failure
+      } finally {
+        if (!cancelled) setLoadingTimeline(false);
       }
     })();
 
@@ -777,7 +770,7 @@ export const LocationDetailModal = ({
     : location.relatedPeople.filter(person => person.character_id);
   const locationTimelineEntries = entityTimelineEntries.length > 0
     ? entityTimelineEntries
-    : memoryCards.length > 0
+    : isMockDataEnabled && memoryCards.length > 0
     ? memoryCards.map((memory) => {
         const body = memory.content ?? '';
         const tags = Array.isArray(memory.tags) ? memory.tags : [];
@@ -1665,7 +1658,7 @@ export const LocationDetailModal = ({
 
           {/* ── TIMELINE ── */}
           {activeTab === 'timeline' && (
-            <div className="space-y-3" data-testid="location-timeline-tab">
+            <div className="space-y-3" data-testid="location-canonical-timeline">
               <button
                 type="button"
                 onClick={openLocationTimelineMainChat}
@@ -1729,10 +1722,53 @@ export const LocationDetailModal = ({
                     meta: 'Posted',
                   })),
                 ]}
-                loading={loadingMemories}
+                loading={loadingTimeline || loadingMemories}
                 emptyTitle="No timeline moments yet"
                 emptyHint={`Memories and visits linked to ${location.name} will appear here.`}
                 onEventSelect={(event) => {
+                  const stitched = stitchedById.get(event.id);
+                  if (stitched) {
+                    void openTimelineItemDetail(stitched, {
+                      openEvent: setSelectedEvent,
+                      openMemory: (memory) => {
+                        const existing = memoryCards.find(
+                          (card) => card.id === memory.journal_entry_id || card.id === memory.id,
+                        );
+                        setSelectedMemory(
+                          existing ?? {
+                            id: memory.journal_entry_id,
+                            title: memory.title ?? stitched.title,
+                            content: memory.content ?? stitched.body,
+                            date: memory.date ?? stitched.sortTime,
+                            tags: stitched.tags ?? [],
+                            source: 'journal',
+                            sourceIcon: '📖',
+                            characters: [],
+                          },
+                        );
+                      },
+                    });
+                    return;
+                  }
+                  const posted = placePostedEvents.find((ev) => ev.id === event.id);
+                  if (posted) {
+                    void openTimelineItemDetail(
+                      {
+                        id: `event:${posted.id}`,
+                        kind: 'event',
+                        sourceKind: 'resolved_event',
+                        sourceId: posted.id,
+                        title: posted.title,
+                        body: posted.summary ?? undefined,
+                        sortTime: posted.start_time ?? undefined,
+                      },
+                      {
+                        openEvent: setSelectedEvent,
+                        openMemory: () => undefined,
+                      },
+                    );
+                    return;
+                  }
                   const memory = memoryCards.find((card) => card.id === event.id);
                   if (memory) setSelectedMemory(memory);
                 }}
@@ -2378,6 +2414,13 @@ export const LocationDetailModal = ({
           }}
         />
       </div>
+
+      {selectedEvent && (
+        <EventDetailModal
+          event={selectedEvent}
+          onClose={() => setSelectedEvent(null)}
+        />
+      )}
 
       {selectedMemory && (
         <MemoryDetailModal

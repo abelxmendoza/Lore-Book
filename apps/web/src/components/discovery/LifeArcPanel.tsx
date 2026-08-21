@@ -11,7 +11,11 @@ import { Button } from '../ui/button';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { useLifeArc, type Timeframe } from '../../hooks/useLifeArc';
 import { format, parseISO } from 'date-fns';
-import { EventDetailModal, type Event } from '../events/EventDetailModal';
+import { EventDetailModal } from '../events/EventDetailModal';
+import type { Event } from '../events/EventProfileCard';
+import type { LifeArcEvent } from '../../lib/lifeArcRecentFromStitched';
+import { openTimelineItemDetail } from '../../lib/resolveTimelineItemDetail';
+import { useEntityModal } from '../../contexts/EntityModalContext';
 import { StabilityCard } from './StabilityCard';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 
@@ -51,6 +55,7 @@ const MOCK_LIFE_ARC = {
 
 export const LifeArcPanel: React.FC = () => {
   const isMockData = useShouldUseMockData();
+  const { openMemory } = useEntityModal();
   const [timeframe, setTimeframe] = useState<Timeframe>('LAST_30_DAYS');
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const { data: realData, loading: realLoading, error: realError, refresh } = useLifeArc(timeframe);
@@ -84,17 +89,28 @@ export const LifeArcPanel: React.FC = () => {
     return 'text-red-400';
   };
 
-  const handleEventClick = async (eventId: string) => {
+  const handleEventClick = async (event: LifeArcEvent | (typeof MOCK_LIFE_ARC.event_groups.significant_events)[number]) => {
     try {
-      const { fetchJson } = await import('../../lib/api');
-      const result = await fetchJson<{ success: boolean; event: Event }>(
-        `/api/conversation/events/${eventId}`
+      await openTimelineItemDetail(
+        {
+          id: 'canonicalItemId' in event ? event.canonicalItemId : event.id,
+          kind: event.type === 'journal_entry' || event.type === 'moment' ? 'moment' : 'event',
+          sourceKind: 'sourceKind' in event ? event.sourceKind : event.type,
+          sourceId: 'sourceId' in event ? event.sourceId : event.id,
+          sourceType: event.type,
+          title: event.title,
+          body: event.summary ?? undefined,
+          sortTime: event.start_time,
+          peopleIds: 'peopleIds' in event ? event.peopleIds : undefined,
+          locationIds: 'locationIds' in event ? event.locationIds : undefined,
+        },
+        {
+          openEvent: setSelectedEvent,
+          openMemory,
+        },
       );
-      if (result.success) {
-        setSelectedEvent(result.event);
-      }
-    } catch (err: any) {
-      console.error('Failed to load event:', err);
+    } catch (err: unknown) {
+      console.error('Failed to open timeline item:', err);
     }
   };
 
@@ -277,7 +293,7 @@ export const LifeArcPanel: React.FC = () => {
                     <div key={event.id}>
                       <Card
                         className="border-border/40 bg-black/20 hover:bg-black/40 cursor-pointer transition"
-                        onClick={() => handleEventClick(event.id)}
+                        onClick={() => handleEventClick(event)}
                       >
                         <CardContent className="pt-4">
                           <div className="flex items-start justify-between gap-2">
@@ -376,7 +392,7 @@ export const LifeArcPanel: React.FC = () => {
                   <Card
                     key={event.id}
                     className="border-yellow-500/30 bg-yellow-500/5 hover:bg-yellow-500/10 cursor-pointer transition"
-                    onClick={() => handleEventClick(event.id)}
+                    onClick={() => handleEventClick(event)}
                   >
                     <CardContent className="pt-4">
                       <div className="flex items-start justify-between gap-2">

@@ -427,6 +427,8 @@ router.get('/:id', requireAuth, asyncHandler(async (req: AuthenticatedRequest, r
 }));
 
 // GET /api/locations/:id/timelines
+// Live LocationDetailModal now reads `/api/chronology/stitched?location_id=`.
+// This route is kept until that replacement is proven in production.
 router.get(
   '/:id/timelines',
   requireAuth,

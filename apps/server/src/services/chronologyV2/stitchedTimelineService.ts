@@ -69,6 +69,9 @@ export type StitchedTimelineItem = {
   validUntil?: string | null;
   /** Independent temporal coordinates; sortTime remains a compatibility field. */
   temporal?: CanonicalTemporalModel;
+  peopleIds?: string[];
+  locationIds?: string[];
+  organizationIds?: string[];
 };
 
 export type NarrativeChapterData = {
@@ -441,6 +444,12 @@ export class StitchedTimelineService {
        */
       character_id?: string;
       /**
+       * Restrict the global scope to events involving this location (matched
+       * against resolved_events.locations). Journals and timeline_events are
+       * excluded when they lack location ids rather than inferred by name.
+       */
+      location_id?: string;
+      /**
        * Cap the final item count after sorting/clustering (applied last, so a
        * cap never discards dedup accuracy). Undefined = unbounded, matching
        * every existing caller's behavior; callers issuing this per request
@@ -544,7 +553,7 @@ export class StitchedTimelineService {
 
       const [linkedEvents, linkedJournal] = await Promise.all([
         eventIds.length
-          ? supabaseAdmin.from('resolved_events').select('id, title, summary, start_time, confidence, metadata, tags').in('id', eventIds)
+          ? supabaseAdmin.from('resolved_events').select('id, title, summary, start_time, confidence, metadata, tags, people, locations').in('id', eventIds)
           : Promise.resolve({ data: [] as any[] }),
         journalIds.length
           ? supabaseAdmin.from('journal_entries').select('id, content, date, source, tags').in('id', journalIds)
@@ -571,6 +580,8 @@ export class StitchedTimelineService {
             confidence: e.confidence ?? 1,
             userPresence: (link.user_presence as StitchedTimelineItem['userPresence']) ?? 'unknown',
             temporalRole: link.temporal_role ?? undefined,
+            peopleIds: (e.people as string[]) ?? [],
+            locationIds: (e.locations as string[]) ?? [],
           });
           seenEventIds.add(e.id);
         }
@@ -599,7 +610,7 @@ export class StitchedTimelineService {
     } else if (isNarrativeConsolidationArc && narrativeEventIds.length > 0) {
       const { data: linkedEvents } = await supabaseAdmin
         .from('resolved_events')
-        .select('id, title, summary, start_time, confidence, metadata')
+        .select('id, title, summary, start_time, confidence, metadata, people, locations')
         .eq('user_id', userId)
         .in('id', narrativeEventIds);
 
@@ -623,6 +634,8 @@ export class StitchedTimelineService {
           userPresence: (meta.user_presence as StitchedTimelineItem['userPresence']) ?? 'unknown',
           temporalRole: primaryRole,
           contribution: chapter?.contributionScores[e.id],
+          peopleIds: (e.people as string[]) ?? [],
+          locationIds: (e.locations as string[]) ?? [],
         });
         seenEventIds.add(e.id);
       }
@@ -630,7 +643,7 @@ export class StitchedTimelineService {
       if (chapter?.backgroundEventIds.length) {
         const { data: backgroundRows } = await supabaseAdmin
           .from('resolved_events')
-          .select('id, title, summary, start_time, confidence, metadata')
+          .select('id, title, summary, start_time, confidence, metadata, people, locations')
           .eq('user_id', userId)
           .in('id', chapter.backgroundEventIds);
         chapterBackground = (backgroundRows ?? []).map((event) => ({
@@ -646,13 +659,17 @@ export class StitchedTimelineService {
           sourceType: 'resolved_event',
           confidence: Number(event.confidence ?? 1),
           contribution: chapter?.contributionScores[event.id as string],
+          peopleIds: (event.people as string[]) ?? [],
+          locationIds: (event.locations as string[]) ?? [],
         }));
       }
     } else {
       const candidatesByKey = new Map<string, CohesionCandidate>();
       const characterId = opts.character_id;
+      const locationId = opts.location_id;
+      const entityScoped = Boolean(characterId || locationId);
 
-      for (const m of characterId ? [] : moments) {
+      for (const m of entityScoped ? [] : moments) {
         const sourceId = m.journal_entry_id || m.id;
         const key = `moment:${sourceId}`;
         items.push({
@@ -688,9 +705,13 @@ export class StitchedTimelineService {
       // same occurrence collapse to one item; the stitcher never sees
       // duplicate paraphrases. Identity comes from structured properties
       // (who/where/what/when), not from generated wording.
-      const scopedResolvedRows = characterId
-        ? (resolvedRows ?? []).filter((e) => ((e.people as string[] | null) ?? []).includes(characterId))
-        : (resolvedRows ?? []);
+      const scopedResolvedRows = (resolvedRows ?? []).filter((e) => {
+        const people = (e.people as string[] | null) ?? [];
+        const locations = (e.locations as string[] | null) ?? [];
+        if (characterId && !people.includes(characterId)) return false;
+        if (locationId && !locations.includes(locationId)) return false;
+        return true;
+      });
       const datedResolved = scopedResolvedRows.filter(
         (e) => typeof e.start_time === 'string' && e.start_time.length > 0,
       );
@@ -723,6 +744,8 @@ export class StitchedTimelineService {
           knownFrom: (e.created_at as string | null) ?? null,
           occurrenceStatus: 'unresolved',
           projectionRole: 'unresolved',
+          peopleIds: (e.people as string[]) ?? [],
+          locationIds: (e.locations as string[]) ?? [],
         });
         seenEventIds.add(e.id as string);
       }
@@ -792,6 +815,8 @@ export class StitchedTimelineService {
           ...(cluster.members.length > 1
             ? { mergedCount: cluster.members.length, mergedTitles: cluster.mergedTitles }
             : {}),
+          peopleIds: cluster.peopleIds,
+          locationIds: cluster.locationIds,
         });
         candidatesByKey.set(key, {
           key,
@@ -804,7 +829,7 @@ export class StitchedTimelineService {
         });
       }
 
-      for (const e of characterId ? [] : eventRows ?? []) {
+      for (const e of entityScoped ? [] : eventRows ?? []) {
         if (seenEventIds.has(e.id)) continue;
         const occurredAt = e.occurred_at ?? e.event_date ?? null;
         const sortTime = occurredAt ?? e.created_at ?? new Date(0).toISOString();
@@ -921,6 +946,9 @@ export class StitchedTimelineService {
         temporalRole: items.find((i) => i.id === p.id)?.temporalRole,
         mergedCount: items.find((i) => i.id === p.id)?.mergedCount,
         mergedTitles: items.find((i) => i.id === p.id)?.mergedTitles,
+        peopleIds: items.find((i) => i.id === p.id)?.peopleIds,
+        locationIds: items.find((i) => i.id === p.id)?.locationIds,
+        organizationIds: items.find((i) => i.id === p.id)?.organizationIds,
       });
       const sorted = sortItems(projected.canonical.map(toStitched));
       const capped = opts.limit != null ? sorted.slice(0, opts.limit) : sorted;

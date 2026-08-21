@@ -58,6 +58,12 @@ export type StitchedTimelineItem = {
   canonicalEventType?: string;
   speechAct?: string;
   temporal?: CanonicalTemporalModel;
+  /** Direct character ids from resolved_events.people — omitted when unknown. */
+  peopleIds?: string[];
+  /** Direct location ids from resolved_events.locations — omitted when unknown. */
+  locationIds?: string[];
+  /** Direct organization ids when the source record carries them. */
+  organizationIds?: string[];
 };
 
 export type NarrativeChapterQuality = {
@@ -143,6 +149,8 @@ export const stitchedTimelineApi = {
     scope_type?: 'global' | 'life_arc';
     /** Restrict the global scope to events involving this character. */
     character_id?: string;
+    /** Restrict the global scope to events involving this location. */
+    location_id?: string;
   }) => {
     const qs = new URLSearchParams();
     if (params?.life_arc_id) qs.set('life_arc_id', params.life_arc_id);
@@ -150,6 +158,7 @@ export const stitchedTimelineApi = {
     if (params?.end_time) qs.set('end_time', params.end_time);
     if (params?.scope_type) qs.set('scope_type', params.scope_type);
     if (params?.character_id) qs.set('character_id', params.character_id);
+    if (params?.location_id) qs.set('location_id', params.location_id);
     const query = qs.toString();
     return fetchJson<StitchedTimelineResult>(
       `/api/chronology/stitched${query ? `?${query}` : ''}`

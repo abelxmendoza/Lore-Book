@@ -22,7 +22,7 @@ import {
   openStitchedTimelineChat,
 } from '../../lib/stitchedTimelineChat';
 import type { TimelineSubjectLorebookOffer } from '../../lib/timelineSubjectLorebook';
-import { sortStitchedItemsNewestFirst } from '../../lib/unifiedTimeline';
+import { resolveTimelineItemDetail } from '../../lib/resolveTimelineItemDetail';
 import { LorebookContentMeter } from '../lorebook/LorebookContentMeter';
 import { LorebookTierMenu } from '../lorebook/LorebookTierMenu';
 import { MobileBottomSheet } from '../ui/MobileBottomSheet';
@@ -137,10 +137,12 @@ export const TimelineStitchedView = ({
 
   const handleSelect = (item: StitchedTimelineItem) => {
     setSelected(item);
-    if (item.kind === 'moment') {
+    const resolution = resolveTimelineItemDetail(item);
+    if (resolution.route === 'journal' || resolution.route === 'memory') {
+      if (!resolution.sourceId) return;
       openMemory({
-        id: item.sourceId,
-        journal_entry_id: item.sourceId,
+        id: resolution.sourceId,
+        journal_entry_id: resolution.sourceId,
         content: item.body,
         start_time: item.sortTime,
         date: item.sortTime,
