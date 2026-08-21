@@ -62,38 +62,70 @@ describe('resolvePrimaryEntity', () => {
   };
 
   const costco = '11111111-1111-1111-1111-111111111111';
-  const unpromotedLocation = '22222222-2222-2222-2222-222222222222';
-  const vicky = '33333333-3333-3333-3333-333333333333';
-  const romi = '44444444-4444-4444-4444-444444444444';
+  const disneyland = '22222222-2222-2222-2222-222222222222';
+  const maya = '33333333-3333-3333-3333-333333333333';
+  const priya = '44444444-4444-4444-4444-444444444444';
   const unpromotedChar1 = '55555555-5555-5555-5555-555555555555';
   const unpromotedChar2 = '66666666-6666-6666-6666-666666666666';
+  const names = new Map([
+    [costco, 'Costco'],
+    [disneyland, 'Disneyland'],
+    [maya, 'Maya'],
+    [priya, 'Priya'],
+  ]);
 
-  it('picks the location when it resolves to a real location row', () => {
-    const ep: Episode = { ...baseEp, locations: [costco], participants: [vicky] };
-    const result = resolvePrimaryEntity(ep, new Set([vicky]), new Set([costco]));
+  it('picks a grounded location over a co-mentioned person', () => {
+    const ep: Episode = { ...baseEp, locations: [costco], participants: [maya] };
+    const result = resolvePrimaryEntity(ep, new Set([maya]), new Set([costco]), {
+      text: 'I went to Costco with Maya.',
+      namesById: names,
+    });
     expect(result).toEqual({ type: 'location', id: costco });
   });
 
-  it('falls through participants in order until one resolves to a real character', () => {
-    const ep: Episode = { ...baseEp, participants: [unpromotedChar1, vicky, romi] };
-    const result = resolvePrimaryEntity(ep, new Set([vicky, romi]), new Set());
-    expect(result).toEqual({ type: 'character', id: vicky });
+  it('does not pick the first mentioned character when they are only referenced', () => {
+    const ep: Episode = { ...baseEp, participants: [priya, maya] };
+    const result = resolvePrimaryEntity(ep, new Set([maya, priya]), new Set(), {
+      text: 'I thought about Priya. Later I talked to Maya after the show.',
+      namesById: names,
+    });
+    expect(result).toEqual({ type: 'character', id: maya });
   });
 
-  it('skips a location that does not resolve to a real location row', () => {
-    const ep: Episode = { ...baseEp, locations: [unpromotedLocation], participants: [vicky] };
-    const result = resolvePrimaryEntity(ep, new Set([vicky]), new Set());
-    expect(result).toEqual({ type: 'character', id: vicky });
+  it('does not treat a discussed place as the primary entity', () => {
+    const ep: Episode = { ...baseEp, locations: [disneyland], participants: [maya] };
+    const result = resolvePrimaryEntity(ep, new Set([maya]), new Set([disneyland]), {
+      text: 'I talked to Maya and told her about Disneyland.',
+      namesById: names,
+    });
+    expect(result).toEqual({ type: 'character', id: maya });
   });
 
-  it('returns null when nothing resolves (empty episode or all-unpromoted mentions)', () => {
-    const ep: Episode = { ...baseEp, participants: [unpromotedChar1, unpromotedChar2] };
-    const result = resolvePrimaryEntity(ep, new Set(), new Set());
+  it('returns null when nothing is grounded, even if mentions exist', () => {
+    const ep: Episode = { ...baseEp, participants: [priya], locations: [disneyland] };
+    const result = resolvePrimaryEntity(ep, new Set([priya]), new Set([disneyland]), {
+      text: 'I kept thinking about Priya and told Jamie about Disneyland.',
+      namesById: names,
+    });
     expect(result).toBeNull();
+  });
+
+  it('returns null without text rather than guessing first mention', () => {
+    const ep: Episode = { ...baseEp, participants: [maya], locations: [costco] };
+    expect(resolvePrimaryEntity(ep, new Set([maya]), new Set([costco]))).toBeNull();
   });
 
   it('returns null for a genuinely empty episode', () => {
     const result = resolvePrimaryEntity(baseEp, new Set(), new Set());
+    expect(result).toBeNull();
+  });
+
+  it('returns null when mentions never resolve to promoted entities', () => {
+    const ep: Episode = { ...baseEp, participants: [unpromotedChar1, unpromotedChar2] };
+    const result = resolvePrimaryEntity(ep, new Set(), new Set(), {
+      text: 'I went with Maya.',
+      namesById: names,
+    });
     expect(result).toBeNull();
   });
 });

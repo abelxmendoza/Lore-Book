@@ -11,6 +11,10 @@ import type {
   EntitySearchType,
 } from '../search/entitySearchTypes';
 import { supabaseAdmin } from '../supabaseClient';
+import {
+  classifyPersonAttribution,
+  classifyPlaceAttribution,
+} from '../attribution/eventEntityAttribution';
 
 import {
   loadThreadTimelineEvidence,
@@ -379,6 +383,28 @@ function relationFor(
   if (intent.exactDate) {
     if (item.sortTime.slice(0, 10) !== intent.exactDate) return null;
     return { relation: 'DIRECT_EVENT', relevance: 1, reason: `Occurred on ${intent.exactDate}` };
+  }
+
+  if (subject && (direct || matchedTerms.length > 0) && intent.mode !== 'EMPLOYMENT_TIMELINE') {
+    if (subject.entityType === 'place') {
+      const place = classifyPlaceAttribution(subject.displayName, text, { aliases: subject.aliases });
+      if (!place.accepted && place.reason !== 'no_mention') {
+        return {
+          relation: 'INCIDENTAL_MENTION',
+          relevance: 0.32,
+          reason: `Reference only (${place.reason})`,
+        };
+      }
+    } else if (subject.entityType === 'person') {
+      const person = classifyPersonAttribution(subject.displayName, text, { aliases: subject.aliases });
+      if (!person.accepted && person.reason !== 'no_mention') {
+        return {
+          relation: 'INCIDENTAL_MENTION',
+          relevance: 0.32,
+          reason: `Reference only (${person.reason})`,
+        };
+      }
+    }
   }
 
   // A generic domain timeline ("my career timeline") has no entity to anchor

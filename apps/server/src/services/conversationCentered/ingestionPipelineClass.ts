@@ -2572,6 +2572,7 @@ export class ConversationIngestionPipeline {
                             type: fullEvent.type,
                             start_time: fullEvent.start_time,
                             people: fullEvent.people,
+                            metadata: fullEvent.metadata,
                           },
                           impact?.impactType,
                           impact?.connectionCharacterId
@@ -2597,6 +2598,8 @@ export class ConversationIngestionPipeline {
                                 type: fullEvent.type,
                                 start_time: fullEvent.start_time,
                                 people: fullEvent.people,
+                                locations: fullEvent.locations,
+                                metadata: fullEvent.metadata,
                               })
                               .catch(err => {
                                 logger.warn({ err }, 'Organization timeline processing failed (non-blocking)');
@@ -2645,6 +2648,8 @@ export class ConversationIngestionPipeline {
                             type: fullEvent.type,
                             start_time: fullEvent.start_time,
                             people: fullEvent.people || [],
+                            locations: fullEvent.locations,
+                            metadata: fullEvent.metadata,
                           })
                           .catch(err => {
                             logger.warn({ err }, 'Location timeline processing failed (non-blocking)');

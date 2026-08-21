@@ -61,6 +61,16 @@ import {
 import { mayPersistEra } from '../narrative/eraSignificance';
 import { narrativeLifeEraService } from '../narrative/narrativeLifeEraService';
 import { assessAndPersistMilestone } from '../narrative/milestoneClassifier';
+import {
+  attributeNamedEntities,
+  canonicalLocationsFromAttributions,
+  canonicalPeopleFromAttributions,
+  mergeEntityAttributions,
+  readStoredAttributions,
+  selectCanonicalLocations,
+  selectCanonicalPeople,
+  type EntityAttribution,
+} from '../attribution/eventEntityAttribution';
 
 interface EventAssemblyOptions {
   windowDays?: number;
@@ -95,6 +105,32 @@ function inferUserPresence(unitGroup: ExtractedUnit[]): UserPresence {
   }
   if (unitGroup.some(u => u.type === 'EXPERIENCE')) return 'attended';
   return 'unknown';
+}
+
+function attributeIngestedEventEntities(
+  entities: Array<{ id: string; type?: string | null; primary_name?: string | null; name?: string; aliases?: string[] | null }>,
+  sourceText: string,
+): { peopleIds: string[]; locationIds: string[]; attributions: EntityAttribution[] } {
+  const people = selectCanonicalPeople(
+    entities.filter((e) => e.type === 'PERSON' || e.type === 'CHARACTER'),
+    sourceText,
+  );
+  const locations = selectCanonicalLocations(
+    entities.filter((e) => e.type === 'LOCATION'),
+    sourceText,
+  );
+  const other = attributeNamedEntities(
+    entities.filter((e) => {
+      const t = (e.type ?? '').toUpperCase();
+      return t !== 'PERSON' && t !== 'CHARACTER' && t !== 'LOCATION';
+    }),
+    sourceText,
+  );
+  return {
+    peopleIds: people.peopleIds,
+    locationIds: locations.locationIds,
+    attributions: [...people.attributions, ...locations.attributions, ...other],
+  };
 }
 
 function canonicalEventKey(title: string, reason: string, when: AssembledWhen | null): string | null {
@@ -698,14 +734,11 @@ export class EventAssemblyService {
     }
 
     // People rows in omega_entities are typed PERSON at extraction time but
-    // legacy rows hold CHARACTER — resolution returns whichever the row has,
-    // so both count as participants.
-    const peopleIds = [...new Set(ingestionResult.entities
-      .filter(e => e.type === 'PERSON' || e.type === 'CHARACTER')
-      .map(e => e.id))];
-    const locationIds = [...new Set(ingestionResult.entities
-      .filter(e => e.type === 'LOCATION')
-      .map(e => e.id))];
+    // legacy rows hold CHARACTER. Mention ≠ participation: only grounded
+    // participant/location roles become canonical chronology members.
+    const attributed = attributeIngestedEventEntities(ingestionResult.entities, sourceText);
+    const peopleIds = attributed.peopleIds;
+    const locationIds = attributed.locationIds;
 
     // Paraphrase-level canonicalization: the canonical_event_key match above
     // only catches replays that regenerate the same key. Re-extractions that
@@ -743,6 +776,7 @@ export class EventAssemblyService {
           what,
           peopleIds,
           locationIds,
+          attributions: attributed.attributions,
           unitGroup,
           similarity: duplicate.similarity,
         });
@@ -776,6 +810,7 @@ export class EventAssemblyService {
           assembled_from_units: unitGroup.map(u => u.id),
           canonical_event_key: eventKey,
           user_presence: userPresence,
+          entityAttributions: attributed.attributions,
           life_log: {
             publication_status: 'published',
             eligibility_reason: eligibility.reason,
@@ -978,6 +1013,7 @@ export class EventAssemblyService {
       what: string;
       peopleIds: string[];
       locationIds: string[];
+      attributions?: EntityAttribution[];
       unitGroup: ExtractedUnit[];
       similarity: number;
     },
@@ -988,8 +1024,23 @@ export class EventAssemblyService {
       : existingTitle;
     const existingSummary = existing.summary ?? '';
     const summary = incoming.what.length > existingSummary.length ? incoming.what : existingSummary;
-    const people = [...new Set([...(existing.people ?? []), ...incoming.peopleIds])];
-    const locations = [...new Set([...(existing.locations ?? []), ...incoming.locationIds])];
+    const mergedText = `${title} ${summary}`.trim();
+    const mergedAttributions = mergeEntityAttributions(
+      readStoredAttributions(existing.metadata),
+      incoming.attributions ?? attributeNamedEntities(
+        [
+          ...(incoming.peopleIds.map((id) => ({ id, type: 'PERSON', primary_name: id }))),
+          ...(incoming.locationIds.map((id) => ({ id, type: 'LOCATION', primary_name: id }))),
+        ],
+        mergedText,
+      ),
+    );
+    const people = canonicalPeopleFromAttributions(mergedAttributions).length
+      ? canonicalPeopleFromAttributions(mergedAttributions)
+      : [...new Set(incoming.peopleIds)];
+    const locations = canonicalLocationsFromAttributions(mergedAttributions).length
+      ? canonicalLocationsFromAttributions(mergedAttributions)
+      : [...new Set(incoming.locationIds)];
 
     const priorMetadata = (existing.metadata ?? {}) as Record<string, unknown>;
     const priorUnits = (priorMetadata.assembled_from_units as string[] | undefined) ?? [];
@@ -1007,6 +1058,7 @@ export class EventAssemblyService {
         metadata: {
           ...priorMetadata,
           assembled_from_units: allUnitIds,
+          entityAttributions: mergedAttributions,
           write_time_merges: [
             ...priorMerges,
             {
@@ -1121,6 +1173,12 @@ export class EventAssemblyService {
       { source_unit_ids: validUnits.map(u => u.id) }
     );
 
+    const attributed = attributeIngestedEventEntities(ingestionResult.entities, sourceText);
+    const mergedAttributions = mergeEntityAttributions(
+      readStoredAttributions(existingEvent.metadata),
+      attributed.attributions,
+    );
+
     const { data: updatedEvent, error: updateError } = await supabaseAdmin
       .from('resolved_events')
       .update({
@@ -1131,18 +1189,15 @@ export class EventAssemblyService {
           chooseTemporal(this.rowEvidence(existingEvent), this.whenToEvidence(when, timezone)),
         ),
         end_time: when?.end || existingEvent.end_time,
-        people: ingestionResult.entities
-          .filter(e => e.type === 'PERSON')
-          .map(e => e.id),
-        locations: ingestionResult.entities
-          .filter(e => e.type === 'LOCATION')
-          .map(e => e.id),
+        people: attributed.peopleIds,
+        locations: attributed.locationIds,
         confidence: updatedConfidence,
         updated_at: new Date().toISOString(),
         metadata: {
           ...(existingEvent.metadata || {}),
           assembled_from_units: validUnits.map(u => u.id),
           user_presence: userPresence,
+          entityAttributions: mergedAttributions,
           life_log: {
             publication_status: eligibility.eligible && isPublishableLifeLogTitle(title) ? 'published' : 'quarantined',
             eligibility_reason: eligibility.reason,
