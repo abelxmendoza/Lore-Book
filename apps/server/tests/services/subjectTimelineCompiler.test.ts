@@ -191,4 +191,34 @@ describe('subject timeline compiler', () => {
     expect(compilation.events.map((event) => event.source_id)).toEqual(['job']);
     expect(compilation.contextEvents).toHaveLength(0);
   });
+
+  it('keeps reference-only people on the subject timeline but labels WHY they matched', () => {
+    const intent = interpretSubjectTimelineQuery('Priya timeline');
+    const compilation = compileSubjectTimeline({
+      query: intent.rawQuery,
+      intent: { ...intent, mode: 'SUBJECT_TIMELINE' },
+      subject: {
+        entityId: 'char-priya',
+        entityType: 'person',
+        displayName: 'Priya',
+        aliases: [],
+        confidence: 1,
+        matchKind: 'exact',
+      },
+      directSourceIds: new Set(['concert']),
+      items: [
+        item({
+          id: 'event:concert',
+          sourceId: 'concert',
+          sourceIds: ['concert'],
+          title: 'Northwind Hall outing',
+          body: 'I went to a concert with Maya. I thought about Priya afterward.',
+          sortTime: '2026-06-01T09:00:00.000Z',
+        }),
+      ],
+    });
+    expect(compilation.events).toEqual([]);
+    expect(compilation.contextEvents[0]?.subjectRelation).toBe('INCIDENTAL_MENTION');
+    expect(compilation.contextEvents[0]?.whyIncluded).toContain('thought_about');
+  });
 });

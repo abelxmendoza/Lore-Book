@@ -40,12 +40,15 @@ import { clipboardFilterLines, copyTextToClipboard } from '../../lib/listClipboa
 import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 import type { Character } from './CharacterProfileCard';
 import type { MemoryCard } from '../../types/memory';
+import { compareMemoriesByOccurrence, memoryOccurrenceIso } from '../../types/memory';
 
 export type CharTimelineEvent = {
   id: string;
   eventId?: string;
   eventTitle: string;
   eventDate: string;
+  recordedAt?: string | null;
+  occurrenceStatus?: 'confirmed' | 'range' | 'unresolved';
   eventSummary?: string;
   eventType?: string;
   userWasPresent?: boolean;
@@ -83,12 +86,19 @@ interface Props {
 }
 
 function fmtEventDate(iso: string): string {
+  if (!iso) return 'Date unknown';
   try {
     return format(parseISO(iso), 'MMM d, yyyy');
   } catch {
     const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? iso : format(d, 'MMM d, yyyy');
+    return Number.isNaN(d.getTime()) ? 'Date unknown' : format(d, 'MMM d, yyyy');
   }
+}
+
+function fmtRecorded(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const label = fmtEventDate(iso);
+  return label === 'Date unknown' ? null : `Recorded ${label}`;
 }
 
 function toSwim(event: CharTimelineEvent, laneKey: string): SwimlaneEvent {
@@ -301,14 +311,11 @@ export function CharacterStoryPanel({
   }, [sortedShared, sortedLore]);
 
   const sortedMemories = useMemo(
-    () =>
-      [...memories].sort(
-        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-      ),
+    () => [...memories].sort(compareMemoriesByOccurrence),
     [memories],
   );
 
-  const firstMemory = sortedMemories[0] ?? null;
+  const firstMemory = sortedMemories.find((memory) => memoryOccurrenceIso(memory)) ?? null;
   const mostSignificant = useMemo(() => {
     if (sortedMemories.length === 0) return null;
     return [...sortedMemories].sort(
@@ -318,6 +325,9 @@ export function CharacterStoryPanel({
 
   const storyItems = useMemo((): StoryItem[] => {
     const items: StoryItem[] = [];
+    const eventIds = new Set(
+      chronologicalEvents.map((event) => event.eventId).filter((id): id is string => Boolean(id)),
+    );
     if (scope !== 'memories') {
       for (const event of chronologicalEvents) {
         items.push({ kind: 'event', id: `event-${event.id}`, date: event.eventDate, event });
@@ -325,8 +335,9 @@ export function CharacterStoryPanel({
     }
     if (scope !== 'events') {
       for (const memory of sortedMemories) {
+        if (memory.canonicalEventId && eventIds.has(memory.canonicalEventId)) continue;
         let highlight: string | undefined;
-        if (firstMemory && memory.id === firstMemory.id) highlight = 'First memory';
+        if (firstMemory && memory.id === firstMemory.id) highlight = 'First known occurrence';
         else if (
           mostSignificant &&
           firstMemory &&
@@ -335,10 +346,23 @@ export function CharacterStoryPanel({
         ) {
           highlight = 'Most significant';
         }
-        items.push({ kind: 'memory', id: `memory-${memory.id}`, date: memory.date, memory, highlight });
+        items.push({
+          kind: 'memory',
+          id: `memory-${memory.id}`,
+          date: memoryOccurrenceIso(memory) ?? '',
+          memory,
+          highlight,
+        });
       }
     }
-    return items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    return items.sort((a, b) => {
+      const aValid = Boolean(a.date) && !Number.isNaN(new Date(a.date).getTime());
+      const bValid = Boolean(b.date) && !Number.isNaN(new Date(b.date).getTime());
+      if (!aValid && !bValid) return 0;
+      if (!aValid) return 1;
+      if (!bValid) return -1;
+      return new Date(a.date).getTime() - new Date(b.date).getTime();
+    });
   }, [scope, chronologicalEvents, sortedMemories, firstMemory, mostSignificant]);
 
   const filteredItems = useMemo(() => {
@@ -390,7 +414,7 @@ export function CharacterStoryPanel({
         .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)),
     );
     for (const m of sortedMemories) {
-      const day = (m.date || '').slice(0, 10);
+      const day = (memoryOccurrenceIso(m) || '').slice(0, 10);
       if (/^\d{4}-\d{2}-\d{2}$/.test(day)) days.add(day);
     }
     const wordCount =
@@ -661,7 +685,18 @@ export function CharacterStoryPanel({
                 }`}
               >
                 <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <time className="text-xs font-mono text-primary/80">{fmtEventDate(memory.date)}</time>
+                  <time className="text-xs font-mono text-primary/80">
+                    {fmtEventDate(memoryOccurrenceIso(memory) ?? '')}
+                  </time>
+                  {memory.occurrenceStatus === 'unresolved' && fmtRecorded(memory.recordedAt) && (
+                    <span className="text-[10px] text-white/40">{fmtRecorded(memory.recordedAt)}</span>
+                  )}
+                  {memory.occurrenceStatus !== 'unresolved' &&
+                    memory.recordedAt &&
+                    memoryOccurrenceIso(memory) &&
+                    memory.recordedAt.slice(0, 10) !== memoryOccurrenceIso(memory)!.slice(0, 10) && (
+                      <span className="text-[10px] text-white/40">{fmtRecorded(memory.recordedAt)}</span>
+                    )}
                   <Badge
                     variant="outline"
                     className="text-[10px] bg-amber-500/15 text-amber-200 border-amber-500/30"

@@ -14,12 +14,13 @@ import { characterRegistry } from './characterRegistry';
 import { classifyEntity, isCharacterEligible, isUnknownEntity } from './entities/entityClassifier';
 import { supabaseAdmin } from './supabaseClient';
 import type { NormalizedArtifact } from './ingestion/types';
+import { occurrenceDate } from './temporal/explicitOccurrence';
 
 
 type DocumentAnalysis = {
   entries: Array<{ 
     content: string; 
-    date: string; 
+    date?: string | null; 
     tags?: string[];
     content_type?: string;
     preserve_original_language?: boolean;
@@ -118,7 +119,7 @@ For these content types:
 3. Store EXACT original wording in original_content field (same as content if unchanged)
 
 Extract:
-1. Journal entries with dates (if available) or infer chronological order
+1. Journal entries with dates ONLY when the text itself establishes when the event happened. If there is no event date, omit "date" or set it to null. Never use today's date, upload time, or document creation time as a substitute.
 2. Characters/people mentioned with descriptions and relationships
 3. Memoir sections (if it's a memoir) with titles and content
 4. Language style and tone (formal, casual, poetic, etc.)
@@ -129,7 +130,7 @@ Return JSON with this structure:
   "entries": [
     {
       "content": "...",
-      "date": "YYYY-MM-DD",
+      "date": "YYYY-MM-DD or omit if unknown",
       "tags": ["tag1"],
       "content_type": "standard" | "testimony" | "advice" | "message_to_reader" | etc (optional, auto-detected if missing),
       "preserve_original_language": true/false (optional, auto-detected if missing),
@@ -167,7 +168,7 @@ Detection patterns to look for:
       logger.error({ error, response }, 'Failed to parse document analysis');
       // Fallback: create basic structure
       return {
-        entries: [{ content: text.substring(0, 1000), date: new Date().toISOString().split('T')[0] }],
+        entries: [{ content: text.substring(0, 1000) }],
         characters: [],
         memoirSections: [],
         languageStyle: 'Unknown',
@@ -217,25 +218,37 @@ Detection patterns to look for:
     entryIdsOut?: string[]
   ): Promise<number> {
     let created = 0;
-    for (const entry of entries) {
+    for (const analyzed of entries) {
       try {
         // Auto-detect content type if not provided by AI analysis
-        const detected = entry.content_type 
+        const detected = analyzed.content_type 
           ? { 
-              type: entry.content_type, 
-              preserveOriginal: entry.preserve_original_language ?? false,
+              type: analyzed.content_type, 
+              preserveOriginal: analyzed.preserve_original_language ?? false,
               confidence: 0.9 // High confidence if AI detected it
             }
-          : detectContentType(entry.content);
+          : detectContentType(analyzed.content);
         
         // Use original_content if provided, otherwise use content
-        const originalContent = entry.original_content || entry.content;
+        const originalContent = analyzed.original_content || analyzed.content;
+        const extractedDate = occurrenceDate(analyzed.date);
+        const rawDate = analyzed.date?.trim() ?? '';
+        const occurrencePrecision = /^\d{4}$/.test(rawDate)
+          ? 'year' as const
+          : /^\d{4}-\d{2}$/.test(rawDate)
+            ? 'month' as const
+            : undefined;
+        const date = extractedDate
+          ?? (occurrencePrecision === 'year' ? `${rawDate}-01-01` : undefined)
+          ?? (occurrencePrecision === 'month' ? `${rawDate}-01` : undefined);
         
-        const entry = await memoryService.saveEntry({
+        const saved = await memoryService.saveEntry({
           userId,
-          content: entry.content,
-          date: entry.date,
-          tags: entry.tags || [],
+          content: analyzed.content,
+          date,
+          temporalSource: date ? 'document_stated' : undefined,
+          occurrencePrecision,
+          tags: analyzed.tags || [],
           source: 'document_upload',
           content_type: detected.type,
           original_content: originalContent,
@@ -243,14 +256,14 @@ Detection patterns to look for:
           metadata: { 
             imported: true,
             detection_confidence: detected.confidence,
-            auto_detected: !entry.content_type,
+            auto_detected: !analyzed.content_type,
             ...(sourceFileId ? { source_file_id: sourceFileId, user_file_id: sourceFileId } : {}),
           }
         });
-        entryIdsOut?.push(entry.id);
+        entryIdsOut?.push(saved.id);
         created++;
       } catch (error) {
-        logger.warn({ error, entry }, 'Failed to create entry from document');
+        logger.warn({ error, entry: analyzed }, 'Failed to create entry from document');
       }
     }
     return created;

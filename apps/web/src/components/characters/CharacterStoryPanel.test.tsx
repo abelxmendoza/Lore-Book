@@ -287,4 +287,85 @@ describe('CharacterStoryPanel', () => {
       fetchJsonMock.mock.calls.some(([url]) => String(url).includes('rebuild-timelines')),
     ).toBe(false);
   });
+
+  it('orders memories by occurrence and keeps recording time as metadata', async () => {
+    render(
+      <MemoryRouter>
+        <CharacterStoryPanel
+          characterId="c1"
+          characterName="Jamie"
+          active
+          memories={[
+            {
+              id: 'mem-late-write',
+              title: 'Concert with Jamie',
+              content: 'Last month we went to a concert.',
+              date: '2026-07-15T20:00:00.000Z',
+              occurredAt: '2026-07-15T20:00:00.000Z',
+              recordedAt: '2026-08-20T18:42:13.001Z',
+              mentionedAt: '2026-08-20T18:42:13.001Z',
+              occurrenceStatus: 'confirmed',
+              tags: [],
+              source: 'chat',
+              sourceIcon: 'chat',
+              characters: ['Jamie'],
+            },
+            {
+              id: 'mem-unresolved',
+              title: 'Something I forgot when',
+              content: 'I do not remember when this was.',
+              date: '',
+              occurredAt: null,
+              recordedAt: '2026-08-20T18:42:13.001Z',
+              occurrenceStatus: 'unresolved',
+              tags: [],
+              source: 'chat',
+              sourceIcon: 'chat',
+              characters: ['Jamie'],
+            },
+          ]}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Concert with Jamie')).toBeInTheDocument());
+    const items = screen.getAllByTestId(/character-story-memory-|character-timeline-event-/);
+    const labels = items.map((el) => el.textContent ?? '');
+    const concertIdx = labels.findIndex((text) => text.includes('Concert with Jamie'));
+    const unresolvedIdx = labels.findIndex((text) => text.includes('Something I forgot when'));
+    expect(concertIdx).toBeGreaterThanOrEqual(0);
+    expect(unresolvedIdx).toBeGreaterThan(concertIdx);
+    expect(screen.getByText('Date unknown')).toBeInTheDocument();
+    expect(screen.getAllByText(/Recorded/).length).toBeGreaterThan(0);
+  });
+
+  it('does not render a journal memory as a second event when it shares a canonical event id', async () => {
+    render(
+      <MemoryRouter>
+        <CharacterStoryPanel
+          characterId="c1"
+          characterName="Jamie"
+          active
+          memories={[
+            {
+              id: 'mem-dup',
+              title: 'Dinner writeup',
+              content: 'Wrote about dinner later.',
+              date: '2024-06-01T00:00:00.000Z',
+              occurredAt: '2024-06-01T00:00:00.000Z',
+              canonicalEventId: 'evt-1',
+              occurrenceStatus: 'confirmed',
+              tags: [],
+              source: 'journal',
+              sourceIcon: 'book',
+              characters: ['Jamie'],
+            },
+          ]}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Dinner with Jerry')).toBeInTheDocument());
+    expect(screen.queryByText('Dinner writeup')).not.toBeInTheDocument();
+  });
 });

@@ -1793,6 +1793,34 @@ router.get(
 );
 
 /**
+ * POST /api/conversation/events/:id/attribution
+ * Retract or swap a person/place on a canonical event without deleting it.
+ */
+router.post(
+  '/events/:id/attribution',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const eventId = String(req.params.id);
+    const body = req.body ?? {};
+    const action = body.action as 'retract' | 'replace_person' | 'replace_place' | undefined;
+    if (!action || !body.entityId) {
+      return res.status(400).json({ error: 'action and entityId are required' });
+    }
+    const { correctResolvedEventAttribution } = await import('../services/attribution/resolvedEventAttributionService');
+    const result = await correctResolvedEventAttribution(userId, eventId, {
+      action,
+      entityId: String(body.entityId),
+      replacementEntityId: body.replacementEntityId ? String(body.replacementEntityId) : undefined,
+      replacementName: body.replacementName ? String(body.replacementName) : undefined,
+      reason: body.reason ? String(body.reason) : undefined,
+    });
+    if (!result) return res.status(404).json({ error: 'Event not found' });
+    return res.json({ success: true, ...result });
+  }),
+);
+
+/**
  * GET /api/conversation/events/:id
  * Get a specific event with source messages, linked decisions, and insights
  */

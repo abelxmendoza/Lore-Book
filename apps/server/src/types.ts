@@ -14,10 +14,13 @@ export type ContentType =
   | 'promise'
   | 'declaration';
 
+export type JournalTimePrecision = 'exact' | 'day' | 'month' | 'year' | 'approximate';
+
 export type MemoryEntry = {
   id: string;
   user_id: string;
-  date: string;
+  /** Occurrence time only. Null when unknown — never recording time. */
+  date: string | null;
   content: string;
   tags: string[];
   chapter_id?: string | null;
@@ -35,6 +38,14 @@ export type MemoryEntry = {
   emotional_intensity?: number | null;
   retrieval_count?: number | null;
   last_retrieved_at?: string | null;
+  // How trustworthy `date` is as OCCURRENCE evidence (not recording evidence).
+  // Existing columns (schema baseline 20260807040000) — previously always left
+  // at their DEFAULTs ('exact'/1.0) regardless of where `date` actually came
+  // from, which is exactly why downstream code (chronologyService's
+  // temporal_source inference) could not tell a user-dated entry from a
+  // silent now()-at-save-time fallback. See dateAssignmentService.DateSuggestion.
+  time_precision?: JournalTimePrecision;
+  time_confidence?: number;
   created_at?: string;
   updated_at?: string;
 };

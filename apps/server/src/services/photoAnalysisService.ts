@@ -4,6 +4,7 @@ import { logger } from '../logger';
 
 import type { PhotoMetadata } from './photoService';
 import { supabaseAdmin } from './supabaseClient';
+import { occurrenceDate } from './temporal/explicitOccurrence';
 
 import { openai } from './openaiClient';
 
@@ -516,10 +517,12 @@ Return JSON:
 
         if (extractedText) {
           const { memoryService } = await import('./memoryService');
+          const captureDate = occurrenceDate(metadata.dateTimeOriginal) ?? occurrenceDate(metadata.dateTime);
           const entry = await memoryService.saveEntry({
             userId,
             content: `[Extracted from photo: ${filename}]\n\n${extractedText}`,
-            date: metadata.dateTimeOriginal || metadata.dateTime || new Date().toISOString(),
+            date: captureDate,
+            temporalSource: captureDate ? 'document_stated' : undefined,
             tags: ['photo', 'document', 'extracted'],
             source: 'document_upload',
             metadata: {
@@ -562,10 +565,12 @@ Return JSON:
         if (analysis.isSelfie) tags.push('selfie');
         if (analysis.likelyUserInFrame) tags.push('user_in_frame');
 
+        const captureDate = occurrenceDate(metadata.dateTimeOriginal) ?? occurrenceDate(metadata.dateTime);
         const entry = await memoryService.saveEntry({
           userId,
           content: entryContent,
-          date: metadata.dateTimeOriginal || metadata.dateTime || new Date().toISOString(),
+          date: captureDate,
+          temporalSource: captureDate ? 'document_stated' : undefined,
           tags: Array.from(new Set(tags)),
           source: 'photo',
           metadata: {

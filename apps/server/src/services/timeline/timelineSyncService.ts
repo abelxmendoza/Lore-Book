@@ -152,10 +152,12 @@ export class TimelineSyncService {
       return [];
     }
 
-    return (entries || []).flatMap(entry => 
-      normalizeJournalEntry({
+    return (entries || []).flatMap(entry => {
+      const meta = (entry.metadata ?? {}) as Record<string, unknown>;
+      if (!entry.date || meta.temporal_source === 'recording_fallback') return [];
+      return normalizeJournalEntry({
         id: entry.id,
-        date: entry.date || entry.timestamp || entry.created_at,
+        date: entry.date,
         content: entry.content || '',
         summary: entry.summary,
         tags: entry.tags || [],
@@ -164,8 +166,8 @@ export class TimelineSyncService {
         chapter_id: entry.chapter_id,
         source: entry.source,
         metadata: entry.metadata
-      })
-    );
+      });
+    });
   }
 
   /**
@@ -292,9 +294,10 @@ export class TimelineSyncService {
             const data = result.data as any;
             if (data.changes && Array.isArray(data.changes)) {
               for (const change of data.changes) {
+                if (!change.date) continue;
                 events.push(...normalizeIdentityEvent({
                   id: `${result.id}-${change.id || Date.now()}`,
-                  date: change.date || result.created_at,
+                  date: change.date,
                   dimension: change.dimension || result.engine_id,
                   oldValue: change.old_value,
                   newValue: change.new_value,
@@ -376,9 +379,10 @@ export class TimelineSyncService {
         const data = result.data as any;
         if (data.events && Array.isArray(data.events)) {
           for (const event of data.events) {
+            if (!event.date) continue;
             events.push(...normalizeParacosm({
               id: `${result.id}-${event.id || Date.now()}`,
-              date: event.date || result.created_at,
+              date: event.date,
               worldName: event.world_name,
               eventDescription: event.description || event.event_description,
               type: event.type,
@@ -471,9 +475,10 @@ export class TimelineSyncService {
           const data = result.data as any;
           if (data.interactions && Array.isArray(data.interactions)) {
             for (const interaction of data.interactions) {
+              if (!interaction.date) continue;
               events.push(...normalizeRelationshipEvent({
                 id: `${result.id}-${interaction.id || Date.now()}`,
-                date: interaction.date || result.created_at,
+                date: interaction.date,
                 characterName: interaction.character_name || 'Unknown',
                 eventType: interaction.type || 'interaction',
                 description: interaction.description,
@@ -517,9 +522,10 @@ export class TimelineSyncService {
         const data = result.data as any;
         if (data.emotions && Array.isArray(data.emotions)) {
           for (const emotion of data.emotions) {
+            if (!emotion.date) continue;
             events.push(...normalizeEmotionEvent({
               id: `${result.id}-${emotion.id || Date.now()}`,
-              date: emotion.date || result.created_at,
+              date: emotion.date,
               emotion: emotion.emotion || emotion.name,
               intensity: emotion.intensity,
               trigger: emotion.trigger,

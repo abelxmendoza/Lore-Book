@@ -21,6 +21,7 @@ import {
   occurredInWindow,
   type ResolvedTemporalQuery,
 } from '../temporal/temporalQueryService';
+import { resolveJournalMemoryTemporal } from '../temporal/journalMemoryTemporal';
 
 import {
   classifyComposerIntentFast,
@@ -492,6 +493,11 @@ function scoreCandidate(candidate: Candidate): WorkingMemoryItem {
     content: candidate.content,
     source: candidate.source,
     date: candidate.date,
+    // Was previously dropped here even when a candidate set it — dateLabel
+    // never actually reached itemLine()'s rendering, so every candidate's
+    // date printed identically as `date=...` in the prompt regardless of
+    // whether it was occurrence, mention, or recording time.
+    dateLabel: candidate.dateLabel,
     confidence,
     score: Number(score.toFixed(4)),
     reasons: [
@@ -1077,26 +1083,36 @@ async function loadPersonCandidates(
   }
 
   const memoryTargetKey = normalizeNameKey(target ?? '');
+  const { resolveJournalEntryClocks } = await import('../temporal/journalMemoryTemporalLoader');
+  const memoryClocks = await resolveJournalEntryClocks(
+    userId,
+    ((memories ?? []) as Array<{ journal_entry_id?: string }>).map((memory) => memory.journal_entry_id ?? ''),
+  );
   for (const memory of (memories ?? []) as any[]) {
     const memText = String(memory.summary ?? `Linked memory ${memory.journal_entry_id}`);
-    // A character can be linked to memories that are really about someone else.
-    // Memories whose text names the queried person rank above the rest so a
-    // person query surfaces them first instead of the most recent linked memory.
     const namesTarget = !memoryTargetKey || normalizeNameKey(memText).includes(memoryTargetKey);
+    const clocks = memoryClocks.get(memory.journal_entry_id);
     out.push({
       id: `memory:${memory.id}`,
       type: 'episode',
       title: `Memory involving ${target}`,
       content: memText,
       source: 'character_memories',
-      date: memory.created_at,
+      date: clocks?.occurredAt ?? null,
+      dateLabel: (clocks?.occurrenceStatus ?? 'unresolved') === 'unresolved' ? 'date uncertain' : undefined,
       confidence: 0.8,
       relevance: namesTarget ? 0.95 : 0.8,
       importance: 0.65,
       significance: 0.6,
       relationshipDistance: 1,
       reasons: [namesTarget ? 'names the target' : 'linked to target character'],
-      metadata: { journal_entry_id: memory.journal_entry_id },
+      metadata: {
+        journal_entry_id: memory.journal_entry_id,
+        occurredAt: clocks?.occurredAt ?? null,
+        mentionedAt: clocks?.mentionedAt ?? null,
+        recordedAt: clocks?.recordedAt ?? memory.created_at ?? null,
+        occurrenceStatus: clocks?.occurrenceStatus ?? 'unresolved',
+      },
     });
   }
 
@@ -1107,7 +1123,7 @@ async function loadPersonCandidates(
       title: event.event_title ?? event.event_type ?? `Event involving ${target}`,
       content: String(event.event_summary ?? event.event_title ?? ''),
       source: 'character_timeline_events',
-      date: event.event_date,
+      date: event.event_date || null,
       confidence: Number(event.confidence ?? 0.8),
       relevance: 0.92,
       importance: 0.75,
@@ -1450,7 +1466,7 @@ async function loadTextualCandidates(
       () => {
         let q = supabaseAdmin
           .from('journal_entries')
-          .select('id, content, summary, date, tags, source, metadata')
+          .select('id, content, summary, date, created_at, tags, source, metadata')
           .eq('user_id', userId);
         q = applyDateRange(q, 'date');
         return q.order('date', { ascending: false }).limit(
@@ -1541,7 +1557,14 @@ async function loadTextualCandidates(
     const displayText = summaryText && (!wantsTarget || includeByIntent(summaryText))
       ? summaryText
       : matchText || summaryText || bodyText;
-    if (temporalWindow && !occurredInWindow(entry.date, temporalWindow)) continue;
+    const clocks = resolveJournalMemoryTemporal({
+      journalEntryId: entry.id,
+      journalDate: entry.date,
+      recordedAt: entry.created_at,
+      sourceType: entry.source,
+      temporalSource: typeof entry.metadata?.temporal_source === 'string' ? entry.metadata.temporal_source : null,
+    });
+    if (temporalWindow && !occurredInWindow(clocks.occurredAt, temporalWindow)) continue;
     if (wantsTarget && !matchesTarget && !['LIFE_REVIEW', 'IDENTITY_QUERY'].includes(intent)) continue;
     out.push({
       id: `episode:${entry.id}`,
@@ -1549,7 +1572,8 @@ async function loadTextualCandidates(
       title: entry.summary ? String(entry.summary).slice(0, 80) : 'Journal episode',
       content: displayText.slice(0, 700),
       source: 'journal_entries',
-      date: entry.date,
+      date: clocks.occurredAt,
+      dateLabel: clocks.occurrenceStatus === 'unresolved' ? 'date uncertain' : undefined,
       confidence: 0.72,
       relevance: temporal ? 0.95 : wantsTarget ? (matchesTarget ? 0.84 : 0.35) : 0.7,
       importance: 0.5,
@@ -1560,13 +1584,19 @@ async function loadTextualCandidates(
         ...(entry.metadata ?? {}),
         knowledge_type: (entry.metadata as Record<string, unknown> | undefined)?.knowledge_type ?? 'EXPERIENCE',
         truth_state: (entry.metadata as Record<string, unknown> | undefined)?.truth_state ?? 'PENDING_VERIFICATION',
+        occurredAt: clocks.occurredAt,
+        mentionedAt: clocks.mentionedAt,
+        recordedAt: clocks.recordedAt,
+        occurrenceStatus: clocks.occurrenceStatus,
       },
     });
   }
 
   for (const chat of (chats ?? []) as any[]) {
     const text = String(chat.content ?? '');
-    if (temporalWindow && !occurredInWindow(chat.created_at, temporalWindow)) continue;
+    // Chat created_at is mention/recording time. Occurrence queries must not
+    // treat "wrote about it in July" as "happened in July".
+    if (temporalWindow) continue;
     if (wantsTarget && !includeByIntent(text) && !threadId) continue;
     out.push({
       id: `chat:${chat.id}`,
@@ -1575,6 +1605,10 @@ async function loadTextualCandidates(
       content: text.slice(0, 600),
       source: 'chat_messages',
       date: chat.created_at,
+      // The only date we have here is send time, not occurrence — say so
+      // rather than rendering `date=...` as if it answered "when did this
+      // happen."
+      dateLabel: 'sent',
       confidence: 0.68,
       relevance: threadId ? 0.86 : 0.72,
       importance: 0.45,

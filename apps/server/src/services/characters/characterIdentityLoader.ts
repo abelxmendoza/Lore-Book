@@ -22,8 +22,14 @@ export type CharacterIdentityRelationship = {
 export type CharacterSharedMemoryRef = {
   id: string;
   entry_id: string;
+  /** Occurrence date only. Empty when unresolved — never recording time. */
   date: string;
   summary?: string;
+  occurredAt?: string | null;
+  mentionedAt?: string | null;
+  recordedAt?: string | null;
+  occurrenceStatus?: 'confirmed' | 'range' | 'unresolved';
+  canonicalEventId?: string | null;
 };
 
 export type CharacterIdentity = {
@@ -328,13 +334,12 @@ export async function loadCharacterIdentity(
     memory_count: memoryCount || 0,
     relationship_count: Math.max(relationshipCount || 0, allRelationships.length),
     relationships: allRelationships,
-    shared_memories:
-      memories?.map((mem) => ({
-        id: mem.id,
-        entry_id: mem.journal_entry_id,
-        date: mem.created_at,
-        summary: mem.summary || undefined,
-      })) || [],
+    shared_memories: memories?.length
+      ? await (async () => {
+          const { mapCharacterMemoriesToTemporalRefs } = await import('../temporal/journalMemoryTemporalLoader');
+          return mapCharacterMemoriesToTemporalRefs(userId, memories);
+        })()
+      : [],
     identity_strength_score: character.identity_strength_score,
     identity_strength: character.identity_strength,
   };
