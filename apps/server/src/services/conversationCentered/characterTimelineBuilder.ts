@@ -5,6 +5,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { characterBelongsOnCanonicalEvent } from '../attribution/eventAttributionProjection';
 
 import { eventImpactDetector } from './eventImpactDetector';
 
@@ -120,6 +121,7 @@ export class CharacterTimelineBuilder {
       type?: string;
       start_time: string;
       people: string[];
+      metadata?: Record<string, unknown> | null;
     },
     impactType?: string,
     connectionCharacterId?: string
@@ -155,6 +157,17 @@ export class CharacterTimelineBuilder {
 
       // Process each character in the event
       for (const characterId of event.people) {
+        const association = characterBelongsOnCanonicalEvent(
+          {
+            title: event.title,
+            summary: event.summary,
+            people: event.people,
+            metadata: event.metadata,
+          },
+          { id: characterId },
+        );
+        if (!association.associated) continue;
+
         // Skip if this is the user's character
         if (userCharacter && characterId === userCharacter.id) {
           continue;
@@ -300,6 +313,7 @@ export class CharacterTimelineBuilder {
             type: event.type,
             start_time: event.start_time,
             people: event.people || [],
+            metadata: event.metadata,
           },
           primaryImpact?.impactType,
           primaryImpact?.connectionCharacterId

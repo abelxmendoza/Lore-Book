@@ -34,6 +34,8 @@ function makeChain(data: unknown) {
     gte: () => chain,
     lte: () => chain,
     in: () => chain,
+    maybeSingle: () => Promise.resolve({ data: null, error: null }),
+    single: () => Promise.resolve({ data: null, error: null }),
     order: () => result,
   };
   return chain;
@@ -81,6 +83,45 @@ describe('stitchedTimelineService — character_id scoping', () => {
     });
 
     expect(result.items).toEqual([]);
+  });
+
+  it('does not put a reference-only person on a character-scoped stitched timeline', async () => {
+    const { attributeNamedEntities } = await import('../../src/services/attribution/eventEntityAttribution');
+    const summary = 'I went to a concert with Maya. I thought about Priya afterward.';
+    (supabaseAdmin as any).from = vi.fn((table: string) => {
+      if (table === 'timeline_events') return makeChain([]);
+      if (table === 'user_chronology_order') return makeChain([]);
+      if (table === 'resolved_events') {
+        return makeChain([
+          {
+            id: 'evt-concert',
+            title: 'Concert',
+            summary,
+            start_time: '2024-06-01T00:00:00.000Z',
+            confidence: 0.9,
+            people: ['char-maya', 'char-priya'],
+            locations: [],
+            activities: [],
+            tags: [],
+            metadata: {
+              entityAttributions: attributeNamedEntities(
+                [
+                  { id: 'char-maya', type: 'PERSON', primary_name: 'Maya' },
+                  { id: 'char-priya', type: 'PERSON', primary_name: 'Priya' },
+                ],
+                summary,
+              ),
+            },
+          },
+        ]);
+      }
+      return makeChain([]);
+    });
+
+    const maya = await stitchedTimelineService.getStitchedTimeline('user-1', { character_id: 'char-maya' });
+    const priya = await stitchedTimelineService.getStitchedTimeline('user-1', { character_id: 'char-priya' });
+    expect(maya.items.map((i) => i.sourceId)).toEqual(['evt-concert']);
+    expect(priya.items).toEqual([]);
   });
 });
 

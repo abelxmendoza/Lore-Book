@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { characterBelongsOnCanonicalEvent } from '../attribution/eventAttributionProjection';
 
 import { chronologyService } from './chronologyService';
 import {
@@ -519,12 +520,10 @@ export class StitchedTimelineService {
       start_time?: string;
       end_time?: string;
       /**
-       * Restrict the global scope to events involving this character (matched
-       * against resolved_events.people, the same field character_timeline_events
-       * is built from). Journal moments and timeline_events carry no character
-       * linkage today, so they're excluded rather than guessed at — better an
-       * honest subset than the old free-text "?q=" search this replaces, which
-       * could silently fall back to fabricated mock results.
+       * Restrict the global scope to events with a grounded association to this
+       * character. Canonical entityAttributions win over compatibility people[].
+       * Journal moments and timeline_events carry no character linkage today,
+       * so they're excluded rather than guessed at.
        */
       character_id?: string;
       /**
@@ -815,8 +814,30 @@ export class StitchedTimelineService {
       // same occurrence collapse to one item; the stitcher never sees
       // duplicate paraphrases. Identity comes from structured properties
       // (who/where/what/when), not from generated wording.
+      let characterName: string | undefined;
+      if (characterId) {
+        const { data: characterRow } = await supabaseAdmin
+          .from('characters')
+          .select('name')
+          .eq('user_id', userId)
+          .eq('id', characterId)
+          .maybeSingle();
+        characterName = (characterRow?.name as string | undefined) ?? undefined;
+      }
       const scopedResolvedRows = characterId
-        ? (resolvedRows ?? []).filter((e) => ((e.people as string[] | null) ?? []).includes(characterId))
+        ? (resolvedRows ?? []).filter((e) =>
+            characterBelongsOnCanonicalEvent(
+              {
+                id: e.id as string,
+                title: (e.title as string | null) ?? null,
+                summary: (e.summary as string | null) ?? null,
+                people: (e.people as string[] | null) ?? [],
+                locations: (e.locations as string[] | null) ?? [],
+                metadata: (e.metadata as Record<string, unknown> | null) ?? {},
+              },
+              { id: characterId, name: characterName },
+            ).associated,
+          )
         : (resolvedRows ?? []);
       const datedResolved = scopedResolvedRows.filter(
         (e) => typeof e.start_time === 'string' && e.start_time.length > 0,

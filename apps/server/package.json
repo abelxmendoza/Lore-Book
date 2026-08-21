@@ -47,6 +47,8 @@
     "skills:repair-survivors": "tsx src/scripts/skillsRepairMergeSurvivors.ts",
     "anchors:audit": "tsx src/scripts/narrativeAnchorsMigrate.ts",
     "anchors:migrate": "tsx src/scripts/narrativeAnchorsMigrate.ts --execute",
+    "attribution:audit": "tsx src/scripts/repairResolvedEventAttribution.ts",
+    "attribution:apply": "tsx src/scripts/repairResolvedEventAttribution.ts --apply",
     "beliefs:audit": "tsx src/scripts/beliefQueueMigrate.ts",
     "beliefs:migrate": "tsx src/scripts/beliefQueueMigrate.ts --execute",
     "self-facts:cleanup": "tsx src/scripts/cleanupSelfEntityFacts.ts",

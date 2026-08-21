@@ -8,6 +8,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { locationBelongsOnCanonicalEvent } from '../attribution/eventAttributionProjection';
 import { organizationService, type GroupEventAudience } from '../organizationService';
 import { listUserPostedEventsForOrganization, type UserPostedEventRow } from '../events/userPostedEventService';
 
@@ -171,9 +172,25 @@ export class EntityTimelineBuilder {
       type?: string;
       start_time: string;
       people: string[];
+      locations?: string[];
+      metadata?: Record<string, unknown> | null;
     }
   ): Promise<void> {
     try {
+      if (this.kind === 'location') {
+        const association = locationBelongsOnCanonicalEvent(
+          {
+            title: event.title,
+            summary: event.summary,
+            people: event.people,
+            locations: event.locations ?? [entityId],
+            metadata: event.metadata,
+          },
+          { id: entityId },
+        );
+        if (!association.associated) return;
+      }
+
       const selfCharacterId = await findSelfCharacterId(userId);
       const userWasPresent = Boolean(selfCharacterId && event.people.includes(selfCharacterId));
 
@@ -376,7 +393,16 @@ export class EntityTimelineBuilder {
   /** Rebuild an entity's full timeline from resolved_events, posted events (orgs), and its primary-linked threads. */
   async rebuildTimelinesForEntity(userId: string, entityId: string): Promise<void> {
     try {
-      let events: Array<{ id: string; title: string; summary?: string; type?: string; start_time: string; people: string[] }> = [];
+      let events: Array<{
+        id: string;
+        title: string;
+        summary?: string;
+        type?: string;
+        start_time: string;
+        people: string[];
+        locations?: string[];
+        metadata?: Record<string, unknown> | null;
+      }> = [];
 
       if (this.kind === 'location') {
         const { data } = await supabaseAdmin
@@ -404,6 +430,8 @@ export class EntityTimelineBuilder {
           type: event.type,
           start_time: event.start_time,
           people: event.people || [],
+          locations: event.locations,
+          metadata: event.metadata,
         });
       }
 
