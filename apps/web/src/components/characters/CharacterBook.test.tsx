@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { render } from '../../test/utils';
 import { CharacterBook } from './CharacterBook';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
+import { dispatchStoryDataUpdated } from '../../lib/storyRefresh';
 
 const { mockFetchJson, impactDemoMode, impactDemoCharacters, mockGetWithFallbackCharacters, mockRegisterCharacters, mockUseGetCharactersBookQuery } = vi.hoisted(() => ({
   mockFetchJson: vi.fn().mockResolvedValue({}),
@@ -234,6 +235,51 @@ describe('CharacterBook', () => {
       // At minimum, the component should render
       expect(characterBookHeader.length > 0 || characterName.length > 0).toBe(true);
     }, { timeout: 3000 });
+  });
+
+  it('10. refetches the book list after a relationship story refresh without a full page reload', async () => {
+    const refetch = vi.fn();
+    mockUseGetCharactersBookQuery.mockReturnValue({
+      data: {
+        characters: [
+          {
+            id: '22222222-2222-4222-8222-222222222222',
+            name: 'Jamie',
+            role: 'Friend',
+            archetype: 'ally',
+            summary: 'Synthetic counterpart',
+            user_id: 'user-1',
+            alias: [],
+            pronouns: null,
+            status: 'active',
+            first_appearance: null,
+            tags: [],
+            metadata: { relationship_type: 'friend' },
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        ],
+        duplicate_groups: [],
+        counts: {},
+      },
+      isLoading: false,
+      isFetching: false,
+      refetch,
+    });
+
+    render(<CharacterBook />);
+    await waitFor(() => {
+      expect(screen.queryAllByText('Jamie').length).toBeGreaterThan(0);
+    });
+
+    dispatchStoryDataUpdated({
+      scopes: ['relationships', 'characters'],
+      characterIds: ['22222222-2222-4222-8222-222222222222'],
+    });
+
+    await waitFor(() => {
+      expect(refetch).toHaveBeenCalled();
+    });
   });
 
   it('paginates the grid — page 2 shows different characters than page 1', async () => {

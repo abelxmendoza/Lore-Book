@@ -11,6 +11,7 @@ export const CHARACTER_QUERY_SECTIONS = [
   'memories',
   'chatMentions',
   'provenance',
+  'relationships',
   'family',
   'timelines',
   'media',
