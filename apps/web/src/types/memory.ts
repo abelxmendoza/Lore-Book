@@ -19,6 +19,13 @@ export type MemoryCard = {
   title: string;
   content: string;
   date: string;
+  // How trustworthy `date` is as OCCURRENCE evidence rather than recording
+  // time — see journal_entries.time_confidence. Below ~0.3 means `date` is
+  // effectively a write-time stamp (the entry was saved with no reliable
+  // date evidence), not a claim about when this actually happened. Absent
+  // when the source (e.g. an already-hydrated legacy path) doesn't carry it —
+  // treat as unknown, not as high confidence, in that case.
+  dateConfidence?: number | null;
   tags: string[];
   mood?: string;
   source: 'journal' | 'x' | 'task' | 'photo' | 'calendar' | 'chat' | 'manual' | 'api' | 'system';
@@ -79,6 +86,7 @@ export function memoryEntryToCard(entry: {
   original_content?: string | null;
   preserve_original_language?: boolean;
   metadata?: Record<string, unknown>;
+  time_confidence?: number | null;
 }): MemoryCard {
   const title = getDisplayTitle({
     title: entry.summary,
@@ -124,6 +132,7 @@ export function memoryEntryToCard(entry: {
     title,
     content: entry.content,
     date: entry.date,
+    dateConfidence: typeof entry.time_confidence === 'number' ? entry.time_confidence : null,
     tags: entry.tags || [],
     mood: entry.mood || undefined,
     source,

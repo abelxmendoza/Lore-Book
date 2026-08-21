@@ -146,6 +146,117 @@ describe('CharacterStoryPanel', () => {
     expect(onSelectMemory).toHaveBeenCalledWith(expect.objectContaining({ id: 'mem-1' }));
   });
 
+  it('labels a memory whose date is a low-confidence write-time fallback as "Recorded", not a bare date implying occurrence', async () => {
+    const unreliableMemory: MemoryCard = {
+      ...sampleMemory,
+      id: 'mem-unreliable',
+      title: 'Vague memory with no real date evidence',
+      dateConfidence: 0.1,
+    };
+    render(
+      <MemoryRouter>
+        <CharacterStoryPanel
+          characterId="c1"
+          characterName="Jerry Medina"
+          active
+          memories={[unreliableMemory]}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Dinner with Jerry')).toBeInTheDocument());
+    expect(screen.getByTestId('character-story-memory-mem-unreliable')).toBeInTheDocument();
+    expect(screen.getByText(/^Recorded /)).toBeInTheDocument();
+  });
+
+  it('does not label a confidently-dated memory as "Recorded" — a real occurrence date renders plainly', async () => {
+    const confidentMemory: MemoryCard = {
+      ...sampleMemory,
+      id: 'mem-confident',
+      dateConfidence: 0.95,
+    };
+    render(
+      <MemoryRouter>
+        <CharacterStoryPanel
+          characterId="c1"
+          characterName="Jerry Medina"
+          active
+          memories={[confidentMemory]}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Dinner with Jerry')).toBeInTheDocument());
+    expect(screen.getByTestId('character-story-memory-mem-confident')).toBeInTheDocument();
+    expect(screen.queryByText(/^Recorded /)).not.toBeInTheDocument();
+  });
+
+  function storyItemOrder(container: HTMLElement): string[] {
+    return Array.from(
+      container.querySelectorAll('[data-testid^="character-story-memory-"], [data-testid^="character-timeline-event-"]'),
+    ).map((el) => el.getAttribute('data-testid') ?? '');
+  }
+
+  it('a recording-only memory does not sort between two dated events merely because it was recorded that day — it sinks to the end', async () => {
+    // Default mock provides two dated, canonical events: "Graduated college"
+    // (2020-05-15) and "Dinner with Jerry" (2024-06-01). This memory's own
+    // `date` (2022-01-01) falls chronologically between them, but its
+    // dateConfidence marks it as a write-time fallback with no real
+    // occurrence evidence — it must NOT slot in at 2022.
+    const recordingOnlyMemory: MemoryCard = {
+      ...sampleMemory,
+      id: 'mem-recording-only',
+      title: 'Vague note with no real date evidence',
+      date: '2022-01-01T00:00:00.000Z',
+      dateConfidence: 0.1,
+    };
+    const { container } = render(
+      <MemoryRouter>
+        <CharacterStoryPanel
+          characterId="c1"
+          characterName="Jerry Medina"
+          active
+          memories={[recordingOnlyMemory]}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Dinner with Jerry')).toBeInTheDocument());
+    const order = storyItemOrder(container);
+    expect(order).toEqual([
+      'character-timeline-event-cte-2', // Graduated college, 2020
+      'character-timeline-event-cte-1', // Dinner with Jerry, 2024
+      'character-story-memory-mem-recording-only', // sunk to the end, not 2022's position
+    ]);
+  });
+
+  it('a confidently-dated memory DOES sort into its real chronological position among events', async () => {
+    const confidentMemory: MemoryCard = {
+      ...sampleMemory,
+      id: 'mem-mid-2022',
+      date: '2022-01-01T00:00:00.000Z',
+      dateConfidence: 0.95,
+    };
+    const { container } = render(
+      <MemoryRouter>
+        <CharacterStoryPanel
+          characterId="c1"
+          characterName="Jerry Medina"
+          active
+          memories={[confidentMemory]}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Dinner with Jerry')).toBeInTheDocument());
+    const order = storyItemOrder(container);
+    expect(order).toEqual([
+      'character-timeline-event-cte-2', // 2020
+      'character-story-memory-mem-mid-2022', // 2022 — correctly interleaved
+      'character-timeline-event-cte-1', // 2024
+    ]);
+  });
+
   it('shows relationship arc stages when provided', async () => {
     render(
       <MemoryRouter>

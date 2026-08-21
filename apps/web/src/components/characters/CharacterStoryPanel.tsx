@@ -86,6 +86,49 @@ function fmtEventDate(iso: string): string {
   }
 }
 
+// Below this, a memory's `date` is effectively a write-time stamp (see
+// journal_entries.time_confidence / memoryService.saveEntry) rather than
+// real occurrence evidence — LoreBook knows when the memory was recorded,
+// not when the remembered thing happened. Still shown (so the memory isn't
+// hidden), but labeled honestly rather than presented as "this happened on
+// this date."
+const UNRELIABLE_DATE_CONFIDENCE_THRESHOLD = 0.3;
+
+function isMemoryDateUnreliable(memory: { dateConfidence?: number | null }): boolean {
+  return typeof memory.dateConfidence === 'number' && memory.dateConfidence < UNRELIABLE_DATE_CONFIDENCE_THRESHOLD;
+}
+
+function fmtMemoryDate(memory: { date: string; dateConfidence?: number | null }): string {
+  const formatted = fmtEventDate(memory.date);
+  return isMemoryDateUnreliable(memory) ? `Recorded ${formatted}` : formatted;
+}
+
+// Ordering authority vs display authority, kept deliberately separate:
+// `memory.date` (via fmtMemoryDate above) is what the card SHOWS. This is
+// what decides where the item SORTS. For a recording-only memory these must
+// diverge — the card still shows "Recorded Aug 20" for transparency, but an
+// empty ordering date means it can never claim a chronological position next
+// to a real occurrence merely because it happened to be saved that day.
+// Both this component's own sort and EntityTimelinePanel's internal
+// sortTimelineEventsChronologically already sink an unparseable/empty date
+// to the end of the list, so this alone is enough to move the item into an
+// undated tail without adding a second timeline model.
+function memoryOrderDate(memory: { date: string; dateConfidence?: number | null }): string {
+  return isMemoryDateUnreliable(memory) ? '' : memory.date;
+}
+
+/** Same "invalid sinks to the end" semantics as sortTimelineEventsChronologically, for StoryItem's `date` field directly. */
+function compareOrderDates(a: string, b: string, order: 'asc' | 'desc' = 'asc'): number {
+  const ta = new Date(a).getTime();
+  const tb = new Date(b).getTime();
+  const aValid = !Number.isNaN(ta);
+  const bValid = !Number.isNaN(tb);
+  if (!aValid && !bValid) return 0;
+  if (!aValid) return 1;
+  if (!bValid) return -1;
+  return order === 'asc' ? ta - tb : tb - ta;
+}
+
 function toSwim(event: CharTimelineEvent, laneKey: string): SwimlaneEvent {
   return {
     id: event.id,
@@ -270,8 +313,8 @@ export function CharacterStoryPanel({
 
   const sortedMemories = useMemo(
     () =>
-      [...memories].sort(
-        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+      [...memories].sort((a, b) =>
+        compareOrderDates(memoryOrderDate(a), memoryOrderDate(b)),
       ),
     [memories],
   );
@@ -303,10 +346,15 @@ export function CharacterStoryPanel({
         ) {
           highlight = 'Most significant';
         }
-        items.push({ kind: 'memory', id: `memory-${memory.id}`, date: memory.date, memory, highlight });
+        // `date` here is the ORDERING date (empty for a recording-only
+        // memory, sinking it out of the interleaved chronological stream —
+        // see memoryOrderDate). The card still displays memory.date via
+        // fmtMemoryDate in renderListItem; the two are deliberately
+        // independent so recording time can never masquerade as occurrence.
+        items.push({ kind: 'memory', id: `memory-${memory.id}`, date: memoryOrderDate(memory), memory, highlight });
       }
     }
-    return items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    return items.sort((a, b) => compareOrderDates(a.date, b.date));
   }, [scope, chronologicalEvents, sortedMemories, firstMemory, mostSignificant]);
 
   const filteredItems = useMemo(() => {
@@ -630,7 +678,7 @@ export function CharacterStoryPanel({
                 }`}
               >
                 <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <time className="text-xs font-mono text-primary/80">{fmtEventDate(memory.date)}</time>
+                  <time className="text-xs font-mono text-primary/80">{fmtMemoryDate(memory)}</time>
                   <Badge
                     variant="outline"
                     className="text-[10px] bg-amber-500/15 text-amber-200 border-amber-500/30"

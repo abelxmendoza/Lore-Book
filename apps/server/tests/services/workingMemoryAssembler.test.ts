@@ -969,4 +969,104 @@ describe('Working Memory Assembler', () => {
     expect(relationshipText).toMatch(/estranged/i);
     expect(relationshipText).not.toMatch(/friend/i);
   });
+
+  it('a "what happened in July" temporal-window query never surfaces a chat message solely because it was SENT in July — occurrence, not send time, gates temporal windows', async () => {
+    // A chat message sent July 10 whose text describes something that
+    // happened at an unknown time — chat.created_at is send time, not
+    // occurrence, so it must not be treated as "this happened in July."
+    tableResults.chat_messages = {
+      data: [
+        {
+          id: 'chat-july-send',
+          content: 'unrelated message about something from ages ago, sent in July',
+          created_at: '2026-07-10T00:00:00Z',
+          session_id: 'thread-x',
+          role: 'user',
+        },
+      ],
+      error: null,
+    };
+    // A journal entry actually dated in July — genuine occurrence evidence —
+    // must still come through.
+    tableResults.journal_entries = {
+      data: [
+        {
+          id: 'entry-july-occurrence',
+          content: 'Went hiking with friends.',
+          summary: 'July hike',
+          date: '2026-07-15T00:00:00Z',
+          tags: [],
+          source: 'manual',
+          metadata: {},
+        },
+      ],
+      error: null,
+    };
+
+    const result = await assembleWorkingMemory({
+      userId: 'user-1',
+      question: 'What happened in July 2026?',
+    });
+
+    const allText = [...result.episodes, ...result.events]
+      .map((item) => `${item.id} ${item.title} ${item.content}`)
+      .join('\n');
+    expect(allText).not.toMatch(/chat-july-send|sent in July/);
+    expect(allText).toMatch(/entry-july-occurrence|July hike/);
+  });
+
+  it('outside a temporal window, chat candidates are still included but labeled as send time, not occurrence', async () => {
+    tableResults.chat_messages = {
+      data: [
+        {
+          id: 'chat-plain',
+          content: 'Talking about Genni and the old apartment.',
+          created_at: '2026-06-01T00:00:00Z',
+          session_id: 'thread-y',
+          role: 'user',
+        },
+      ],
+      error: null,
+    };
+
+    const result = await assembleWorkingMemory({
+      userId: 'user-1',
+      question: 'What have we said about Genni?',
+    });
+
+    const chatItem = result.episodes.find((item) => item.id === 'chat:chat-plain');
+    expect(chatItem).toBeTruthy();
+    expect((chatItem as unknown as { dateLabel?: string }).dateLabel).toBe('sent');
+  });
+
+  it('a character memory linked to a low-confidence (write-time-fallback) journal date is not presented as a precise occurrence', async () => {
+    tableResults.characters = {
+      data: [
+        { id: 'char-target', name: 'Genni', alias: [], summary: null, metadata: {}, importance_score: 60, updated_at: '2026-06-01T00:00:00Z' },
+      ],
+      error: null,
+    };
+    tableResults.character_memories = {
+      data: [
+        {
+          id: 'mem-1',
+          summary: 'Something about Genni',
+          journal_entry_id: 'entry-unreliable',
+          created_at: '2026-08-01T00:00:00Z',
+          metadata: {},
+          journal_entries: { date: '2026-08-01T00:00:00Z', time_confidence: 0.1 },
+        },
+      ],
+      error: null,
+    };
+
+    const result = await assembleWorkingMemory({
+      userId: 'user-1',
+      question: 'What do you know about Genni?',
+    });
+
+    const memoryItem = result.episodes.find((item) => item.id === 'memory:mem-1');
+    expect(memoryItem).toBeTruthy();
+    expect((memoryItem as unknown as { dateLabel?: string }).dateLabel).toBe('date uncertain');
+  });
 });

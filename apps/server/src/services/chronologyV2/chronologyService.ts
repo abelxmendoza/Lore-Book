@@ -135,7 +135,7 @@ export class ChronologyService {
           .from('chronology_index')
           .select(`
             *,
-            journal_entries!inner(id, content, user_id, source, tags, date, created_at, metadata)
+            journal_entries!inner(id, content, user_id, source, tags, date, created_at, metadata, time_confidence)
           `)
           .eq('user_id', userId)
           .order('start_time', { ascending: true });
@@ -193,14 +193,26 @@ export class ChronologyService {
         const journal = row.journal_entries ?? {};
         const metadata = (journal.metadata ?? {}) as Record<string, unknown>;
         const sourceType = journal.source || 'manual';
+        // journal_entries.time_confidence (populated at save time by
+        // memoryService — see MemoryEntry.time_confidence) is the real signal
+        // for whether `date` is occurrence evidence or a write-time fallback.
+        // Previously this read `row.time_confidence`, a column that does not
+        // exist on chronology_index (nor was it joined from journal_entries),
+        // so it was always undefined and silently treated as full confidence
+        // (1.0) regardless of source — the exact gap the temporal-authority
+        // audit flagged: a manual entry defaulted to 'user_stated' even when
+        // its date was a silent now() stamp.
+        const timeConfidence = typeof journal.time_confidence === 'number' ? journal.time_confidence : 1.0;
         const inferredTemporalSource =
           typeof metadata.temporal_source === 'string'
             ? metadata.temporal_source
-            : /calendar|document|photo/i.test(sourceType)
-              ? 'document_stated'
-              : /chat|conversation|import/i.test(sourceType)
-                ? 'recording_fallback'
-                : 'user_stated';
+            : timeConfidence < 0.3
+              ? 'recording_fallback'
+              : /calendar|document|photo/i.test(sourceType)
+                ? 'document_stated'
+                : /chat|conversation|import/i.test(sourceType)
+                  ? 'recording_fallback'
+                  : 'user_stated';
         return {
         id: row.id,
         user_id: row.user_id,
@@ -208,7 +220,7 @@ export class ChronologyService {
         start_time: row.start_time,
         end_time: row.end_time,
         time_precision: row.time_precision,
-        time_confidence: row.time_confidence || 1.0,
+        time_confidence: timeConfidence,
         content: journal.content || '',
         source_type: sourceType,
         recorded_at: journal.created_at ?? null,

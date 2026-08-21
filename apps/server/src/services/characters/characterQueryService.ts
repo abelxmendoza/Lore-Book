@@ -60,6 +60,11 @@ export type HydratedMemoryCard = CharacterSharedMemoryRef & {
   content?: string | null;
   tags?: string[];
   source?: string | null;
+  // How trustworthy `date` is as occurrence evidence — see
+  // memoryService.saveEntry / journal_entries.time_confidence. Below ~0.3
+  // means `date` is effectively a write-time stamp, not a claim about when
+  // the remembered thing happened.
+  dateConfidence?: number | null;
 };
 
 export type CharacterQuery = {
@@ -123,7 +128,7 @@ async function hydrateMemories(
 
   const { data: entries } = await supabaseAdmin
     .from('journal_entries')
-    .select('id, date, content, summary, tags, source, title')
+    .select('id, date, content, summary, tags, source, title, time_confidence')
     .eq('user_id', userId)
     .in('id', entryIds);
 
@@ -139,6 +144,7 @@ async function hydrateMemories(
       tags: Array.isArray(entry.tags) ? entry.tags : [],
       source: typeof entry.source === 'string' ? entry.source : null,
       date: entry.date ?? ref.date,
+      dateConfidence: typeof entry.time_confidence === 'number' ? entry.time_confidence : null,
     };
   });
 }

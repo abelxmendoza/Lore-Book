@@ -394,6 +394,93 @@ async function loadOccasionLinks(userId: string, arcId: string) {
   return data ?? [];
 }
 
+/**
+ * The one shared temporal-authority seam every scope routes through — same
+ * projectCanonicalTimeline call, same dedup/eligibility/unresolved-bucketing,
+ * regardless of whether the caller asked for global, an occasion arc, a
+ * narrative-consolidation arc, or a plain life_arc window. Scope-specific
+ * code selects WHICH raw candidates enter this function (a legitimate
+ * filter-then-project); nothing downstream of this function may invent its
+ * own occurrence value. See Phase 8 of the scoped-stitched-timeline task:
+ * "load canonical candidates → CanonicalTemporalModel → canonical timeline
+ * projection → apply scope filter → surface projection."
+ */
+function projectStitchedItems(items: StitchedTimelineItem[]): {
+  canonical: StitchedTimelineItem[];
+  unresolved: StitchedTimelineItem[];
+  evidenceHidden: number;
+  excludedCount: number;
+} {
+  const projected = projectCanonicalTimeline(
+    items.map((item) => ({
+      id: item.id,
+      kind: item.kind,
+      sourceId: item.sourceId,
+      sortTime: item.sortTime,
+      title: item.title,
+      body: item.body,
+      sourceKind: item.sourceKind,
+      sourceIds: item.sourceIds,
+      sourceType: item.sourceType,
+      tags: item.tags,
+      confidence: item.confidence,
+      timePrecision: item.timePrecision,
+      timeConfidence: item.timeConfidence,
+      temporalSource: item.temporalSource,
+      occurredAt: item.occurredAt,
+      occurredEnd: item.occurredEnd,
+      mentionedAt: item.mentionedAt,
+      recordedAt: item.recordedAt,
+      knownFrom: item.knownFrom,
+      validFrom: item.validFrom,
+      validUntil: item.validUntil,
+    })),
+  );
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const toStitched = (p: (typeof projected.canonical)[number]): StitchedTimelineItem => {
+    const original = byId.get(p.id);
+    return {
+      id: p.id,
+      kind: p.kind,
+      sourceId: p.sourceId,
+      sortTime: p.sortTime,
+      userSortIndex: original?.userSortIndex ?? null,
+      title: p.title,
+      body: p.body,
+      sourceKind: p.sourceKind,
+      sourceIds: p.sourceIds,
+      sourceType: p.sourceType,
+      tags: p.tags,
+      confidence: p.timeConfidence,
+      timePrecision: p.timePrecision,
+      timeConfidence: p.timeConfidence,
+      temporalSource: p.temporalSource,
+      occurrenceStatus: p.occurrenceStatus,
+      projectionRole: p.projectionRole,
+      canonicalEventType: p.canonicalEventType,
+      speechAct: p.speechAct,
+      occurredAt: p.temporal.occurred.start,
+      occurredEnd: p.temporal.occurred.end,
+      mentionedAt: p.temporal.mentionedAt,
+      recordedAt: p.temporal.recordedAt,
+      knownFrom: p.temporal.knownFrom,
+      validFrom: p.temporal.validFrom,
+      validUntil: p.temporal.validUntil,
+      temporal: p.temporal,
+      userPresence: original?.userPresence,
+      temporalRole: original?.temporalRole,
+      mergedCount: original?.mergedCount,
+      mergedTitles: original?.mergedTitles,
+    };
+  };
+  return {
+    canonical: projected.canonical.map(toStitched),
+    unresolved: projected.unresolved.map(toStitched),
+    evidenceHidden: projected.evidenceHidden,
+    excludedCount: projected.excluded.length,
+  };
+}
+
 async function loadNarrativeArcEventIds(
   userId: string,
   arcId: string,
@@ -544,18 +631,33 @@ export class StitchedTimelineService {
 
       const [linkedEvents, linkedJournal] = await Promise.all([
         eventIds.length
-          ? supabaseAdmin.from('resolved_events').select('id, title, summary, start_time, confidence, metadata, tags').in('id', eventIds)
+          ? supabaseAdmin
+              .from('resolved_events')
+              .select('id, title, summary, start_time, confidence, metadata, tags, temporal_precision, temporal_source, temporal_confidence, created_at')
+              .in('id', eventIds)
           : Promise.resolve({ data: [] as any[] }),
         journalIds.length
-          ? supabaseAdmin.from('journal_entries').select('id, content, date, source, tags').in('id', journalIds)
+          ? supabaseAdmin
+              .from('journal_entries')
+              .select('id, content, date, source, tags, time_precision, time_confidence, created_at')
+              .in('id', journalIds)
           : Promise.resolve({ data: [] as any[] }),
       ]);
 
+      // arc_event_links.sort_time is container/order metadata for this
+      // occasion — where the item falls WITHIN the arc's own internal
+      // sequence — not occurrence evidence. It's kept below only as
+      // `sortTime`, a pre-projection convenience the canonical projector
+      // replaces outright (see projectStitchedItems); occurredAt/
+      // temporalSource always come from the underlying event/journal row's
+      // own real evidence, never from the link.
       for (const link of occasionLinks) {
         if (link.resolved_event_id) {
           const e = (linkedEvents.data ?? []).find(r => r.id === link.resolved_event_id);
           if (!e) continue;
           const key = `event:${e.id}`;
+          const meta = (e.metadata ?? {}) as Record<string, unknown>;
+          const temporalMeta = (meta.temporal ?? {}) as Record<string, unknown>;
           items.push({
             id: key,
             kind: 'event',
@@ -566,9 +668,16 @@ export class StitchedTimelineService {
             body: e.summary ?? '',
             sourceKind: 'resolved_event',
             sourceIds: [e.id],
-            sourceType: (((e.metadata ?? {}) as Record<string, unknown>).source_type as string | undefined) ?? 'resolved_event',
+            sourceType: (meta.source_type as string | undefined) ?? 'resolved_event',
             tags: (e.tags as string[]) ?? [],
             confidence: e.confidence ?? 1,
+            timePrecision: (e.temporal_precision as string) ?? 'date',
+            timeConfidence: Number(e.temporal_confidence ?? e.confidence ?? 1),
+            temporalSource: (e.temporal_source as string) ?? 'context_inferred',
+            occurredAt: e.start_time ?? null,
+            mentionedAt: (temporalMeta.mentioned_at as string | undefined) ?? null,
+            recordedAt: (e.created_at as string | null) ?? null,
+            knownFrom: (temporalMeta.known_from as string | undefined) ?? (e.created_at as string | null) ?? null,
             userPresence: (link.user_presence as StitchedTimelineItem['userPresence']) ?? 'unknown',
             temporalRole: link.temporal_role ?? undefined,
           });
@@ -579,6 +688,7 @@ export class StitchedTimelineService {
           if (!m) continue;
           const sourceId = m.id;
           const key = `moment:${sourceId}`;
+          const timeConfidence = typeof m.time_confidence === 'number' ? m.time_confidence : 1.0;
           items.push({
             id: key,
             kind: 'moment',
@@ -591,6 +701,14 @@ export class StitchedTimelineService {
             sourceIds: [sourceId],
             sourceType: m.source ?? 'manual',
             tags: (m.tags as string[]) ?? [],
+            timePrecision: (m.time_precision as string) ?? 'exact',
+            timeConfidence,
+            // Same rule as the general sweep's moment handling: a low-confidence
+            // (write-time-fallback) date carries no occurrence claim at all.
+            temporalSource: timeConfidence < 0.3 ? 'recording_fallback' : 'user_stated',
+            occurredAt: timeConfidence < 0.3 ? null : m.date ?? null,
+            recordedAt: (m.created_at as string | null) ?? null,
+            knownFrom: (m.created_at as string | null) ?? null,
             userPresence: (link.user_presence as StitchedTimelineItem['userPresence']) ?? 'attended',
             temporalRole: link.temporal_role ?? undefined,
           });
@@ -599,7 +717,7 @@ export class StitchedTimelineService {
     } else if (isNarrativeConsolidationArc && narrativeEventIds.length > 0) {
       const { data: linkedEvents } = await supabaseAdmin
         .from('resolved_events')
-        .select('id, title, summary, start_time, confidence, metadata')
+        .select('id, title, summary, start_time, confidence, metadata, tags, temporal_precision, temporal_source, temporal_confidence, created_at')
         .eq('user_id', userId)
         .in('id', narrativeEventIds);
 
@@ -608,6 +726,7 @@ export class StitchedTimelineService {
         const meta = (e.metadata ?? {}) as Record<string, unknown>;
         const narrative = (meta.narrative_structure ?? {}) as Record<string, unknown>;
         const primaryRole = narrative.primary_arc_membership_role as string | undefined;
+        const temporalMeta = (meta.temporal ?? {}) as Record<string, unknown>;
         items.push({
           id: key,
           kind: 'event',
@@ -619,7 +738,15 @@ export class StitchedTimelineService {
           sourceKind: 'resolved_event',
           sourceIds: [e.id],
           sourceType: 'resolved_event',
+          tags: (e.tags as string[]) ?? [],
           confidence: e.confidence ?? 1,
+          timePrecision: (e.temporal_precision as string) ?? 'date',
+          timeConfidence: Number(e.temporal_confidence ?? e.confidence ?? 1),
+          temporalSource: (e.temporal_source as string) ?? 'context_inferred',
+          occurredAt: e.start_time ?? null,
+          mentionedAt: (temporalMeta.mentioned_at as string | undefined) ?? null,
+          recordedAt: (e.created_at as string | null) ?? null,
+          knownFrom: (temporalMeta.known_from as string | undefined) ?? (e.created_at as string | null) ?? null,
           userPresence: (meta.user_presence as StitchedTimelineItem['userPresence']) ?? 'unknown',
           temporalRole: primaryRole,
           contribution: chapter?.contributionScores[e.id],
@@ -838,11 +965,18 @@ export class StitchedTimelineService {
 
       // Arc scope only: gate the date-window sweep on narrative cohesion.
       // Global timelines stay complete — the user asked for everything there.
+      // Cohesion is a scope FILTER (which items belong to this arc's story),
+      // so it runs on top of the canonical projection, not instead of it —
+      // the arc must not see a different occurrence for the same event than
+      // global would. Unresolved items are never cohesion-gated (there's no
+      // reliable date to judge topical proximity against) and are always
+      // preserved as their own tray, same as global.
       if (scopeType === 'life_arc' && scopeLabel) {
+        const { canonical, unresolved, evidenceHidden } = projectStitchedItems(items);
         const gated = await applyCohesionGate(
           userId,
           { title: scopeLabel, summary: arcSummary, tags: arcTags },
-          items,
+          canonical,
           candidatesByKey,
         );
         if (gated) {
@@ -854,6 +988,8 @@ export class StitchedTimelineService {
             items: sortedScene,
             has_user_order: sortedScene.some((i) => i.userSortIndex != null),
             background: sortItems(gated.background),
+            unresolved_items: sortItems(unresolved),
+            evidence_hidden_count: evidenceHidden,
             excluded_count: gated.excludedCount,
             ...(chapter ? { chapter } : {}),
             ...(mergeLog?.length ? { merge_log: mergeLog } : {}),
@@ -862,80 +998,30 @@ export class StitchedTimelineService {
       }
     }
 
-    // Global Omni feed: Chronology Authority projection (eligibility + temporal honesty).
-    if (scopeType === 'global') {
-      const projected = projectCanonicalTimeline(
-        items.map((item) => ({
-          id: item.id,
-          kind: item.kind,
-          sourceId: item.sourceId,
-          sortTime: item.sortTime,
-          title: item.title,
-          body: item.body,
-          sourceKind: item.sourceKind,
-          sourceIds: item.sourceIds,
-          sourceType: item.sourceType,
-          tags: item.tags,
-          confidence: item.confidence,
-          timePrecision: item.timePrecision,
-          timeConfidence: item.timeConfidence,
-          temporalSource: item.temporalSource,
-          occurredAt: item.occurredAt,
-          occurredEnd: item.occurredEnd,
-          mentionedAt: item.mentionedAt,
-          recordedAt: item.recordedAt,
-          knownFrom: item.knownFrom,
-          validFrom: item.validFrom,
-          validUntil: item.validUntil,
-        })),
-      );
-      const toStitched = (p: (typeof projected.canonical)[number]): StitchedTimelineItem => ({
-        id: p.id,
-        kind: p.kind,
-        sourceId: p.sourceId,
-        sortTime: p.sortTime,
-        userSortIndex: items.find((i) => i.id === p.id)?.userSortIndex ?? null,
-        title: p.title,
-        body: p.body,
-        sourceKind: p.sourceKind,
-        sourceIds: p.sourceIds,
-        sourceType: p.sourceType,
-        tags: p.tags,
-        confidence: p.timeConfidence,
-        timePrecision: p.timePrecision,
-        timeConfidence: p.timeConfidence,
-        temporalSource: p.temporalSource,
-        occurrenceStatus: p.occurrenceStatus,
-        projectionRole: p.projectionRole,
-        canonicalEventType: p.canonicalEventType,
-        speechAct: p.speechAct,
-        occurredAt: p.temporal.occurred.start,
-        occurredEnd: p.temporal.occurred.end,
-        mentionedAt: p.temporal.mentionedAt,
-        recordedAt: p.temporal.recordedAt,
-        knownFrom: p.temporal.knownFrom,
-        validFrom: p.temporal.validFrom,
-        validUntil: p.temporal.validUntil,
-        temporal: p.temporal,
-        userPresence: items.find((i) => i.id === p.id)?.userPresence,
-        temporalRole: items.find((i) => i.id === p.id)?.temporalRole,
-        mergedCount: items.find((i) => i.id === p.id)?.mergedCount,
-        mergedTitles: items.find((i) => i.id === p.id)?.mergedTitles,
-      });
-      const sorted = sortItems(projected.canonical.map(toStitched));
+    // Every remaining path — global, and any life_arc path that didn't
+    // already return via the cohesion gate above (plain date-window arcs
+    // with no anchor, occasion arcs, narrative-consolidation arcs) — shares
+    // the same canonical projection. Scope is exhausted at this point (the
+    // candidate set was already narrowed to this scope's raw rows above);
+    // what happens here is purely "what does the canonical model say about
+    // these candidates," identical regardless of scope_type.
+    {
+      const { canonical, unresolved, evidenceHidden, excludedCount } = projectStitchedItems(items);
+      const sorted = sortItems(canonical);
       const capped = opts.limit != null ? sorted.slice(0, opts.limit) : sorted;
-      const unresolved = sortItems(projected.unresolved.map(toStitched));
-      const historicalNeighborhoods = buildHistoricalNeighborhoods(capped, temporalRelations);
+      const unresolvedSorted = sortItems(unresolved);
+      const historicalNeighborhoods =
+        scopeType === 'global' ? buildHistoricalNeighborhoods(capped, temporalRelations) : undefined;
       return {
         scope_type: scopeType,
         scope_id: scopeId,
         scope_label: scopeLabel,
         items: capped,
         has_user_order: capped.some((i) => i.userSortIndex != null),
-        unresolved_items: unresolved,
-        evidence_hidden_count: projected.evidenceHidden,
-        excluded_count: projected.excluded.length,
-        historical_neighborhoods: historicalNeighborhoods,
+        unresolved_items: unresolvedSorted,
+        evidence_hidden_count: evidenceHidden,
+        excluded_count: excludedCount,
+        ...(historicalNeighborhoods ? { historical_neighborhoods: historicalNeighborhoods } : {}),
         temporal_relations: temporalRelations,
         narrative_relations: narrativeRelations,
         ...(chapterBackground.length ? { background: sortItems(chapterBackground) } : {}),
@@ -943,23 +1029,6 @@ export class StitchedTimelineService {
         ...(mergeLog?.length ? { merge_log: mergeLog } : {}),
       };
     }
-
-    const sorted = sortItems(items);
-    const capped = opts.limit != null ? sorted.slice(0, opts.limit) : sorted;
-    const hasUserOrder = capped.some((i) => i.userSortIndex != null);
-
-    return {
-      scope_type: scopeType,
-      scope_id: scopeId,
-      scope_label: scopeLabel,
-      items: capped,
-      has_user_order: hasUserOrder,
-      temporal_relations: temporalRelations,
-      narrative_relations: narrativeRelations,
-      ...(chapterBackground.length ? { background: sortItems(chapterBackground) } : {}),
-      ...(chapter ? { chapter } : {}),
-      ...(mergeLog?.length ? { merge_log: mergeLog } : {}),
-    };
   }
 
   async saveUserOrder(

@@ -492,6 +492,12 @@ function scoreCandidate(candidate: Candidate): WorkingMemoryItem {
     content: candidate.content,
     source: candidate.source,
     date: candidate.date,
+    // Was previously dropped here even when a candidate set it — dateLabel
+    // never actually reached itemLine()'s rendering, so every candidate's
+    // date/mention/recording time printed identically as `date=...` in the
+    // prompt regardless of evidentiary class. See the chat/character-memory
+    // candidate loaders that now set this.
+    dateLabel: candidate.dateLabel,
     confidence,
     score: Number(score.toFixed(4)),
     reasons: [
@@ -994,7 +1000,11 @@ async function loadPersonCandidates(
       () =>
         supabaseAdmin
           .from('character_memories')
-          .select('id, summary, journal_entry_id, created_at, metadata')
+          // journal_entries(date, time_confidence) via the journal_entry_id FK —
+          // the link row's own created_at is when the character↔memory link was
+          // inserted, not when the remembered thing happened. See the linked
+          // journal entry's `date` for real (or best-available) occurrence.
+          .select('id, summary, journal_entry_id, created_at, metadata, journal_entries(date, time_confidence)')
           .eq('user_id', userId)
           .eq('character_id', characterId)
           .limit(8)
@@ -1083,13 +1093,28 @@ async function loadPersonCandidates(
     // Memories whose text names the queried person rank above the rest so a
     // person query surfaces them first instead of the most recent linked memory.
     const namesTarget = !memoryTargetKey || normalizeNameKey(memText).includes(memoryTargetKey);
+    // Prefer the linked journal entry's own date (occurrence-ish, see
+    // memoryService.saveEntry's time_confidence) over this link row's own
+    // created_at, which is only when the character↔memory link was inserted.
+    const linkedJournal = memory.journal_entries as { date?: string; time_confidence?: number } | null;
+    const memoryDate = linkedJournal?.date ?? memory.created_at;
+    const memoryDateConfidence = linkedJournal ? linkedJournal.time_confidence ?? 1.0 : null;
     out.push({
       id: `memory:${memory.id}`,
       type: 'episode',
       title: `Memory involving ${target}`,
       content: memText,
       source: 'character_memories',
-      date: memory.created_at,
+      date: memoryDate,
+      // Below the memoryService threshold for a real occurrence signal (see
+      // mapSuggestionPrecision/saveEntry), or no linked journal entry at all —
+      // don't imply an exact date, label it as unresolved instead.
+      dateLabel:
+        memoryDateConfidence !== null && memoryDateConfidence < 0.3
+          ? 'date uncertain'
+          : !linkedJournal
+            ? 'recorded (no linked entry date)'
+            : undefined,
       confidence: 0.8,
       relevance: namesTarget ? 0.95 : 0.8,
       importance: 0.65,
@@ -1566,7 +1591,15 @@ async function loadTextualCandidates(
 
   for (const chat of (chats ?? []) as any[]) {
     const text = String(chat.content ?? '');
-    if (temporalWindow && !occurredInWindow(chat.created_at, temporalWindow)) continue;
+    // chat.created_at is when the message was SENT, not when whatever it
+    // describes actually happened — "yesterday I went to the store" sent
+    // today has an unknown occurrence date, not today's date. A temporal
+    // window query ("what happened in July") must not use send time as a
+    // stand-in for occurrence: excluding here (rather than filtering in
+    // based on a wrong signal) keeps this candidate temporally unresolved
+    // for windowed queries, matching journal_entries/stitched_timeline,
+    // which are correctly filtered on real occurrence evidence above.
+    if (temporalWindow) continue;
     if (wantsTarget && !includeByIntent(text) && !threadId) continue;
     out.push({
       id: `chat:${chat.id}`,
@@ -1575,6 +1608,10 @@ async function loadTextualCandidates(
       content: text.slice(0, 600),
       source: 'chat_messages',
       date: chat.created_at,
+      // The only date we have here is send time, not occurrence — say so
+      // rather than rendering `date=...` as if it answered "when did this
+      // happen."
+      dateLabel: 'sent',
       confidence: 0.68,
       relevance: threadId ? 0.86 : 0.72,
       importance: 0.45,

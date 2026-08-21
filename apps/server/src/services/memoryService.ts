@@ -6,11 +6,13 @@ import type {
   ChapterTimeline,
   EntryRelationship,
   JournalQuery,
+  JournalTimePrecision,
   MemoryEntry,
   MemorySource,
   MonthGroup,
   ResolvedMemoryEntry
 } from '../types';
+import type { DateSuggestion } from './dateAssignmentService';
 
 import { deriveEmotionalIntensity } from '../utils/emotionalIntensity';
 import { JOURNAL_COLS } from '../db/journalEntryColumns';
@@ -31,6 +33,21 @@ import { dateAssignmentService } from './dateAssignmentService';
 
 const ENTRY_LIST_CACHE_TTL_MS = 30_000;
 const BOOTSTRAP_ENTRY_FETCH_LIMIT = 500;
+
+function mapSuggestionPrecision(precision: DateSuggestion['precision']): JournalTimePrecision {
+  switch (precision) {
+    case 'year':
+      return 'year';
+    case 'month':
+      return 'month';
+    case 'day':
+      return 'day';
+    default:
+      // hour/minute/second — dateAssignmentService's finest grain maps onto
+      // journal_entries.time_precision's 'exact', the finest grain it has.
+      return 'exact';
+  }
+}
 
 export type TimelineEndpointTiming = {
   totalMs: number;
@@ -134,15 +151,40 @@ class MemoryService {
 
     // If no date supplied, ask dateAssignmentService to infer one from content.
     // Only use the suggestion when confidence is reasonable (≥0.5); otherwise keep now().
+    //
+    // time_precision/time_confidence (existing columns, previously always left
+    // at their schema DEFAULTs of 'exact'/1.0 no matter where `date` actually
+    // came from) now carry the real evidence class, so downstream chronology
+    // code can tell "user explicitly dated this" apart from "the app silently
+    // stamped now() because nothing else was available" — see MemoryEntry's
+    // doc comment in types.ts.
     let entryDate = payload.date;
-    if (!entryDate && payload.content && payload.content.length > 20) {
-      try {
-        const suggestion = await dateAssignmentService.suggestDate(payload.userId, payload.content);
-        if (suggestion.confidence >= 0.5 && suggestion.source !== 'default') {
-          entryDate = suggestion.date.toISOString();
+    let timePrecision: JournalTimePrecision = 'exact';
+    let timeConfidence = 1.0;
+    if (!entryDate) {
+      if (payload.content && payload.content.length > 20) {
+        try {
+          const suggestion = await dateAssignmentService.suggestDate(payload.userId, payload.content);
+          if (suggestion.confidence >= 0.5 && suggestion.source !== 'default') {
+            entryDate = suggestion.date.toISOString();
+            timePrecision = mapSuggestionPrecision(suggestion.precision);
+            timeConfidence = suggestion.confidence;
+          } else {
+            // Suggestion exists but wasn't confident enough to use as the date
+            // itself — falls through to the now() fallback below, and that
+            // fallback genuinely carries no occurrence evidence.
+            timePrecision = 'approximate';
+            timeConfidence = Math.min(suggestion.confidence, 0.2);
+          }
+        } catch (error) {
+          logger.debug({ error }, 'Date suggestion failed, using current date');
+          timePrecision = 'approximate';
+          timeConfidence = 0.1;
         }
-      } catch (error) {
-        logger.debug({ error }, 'Date suggestion failed, using current date');
+      } else {
+        // No content to infer from at all — pure write-time fallback.
+        timePrecision = 'approximate';
+        timeConfidence = 0.1;
       }
     }
 
@@ -159,7 +201,9 @@ class MemoryService {
       content_type: payload.content_type as any,
       original_content: payload.original_content ?? null,
       preserve_original_language: payload.preserve_original_language ?? false,
-      metadata
+      metadata,
+      time_precision: timePrecision,
+      time_confidence: timeConfidence,
     };
 
     if (!isEncrypted) {
