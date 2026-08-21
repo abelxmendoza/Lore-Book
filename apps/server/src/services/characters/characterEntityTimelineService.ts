@@ -120,6 +120,14 @@ export function emptyCharacterTimelineResult(): CharacterEntityTimelineResult {
   };
 }
 
+export class ResolvedEventsQueryError extends Error {
+  readonly code = 'RESOLVED_EVENTS_QUERY_FAILED';
+  constructor(readonly dataErrors: Array<{ source: string; message: string }>) {
+    super(dataErrors.map((entry) => `${entry.source}: ${entry.message}`).join('; ') || 'resolved_events query failed');
+    this.name = 'ResolvedEventsQueryError';
+  }
+}
+
 function parseMs(value: string | null | undefined): number | null {
   if (!value) return null;
   const ms = Date.parse(value);
@@ -377,6 +385,9 @@ export async function buildCanonicalCharacterTimeline(
   const stitched = await stitchedTimelineService.getStitchedTimeline(userId, {
     character_id: entityId,
   });
+  if (stitched.data_errors?.some((entry) => entry.source === 'resolved_events')) {
+    throw new ResolvedEventsQueryError(stitched.data_errors);
+  }
 
   return projectCharacterTimelineFromSources({
     entityId,

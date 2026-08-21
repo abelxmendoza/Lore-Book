@@ -8,6 +8,7 @@ import { logger } from '../../logger';
 import {
   buildCanonicalCharacterTimeline,
   emptyCharacterTimelineResult,
+  ResolvedEventsQueryError,
   type CharacterEntityTimelineResult,
 } from '../characters/characterEntityTimelineService';
 
@@ -23,6 +24,7 @@ export class CharacterTimelineBuilder {
       return await buildCanonicalCharacterTimeline(userId, characterId, timezone);
     } catch (error) {
       logger.error({ error, userId, characterId }, 'Failed to build character timelines');
+      if (error instanceof ResolvedEventsQueryError) throw error;
       return emptyCharacterTimelineResult();
     }
   }
