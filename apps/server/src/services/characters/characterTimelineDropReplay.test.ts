@@ -25,6 +25,30 @@ function firstWorking(candidates: string[], args: string[]): string | null {
   return null;
 }
 
+function localPostgresBins() {
+  return {
+    initdb: firstWorking(
+      ['initdb', '/opt/homebrew/bin/initdb', '/usr/local/bin/initdb'],
+      ['--version'],
+    ),
+    pgCtl: firstWorking(
+      ['pg_ctl', '/opt/homebrew/bin/pg_ctl', '/usr/local/bin/pg_ctl'],
+      ['--version'],
+    ),
+    psql: firstWorking(
+      ['psql', '/opt/homebrew/bin/psql', '/usr/local/bin/psql'],
+      ['--version'],
+    ),
+    pgIsReady: firstWorking(
+      ['pg_isready', '/opt/homebrew/bin/pg_isready', '/usr/local/bin/pg_isready'],
+      ['--version'],
+    ),
+  };
+}
+
+const bins = localPostgresBins();
+const hasLocalPostgres = Boolean(bins.initdb && bins.pgCtl && bins.psql && bins.pgIsReady);
+
 describe('character_timeline_events DROP replay', () => {
   it('migration only drops character_timeline_events', () => {
     const sql = readFileSync(MIGRATION, 'utf8');
@@ -34,31 +58,16 @@ describe('character_timeline_events DROP replay', () => {
     expect(sql).not.toMatch(/DROP TABLE IF EXISTS public\.entity_timeline_events/);
   });
 
-  it('isolated Postgres replay keeps canonical people[] and allows Character delete', () => {
-    const initdb = firstWorking(
-      ['initdb', '/opt/homebrew/bin/initdb', '/usr/local/bin/initdb'],
-      ['--version'],
-    );
-    const pgCtl = firstWorking(
-      ['pg_ctl', '/opt/homebrew/bin/pg_ctl', '/usr/local/bin/pg_ctl'],
-      ['--version'],
-    );
-    const psql = firstWorking(
-      ['psql', '/opt/homebrew/bin/psql', '/usr/local/bin/psql'],
-      ['--version'],
-    );
-    const pgIsReady = firstWorking(
-      ['pg_isready', '/opt/homebrew/bin/pg_isready', '/usr/local/bin/pg_isready'],
-      ['--version'],
-    );
-    expect(initdb && pgCtl && psql && pgIsReady, 'local Postgres binaries are required').toBeTruthy();
+  it.skipIf(!hasLocalPostgres)(
+    'isolated Postgres replay keeps canonical people[] and allows Character delete',
+    () => {
 
     const workdir = mkdtempSync(join(tmpdir(), 'cte-drop-replay-'));
     const dataDir = join(workdir, 'data');
     const port = String(55432 + (process.pid % 1000));
     try {
-      execFileSync(initdb!, ['-D', dataDir, '--auth=trust', '--no-sync', '-U', 'postgres'], { stdio: 'ignore' });
-      execFileSync(pgCtl!, [
+      execFileSync(bins.initdb!, ['-D', dataDir, '--auth=trust', '--no-sync', '-U', 'postgres'], { stdio: 'ignore' });
+      execFileSync(bins.pgCtl!, [
         '-D', dataDir,
         '-o', `-p ${port} -k ${workdir} -c listen_addresses='' -c fsync=off -c synchronous_commit=off`,
         '-l', join(workdir, 'pg.log'),
@@ -69,7 +78,7 @@ describe('character_timeline_events DROP replay', () => {
       const deadline = Date.now() + 10_000;
       while (Date.now() < deadline) {
         try {
-          execFileSync(pgIsReady!, ['-h', workdir, '-p', port, '-U', 'postgres'], { stdio: 'ignore' });
+          execFileSync(bins.pgIsReady!, ['-h', workdir, '-p', port, '-U', 'postgres'], { stdio: 'ignore' });
           ready = true;
           break;
         } catch {
@@ -78,7 +87,7 @@ describe('character_timeline_events DROP replay', () => {
       }
       expect(ready).toBe(true);
 
-      const output = execFileSync(psql!, [
+      const output = execFileSync(bins.psql!, [
         '-h', workdir,
         '-p', port,
         '-U', 'postgres',
@@ -94,7 +103,7 @@ describe('character_timeline_events DROP replay', () => {
       expect(output.toLowerCase()).not.toMatch(/\berror\b/);
     } finally {
       try {
-        execFileSync(pgCtl!, ['-D', dataDir, 'stop', '-m', 'immediate'], { stdio: 'ignore' });
+        execFileSync(bins.pgCtl!, ['-D', dataDir, 'stop', '-m', 'immediate'], { stdio: 'ignore' });
       } catch {
         // already stopped
       }
