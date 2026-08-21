@@ -99,6 +99,10 @@ function honestTemporal(item: ProjectableTimelineItem): {
   confidence: number;
   source: string;
   occurrenceStatus: OccurrenceStatus;
+  /** The occurrence value this function actually decided on — the single
+   *  source of truth for "what is this item's occurrence," so callers never
+   *  need to re-derive it independently and risk drifting out of sync. */
+  occurrence: string | null;
 } {
   const tags = item.tags ?? [];
   const recovered = isImportOrRecoveryTag(tags);
@@ -106,12 +110,34 @@ function honestTemporal(item: ProjectableTimelineItem): {
   // item has no real occurrence evidence — falling back to sortTime here
   // regardless (as this used to) let write-time leak back in as occurrence
   // whenever occurredAt was left undefined rather than explicitly null.
-  const recordingFallback = recovered || item.temporalSource === 'recording_fallback';
-  const occurrence = recordingFallback
+  //
+  // But that guard must only apply when the caller left occurredAt genuinely
+  // undefined ("I don't know, you figure it out"). When the caller already
+  // made an explicit determination — including resolved_events rows, whose
+  // start_time has no innocent default and is set by stitchedTimelineService
+  // as occurredAt: cluster.time regardless of temporal_source — that
+  // determination must be trusted. temporal_source on resolved_events
+  // defaults to 'recording_fallback' at the schema level whenever the
+  // ingestion pipeline never separately classified evidence, even when
+  // start_time itself is a genuine extracted date; treating that default as
+  // an unconditional veto silently unresolves real, dated events.
+  // Import/recovery-tagged data stays an unconditional veto: that tag is a
+  // deliberate "don't trust this row's dates" marker, not a schema default,
+  // so an explicit occurredAt on a recovered row isn't trusted either.
+  const recordingFallback = item.temporalSource === 'recording_fallback';
+  const occurrence: string | null = recovered
     ? null
-    : (item.occurredAt === undefined ? item.sortTime : item.occurredAt);
-  const rawSource = (item.temporalSource ??
-    (recovered ? 'recording_fallback' : 'context_inferred')) as TemporalSource;
+    : item.occurredAt !== undefined
+      ? item.occurredAt
+      : (recordingFallback ? null : item.sortTime);
+  const trustedExplicitOccurrence = Boolean(occurrence) && !recovered;
+  const rawSource = (
+    recovered
+      ? 'recording_fallback'
+      : trustedExplicitOccurrence && recordingFallback
+        ? 'context_inferred'
+        : (item.temporalSource ?? 'context_inferred')
+  ) as TemporalSource;
   const rawPrecision = (item.timePrecision ?? 'date') as TemporalPrecision;
   const rawConf = item.timeConfidence ?? item.confidence ?? 0.5;
 
@@ -138,7 +164,11 @@ function honestTemporal(item: ProjectableTimelineItem): {
   if (
     contradiction
     || recovered
-    || capped.source === 'recording_fallback'
+    // Only treat recording_fallback as unresolved when it actually resulted
+    // in no occurrence value — `occurrence` above already carries the real
+    // answer (explicit occurredAt wins over a merely-default source tag), so
+    // re-deriving from capped.source here would undo that distinction.
+    || !occurrence
     || (capped.precision === 'year' && !capped.end)
   ) {
     return {
@@ -146,6 +176,11 @@ function honestTemporal(item: ProjectableTimelineItem): {
       confidence: Math.min(capped.confidence, TEMPORAL_CONFIDENCE_CEILINGS.IMPORT_RECOVERY),
       source: capped.source,
       occurrenceStatus: 'unresolved',
+      // occurrenceStatus is the authoritative trust signal for this branch —
+      // callers that gate on occurrenceStatus !== 'unresolved' already do the
+      // right thing, so the raw value stays available here for audit/debug
+      // rather than being redundantly nulled a second way.
+      occurrence,
     };
   }
 
@@ -163,6 +198,7 @@ function honestTemporal(item: ProjectableTimelineItem): {
       confidence: capped.confidence,
       source: capped.source,
       occurrenceStatus: 'range',
+      occurrence,
     };
   }
 
@@ -170,7 +206,10 @@ function honestTemporal(item: ProjectableTimelineItem): {
     precision: capped.precision,
     confidence: capped.confidence,
     source: capped.source,
-    occurrenceStatus: capped.confidence >= 0.6 ? 'confirmed' : 'unresolved',
+    occurrenceStatus: occurrence
+      ? (capped.confidence >= 0.6 ? 'confirmed' : 'range')
+      : 'unresolved',
+    occurrence,
   };
 }
 
@@ -205,11 +244,10 @@ export function projectCanonicalTimeline(items: ProjectableTimelineItem[]): {
     const temporal = honestTemporal(item);
     const temporalModel = canonicalTemporalFromLegacy({
       id: item.sourceId,
-      occurredAt: item.temporalSource === 'recording_fallback' || isImportOrRecoveryTag(item.tags)
-        ? null
-        : temporal.occurrenceStatus === 'unresolved' && item.occurredAt === null
-          ? null
-          : (item.occurredAt === undefined ? item.sortTime : item.occurredAt),
+      // honestTemporal already decided the occurrence value — re-deriving it
+      // independently here (as this used to) is exactly how the two could
+      // drift apart and mask a real start_time as unresolved.
+      occurredAt: temporal.occurrence,
       occurredEnd: item.occurredEnd,
       mentionedAt: item.mentionedAt,
       recordedAt: item.recordedAt,
