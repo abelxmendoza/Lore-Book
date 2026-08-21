@@ -58,6 +58,7 @@ test.describe('LoreBook parse composer chips (e2e)', () => {
 
     await page.addInitScript(() => {
       window.localStorage.setItem('dev-notice-dismissed', 'true');
+      window.localStorage.setItem('lorebook.whatsNew.seenId', '*');
       window.localStorage.setItem(
         'lorekeeper_guest_state',
         JSON.stringify({

@@ -10,6 +10,14 @@ import { questSuggestionService } from '../../quests/questSuggestionService';
 import { skillSuggestionService } from '../../skills/skillSuggestionService';
 import { projectSuggestionService } from '../../projects/projectSuggestionService';
 import { organizationSuggestionService } from '../../organizations/organizationSuggestionService';
+import { inferNamedOrganizationForName } from '../../organizations/inference/namedOrganizationInference';
+import { evaluateEntityQuality, passesEntityQualityGate, resolveDisplayName } from '../quality/entityQualityGateService';
+import type { EntityQualityContext } from '../quality/entityQualityGuardTypes';
+import { operationMatchesApplyDomains } from '../suggestions/suggestionApplyDomains';
+import { applySuggestionCandidate } from '../suggestions/applySuggestionCandidate';
+import { qualityContextFromCanon } from '../suggestions/suggestionAttachApply';
+import { withSuggestionWriteContext } from '../suggestions/suggestionWriteContext';
+import type { AttachCanonIndex } from '../suggestions/suggestionAttachTypes';
 import { buildCanonIndexForUser } from './canonIndexBuilder';
 import { parseLoreBookText } from './loreBookParseEngine';
 import type {
@@ -101,27 +109,70 @@ export async function parseCorpusForUser(
 async function applySuggestAdd(
   userId: string,
   op: Extract<LoreBookOperation, { kind: 'suggest_add' }>,
-  options: { source: ParseApplySource; messageId?: string }
+  options: {
+    source: ParseApplySource;
+    messageId?: string;
+    qualityContext?: EntityQualityContext;
+    attachCanon?: AttachCanonIndex;
+    applyDomains?: LoreBookDomain[];
+  }
 ): Promise<boolean> {
   if (op.gate === 'block') return false;
-  if (!APPLY_DOMAINS.has(op.domain)) return false;
+  if (!APPLY_DOMAINS.has(op.domain) && op.domain !== 'groups' && op.domain !== 'schools') return false;
 
   const name = op.name.trim();
   if (!name) return false;
   if (isBlockedTimeSuggestion(name)) return false;
 
-  const reasoning = APPLY_SOURCE_LABEL[options.source];
+  const applyDomain: LoreBookDomain =
+    op.domain === 'groups' || op.domain === 'schools' ? 'organizations' : op.domain;
+
+  const named = inferNamedOrganizationForName(name, op.evidence.quote);
+  const domainCanon = [
+    ...(options.attachCanon?.[applyDomain] ?? []),
+    ...(applyDomain === 'organizations'
+      ? [...(options.attachCanon?.groups ?? []), ...(options.attachCanon?.schools ?? [])]
+      : []),
+    ...(applyDomain === 'locations' ? (options.attachCanon?.organizations ?? []) : []),
+  ];
+  const known = qualityContextFromCanon(domainCanon);
+  const quality = evaluateEntityQuality(
+    {
+      name,
+      domain: applyDomain,
+      contextText: op.evidence.quote,
+      evidence: op.evidence.quote,
+      confidence: op.confidence,
+    },
+    { ...(options.qualityContext ?? {}), ...known, userId },
+  );
 
   try {
-    switch (op.domain) {
+    const write = await applySuggestionCandidate({
+    userId,
+    domain: applyDomain,
+    name,
+    evidence: op.evidence.quote,
+    incomingType: named?.organizationType,
+    sourceMessageId: options.messageId,
+    spanStart: op.evidence.start,
+    spanEnd: op.evidence.end,
+    extractor: 'lorebook_parse',
+    source: options.source,
+    applyDomains: options.applyDomains,
+    onCreate: async () => {
+      if (!passesEntityQualityGate(quality)) return;
+      const safeName = resolveDisplayName({ name, domain: applyDomain }, quality);
+      const reasoning = APPLY_SOURCE_LABEL[options.source];
+      switch (applyDomain) {
       case 'quests':
         await questSuggestionService.upsertFromExtraction(
           userId,
           {
-            title: name,
+            title: safeName,
             description: op.evidence.quote,
             quest_type: 'side',
-            confidence: op.confidence,
+            confidence: Math.min(op.confidence, quality.confidence),
             reasoning,
           },
           {
@@ -135,12 +186,12 @@ async function applySuggestAdd(
         await skillSuggestionService.upsertFromExtraction(
           userId,
           {
-            skill_name: name,
+            skill_name: safeName,
             skill_category: 'other',
             skill_type: 'professional',
             monetization: 'unpaid',
             proficiency: 50,
-            confidence: op.confidence,
+            confidence: Math.min(op.confidence, quality.confidence),
             enjoyment: 50,
             usage_frequency: 'rarely',
             trajectory: 'unknown',
@@ -155,10 +206,10 @@ async function applySuggestAdd(
           userId,
           [
             {
-              name,
+              name: safeName,
               description: op.evidence.quote,
               type: 'project',
-              confidence: op.confidence,
+              confidence: Math.min(op.confidence, quality.confidence),
               reasoning,
               evidence: [op.evidence.quote],
             },
@@ -167,32 +218,38 @@ async function applySuggestAdd(
         );
         return true;
       case 'characters':
-        await omegaMemoryService.createEntity(userId, name, 'PERSON');
+        await omegaMemoryService.createEntity(userId, safeName, 'PERSON');
         return true;
       case 'locations':
-        await omegaMemoryService.createEntity(userId, name, 'LOCATION');
+        await omegaMemoryService.createEntity(userId, safeName, 'LOCATION');
         return true;
-      case 'organizations':
+      case 'organizations': {
+        const organizationType = named?.organizationType
+          ?? (/\buniversity|college\b/i.test(safeName) ? 'university' : 'unknown_organization');
         await organizationSuggestionService.upsertFromInference(
           userId,
           {
-            displayName: name,
-            organizationType: 'unknown_organization',
-            context: { roleToUser: 'unknown' },
-            aliases: [],
+            displayName: named?.displayName ?? safeName,
+            organizationType,
+            context: { roleToUser: named?.context.roleToUser ?? 'unknown' },
+            aliases: named?.aliases ?? [],
             evidencePhrases: [op.evidence.quote],
             sourceMessageIds: options.messageId ? [options.messageId] : [],
-            confidence: op.confidence,
+            confidence: Math.min(op.confidence, quality.confidence),
             inferredNotConfirmed: true,
             requiresReview: true,
             promotionStatus: 'candidate',
           },
           { source: 'chat', sourceMessageId: options.messageId },
         );
-        return true;
+        return;
+      }
       default:
-        return false;
-    }
+        break;
+      }
+    },
+  });
+    return write.outcome === 'CREATED';
   } catch (err) {
     logger.debug({ err, userId, domain: op.domain, name }, 'LoreBook parse apply failed (non-blocking)');
     return false;
@@ -202,48 +259,79 @@ async function applySuggestAdd(
 export async function applyParseOperations(
   userId: string,
   operations: LoreBookOperation[],
-  options: { source?: ParseApplySource; messageId?: string } = {}
+  options: {
+    source?: ParseApplySource;
+    messageId?: string;
+    applyDomains?: LoreBookDomain[];
+    qualityContext?: EntityQualityContext;
+    attachCanon?: AttachCanonIndex;
+  } = {}
 ): Promise<CorpusApplySummary> {
   const source = options.source ?? 'corpus_rescan';
-  const summary: CorpusApplySummary = {
-    linesParsed: 0,
-    operationsSeen: operations.length,
-    applied: 0,
-    skipped: 0,
-    byDomain: {},
-    appliedItems: [],
-  };
-  const seenApplied = new Set<string>();
+  return withSuggestionWriteContext(
+    userId,
+    async (ctx) => {
+      const attachCanon = options.attachCanon ?? ctx.index;
+      const summary: CorpusApplySummary = {
+        linesParsed: 0,
+        operationsSeen: operations.length,
+        applied: 0,
+        skipped: 0,
+        byDomain: {},
+        appliedItems: [],
+      };
+      const seenApplied = new Set<string>();
 
-  for (const op of operations) {
-    if (op.kind !== 'suggest_add') {
-      summary.skipped += 1;
-      continue;
-    }
-    const applied = await applySuggestAdd(userId, op, { source, messageId: options.messageId });
-    if (applied) {
-      summary.applied += 1;
-      summary.byDomain[op.domain] = (summary.byDomain[op.domain] ?? 0) + 1;
-      const name = op.name.trim();
-      const dedupeKey = `${op.domain}:${name.toLowerCase()}`;
-      if (name && !seenApplied.has(dedupeKey)) {
-        seenApplied.add(dedupeKey);
-        summary.appliedItems.push({ domain: op.domain, name, confidence: op.confidence });
+      for (const op of operations) {
+        if (op.kind !== 'suggest_add') {
+          summary.skipped += 1;
+          continue;
+        }
+        if (!operationMatchesApplyDomains(op.domain, options.applyDomains)) {
+          summary.skipped += 1;
+          continue;
+        }
+        const applied = await applySuggestAdd(userId, op, {
+          source,
+          messageId: options.messageId,
+          qualityContext: options.qualityContext,
+          attachCanon,
+          applyDomains: options.applyDomains,
+        });
+        if (applied) {
+          summary.applied += 1;
+          summary.byDomain[op.domain] = (summary.byDomain[op.domain] ?? 0) + 1;
+          const opName = op.name.trim();
+          const dedupeKey = `${op.domain}:${opName.toLowerCase()}`;
+          if (opName && !seenApplied.has(dedupeKey)) {
+            seenApplied.add(dedupeKey);
+            summary.appliedItems.push({ domain: op.domain, name: opName, confidence: op.confidence });
+          }
+        } else {
+          summary.skipped += 1;
+        }
       }
-    } else {
-      summary.skipped += 1;
-    }
-  }
 
-  return summary;
+      return summary;
+    },
+    options.attachCanon
+      ? { index: options.attachCanon, status: 'ok', applyDomains: options.applyDomains }
+      : { applyDomains: options.applyDomains },
+  );
 }
 
-export async function runCorpusParseAndApply(userId: string): Promise<{
+export async function runCorpusParseAndApply(
+  userId: string,
+  options?: { lines?: string[]; applyDomains?: LoreBookDomain[] }
+): Promise<{
   parse: Awaited<ReturnType<typeof parseCorpusForUser>>;
   apply: CorpusApplySummary;
 }> {
-  const parse = await parseCorpusForUser(userId);
-  const apply = await applyParseOperations(userId, parse.merged, { source: 'corpus_rescan' });
+  const parse = await parseCorpusForUser(userId, options?.lines);
+  const apply = await applyParseOperations(userId, parse.merged, {
+    source: 'corpus_rescan',
+    applyDomains: options?.applyDomains,
+  });
   apply.linesParsed = parse.lines.length;
   logger.info({ userId, apply, operationCount: parse.merged.length }, 'LoreBook corpus parse and apply');
   return { parse, apply };

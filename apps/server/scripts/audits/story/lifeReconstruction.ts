@@ -33,7 +33,7 @@ async function auditUser(userId: string) {
 
   const tables = [
     'characters', 'people_places', 'omega_entities', 'conversation_sessions', 'chat_messages',
-    'character_relationships', 'character_memories', 'character_timeline_events', 'event_records', 'entity_facts',
+    'character_relationships', 'character_memories', 'resolved_events', 'event_records', 'entity_facts',
   ];
   for (const t of tables) {
     const { count, error } = await supabaseAdmin.from(t).select('*', { count: 'exact', head: true }).eq('user_id', userId);
@@ -106,17 +106,17 @@ async function auditUser(userId: string) {
   }
 
   const { data: timeline } = await supabaseAdmin
-    .from('character_timeline_events')
-    .select('title,event_date,event_type,metadata')
+    .from('resolved_events')
+    .select('title,start_time,type,people')
     .eq('user_id', userId)
-    .order('event_date', { ascending: false })
+    .order('start_time', { ascending: false })
     .limit(50);
-  console.log('\nTIMELINE EVENTS sample', (timeline ?? []).slice(0, 15).map((e) => ({ title: e.title, date: e.event_date, type: e.event_type })));
+  console.log('\nCANONICAL EVENTS sample', (timeline ?? []).slice(0, 15).map((e) => ({ title: e.title, date: e.start_time, type: e.type })));
 
   console.log('\nTIMELINE BENCHMARK:');
   for (const ev of TIMELINE_EVENTS) {
-    const hit = (timeline ?? []).find((e) => e.title?.toLowerCase().includes(ev.toLowerCase().slice(0, 10)));
-    console.log(hit ? `  FOUND ${ev}: ${hit.title} (${hit.event_date})` : `  MISSING ${ev}`);
+    const hit = (timeline ?? []).find((e) => String(e.title ?? '').toLowerCase().includes(ev.toLowerCase().slice(0, 10)));
+    console.log(hit ? `  FOUND ${ev}: ${hit.title} (${hit.start_time})` : `  MISSING ${ev}`);
   }
 
   const { data: rels } = await supabaseAdmin

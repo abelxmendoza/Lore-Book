@@ -107,6 +107,34 @@ describe('characterTitleService.addAlias', () => {
     expect(state.updatePatch?.alias).toEqual(expect.arrayContaining(['Tay', 'Moon Signal', 'Static Bloom']));
   });
 
+  it('removes an alias and rebuilds a title that used that nickname', async () => {
+    state.row = {
+      id: 'character-a',
+      user_id: 'user-a',
+      name: 'Taylor Example',
+      alias: ['WrongNick', 'Tay'],
+      metadata: {
+        display_title: {
+          characterId: 'character-a',
+          primaryTitle: 'WrongNick (Taylor Example)',
+          titleParts: {},
+          titleType: 'nickname',
+          aliases: [
+            { id: 'wrong', value: 'WrongNick', aliasType: 'nickname', prominenceScore: 0, evidenceCount: 1 },
+            { id: 'tay', value: 'Tay', aliasType: 'nickname', prominenceScore: 0, evidenceCount: 1 },
+          ],
+          stability: 'stable',
+          evidencePhrases: [],
+        },
+      },
+    };
+
+    const result = await characterTitleService.removeAlias('user-a', 'character-a', 'WrongNick');
+    expect(result?.aliases.map((alias) => alias.value)).toEqual(['Tay']);
+    expect(result?.primaryTitle).not.toMatch(/WrongNick/i);
+    expect(state.updatePatch?.alias).toEqual(['Tay']);
+  });
+
   it('does not persist the primary title as a duplicate alias', async () => {
     state.row = {
       id: 'character-a',

@@ -50,6 +50,17 @@ export type TimelineCalendarViewProps = {
   onOpenDayInTimeline?: (dateKey: string) => void;
 };
 
+function calendarItemMeta(item: CalendarDayItem): string | null {
+  if (item.isRange && item.userLocalStartDay && item.userLocalEndDay) {
+    return `${item.userLocalStartDay} – ${item.userLocalEndDay}`;
+  }
+  if (item.isAllDay) return 'All day';
+  if (item.temporalState === 'ongoing') return 'Ongoing';
+  if (item.temporalState === 'future') return 'Planned';
+  if (item.isTimed) return 'Timed';
+  return null;
+}
+
 function dayActivityCount(apiDay: { occasions: unknown[]; items: CalendarDayItem[] } | undefined): number {
   if (!apiDay) return 0;
   return apiDay.occasions.length + apiDay.items.filter((i) => i.kind !== 'occasion').length;
@@ -73,6 +84,7 @@ export const TimelineCalendarView = ({
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
+  const [showUnscheduled, setShowUnscheduled] = useState(false);
 
   // Follow deep-link date changes (e.g. Life Log → calendar with a day).
   useEffect(() => {
@@ -86,6 +98,7 @@ export const TimelineCalendarView = ({
   const monthNum = month.getMonth() + 1;
   const { data, dayMap, loading, error, reload, isDemoMode } = useCalendarMonth(year, monthNum);
   const historicalNeighborhood = data?.historicalNeighborhoods?.[0];
+  const unscheduledItems = data?.unscheduledItems ?? [];
 
   const days = useMemo(
     () =>
@@ -298,7 +311,7 @@ export const TimelineCalendarView = ({
                   <p className="text-xs text-white/40 mt-1 line-clamp-2">{item.body}</p>
                 )}
                 <p className="text-[10px] text-white/30 font-mono mt-0.5">
-                  {item.sortTime.slice(11, 16) || '—'}
+                  {calendarItemMeta(item) ?? '—'}
                 </p>
               </button>
             ))}
@@ -403,6 +416,41 @@ export const TimelineCalendarView = ({
                   </span>
                 ))}
               </div>
+            </section>
+          )}
+          {unscheduledItems.length > 0 && (
+            <section
+              className="mb-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2"
+              data-testid="calendar-unscheduled-tray"
+            >
+              <button
+                type="button"
+                className="flex items-center gap-2 text-left w-full"
+                onClick={() => setShowUnscheduled((value) => !value)}
+                aria-expanded={showUnscheduled}
+              >
+                <span className="text-[11px] font-semibold text-amber-200/90">
+                  Unscheduled / date unresolved ({unscheduledItems.length})
+                </span>
+                <span className="text-[10px] text-amber-100/50">
+                  {showUnscheduled ? 'Hide' : 'Show'} — not placed on a calendar day
+                </span>
+              </button>
+              {showUnscheduled && (
+                <ul className="mt-2 max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                  {unscheduledItems.slice(0, 40).map((item) => (
+                    <li
+                      key={item.canonicalItemId ?? item.id}
+                      className="text-[11px] text-white/65 leading-snug border-l border-amber-500/30 pl-2"
+                    >
+                      <span className="text-white/85 font-medium">{item.title}</span>
+                      {item.body?.trim() && (
+                        <p className="text-white/40 line-clamp-2 mt-0.5">{item.body.trim()}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
           )}
           <div

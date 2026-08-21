@@ -112,6 +112,7 @@ export const ChatComposer = ({
     dismissMatch,
     confirmMatch,
     handleSubmit,
+    handleComposerBlur,
     handleKeyDown,
     insertSuggestion,
     setPreviewCorrections,
@@ -125,7 +126,10 @@ export const ChatComposer = ({
     maxImages,
   } = useChatComposer(onSubmit, initialPrompt, { submitOnEnter: !isMobile, threadId });
 
-  const correction = useEntityCorrectionState(input, threadId, visibleMatches);
+  const [authorityGeneration, setAuthorityGeneration] = useState(0);
+  const correction = useEntityCorrectionState(input, threadId, visibleMatches, {
+    authorityGeneration,
+  });
 
   useEffect(() => {
     if (!onChipDebugChange) return;
@@ -549,6 +553,8 @@ export const ChatComposer = ({
               disabled={loading || disabled}
               onFocus={() => setIsFocused(true)}
               onBlur={() => {
+                handleComposerBlur();
+                setAuthorityGeneration((n) => n + 1);
                 if (!input.trim()) setIsFocused(false);
               }}
               onKeyDown={handleKeyDown}
@@ -708,6 +714,10 @@ export const ChatComposer = ({
           loading={loading}
           onSubmit={submitAndCloseJournal}
           onKeyDown={handleKeyDown}
+          onBlur={() => {
+            handleComposerBlur();
+            setAuthorityGeneration((n) => n + 1);
+          }}
           onPreviewCorrectionsChange={setPreviewCorrections}
           viewportHeight={viewportHeight}
           keyboardInset={keyboardInset}

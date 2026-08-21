@@ -154,4 +154,21 @@ describe('unifiedFileIngestionService — content-based resume detection', () =>
     expect(resumeParsingService.processResumeFromText).toHaveBeenCalled();
     expect(documentService.processDocumentFromArtifact).not.toHaveBeenCalled();
   });
+
+  it('does not assign upload time as resume-document occurrence', async () => {
+    await unifiedFileIngestionService.ingest({
+      userId: 'user-maya',
+      buffer: bufferFor(RESUME_TEXT),
+      filename: 'maya-resume.txt',
+      mimeType: 'text/plain',
+      kind: 'resume',
+    });
+
+    const saveArg = vi.mocked(memoryService.saveEntry).mock.calls[0]?.[0];
+    expect(saveArg).toBeTruthy();
+    if (saveArg?.date) {
+      expect(saveArg.date.slice(0, 10)).not.toBe(new Date().toISOString().slice(0, 10));
+    }
+    expect(saveArg?.temporalSource === 'document_stated' || saveArg?.temporalSource === 'recording_fallback').toBe(true);
+  });
 });

@@ -151,6 +151,34 @@ describe('TimelineCalendarView', () => {
     expect(screen.getByText(/June 2024/i)).toBeInTheDocument();
   });
 
+  it('shows unscheduled/unresolved items instead of placing them on a day', async () => {
+    const user = userEvent.setup();
+    const data = monthResult({
+      unscheduledItems: [{
+        id: 'event:unknown',
+        canonicalItemId: 'event:unknown',
+        kind: 'event',
+        title: 'Thread mention with no date',
+        sortTime: '1970-01-01T00:00:00.000Z',
+        userPresence: 'unknown',
+        isUnresolved: true,
+      }],
+    });
+    useCalendarMonthMock.mockReturnValue({
+      data,
+      dayMap: new Map(data.days.map((day) => [day.date, day])),
+      loading: false,
+      error: null,
+      reload: reloadMock,
+      isDemoMode: false,
+    });
+    render(<TimelineCalendarView initialDate={FIXED_DATE} />);
+    const tray = screen.getByTestId('calendar-unscheduled-tray');
+    expect(tray).toHaveTextContent('Unscheduled');
+    await user.click(screen.getByRole('button', { name: /unscheduled/i }));
+    expect(tray).toHaveTextContent('Thread mention with no date');
+  });
+
   it('shows fuzzy historical periods as parallel tracks instead of day cards', () => {
     const data = monthResult({
       historicalNeighborhoods: [{

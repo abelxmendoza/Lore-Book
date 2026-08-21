@@ -8,6 +8,8 @@
 import { supabaseAdmin } from '../supabaseClient';
 import { resolveCharacterByName } from '../chat/foundationRecallDataService';
 import { extractSignificanceFromText } from '../chat/significanceRecall';
+import { countCanonicalEventsForCharacter } from '../characters/canonicalCharacterEventCount';
+import { JOURNAL_OCCURRENCE_ORDER_DESC } from '../journal/journalOccurrenceRead';
 
 export type SceneReconstruction = {
   summary: string;
@@ -65,7 +67,7 @@ async function loadTextCorpus(
       .select('content')
       .eq('user_id', userId)
       .ilike('content', like)
-      .order('date', { ascending: false })
+      .order('date', JOURNAL_OCCURRENCE_ORDER_DESC)
       .limit(8),
     options.threadId
       ? supabaseAdmin
@@ -153,11 +155,7 @@ export async function reconstructSceneByPerson(
           .eq('character_id', char.id)
       : Promise.resolve({ count: 0 }),
     char
-      ? supabaseAdmin
-          .from('character_timeline_events')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', userId)
-          .eq('character_id', char.id)
+      ? countCanonicalEventsForCharacter(userId, char.id).then((count) => ({ count }))
       : Promise.resolve({ count: 0 }),
   ]);
 

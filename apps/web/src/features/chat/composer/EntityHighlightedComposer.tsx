@@ -9,6 +9,7 @@ import { Textarea } from '../../../components/ui/textarea';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
 import { useEntityCorrectionState } from '../../../hooks/useEntityCorrectionState';
+import { composerIntelligenceMetrics } from '../../../lib/composerIntelligence';
 import { EntityClassificationPopover } from './EntityClassificationPopover';
 
 type EntityCorrectionState = ReturnType<typeof useEntityCorrectionState>;
@@ -93,7 +94,7 @@ export const EntityHighlightedComposer = ({
 
   useLayoutEffect(() => {
     autoGrowTextarea(textareaRef.current);
-  }, [value, className, textareaRef]);
+  }, [className, textareaRef]);
 
   useEffect(() => {
     const onResize = () => autoGrowTextarea(textareaRef.current);
@@ -127,7 +128,7 @@ export const EntityHighlightedComposer = ({
         value={value}
         onChange={(e) => {
           onChange(e.target.value);
-          // Grow immediately on this frame (before paint if possible)
+          composerIntelligenceMetrics.noteLayoutGrow();
           autoGrowTextarea(e.currentTarget);
         }}
         disabled={disabled}

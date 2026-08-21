@@ -19,7 +19,7 @@ export type ActorType =
   | 'COMMUNITY'
   | 'ANONYMOUS_PERSON';
 
-export type ActorLabelAction = 'reject' | 'group' | 'anonymous' | 'person';
+export type ActorLabelAction = 'reject' | 'group' | 'anonymous' | 'person' | 'unresolved';
 
 export type ActorLabelClassification = {
   actorType: ActorType;
@@ -150,6 +150,10 @@ const DEMONSTRATIVE_KINSHIP_RE =
 const POSSESSIVE_PLACE_FRAGMENT_RE =
   /^(?:my|his|her|their|our)\s+(?:house|home|place|room|apartment|pad)$/i;
 
+/** Bare relational descriptors: evidence of a person, not an identity. */
+const POSSESSIVE_UNRESOLVED_ROLE_RE =
+  /^(?:my|his|her|their|our|your)\s+(?:friend|best friend|coworker|co-worker|colleague|roommate|neighbor|classmate|bandmate|teammate|cousin|uncle|aunt|promoter|manager|boss)$/i;
+
 /** Named social-category collectives — belong in Groups, not Character/Family. */
 const POPULAR_CATEGORY_RE =
   /^(?:popular\s+)?(?:e\s*girls?|egirls?|e-girls?|influencers?|creators?)$/i;
@@ -191,6 +195,7 @@ export function isVagueOrIndefiniteActorPhrase(name: string | null | undefined):
   if (DISCOURSE_BLEED_RE.test(key)) return true;
   if (DEMONSTRATIVE_KINSHIP_RE.test(key)) return true;
   if (POSSESSIVE_PLACE_FRAGMENT_RE.test(key)) return true;
+  if (POSSESSIVE_UNRESOLVED_ROLE_RE.test(key)) return true;
   if (POPULAR_CATEGORY_RE.test(key)) return true;
   // "one girl", "this guy", "that woman" with nothing after
   if (/^(?:a|an|one|some|that|this)\s+(?:girl|guy|man|woman|person|dude|lady)\b$/i.test(key)) {
@@ -242,6 +247,9 @@ export function classifyActorLabel(name: string | null | undefined): ActorLabelC
   }
   if (POSSESSIVE_PLACE_FRAGMENT_RE.test(keyForReject)) {
     return { actorType: 'PERSON', action: 'reject', reason: 'place_fragment' };
+  }
+  if (POSSESSIVE_UNRESOLVED_ROLE_RE.test(keyForReject)) {
+    return { actorType: 'PERSON', action: 'unresolved', reason: 'unresolved_reference' };
   }
 
   if (ANONYMOUS_PREFIX_RE.test(trimmed)) {

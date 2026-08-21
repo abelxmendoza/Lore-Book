@@ -26,6 +26,24 @@ export type CanonicalTemporalModel = {
   }>;
 };
 
+export type TemporalSurfaceProjection = {
+  canonicalItemId: string;
+  occurredStart: string | null;
+  occurredEnd: string | null;
+  userLocalStartDay: string | null;
+  userLocalEndDay: string | null;
+  timezone: string | null;
+  precision: string;
+  occurrenceStatus: 'confirmed' | 'range' | 'unresolved';
+  temporalState: 'past' | 'ongoing' | 'future' | 'unresolved';
+  isRange: boolean;
+  isAllDay: boolean;
+  isTimed: boolean;
+  isUnresolved: boolean;
+  calendarPlacement: 'day' | 'unscheduled';
+  displayWarnings: string[];
+};
+
 export type StitchedTimelineItem = {
   id: string;
   kind: StitchedItemKind;
@@ -57,7 +75,15 @@ export type StitchedTimelineItem = {
   projectionRole?: 'canonical' | 'evidence' | 'unresolved' | 'excluded';
   canonicalEventType?: string;
   speechAct?: string;
+  occurredAt?: string | null;
+  occurredEnd?: string | null;
+  mentionedAt?: string | null;
+  recordedAt?: string | null;
+  knownFrom?: string | null;
+  validFrom?: string | null;
+  validUntil?: string | null;
   temporal?: CanonicalTemporalModel;
+  temporalProjection?: TemporalSurfaceProjection;
 };
 
 export type NarrativeChapterQuality = {

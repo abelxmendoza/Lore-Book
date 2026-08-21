@@ -72,7 +72,8 @@ export type CompilerRuleFired =
   | 'uncertainty'
   | 'inference_classifier'
   | 'memory_write_filter'
-  | 'action_extraction';
+  | 'action_extraction'
+  | 'summary_discipline';
 
 export type SourceMessageWitness = {
   id: string;
@@ -105,6 +106,12 @@ export type ResponseCompileInput = {
   meaningFrameSummary?: string[];
 };
 
+export type ResponseDisciplineLayer = {
+  /** Disciplined prose without inspector footnotes. */
+  text: string;
+  warnings: Array<{ sentence: string; warning: string }>;
+};
+
 export type CompiledAssistantResponse = {
   rawResponse: string;
   groundedClaims: GroundedClaim[];
@@ -118,6 +125,8 @@ export type CompiledAssistantResponse = {
   rulesFired: CompilerRuleFired[];
   /** Verified text safe to show — hedges unsupported claims when needed. */
   verifiedResponse: string;
+  /** Summary-discipline rewrite used for the visible/persisted reply. */
+  discipline: ResponseDisciplineLayer;
 };
 
 export type ResponseInspectorReport = {

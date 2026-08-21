@@ -125,4 +125,13 @@ describe('POST /api/conversation/suggestion-rescan — lorebookParse summary', (
   it('rejects empty domains array', async () => {
     await request(app).post('/api/conversation/suggestion-rescan').send({ domains: [] }).expect(400);
   });
+
+  it('accepts organizations as a suggestion domain', async () => {
+    const res = await request(app)
+      .post('/api/conversation/suggestion-rescan')
+      .send({ domains: ['organizations'] })
+      .expect(200);
+
+    expect(res.body.success).toBe(true);
+  });
 });

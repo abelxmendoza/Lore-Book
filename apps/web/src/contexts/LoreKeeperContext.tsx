@@ -27,7 +27,7 @@ import { useAppDispatch } from '../store/hooks';
 
 export type JournalEntry = {
   id: string;
-  date: string;
+  date: string | null;
   content: string;
   summary?: string | null;
   tags: string[];
@@ -184,7 +184,7 @@ function useLoreKeeperState() {
       const guestEntries = getGuestEntries(guestId);
       const byMonth = new Map<string, JournalEntry[]>();
       for (const entry of guestEntries) {
-        const month = entry.date.slice(0, 7);
+        const month = entry.date ? entry.date.slice(0, 7) : 'unscheduled';
         if (!byMonth.has(month)) byMonth.set(month, []);
         byMonth.get(month)!.push(entry);
       }

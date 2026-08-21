@@ -24,7 +24,8 @@
 import { config } from '../../config';
 import { logger } from '../../logger';
 import { tracedCompletion } from '../../lib/openai';
-import { unionThreadMetaLabels } from '../actors/entityLabelPollution';
+import { applyCanonicalEntityTypeAuthority, unionThreadMetaLabels } from '../actors/entityLabelPollution';
+import { applySummaryDiscipline } from '../chat/summaryDiscipline';
 import {
   threadIntelligenceService,
   type ThreadMetadata,
@@ -52,6 +53,40 @@ export function isSummaryStale(meta: ThreadMetadata, threshold = STALENESS_THRES
   if (meta.message_count === 0) return false; // nothing to summarize yet
   if (!meta.summary_short && !meta.summary_medium && !meta.summary_long) return true; // never built
   return meta.message_count - meta.summary_message_count >= threshold;
+}
+
+/** A single dense life update should not wait behind the four-message batch. */
+export function isHighSignalLifeUpdate(message: SummaryMessage): boolean {
+  if (message.role !== 'user') return false;
+  const text = message.content.trim();
+  if (text.length < 180) return false;
+  const transitions = text.match(
+    /\b(?:interview(?:ed)?|rejected|accepted|hired|fired|laid off|unemployed|started|stopped|left|joined|completed|passed|failed|currently|right now|no longer|still|continuing|focused on)\b/gi,
+  );
+  return (transitions?.length ?? 0) >= 2;
+}
+
+const SENSITIVE_SUMMARY_TERMS = [
+  /\b(?:married|marriage|marital|spouse|husband|wife|divorc(?:e|ed|ing))\b/i,
+  /\b(?:boyfriend|girlfriend|romantic partner|dating relationship|breakup)\b/i,
+  /\b(?:employed|unemployed|laid off|fired|hired)\b/i,
+  /\b(?:arrested|detained|charged|convicted)\b/i,
+];
+
+/**
+ * A summary may compress evidence; it may not create evidence. Remove a
+ * sensitive sentence when its theme has no support anywhere in the thread.
+ */
+export function removeUnsupportedSummaryClaims(
+  summary: string | null | undefined,
+  sourceText: string,
+): string | null {
+  if (!summary) return null;
+  const sentences = summary.match(/[^.!?]+[.!?]?/g) ?? [summary];
+  const supported = sentences.filter((sentence) =>
+    SENSITIVE_SUMMARY_TERMS.every((pattern) => !pattern.test(sentence) || pattern.test(sourceText)),
+  );
+  return supported.join(' ').replace(/\s{2,}/g, ' ').trim() || null;
 }
 
 /**
@@ -89,8 +124,12 @@ export function scrubSummaryEntityClauses(
  */
 export function deriveDeterministicSummaries(meta: ThreadMetadata): ThreadSummaries {
   const topic = meta.title?.trim();
-  const people = unionThreadMetaLabels(meta.people, undefined, { kind: 'people' }).slice(0, 4);
-  const places = unionThreadMetaLabels(meta.places, undefined, { kind: 'places' }).slice(0, 3);
+  const typed = applyCanonicalEntityTypeAuthority(
+    unionThreadMetaLabels(meta.people, undefined, { kind: 'people' }),
+    unionThreadMetaLabels(meta.places, undefined, { kind: 'places' }),
+  );
+  const people = typed.people.slice(0, 4);
+  const places = typed.places.slice(0, 3);
   const projects = meta.projects.slice(0, 3);
   const themes = meta.themes.slice(0, 3);
 
@@ -170,7 +209,11 @@ const SYSTEM_PROMPT =
   'You maintain a living summary of an ongoing conversation thread. You are given a ' +
   'PRIOR SUMMARY plus the RECENT TURNS. UPDATE the summary to incorporate the recent ' +
   'turns — do not drop established facts from the prior summary. Stay strictly factual; ' +
-  'never invent details not present in the text. Respond ONLY with JSON of the form ' +
+  'never invent details not present in the text. Preserve who asserted each claim: user-' +
+  'observed events, other-person statements, and the user\'s interpretations must stay ' +
+  'distinct. Do not invent causality from sequence, do not upgrade roles (member → ' +
+  'prominent member, friend → close friend), and do not turn fears or allegations into ' +
+  'facts. Respond ONLY with JSON of the form ' +
   '{"short": "...", "medium": "...", "long": "..."} where short is one sentence, ' +
   'medium is one paragraph, and long is a denser retrieval-oriented recap covering ' +
   'people, places, projects, themes, major events and unresolved topics.';
@@ -183,7 +226,14 @@ class ThreadSummaryService {
     opts: { force?: boolean } = {},
   ): Promise<ThreadSummaries & { version: number; stale: boolean }> {
     const meta = await threadIntelligenceService.getThreadMeta(userId, sessionId);
-    const stale = isSummaryStale(meta);
+    let stale = isSummaryStale(meta);
+    if (!stale && meta.message_count > meta.summary_message_count) {
+      const loaded = await loadThreadMessages(userId, sessionId);
+      const unseen = loaded
+        .slice(meta.summary_message_count)
+        .map((r) => ({ role: r.role === 'user' ? 'user' : 'assistant', content: r.content } as SummaryMessage));
+      stale = unseen.some(isHighSignalLifeUpdate);
+    }
     if (!opts.force && !stale) {
       return {
         short: meta.summary_short,
@@ -211,8 +261,14 @@ class ThreadSummaryService {
       .filter((m) => m.content?.trim());
 
     // Deterministic floor first — guarantees non-empty output when messages exist.
+    const typedMetaLists = applyCanonicalEntityTypeAuthority(
+      unionThreadMetaLabels(meta.people, undefined, { kind: 'people' }),
+      unionThreadMetaLabels(meta.places, undefined, { kind: 'places' }),
+    );
     const metaForSummary: ThreadMetadata = {
       ...meta,
+      people: typedMetaLists.people,
+      places: typedMetaLists.places,
       message_count: Math.max(meta.message_count, loaded.length),
       title: meta.title ?? null,
     };
@@ -245,11 +301,32 @@ class ThreadSummaryService {
       }
     }
 
+    const typed = { people: metaForSummary.people, places: metaForSummary.places };
+    const sourceText = loaded.map((message) => message.content).join('\n');
+    const discipline = (text: string | null) =>
+      applySummaryDiscipline(
+        removeUnsupportedSummaryClaims(
+          scrubSummaryEntityClauses(text, typed.people, typed.places),
+          sourceText,
+        ) ?? '',
+        sourceText,
+      ).text || null;
+    const floor = deriveDeterministicSummaries({
+      ...metaForSummary,
+      people: typed.people,
+      places: typed.places,
+    });
+    summaries = {
+      short: discipline(summaries.short) ?? floor.short,
+      medium: discipline(summaries.medium) ?? floor.medium,
+      long: discipline(summaries.long) ?? floor.long,
+    };
+
     const written = await threadIntelligenceService.writeSummaries(userId, sessionId, {
       short: summaries.short,
       medium: summaries.medium,
       long: summaries.long,
-      builtFromMessageCount: meta.message_count,
+      builtFromMessageCount: metaForSummary.message_count,
     });
 
     return {

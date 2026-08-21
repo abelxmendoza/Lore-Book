@@ -14,6 +14,9 @@ const GENERIC_REFERENCE_RE =
 const UNNAMED_ROLE =
   /^(?:potential investor|investor|recruiter|manager|supervisor|teacher|professor|doctor|lawyer|coach)$/i;
 
+const QUEST_NOISE =
+  /^(?:you completely|that was a|that was|next|test for failure)$/i;
+
 export function guardGenericReference(candidate: EntityQualityCandidate): EntityQualityVerdict | null {
   const name = candidate.name.trim();
   const key = normalizeNameKey(name);
@@ -59,6 +62,10 @@ export function guardGenericReference(candidate: EntityQualityCandidate): Entity
 
   if (candidate.domain === 'relationships' && key === 'friend' && !contextText.includes('=') && name.split(/\s+/).length === 1) {
     return reject(name, candidate.domain, 'bare_relationship_label');
+  }
+
+  if (candidate.domain === 'quests' && QUEST_NOISE.test(key)) {
+    return reject(name, candidate.domain, 'fragment_no_goal');
   }
 
   return null;

@@ -68,10 +68,16 @@ describe('IntentClassifier', () => {
 });
 
 describe('QueryPlanner', () => {
-  it('never schedules semantic fallback for foundation-primary intents', () => {
+  it('schedules one journal fallback after empty foundation for foundation-primary intents', () => {
     const plan = planQuery(classifyQuery('tell me about my family'));
-    expect(plan.executors.some((e) => e.kind === 'semantic')).toBe(false);
+    const semantic = plan.stages.filter((s) => s.kind === 'semantic');
     expect(plan.executors.some((e) => e.kind === 'structured')).toBe(true);
+    expect(semantic).toHaveLength(1);
+    expect(semantic[0]?.runIf).toBe('if_no_records');
+    expect(semantic[0]?.source).toBe('journal_entries');
+    expect(semantic[0]?.priority).toBeGreaterThan(
+      plan.stages.find((s) => s.kind === 'structured')?.priority ?? 0,
+    );
   });
 
   it('schedules thread recall first when conversation history exists', () => {
@@ -168,7 +174,27 @@ describe('QueryEngine', () => {
     const out = await engine.run({ userId: 'u1', message: 'who is Renna?' });
 
     expect(out.merged.records.map((r) => r.id)).toEqual(expect.arrayContaining(['s', 'c']));
-    expect(out.results.every((r) => !r.skipped)).toBe(true);
+    const semantic = out.results.find((r) => r.source === 'semantic');
+    expect(semantic?.skipped).toBe(true);
+    expect(out.results.filter((r) => r.source !== 'semantic').every((r) => !r.skipped)).toBe(true);
+  });
+
+  it('runs one journal search when foundation-primary recall finds no records', async () => {
+    const registry = new Map<ExecutorKind, QueryExecutor>([
+      ['structured', fake('structured', { confidence: 0.2, records: [] })],
+      ['books', fake('books', { records: [] })],
+      ['semantic', fake('semantic', {
+        confidence: 0.8,
+        records: [{ id: 'je-depot', type: 'journal_entry', content: 'Northwind Depot with Jamie' }],
+      })],
+    ]);
+    const engine = new QueryEngine(registry, fakeResolver());
+    const out = await engine.run({ userId: 'u1', message: 'tell me about my family' });
+
+    expect(out.plan.intent).toBe(QueryType.RELATIONSHIP);
+    expect(out.plan.stages.filter((s) => s.kind === 'semantic')).toHaveLength(1);
+    expect(out.results.find((r) => r.source === 'semantic')?.skipped).not.toBe(true);
+    expect(out.merged.records.map((r) => r.id)).toContain('je-depot');
   });
 
   it('anchors plans on canonical entity ids (entity-first planning)', async () => {

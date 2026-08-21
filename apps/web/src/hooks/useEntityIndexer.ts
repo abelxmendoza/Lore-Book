@@ -15,8 +15,14 @@ import {
 import { buildDemoCertifiedIndex } from '../lib/demoCertifiedIndex';
 import { detectDraftEntitiesInText } from '../lib/draftEntityDetect';
 import { fetchLexicalPreviewShared } from '../lib/lexicalPreviewCache';
-import { lexicalPreviewSpansToDraftMatches } from '../lib/lexicalPreviewToDraftMatches';
 import { fetchLoreBookParseShared } from '../lib/loreBookParseCache';
+import { lexicalPreviewSpansToDraftMatches } from '../lib/lexicalPreviewToDraftMatches';
+import {
+  COMPOSER_LIGHTWEIGHT_PREVIEW_MS,
+  composerIntelligenceMetrics,
+  composerPhaseAllowsRemoteCanon,
+  type ComposerIntelligencePhase,
+} from '../lib/composerIntelligence';
 import { loreBookParseToComposerMatches } from '../lib/loreBookParseToComposerMatches';
 import {
   findInstructionalExampleRanges,
@@ -39,7 +45,6 @@ export type EntityType = CertifiedEntity['type'];
 export type EntityMatch = CertifiedEntityMatch;
 
 const INDEX_CACHE_KEY = '/api/entities/certified-index';
-const LEXICAL_PREVIEW_DEBOUNCE_MS = 280;
 
 type SharedIndexState = {
   entities: CertifiedEntity[];
@@ -216,7 +221,7 @@ export const useEntityIndexer = () => {
   const sharedState = useSyncExternalStore(subscribeIndex, getSharedSnapshot, getSharedSnapshot);
   const lastTextRef = useRef('');
   const lastThreadIdRef = useRef<string | undefined>(undefined);
-  const previewTimerRef = useRef<number | null>(null);
+  const lightweightTimerRef = useRef<number | null>(null);
   const previewReqRef = useRef(0);
   const [retryTick, setRetryTick] = useState(0);
 
@@ -227,13 +232,14 @@ export const useEntityIndexer = () => {
       entities: CertifiedEntity[],
       previewSpans?: LexicalPreviewSpan[],
       loreBookParse?: LoreBookParseResponse
-    ) => {
+    ): CertifiedEntityMatch[] => {
       // Prefill hints like (e.g. "actually her name is Maya") must not spawn chips.
       const matchText = maskInstructionalExamples(text);
       const exampleRanges = findInstructionalExampleRanges(text);
       const usablePreviewSpans = (previewSpans ?? []).filter(
         (span) => !rangeInsideInstructionalExample(span.start, span.end, exampleRanges),
       );
+      composerIntelligenceMetrics.noteEntityScan();
       const indexMatches = matchText.trim()
         ? matchCertifiedEntitiesWithIndex(matchText, matchIndex)
         : [];
@@ -261,6 +267,7 @@ export const useEntityIndexer = () => {
         [...base, ...lorebookDrafts, ...promotedCandidates].sort(sortCertifiedMatches)
       );
       dispatch(setComposerMatches(next));
+      return next;
     },
     [dispatch]
   );
@@ -318,40 +325,95 @@ export const useEntityIndexer = () => {
     };
   }, []);
 
+  const runAuthoritativePreview = useCallback(
+    (text: string, threadId: string | undefined) => {
+      if (!sharedState.ready || !text.trim()) return;
+      applyMatches(text, sharedState.matchIndex, sharedState.entities);
+      const reqId = ++previewReqRef.current;
+      void Promise.allSettled([
+        fetchLexicalPreviewShared(text, threadId),
+        fetchLoreBookParseShared(text, threadId),
+      ]).then((results) => {
+        if (reqId !== previewReqRef.current) return;
+        if (lastTextRef.current !== text) return;
+        const preview =
+          results[0].status === 'fulfilled'
+            ? results[0].value
+            : { spans: [], inferredAssociations: [], ambiguities: [] };
+        const loreBookParse = results[1].status === 'fulfilled' ? results[1].value : undefined;
+        applyMatches(
+          text,
+          sharedState.matchIndex,
+          sharedState.entities,
+          preview.spans,
+          loreBookParse,
+        );
+      });
+    },
+    [applyMatches, sharedState.matchIndex, sharedState.ready, sharedState.entities],
+  );
+
   const analyze = useCallback(
-    (text: string, threadId?: string) => {
+    (
+      text: string,
+      threadId?: string,
+      phase: ComposerIntelligencePhase = 'keystroke',
+    ): CertifiedEntityMatch[] | void => {
       lastTextRef.current = text;
       lastThreadIdRef.current = threadId;
+      if (lightweightTimerRef.current) {
+        window.clearTimeout(lightweightTimerRef.current);
+        lightweightTimerRef.current = null;
+      }
+
       if (!text.trim()) {
+        previewReqRef.current += 1;
         dispatch(setComposerMatches([]));
-        return;
+        return [];
       }
       if (!sharedState.ready) return;
-      applyMatches(text, sharedState.matchIndex, sharedState.entities);
 
-      if (previewTimerRef.current) window.clearTimeout(previewTimerRef.current);
-      previewTimerRef.current = window.setTimeout(() => {
-        const reqId = ++previewReqRef.current;
-        void Promise.allSettled([
-          fetchLexicalPreviewShared(text, threadId),
-          fetchLoreBookParseShared(text, threadId),
-        ]).then((results) => {
-          if (reqId !== previewReqRef.current) return;
+      if (phase === 'keystroke') {
+        lightweightTimerRef.current = window.setTimeout(() => {
+          lightweightTimerRef.current = null;
           if (lastTextRef.current !== text) return;
-          const preview =
-            results[0].status === 'fulfilled' ? results[0].value : { spans: [], inferredAssociations: [], ambiguities: [] };
-          const loreBookParse = results[1].status === 'fulfilled' ? results[1].value : undefined;
-          applyMatches(
-            text,
-            sharedState.matchIndex,
-            sharedState.entities,
-            preview.spans,
-            loreBookParse
-          );
-        });
-      }, LEXICAL_PREVIEW_DEBOUNCE_MS);
+          applyMatches(text, sharedState.matchIndex, sharedState.entities);
+        }, COMPOSER_LIGHTWEIGHT_PREVIEW_MS);
+        return;
+      }
+
+      if (phase === 'lightweight' || !composerPhaseAllowsRemoteCanon(phase)) {
+        return applyMatches(text, sharedState.matchIndex, sharedState.entities);
+      }
+
+      runAuthoritativePreview(text, threadId);
     },
-    [applyMatches, dispatch, sharedState.matchIndex, sharedState.ready, sharedState.entities]
+    [
+      applyMatches,
+      dispatch,
+      runAuthoritativePreview,
+      sharedState.matchIndex,
+      sharedState.ready,
+      sharedState.entities,
+    ],
+  );
+
+  const flushNow = useCallback(
+    (text: string, threadId?: string): CertifiedEntityMatch[] => {
+      lastTextRef.current = text;
+      lastThreadIdRef.current = threadId;
+      if (lightweightTimerRef.current) {
+        window.clearTimeout(lightweightTimerRef.current);
+        lightweightTimerRef.current = null;
+      }
+      if (!text.trim()) {
+        dispatch(setComposerMatches([]));
+        return [];
+      }
+      if (!sharedState.ready) return [];
+      return applyMatches(text, sharedState.matchIndex, sharedState.entities);
+    },
+    [applyMatches, dispatch, sharedState.matchIndex, sharedState.ready, sharedState.entities],
   );
 
   const retryLoad = useCallback(() => {
@@ -393,6 +455,9 @@ export const useEntityIndexer = () => {
     skillMatches,
     eventMatches,
     analyze,
+    flushNow,
+    requestAuthoritativePreview: (text: string, threadId?: string) =>
+      analyze(text, threadId, 'authoritative'),
     linkedCharacters: characterMatches.map((m) => m.name),
     toggleLink: () => {},
   };

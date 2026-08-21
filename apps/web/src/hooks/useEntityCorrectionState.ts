@@ -14,14 +14,19 @@ import {
   type CorrectionState,
 } from '../lib/correctedPreviewSpanReducer';
 import type { CorrectedPreviewSpan, EntityCorrectionAction, CorrectionSource } from '../lib/entityCorrectionTypes';
-import { useLexicalPreview } from './useLexicalPreview';
+import { useLexicalPreview, type LexicalPreviewFetchPolicy } from './useLexicalPreview';
 
 export function useEntityCorrectionState(
   text: string,
   threadId: string | undefined,
-  certifiedMatches: CertifiedEntityMatch[]
+  certifiedMatches: CertifiedEntityMatch[],
+  policy: LexicalPreviewFetchPolicy = {},
 ) {
-  const { preview, loading, inferredAssociations, ambiguities } = useLexicalPreview(text, threadId);
+  const { preview, loading, inferredAssociations, ambiguities } = useLexicalPreview(
+    text,
+    threadId,
+    policy,
+  );
   const [state, setState] = useState<CorrectionState>(createEmptyCorrectionState);
   const [activeSpanId, setActiveSpanId] = useState<string | null>(null);
 

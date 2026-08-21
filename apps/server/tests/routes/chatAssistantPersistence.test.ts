@@ -33,6 +33,23 @@ vi.mock('../../src/middleware/auth', () => ({
   requireAuth: vi.fn(),
 }));
 
+const compilerHarness = vi.hoisted(() => ({
+  compile: vi.fn(),
+  actual: null as null | ((opts: unknown) => Promise<unknown>),
+}));
+
+vi.mock('../../src/services/responseCompiler/responseCompilerIntegration', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('../../src/services/responseCompiler/responseCompilerIntegration')
+  >();
+  compilerHarness.actual = actual.compileAssistantResponseWithCanon;
+  compilerHarness.compile.mockImplementation(actual.compileAssistantResponseWithCanon);
+  return {
+    ...actual,
+    compileAssistantResponseWithCanon: compilerHarness.compile,
+  };
+});
+
 vi.mock('../../src/services/supabaseClient', () => ({
   supabaseAdmin: {
     from: vi.fn((table: string) => {
@@ -103,9 +120,26 @@ async function* mockStream(chunks: string[]) {
   }
 }
 
+function parseSseDone(text: string): Record<string, unknown> | null {
+  const frames = text.split(/\n\n/).map((block) => block.replace(/^data:\s*/, '').trim());
+  for (const frame of frames) {
+    if (!frame) continue;
+    try {
+      const parsed = JSON.parse(frame) as Record<string, unknown>;
+      if (parsed.type === 'done') return parsed;
+    } catch {
+      // skip heartbeat / non-JSON
+    }
+  }
+  return null;
+}
+
 describe('POST /api/chat/stream — assistant durability', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    if (compilerHarness.actual) {
+      compilerHarness.compile.mockImplementation(compilerHarness.actual);
+    }
     assistantInserts.length = 0;
     assistantUpdates.length = 0;
     placeholderId = `placeholder-${Date.now()}`;
@@ -188,5 +222,108 @@ describe('POST /api/chat/stream — assistant durability', () => {
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/text\/event-stream/);
     expect(res.text).toContain('"type":"error"');
+  });
+
+  it('does not rewrite or replace a grounded draft', async () => {
+    vi.mocked(omegaChatService.chatStream).mockResolvedValue({
+      stream: mockStream(['Maya said she felt uncomfortable.']),
+      content: 'Maya said she felt uncomfortable.',
+      metadata: { sessionId: SESSION_ID, messageId: 'user-msg-grounded' },
+    } as never);
+
+    const res = await request(app)
+      .post('/api/chat/stream')
+      .send({
+        message: 'Maya said she felt uncomfortable.',
+        threadId: SESSION_ID,
+      });
+
+    const done = parseSseDone(res.text);
+    expect(done).toMatchObject({
+      type: 'done',
+      verified: true,
+      rewritten: false,
+    });
+    expect(done?.content).toBeUndefined();
+    expect(assistantUpdates).toHaveLength(1);
+    expect(assistantUpdates[0].payload.content).toBe('Maya said she felt uncomfortable.');
+    expect(assistantInserts).toHaveLength(1);
+  });
+
+  it('persists the disciplined reply and puts the same text on done when rewritten', async () => {
+    const draft =
+      'Maya overheard a conversation, which contributed to her discomfort and feelings of jealousy.';
+    vi.mocked(omegaChatService.chatStream).mockResolvedValue({
+      stream: mockStream([draft]),
+      content: draft,
+      metadata: { sessionId: SESSION_ID, messageId: 'user-msg-rewrite' },
+    } as never);
+
+    const res = await request(app)
+      .post('/api/chat/stream')
+      .send({
+        message: 'I think Maya was jealous when she saw me talking with Priya.',
+        threadId: SESSION_ID,
+      });
+
+    const done = parseSseDone(res.text);
+    expect(done?.rewritten).toBe(true);
+    expect(done?.verified).toBe(true);
+    expect(typeof done?.content).toBe('string');
+    expect(String(done?.content).toLowerCase()).not.toMatch(/her discomfort and feelings of jealousy/);
+    expect(done?.content).toMatch(/user believed/i);
+    expect(Number(done?.causalRewriteCount)).toBeGreaterThan(0);
+    expect(Number(done?.epistemicRewriteCount)).toBeGreaterThan(0);
+    expect(assistantInserts).toHaveLength(1);
+    expect(assistantUpdates).toHaveLength(1);
+    expect(assistantUpdates[0].payload.content).toBe(done?.content);
+  });
+
+  it('keeps the streamed draft and marks verification degraded when compile fails', async () => {
+    compilerHarness.compile.mockRejectedValueOnce(new Error('canon down'));
+    const draft = 'Maya was jealous, which contributed to the split.';
+    vi.mocked(omegaChatService.chatStream).mockResolvedValue({
+      stream: mockStream([draft]),
+      content: draft,
+      metadata: { sessionId: SESSION_ID, messageId: 'user-msg-degraded' },
+    } as never);
+
+    const res = await request(app)
+      .post('/api/chat/stream')
+      .send({
+        message: 'I think Maya was jealous.',
+        threadId: SESSION_ID,
+      });
+
+    const done = parseSseDone(res.text);
+    expect(done).toMatchObject({
+      type: 'done',
+      verified: false,
+      rewritten: false,
+      verificationDegraded: true,
+    });
+    expect(done?.content).toBeUndefined();
+    expect(assistantUpdates[0].payload.content).toBe(draft);
+  });
+
+  it('scopes compile to the authenticated tenant', async () => {
+    vi.mocked(omegaChatService.chatStream).mockResolvedValue({
+      stream: mockStream(['Jamie works at Vanguard Robotics.']),
+      content: 'Jamie works at Vanguard Robotics.',
+      metadata: { sessionId: SESSION_ID, messageId: 'user-msg-tenant' },
+    } as never);
+
+    await request(app)
+      .post('/api/chat/stream')
+      .send({
+        message: 'Jamie is my coworker at Vanguard Robotics.',
+        threadId: SESSION_ID,
+      });
+
+    expect(compilerHarness.compile).toHaveBeenCalled();
+    const opts = compilerHarness.compile.mock.calls[0]?.[0] as { userId?: string; userMessage?: string };
+    expect(opts.userId).toBe('user-durability-1');
+    expect(opts.userMessage).toBe('Jamie is my coworker at Vanguard Robotics.');
+    expect(opts.userMessage).not.toMatch(/Maya/);
   });
 });

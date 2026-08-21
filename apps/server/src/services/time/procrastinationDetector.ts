@@ -1,4 +1,5 @@
 import { logger } from '../../logger';
+import { pickJournalOccurredAt, pickJournalRecordedAt } from '../journal/journalOccurrenceRead';
 
 import type { ProcrastinationSignal, ProcrastinationType, TimeCategory } from './types';
 
@@ -49,15 +50,18 @@ export class ProcrastinationDetector {
               }
             }
 
+            const recordedAt = pickJournalRecordedAt(entry);
+            if (!recordedAt) continue;
             signals.push({
               id: `procrastination_${entry.id}_${pattern.type}_${Date.now()}`,
               type: pattern.type,
               evidence: content.substring(0, 300),
               confidence: pattern.confidence,
-              timestamp: entry.date || entry.created_at || entry.timestamp || new Date().toISOString(),
+              timestamp: recordedAt,
               category,
               metadata: {
                 source_entry_id: entry.id,
+                occurredAt: pickJournalOccurredAt(entry),
               },
             });
             break; // Only count each entry once

@@ -124,6 +124,10 @@ export class KnowledgeTypeEngineService {
     return 'EXPERIENCE';
   }
 
+  classifyBatch(utterances: string[]): KnowledgeType[] {
+    return utterances.map((utterance) => this.classifyKnowledge(utterance));
+  }
+
   /**
    * Get initial confidence based on knowledge type
    */

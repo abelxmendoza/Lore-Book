@@ -15,6 +15,7 @@ import { TimelineCardView } from './TimelineCardView';
 import { TimelineEntryModal } from './TimelineEntryModal';
 import type { TimelineResponse } from '../../hooks/useLoreKeeper';
 import { fetchJson } from '../../lib/api';
+import { hasJournalOccurrence } from '../../lib/journalOccurrence';
 
 type TimelineViewProps = {
   timeline: TimelineResponse;
@@ -114,10 +115,16 @@ export const ImprovedTimelineView = ({
         entry.content?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         entry.summary?.toLowerCase().includes(searchTerm.toLowerCase());
       
-      // Date filter
-      const entryDate = new Date(entry.date);
-      const matchesDate = (!filterDateFrom || entryDate >= filterDateFrom) &&
-                         (!filterDateTo || entryDate <= filterDateTo);
+      // Occurrence-date filter. Unknown occurrence is excluded from dated windows.
+      const hasOccurrence = hasJournalOccurrence(entry.date);
+      const entryDate = hasOccurrence ? new Date(entry.date) : null;
+      const matchesDate = !filterDateFrom && !filterDateTo
+        ? true
+        : Boolean(
+            entryDate &&
+            (!filterDateFrom || entryDate >= filterDateFrom) &&
+            (!filterDateTo || entryDate <= filterDateTo),
+          );
       
       // Tag filter
       const matchesTags = selectedTags.length === 0 || 

@@ -12,6 +12,7 @@ import { buildMockMemoryModalData } from '../../mocks/modalDemoData';
 import { memoryEntryToCard, type MemoryCard, type LinkedMemory } from '../../types/memory';
 import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import { formatJournalOccurrenceLabel, hasJournalOccurrence } from '../../lib/journalOccurrence';
 
 type MemoryDetailModalProps = {
   memory: MemoryCard;
@@ -142,14 +143,18 @@ export const MemoryDetailModal = ({ memory, onClose, onNavigate, allMemories = [
         }> }>(`/api/entries/${memory.id}/linked`);
 
         const linked = linkedResponse.entries.map((entry) => {
-          const entryDate = new Date(entry.date);
-          const memoryDate = new Date(memory.date);
-          const daysDiff = Math.round((entryDate.getTime() - memoryDate.getTime()) / (1000 * 60 * 60 * 24));
+          const entryTime = hasJournalOccurrence(entry.date) ? Date.parse(entry.date) : NaN;
+          const memoryTime = hasJournalOccurrence(memory.date) ? Date.parse(memory.date) : NaN;
+          const daysDiff = Number.isFinite(entryTime) && Number.isFinite(memoryTime)
+            ? Math.round((entryTime - memoryTime) / (1000 * 60 * 60 * 24))
+            : undefined;
 
           let linkType: LinkedMemory['linkType'] = 'temporal';
           let linkLabel = '';
 
-          if (daysDiff === 0) {
+          if (daysDiff == null) {
+            linkLabel = 'Date unknown';
+          } else if (daysDiff === 0) {
             linkLabel = 'Same day';
           } else if (daysDiff > 0) {
             linkLabel = `${daysDiff} day${daysDiff > 1 ? 's' : ''} after`;
@@ -182,6 +187,7 @@ export const MemoryDetailModal = ({ memory, onClose, onNavigate, allMemories = [
         setLinkedMemories(linked);
 
         // Load temporal context (memories ±5 days)
+        if (hasJournalOccurrence(memory.date)) {
         const memoryDate = new Date(memory.date);
         const dateFrom = new Date(memoryDate);
         dateFrom.setDate(dateFrom.getDate() - 5);
@@ -207,6 +213,7 @@ export const MemoryDetailModal = ({ memory, onClose, onNavigate, allMemories = [
           setTemporalMemories(temporalCards);
         } catch (error) {
           console.error('Failed to load temporal memories:', error);
+        }
         }
 
         // Load chapter context
@@ -841,11 +848,7 @@ export const MemoryDetailModal = ({ memory, onClose, onNavigate, allMemories = [
                               </div>
                               <div className="flex items-center gap-2 text-xs text-white/60">
                                 <Calendar className="h-3 w-3" />
-                                {new Date(item.date).toLocaleDateString('en-US', {
-                                  month: 'short',
-                                  day: 'numeric',
-                                  year: 'numeric'
-                                })}
+                                {formatJournalOccurrenceLabel(item.date)}
                               </div>
                             </div>
                           </CardContent>

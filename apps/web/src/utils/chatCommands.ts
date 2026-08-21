@@ -1,5 +1,6 @@
 import { fetchJson } from '../lib/api';
 import type { Message } from '../features/chat/message/ChatMessage';
+import { formatJournalOccurrenceLabel } from '../lib/journalOccurrence';
 
 export const parseSlashCommand = (input: string): { command: string; args: string } | null => {
   const trimmed = input.trim();
@@ -36,7 +37,7 @@ export const handleSlashCommand = async (
         const entries = await fetchJson<any[]>('/api/entries?limit=10');
         const formatted = entries
           .slice(0, 10)
-          .map((e: any) => `- ${new Date(e.date).toLocaleDateString()}: ${e.summary || e.content.substring(0, 100)}...`)
+          .map((e: any) => `- ${formatJournalOccurrenceLabel(e.date)}: ${e.summary || e.content.substring(0, 100)}...`)
           .join('\n');
         
         return {

@@ -19,8 +19,9 @@ export type DatabaseOpsHealthState = {
 };
 
 /**
- * Polls /api/health/db for admins only. Cached on the server (15m); client polls
- * at the same interval to avoid unnecessary egress.
+ * Polls /api/health/db for signed-in users. Admins see storage/upgrade warnings;
+ * everyone sees a banner when Spend Cap or a quota has blocked writes.
+ * Cached on the server (15m); client polls at the same interval.
  */
 export function useDatabaseOpsHealth(): DatabaseOpsHealthState {
   const { authority, loading: authorityLoading } = useAccountAuthority();
@@ -31,7 +32,7 @@ export function useDatabaseOpsHealth(): DatabaseOpsHealthState {
   const abortRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
-    if (!isAdmin || getBackendUnavailable()) return;
+    if (!authority || getBackendUnavailable()) return;
 
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -52,10 +53,10 @@ export function useDatabaseOpsHealth(): DatabaseOpsHealthState {
         setLoading(false);
       }
     }
-  }, [isAdmin]);
+  }, [authority]);
 
   useEffect(() => {
-    if (authorityLoading || !isAdmin) {
+    if (authorityLoading || !authority) {
       setPayload(null);
       setError(null);
       return;
@@ -66,14 +67,14 @@ export function useDatabaseOpsHealth(): DatabaseOpsHealthState {
       window.clearInterval(id);
       abortRef.current?.abort();
     };
-  }, [authorityLoading, isAdmin, load]);
+  }, [authorityLoading, authority, load]);
 
   return {
     loading,
     payload,
     error,
     refresh: () => void load(),
-    showBanner: shouldShowOpsBanner(payload),
+    showBanner: shouldShowOpsBanner(payload, { isAdmin }),
   };
 }
 

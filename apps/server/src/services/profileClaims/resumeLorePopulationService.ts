@@ -9,6 +9,8 @@ import { memoryService } from '../memoryService';
 import { organizationService } from '../organizationService';
 import { projectSuggestionService } from '../projects/projectSuggestionService';
 import { skillService } from '../skills/skillService';
+import { applySuggestionCandidate } from '../lorebook/suggestions/applySuggestionCandidate';
+import { withSuggestionWriteContext } from '../lorebook/suggestions/suggestionWriteContext';
 import { supabaseAdmin } from '../supabaseClient';
 import { normalizeNameKey } from '../../utils/nameNormalization';
 
@@ -102,7 +104,11 @@ class ResumeLorePopulationService {
       itemsReconciled: 0,
     };
 
-    const meta = PROVENANCE(context.sourceFileId, context.resumeDocumentId);
+    const meta = {
+      ...PROVENANCE(context.sourceFileId, context.resumeDocumentId),
+      file_name: context.fileName,
+      imported_at: new Date().toISOString(),
+    };
     const selfId = await resolveSelfCharacterId(userId);
 
     // Contact info → entity facts + summary entry
@@ -121,34 +127,49 @@ class ResumeLorePopulationService {
     }
     const conflictedCompanies = conflictedCompanyKeys(result.roleConflicts);
 
+    await withSuggestionWriteContext(userId, async () => {
     // Employers as organizations
     for (const job of parsed.employment) {
       const conflicted = job.isCurrent && conflictedCompanies.has(normalizeNameKey(job.company));
       try {
-        await organizationService.createOrganization(userId, {
+        const write = await applySuggestionCandidate({
+          userId,
+          domain: 'organizations',
           name: job.company,
-          type: 'company',
-          group_type: 'company',
-          user_relationship: 'member',
-          description: job.description ?? `${job.title}${job.location ? ` · ${job.location}` : ''}`,
-          status: job.isCurrent && !conflicted ? 'active' : 'inactive',
-          metadata: {
-            ...meta,
-            section: 'employment',
-            job_title: job.title,
-            start_date: job.startDate,
-            end_date: job.endDate,
-            ...(conflicted
-              ? {
-                  pending_status_review: true,
-                  status_conflict: result.roleConflicts.find(
-                    (c) => normalizeNameKey(c.resumeCompany) === normalizeNameKey(job.company)
-                  ),
-                }
-              : {}),
+          incomingType: 'company',
+          evidence: [job.title, job.description, job.location].filter(Boolean).join(' · '),
+          extractor: 'resume_import',
+          source: 'resume',
+          writePolicy: 'trusted_import',
+          onCreate: async () => {
+            await organizationService.createOrganization(userId, {
+              name: job.company,
+              type: 'company',
+              group_type: 'company',
+              user_relationship: 'member',
+              description: job.description ?? `${job.title}${job.location ? ` · ${job.location}` : ''}`,
+              status: job.isCurrent && !conflicted ? 'active' : 'inactive',
+              metadata: {
+                ...meta,
+                section: 'employment',
+                job_title: job.title,
+                start_date: job.startDate,
+                end_date: job.endDate,
+                ...(conflicted
+                  ? {
+                      pending_status_review: true,
+                      status_conflict: result.roleConflicts.find(
+                        (c) => normalizeNameKey(c.resumeCompany) === normalizeNameKey(job.company)
+                      ),
+                    }
+                  : {}),
+              },
+            });
           },
         });
-        result.organizations++;
+        if (write.outcome === 'CREATED' || write.outcome === 'ATTACHED') {
+          result.organizations++;
+        }
       } catch (error) {
         logger.warn({ error, company: job.company }, 'resume lore: org create skipped');
       }
@@ -156,28 +177,33 @@ class ResumeLorePopulationService {
 
     // Skills
     const seenSkills = new Set<string>();
-    let existingSkills: string[] = [];
-    try {
-      const rows = await skillService.getSkills(userId);
-      existingSkills = rows.map((s) => s.skill_name.toLowerCase());
-    } catch {
-      existingSkills = [];
-    }
     for (const raw of parsed.skills) {
       const name = raw.trim();
       if (!name || seenSkills.has(name.toLowerCase())) continue;
-      if (existingSkills.includes(name.toLowerCase())) continue;
       seenSkills.add(name.toLowerCase());
       try {
-        await skillService.createSkill(userId, {
-          skill_name: name,
-          skill_category: skillCategory(name),
-          description: `From resume: ${context.fileName}`,
-          auto_detected: true,
-          confidence_score: 0.85,
-          metadata: { ...meta, section: 'skills' },
+        const write = await applySuggestionCandidate({
+          userId,
+          domain: 'skills',
+          name,
+          evidence: `From resume: ${context.fileName}`,
+          extractor: 'resume_import',
+          source: 'resume',
+          writePolicy: 'trusted_import',
+          onCreate: async () => {
+            await skillService.createSkill(userId, {
+              skill_name: name,
+              skill_category: skillCategory(name),
+              description: `From resume: ${context.fileName}`,
+              auto_detected: true,
+              confidence_score: 0.85,
+              metadata: { ...meta, section: 'skills' },
+            });
+          },
         });
-        result.skills++;
+        if (write.outcome === 'CREATED' || write.outcome === 'ATTACHED') {
+          result.skills++;
+        }
       } catch (error) {
         logger.warn({ error, skill: name }, 'resume lore: skill create skipped');
       }
@@ -206,6 +232,7 @@ class ResumeLorePopulationService {
         logger.warn({ error, userId }, 'resume lore: project suggestions failed (non-blocking)');
       }
     }
+    });
 
     // Languages + career targets → facts on self
     if (selfId) {
@@ -235,22 +262,27 @@ class ResumeLorePopulationService {
     const items: TimelineItem[] = [];
 
     for (const job of parsed.employment) {
-      const date = normalizeResumeDate(job.startDate) ?? normalizeResumeDate(job.endDate);
-      if (date) items.push({ kind: 'job', date, job });
+      const date = normalizeResumeDate(job.startDate) ?? normalizeResumeDate(job.endDate) ?? '';
+      items.push({ kind: 'job', date, job });
     }
     for (const edu of parsed.education) {
-      const date = normalizeResumeDate(edu.endDate) ?? normalizeResumeDate(edu.startDate);
-      if (date) items.push({ kind: 'education', date, edu });
+      const date = normalizeResumeDate(edu.endDate) ?? normalizeResumeDate(edu.startDate) ?? '';
+      items.push({ kind: 'education', date, edu });
     }
     for (const project of parsed.projects) {
-      const date = normalizeResumeDate(project.endDate) ?? normalizeResumeDate(project.startDate);
-      if (date) items.push({ kind: 'project', date, project });
+      const date = normalizeResumeDate(project.endDate) ?? normalizeResumeDate(project.startDate) ?? '';
+      items.push({ kind: 'project', date, project });
     }
     for (const gap of parsed.employmentGaps) {
       items.push({ kind: 'gap', date: gap.startDate, gap });
     }
 
-    items.sort((a, b) => a.date.localeCompare(b.date));
+    items.sort((a, b) => {
+      if (!a.date && !b.date) return 0;
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return a.date.localeCompare(b.date);
+    });
 
     for (const item of items) {
       if (item.kind === 'job') {
@@ -306,7 +338,7 @@ class ResumeLorePopulationService {
       const entry = await memoryService.saveEntry({
         userId,
         content: `Career summary (from resume):\n\n${parsed.summary.trim()}`,
-        date: new Date().toISOString(),
+        importedAt: String(meta.imported_at ?? new Date().toISOString()),
         tags: ['resume', 'career', 'summary'],
         source: 'document_upload',
         metadata: meta,
@@ -375,7 +407,7 @@ class ResumeLorePopulationService {
     const entry = await memoryService.saveEntry({
       userId,
       content: `Contact information (from resume):\n${lines.join('\n')}`,
-      date: new Date().toISOString(),
+      importedAt: String(meta.imported_at ?? new Date().toISOString()),
       tags: ['resume', 'contact'],
       source: 'document_upload',
       metadata: { ...meta, section: 'header', contact },
@@ -523,7 +555,9 @@ class ResumeLorePopulationService {
         const entry = await memoryService.saveEntry({
           userId,
           content: `Additional detail on your ${job.title} role at ${job.company} (from a different resume): ${job.description}`,
-          date: start ?? new Date().toISOString(),
+          date: start ?? undefined,
+          temporalSource: start ? 'document_stated' : 'recording_fallback',
+          importedAt: String(meta.imported_at ?? new Date().toISOString()),
           tags: ['resume', 'career', 'employment', 'variant', job.company.toLowerCase().replace(/\s+/g, '-')],
           source: 'document_upload',
           summary: `${job.company} — additional resume detail`,
@@ -545,10 +579,13 @@ class ResumeLorePopulationService {
       .filter(Boolean)
       .join(' ');
 
+    const occurrence = start ?? end ?? undefined;
     const entry = await memoryService.saveEntry({
       userId,
       content,
-      date: start ?? end ?? new Date().toISOString(),
+      date: occurrence,
+      temporalSource: occurrence ? 'document_stated' : 'recording_fallback',
+      importedAt: String(meta.imported_at ?? new Date().toISOString()),
       tags: ['resume', 'career', 'employment', job.company.toLowerCase().replace(/\s+/g, '-')],
       source: 'document_upload',
       summary: `${job.title} at ${job.company}`,
@@ -600,7 +637,7 @@ class ResumeLorePopulationService {
       return { entryId: null, eventId: existingEventId, reconciled: true };
     }
 
-    const date = end ?? start ?? new Date().toISOString();
+    const date = end ?? start ?? undefined;
     const parts = [
       edu.degree,
       edu.field ? `in ${edu.field}` : null,
@@ -610,6 +647,8 @@ class ResumeLorePopulationService {
       userId,
       content: `Education: ${parts.join(' ')}${edu.gpa ? ` (GPA: ${edu.gpa})` : ''}.`,
       date,
+      temporalSource: date ? 'document_stated' : 'recording_fallback',
+      importedAt: String(meta.imported_at ?? new Date().toISOString()),
       tags: ['resume', 'education', edu.institution?.toLowerCase().replace(/\s+/g, '-') ?? 'school'],
       source: 'document_upload',
       summary: `Education at ${edu.institution}`,
@@ -649,12 +688,14 @@ class ResumeLorePopulationService {
     const date =
       normalizeResumeDate(project.endDate) ??
       normalizeResumeDate(project.startDate) ??
-      new Date().toISOString();
+      undefined;
     const tech = project.technologies?.length ? `\nTechnologies: ${project.technologies.join(', ')}` : '';
     const entry = await memoryService.saveEntry({
       userId,
       content: `Project: ${project.name}.${project.description ? ` ${project.description}` : ''}${tech}${project.url ? `\n${project.url}` : ''}`,
       date,
+      temporalSource: date ? 'document_stated' : 'recording_fallback',
+      importedAt: String(meta.imported_at ?? new Date().toISOString()),
       tags: ['resume', 'project'],
       source: 'document_upload',
       summary: project.name,
@@ -672,6 +713,8 @@ class ResumeLorePopulationService {
       userId,
       content: `Period between jobs (${gap.label}): ${gap.startDate} to ${gap.endDate}.`,
       date: gap.startDate,
+      temporalSource: 'document_stated',
+      importedAt: String(meta.imported_at ?? new Date().toISOString()),
       tags: ['resume', 'career', 'unemployment'],
       source: 'document_upload',
       summary: 'Between jobs',

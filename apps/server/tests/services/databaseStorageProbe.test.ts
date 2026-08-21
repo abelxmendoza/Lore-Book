@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   probeDatabaseStorage,
   resetDatabaseStorageProbeCache,
+  noteDatabaseWriteBlocked,
 } from '../../src/services/databaseStorageProbe';
 
 describe('probeDatabaseStorage', () => {
@@ -16,6 +17,15 @@ describe('probeDatabaseStorage', () => {
     expect(snapshot.status).toBe('unknown');
     expect(snapshot.databaseBytes).toBeNull();
     expect(snapshot.quotaBytes).toBe(500 * 1024 * 1024);
+    expect(snapshot.writeBlocked).toBe(false);
+  });
+
+  it('stamps write-blocked onto the probe after a save failure', async () => {
+    noteDatabaseWriteBlocked('read_only');
+    const snapshot = await probeDatabaseStorage(true);
+    expect(snapshot.writeBlocked).toBe(true);
+    expect(snapshot.writeBlockedReason).toBe('read_only');
+    expect(snapshot.status).toBe('critical');
   });
 
   it('caches results within TTL (O(1) hot path)', async () => {

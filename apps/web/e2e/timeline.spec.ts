@@ -5,6 +5,7 @@ test.describe('Timeline', () => {
     // Set localStorage to dismiss dev notice before page loads
     await context.addInitScript(() => {
       window.localStorage.setItem('dev-notice-dismissed', 'true');
+      window.localStorage.setItem('lorebook.whatsNew.seenId', '*');
     });
     
     // Mock authentication

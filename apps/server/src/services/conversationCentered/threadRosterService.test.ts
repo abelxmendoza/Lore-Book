@@ -105,6 +105,30 @@ describe('threadRosterService — pure helpers', () => {
       expect(entries).toEqual([]);
     });
 
+    it('omits a timing-only performer from Actors', () => {
+      const entries = deriveRosterEntries(
+        [
+          {
+            id: 'm1',
+            role: 'user',
+            content: 'This was after the Jordan Skasby set. Maya pushed my arm away.',
+            created_at: '2026-07-10T00:00:00Z',
+            turn_number: 1,
+            reply_seq: 0,
+            metadata: {
+              mentionedEntities: [
+                { id: 'c-maya', name: 'Maya', type: 'character' },
+                { id: 'c-jordan', name: 'Jordan Skasby', type: 'character' },
+              ],
+            },
+          },
+        ],
+        4,
+      );
+      expect(entries.map((e) => e.name)).toContain('Maya');
+      expect(entries.map((e) => e.name)).not.toContain('Jordan Skasby');
+    });
+
     it('omits indefinite refs, vague collectives, and self from actors', () => {
       const entries = deriveRosterEntries(
         [
@@ -184,7 +208,7 @@ describe('threadRosterService — pure helpers', () => {
       expect(entries[0].mentions).toBe(2);
     });
 
-    it('applyCharacterEpithetsToRoster composes intentional display titles', () => {
+    it('keeps canonical names on Actors instead of concatenating epithets', () => {
       const entries = deriveRosterEntries(
         [msg('m1', 1, 0, [{ id: 'a1', name: 'Aunt Maribel', type: 'character' }])],
         1,
@@ -201,7 +225,7 @@ describe('threadRosterService — pure helpers', () => {
           ],
         ]),
       );
-      expect(decorated.map((e) => e.name)).toEqual(['Aunt Maribel the Hallway Guardian']);
+      expect(decorated.map((e) => e.name)).toEqual(['Aunt Maribel']);
     });
 
     it('omits groups and unresolved from Cast — only RESOLVED identities', () => {

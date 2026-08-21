@@ -18,7 +18,7 @@ class EmbeddingService {
     const cleaned = input.trim().slice(0, 8000);
 
     // Try to get cached embedding first (FREE - no API call)
-    const cached = await embeddingCacheService.getCachedEmbedding(cleaned);
+    const cached = await embeddingCacheService.getCachedEmbedding(cleaned, config.embeddingModel);
     if (cached) {
       recordEmbeddingCall({ cacheHit: true });
       return cached;
@@ -54,7 +54,7 @@ class EmbeddingService {
       const embedding = response.data[0]?.embedding ?? [];
 
       // Cache the embedding for future use (fire and forget)
-      embeddingCacheService.cacheEmbedding(cleaned, embedding).catch(err =>
+      embeddingCacheService.cacheEmbedding(cleaned, embedding, modelUsed).catch(err =>
         logger.debug({ error: err }, 'Failed to cache embedding')
       );
 

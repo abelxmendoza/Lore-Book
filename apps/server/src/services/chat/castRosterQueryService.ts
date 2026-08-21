@@ -103,8 +103,8 @@ export async function classifyCastForActiveStory(
         classification: returning ? 'returning' : 'new',
         confidence: 0.9,
         reason: returning
-          ? 'First appeared in an earlier thread — Character Book record predates this story.'
-          : 'First appearance is inside this story window.',
+          ? 'First mentioned in an earlier thread — Character Book record predates this story.'
+          : 'First mention is inside this story window.',
       });
       continue;
     }

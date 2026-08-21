@@ -1,51 +1,65 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { LexicalPreviewResponse } from '../api/lexicalPreview';
 import { fetchLexicalPreviewShared } from '../lib/lexicalPreviewCache';
 import { clientLexicalPreviewSpans } from '../lib/clientLexicalPreview';
 
-const DEBOUNCE_MS = 280;
+export type LexicalPreviewFetchPolicy = {
+  /**
+   * Incremented on blur/send. Remote history-aware preview must not follow
+   * every keystroke — only this generation.
+   */
+  authorityGeneration?: number;
+};
 
 /** Fetch-only lexical preview — corrections live in useEntityCorrectionState. */
-export function useLexicalPreview(text: string, threadId?: string) {
+export function useLexicalPreview(
+  text: string,
+  threadId?: string,
+  policy: LexicalPreviewFetchPolicy = {},
+) {
   const [preview, setPreview] = useState<LexicalPreviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const timerRef = useRef<number | null>(null);
   const reqRef = useRef(0);
+  const textRef = useRef(text);
+  textRef.current = text;
+  const threadRef = useRef(threadId);
+  threadRef.current = threadId;
+  const authorityGeneration = policy.authorityGeneration ?? 0;
 
   useEffect(() => {
-    if (!text.trim()) {
+    if (!textRef.current.trim()) {
       setPreview(null);
       setLoading(false);
       return;
     }
+  }, [text]);
 
-    if (timerRef.current) window.clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(() => {
-      const reqId = ++reqRef.current;
-      setLoading(true);
+  useEffect(() => {
+    if (authorityGeneration <= 0) return;
+    const snapshot = textRef.current;
+    const snapshotThread = threadRef.current;
+    if (!snapshot.trim()) return;
 
-      void (async () => {
-        try {
-          const result = await fetchLexicalPreviewShared(text, threadId);
-          if (reqId !== reqRef.current) return;
-          setPreview(result);
-        } catch {
-          if (reqId !== reqRef.current) return;
-          setPreview({
-            spans: clientLexicalPreviewSpans(text),
-            inferredAssociations: [],
-            ambiguities: ['preview_offline_fallback'],
-          });
-        } finally {
-          if (reqId === reqRef.current) setLoading(false);
-        }
-      })();
-    }, DEBOUNCE_MS);
+    const reqId = ++reqRef.current;
+    setLoading(true);
 
-    return () => {
-      if (timerRef.current) window.clearTimeout(timerRef.current);
-    };
-  }, [text, threadId]);
+    void (async () => {
+      try {
+        const result = await fetchLexicalPreviewShared(snapshot, snapshotThread);
+        if (reqId !== reqRef.current) return;
+        setPreview(result);
+      } catch {
+        if (reqId !== reqRef.current) return;
+        setPreview({
+          spans: clientLexicalPreviewSpans(snapshot),
+          inferredAssociations: [],
+          ambiguities: ['preview_offline_fallback'],
+        });
+      } finally {
+        if (reqId === reqRef.current) setLoading(false);
+      }
+    })();
+  }, [authorityGeneration]);
 
   return {
     preview,

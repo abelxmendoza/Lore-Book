@@ -82,6 +82,25 @@ describe('ErrorHandler', () => {
     );
   });
 
+  it('should map Postgres read-only / spend-cap errors to 507 with a notice', () => {
+    const error = Object.assign(new Error('cannot execute INSERT in a read-only transaction'), {
+      code: '25006',
+    });
+    errorHandler(error, mockRequest as Request, mockResponse as Response, mockNext);
+
+    expect(mockResponse.status).toHaveBeenCalledWith(507);
+    expect(mockResponse.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'DB_READ_ONLY',
+        error: expect.stringMatching(/spend cap/i),
+        notice: expect.objectContaining({
+          code: 'DB_READ_ONLY',
+          writesAvailable: false,
+        }),
+      })
+    );
+  });
+
   it('should handle unknown errors correctly', () => {
     const error = new Error('Unknown error');
     process.env.NODE_ENV = 'test';

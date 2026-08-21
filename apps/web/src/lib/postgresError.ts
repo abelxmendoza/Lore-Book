@@ -45,9 +45,9 @@ export function friendlyPostgresErrorMessage(err: unknown): string | null {
   const code = extractApiErrorCode(err);
   if (code && STORAGE_CODES.has(code)) {
     if (code === 'DB_READ_ONLY') {
-      return 'LoreBook storage is full and your database is in read-only mode. Delete old data or upgrade your Supabase plan, then try again.';
+      return 'LoreBook cannot save right now because the database is in read-only mode. This usually means a Supabase spend cap or usage quota was reached. You can still read existing memories. New chats, journal entries, and uploads will fail until the next billing cycle or the cap is raised in Supabase.';
     }
-    return 'LoreBook could not save because database storage is full. Free up space in Supabase, then try again.';
+    return 'LoreBook cannot save because database disk is full. If Spend Cap is on, writes stay blocked until the next billing cycle. Otherwise free space or expand disk in Supabase.';
   }
 
   const message =

@@ -17,7 +17,7 @@ export type ContentType =
 export type MemoryEntry = {
   id: string;
   user_id: string;
-  date: string;
+  date: string | null;
   content: string;
   tags: string[];
   chapter_id?: string | null;

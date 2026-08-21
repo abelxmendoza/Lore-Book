@@ -191,7 +191,7 @@ class DateAssignmentService {
         .from('journal_entries')
         .select('date, content')
         .eq('user_id', userId)
-        .order('date', { ascending: false })
+        .order('date', { ascending: false, nullsFirst: false })
         .limit(50);
 
       if (!entries || entries.length === 0) {

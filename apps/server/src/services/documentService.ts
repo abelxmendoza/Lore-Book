@@ -19,7 +19,7 @@ import type { NormalizedArtifact } from './ingestion/types';
 type DocumentAnalysis = {
   entries: Array<{ 
     content: string; 
-    date: string; 
+    date?: string; 
     tags?: string[];
     content_type?: string;
     preserve_original_language?: boolean;
@@ -118,7 +118,7 @@ For these content types:
 3. Store EXACT original wording in original_content field (same as content if unchanged)
 
 Extract:
-1. Journal entries with dates (if available) or infer chronological order
+1. Journal entries with dates ONLY when the document states when the event happened. If no event date is present, omit "date" (do not use upload time, document creation time, or today's date).
 2. Characters/people mentioned with descriptions and relationships
 3. Memoir sections (if it's a memoir) with titles and content
 4. Language style and tone (formal, casual, poetic, etc.)
@@ -129,7 +129,7 @@ Return JSON with this structure:
   "entries": [
     {
       "content": "...",
-      "date": "YYYY-MM-DD",
+      "date": "YYYY-MM-DD or omit when occurrence is unknown",
       "tags": ["tag1"],
       "content_type": "standard" | "testimony" | "advice" | "message_to_reader" | etc (optional, auto-detected if missing),
       "preserve_original_language": true/false (optional, auto-detected if missing),
@@ -167,7 +167,7 @@ Detection patterns to look for:
       logger.error({ error, response }, 'Failed to parse document analysis');
       // Fallback: create basic structure
       return {
-        entries: [{ content: text.substring(0, 1000), date: new Date().toISOString().split('T')[0] }],
+        entries: [{ content: text.substring(0, 1000) }],
         characters: [],
         memoirSections: [],
         languageStyle: 'Unknown',
@@ -207,7 +207,7 @@ Detection patterns to look for:
     userId: string,
     entries: Array<{ 
       content: string; 
-      date: string; 
+      date?: string; 
       tags?: string[];
       content_type?: string;
       preserve_original_language?: boolean;
@@ -217,6 +217,7 @@ Detection patterns to look for:
     entryIdsOut?: string[]
   ): Promise<number> {
     let created = 0;
+    const importedAt = new Date().toISOString();
     for (const entry of entries) {
       try {
         // Auto-detect content type if not provided by AI analysis
@@ -230,11 +231,14 @@ Detection patterns to look for:
         
         // Use original_content if provided, otherwise use content
         const originalContent = entry.original_content || entry.content;
+        const extractedDate = entry.date && String(entry.date).trim() ? entry.date : undefined;
         
-        const entry = await memoryService.saveEntry({
+        const saved = await memoryService.saveEntry({
           userId,
           content: entry.content,
-          date: entry.date,
+          date: extractedDate,
+          temporalSource: extractedDate ? 'document_stated' : 'recording_fallback',
+          importedAt,
           tags: entry.tags || [],
           source: 'document_upload',
           content_type: detected.type,
@@ -247,7 +251,7 @@ Detection patterns to look for:
             ...(sourceFileId ? { source_file_id: sourceFileId, user_file_id: sourceFileId } : {}),
           }
         });
-        entryIdsOut?.push(entry.id);
+        entryIdsOut?.push(saved.id);
         created++;
       } catch (error) {
         logger.warn({ error, entry }, 'Failed to create entry from document');

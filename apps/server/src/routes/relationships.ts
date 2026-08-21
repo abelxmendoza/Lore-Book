@@ -11,6 +11,12 @@ import {
   hierarchyIcon,
   domainLabel,
 } from '../services/relationships/relationshipRoleInferenceService';
+import {
+  characterConnectionService,
+  parseStoryAssociationId,
+} from '../services/characterConnectionService';
+import { syncCharacterLinkGraph } from '../services/kinship/characterLinkGraphSync';
+import { applyCharacterRelationshipWrite } from '../services/relationships/characterRelationshipHistoryService';
 
 const router = Router();
 
@@ -30,6 +36,9 @@ const relationshipStatusSchema = z
   .regex(/^[a-zA-Z0-9 _-]+$/, 'Use letters, numbers, spaces, hyphens, or underscores')
   .transform((value) => value.toLowerCase().replace(/[\s-]+/g, '_'));
 
+const validPrecisionSchema = z.enum(['exact', 'date', 'month', 'year', 'unknown']);
+const validInstantSchema = z.string().trim().min(4).max(40).nullable().optional();
+
 const characterLinkCreateSchema = z.object({
   source_character_id: z.string().uuid(),
   target_character_id: z.string().uuid(),
@@ -37,6 +46,9 @@ const characterLinkCreateSchema = z.object({
   status: relationshipStatusSchema.optional().default('active'),
   closeness_score: z.number().int().min(-10).max(10).optional(),
   summary: z.string().trim().max(1000).optional(),
+  valid_from: validInstantSchema,
+  valid_until: validInstantSchema,
+  valid_precision: validPrecisionSchema.optional(),
 });
 
 const characterLinkPatchSchema = z.object({
@@ -44,6 +56,9 @@ const characterLinkPatchSchema = z.object({
   status: relationshipStatusSchema.optional(),
   closeness_score: z.number().int().min(-10).max(10).nullable().optional(),
   summary: z.string().trim().max(1000).nullable().optional(),
+  valid_from: validInstantSchema,
+  valid_until: validInstantSchema,
+  valid_precision: validPrecisionSchema.optional(),
 }).refine((patch) => Object.keys(patch).length > 0, 'Provide at least one field to update');
 
 const romanticTypes = new Set([
@@ -133,7 +148,10 @@ function relationshipResponse(
     id: relationship.id,
     character_id: relatedCharacterId,
     character_name: characterNameById.get(relatedCharacterId) ?? 'Unknown',
-    relationship_type: relationship.relationship_type,
+    relationship_type: relationshipTypeForViewer(
+      String(relationship.relationship_type ?? ''),
+      relationship.source_character_id === perspectiveCharacterId,
+    ),
     closeness_score: relationship.closeness_score,
     summary: relationship.summary,
     status: relationship.status,
@@ -289,41 +307,86 @@ router.post(
       rows.find((row) => !isTypedKinshipEdge(String(row.relationship_type))) ??
       null;
 
-    const payload = {
-      relationship_type: input.relationship_type,
-      status: input.status,
-      closeness_score: input.closeness_score ?? null,
+    await applyCharacterRelationshipWrite({
+      userId,
+      actorId: userId,
+      sourceCharacterId: input.source_character_id,
+      targetCharacterId: input.target_character_id,
+      relationshipType: input.relationship_type,
+      intent: input.status === 'ended' ? 'end' : 'assert',
+      authority: 'USER_EXPLICIT',
+      closenessScore: input.closeness_score ?? null,
       summary: input.summary ?? null,
-      inference_status: 'asserted',
-      metadata: {
-        ...(existing?.metadata ?? {}),
-        source: 'character_world_editor',
-        manual: true,
-        user_confirmed_at: new Date().toISOString(),
-      },
-      updated_at: new Date().toISOString(),
-    };
+      validFrom: input.valid_from ?? null,
+      validUntil: input.valid_until ?? null,
+      validPrecision: input.valid_precision,
+      evidence: 'character world editor',
+      rationale: 'User set a character relationship from the world editor.',
+    });
 
-    const { data: relationship, error } = existing
-      ? await supabaseAdmin
-          .from('character_relationships')
-          .update(payload)
-          .eq('id', existing.id)
-          .eq('user_id', userId)
-          .select('*')
-          .single()
-      : await supabaseAdmin
-          .from('character_relationships')
-          .insert({
-            user_id: userId,
-            source_character_id: input.source_character_id,
-            target_character_id: input.target_character_id,
-            ...payload,
-          })
-          .select('*')
-          .single();
+    let relationship = (
+      await supabaseAdmin
+        .from('character_relationships')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('source_character_id', input.source_character_id)
+        .eq('target_character_id', input.target_character_id)
+        .eq('relationship_type', input.relationship_type)
+        .maybeSingle()
+    ).data;
 
-    if (error) throw error;
+    if (!relationship) {
+      const inserted = existing
+        ? await supabaseAdmin
+            .from('character_relationships')
+            .update({
+              relationship_type: input.relationship_type,
+              status: input.status,
+              closeness_score: input.closeness_score ?? null,
+              summary: input.summary ?? null,
+              inference_status: 'asserted',
+              metadata: {
+                ...(existing.metadata ?? {}),
+                source: 'character_world_editor',
+                manual: true,
+                user_confirmed_at: new Date().toISOString(),
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', existing.id)
+            .eq('user_id', userId)
+            .select('*')
+            .single()
+        : await supabaseAdmin
+            .from('character_relationships')
+            .insert({
+              user_id: userId,
+              source_character_id: input.source_character_id,
+              target_character_id: input.target_character_id,
+              relationship_type: input.relationship_type,
+              status: input.status,
+              closeness_score: input.closeness_score ?? null,
+              summary: input.summary ?? null,
+              inference_status: 'asserted',
+              metadata: {
+                source: 'character_world_editor',
+                manual: true,
+                user_confirmed_at: new Date().toISOString(),
+              },
+            })
+            .select('*')
+            .single();
+      if (inserted.error) throw inserted.error;
+      relationship = inserted.data;
+    }
+
+    await syncCharacterLinkGraph({
+      userId,
+      fromCharacterId: input.source_character_id,
+      toCharacterId: input.target_character_id,
+      surfaceType: input.relationship_type,
+      status: input.status,
+    }).catch(() => undefined);
 
     await syncRomanticRelationshipForCharacterLink({
       userId,
@@ -370,6 +433,25 @@ router.patch(
       return res.status(404).json({ error: 'Relationship characters no longer exist' });
     }
 
+    const nextType = patch.relationship_type ?? existing.relationship_type;
+    const nextStatus = patch.status ?? existing.status;
+    await applyCharacterRelationshipWrite({
+      userId,
+      actorId: userId,
+      sourceCharacterId: existing.source_character_id,
+      targetCharacterId: existing.target_character_id,
+      relationshipType: nextType,
+      intent: nextStatus === 'ended' ? 'end' : 'assert',
+      authority: 'USER_EXPLICIT',
+      closenessScore: patch.closeness_score ?? existing.closeness_score ?? null,
+      summary: patch.summary ?? existing.summary ?? null,
+      validFrom: patch.valid_from ?? null,
+      validUntil: patch.valid_until ?? null,
+      validPrecision: patch.valid_precision,
+      evidence: 'character world editor',
+      rationale: 'User updated a character relationship from the world editor.',
+    });
+
     const { data: relationship, error } = await supabaseAdmin
       .from('character_relationships')
       .update({
@@ -388,6 +470,16 @@ router.patch(
       .single();
 
     if (error) throw error;
+
+    if (patch.relationship_type) {
+      await syncCharacterLinkGraph({
+        userId,
+        fromCharacterId: existing.source_character_id,
+        toCharacterId: existing.target_character_id,
+        surfaceType: patch.relationship_type,
+        status: relationship.status,
+      }).catch(() => undefined);
+    }
 
     await syncRomanticRelationshipForCharacterLink({
       userId,
@@ -411,7 +503,27 @@ router.delete(
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
-    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const rawId = String(req.params.id ?? '');
+    const storyAssociation = parseStoryAssociationId(rawId);
+    if (storyAssociation) {
+      const dismissed = await characterConnectionService.dismissAssociation(
+        userId,
+        storyAssociation.sourceId,
+        storyAssociation.targetId,
+      );
+      if (!dismissed) return res.status(404).json({ error: 'Relationship not found' });
+      return res.json({ success: true });
+    }
+
+    const { id } = z.object({ id: z.string().uuid() }).parse({ id: rawId });
+
+    const intent = z.enum(['end', 'correct', 'destroy']).optional().parse(
+      typeof req.query.intent === 'string' ? req.query.intent : typeof req.body?.intent === 'string' ? req.body.intent : undefined,
+    ) ?? 'end';
+    const validUntil = typeof req.body?.valid_until === 'string' ? req.body.valid_until : undefined;
+    const validPrecision = validPrecisionSchema.optional().parse(
+      typeof req.body?.valid_precision === 'string' ? req.body.valid_precision : undefined,
+    );
 
     const { data: existing, error: existingError } = await supabaseAdmin
       .from('character_relationships')
@@ -428,23 +540,37 @@ router.delete(
       existing.target_character_id,
     ]);
 
+    await applyCharacterRelationshipWrite({
+      userId,
+      actorId: userId,
+      sourceCharacterId: existing.source_character_id,
+      targetCharacterId: existing.target_character_id,
+      relationshipType: existing.relationship_type,
+      intent,
+      authority: 'USER_EXPLICIT',
+      validUntil: validUntil ?? null,
+      validPrecision,
+      evidence: intent === 'correct' ? 'User corrected a mistaken relationship.' : 'User ended a relationship.',
+      rationale: intent === 'destroy'
+        ? 'destructive relationship delete'
+        : intent === 'correct'
+          ? 'User said this relationship never existed.'
+          : 'User said this relationship is no longer current.',
+    });
+
     await syncRomanticRelationshipForCharacterLink({
       userId,
-      relationship: { ...existing, relationship_type: 'deleted', status: 'ended' },
+      relationship: {
+        ...existing,
+        relationship_type: intent === 'correct' ? existing.relationship_type : existing.relationship_type,
+        status: intent === 'end' ? 'ended' : intent === 'correct' ? 'corrected' : 'deleted',
+      },
       previousRelationshipType: existing.relationship_type,
       sourceName: characterNameById.get(existing.source_character_id) ?? 'Unknown',
       targetName: characterNameById.get(existing.target_character_id) ?? 'Unknown',
     });
 
-    const { error } = await supabaseAdmin
-      .from('character_relationships')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
-
-    if (error) throw error;
-
-    return res.json({ success: true });
+    return res.json({ success: true, action: intent });
   })
 );
 
@@ -508,7 +634,7 @@ router.post(
       .select('content, date')
       .eq('user_id', userId)
       .ilike('content', `%${person_name.split(' ')[0]}%`)
-      .order('date', { ascending: false })
+      .order('date', { ascending: false, nullsFirst: false })
       .limit(max_entries);
 
     if (!entries?.length) {

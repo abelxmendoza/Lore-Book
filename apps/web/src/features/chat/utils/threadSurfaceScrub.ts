@@ -15,6 +15,8 @@ const DATE_ONLY =
   /^(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?$/i;
 const POSSESSIVE_PLACE =
   /^(?:my|his|her|their|our)\s+(?:house|home|place|room|apartment|pad)$/i;
+const POSSESSIVE_UNRESOLVED_ROLE =
+  /^(?:my|his|her|their|our|your)\s+(?:friend|best friend|coworker|co-worker|colleague|roommate|neighbor|classmate|bandmate|teammate|cousin|uncle|aunt|promoter|manager|boss)$/i;
 
 function normalizeKey(name: string): string {
   return name
@@ -36,6 +38,8 @@ function preferCanonicalSpelling(a: string, b: string): string {
 }
 
 export function isPollutingPersonDisplayLabel(name: string): boolean {
+  const trimmed = name.trim();
+  if (POSSESSIVE_UNRESOLVED_ROLE.test(trimmed.toLowerCase())) return true;
   const status = inferMentionLifecycleStatus(name);
   return status === 'IGNORE' || status === 'GENERIC';
 }
@@ -86,6 +90,20 @@ export function scrubPlacesLabels(names: string[]): string[] {
     order.push(key);
   }
   return order.map((k) => byKey.get(k)!);
+}
+
+/**
+ * If a surface string is already a Person, it must not also appear as a Place.
+ */
+export function applyCanonicalEntityTypeAuthority(
+  people: string[],
+  places: string[],
+): { people: string[]; places: string[] } {
+  const personKeys = new Set(people.map((name) => normalizeKey(name)).filter(Boolean));
+  return {
+    people,
+    places: places.filter((place) => !personKeys.has(normalizeKey(place))),
+  };
 }
 
 /**

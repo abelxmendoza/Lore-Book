@@ -178,6 +178,23 @@ export function unionThreadMetaLabels(
   return kept.slice(-cap);
 }
 
+/**
+ * Canonical PERSON outranks a conflicting local PLACE proposal for the same
+ * surface string. Summaries and chip lists must not show Shyla as both.
+ */
+export function applyCanonicalEntityTypeAuthority(
+  people: string[],
+  places: string[],
+): { people: string[]; places: string[] } {
+  const personKeys = new Set(
+    people.map((name) => normalizeDuplicateKey(name)).filter(Boolean),
+  );
+  return {
+    people,
+    places: places.filter((place) => !personKeys.has(normalizeDuplicateKey(place))),
+  };
+}
+
 /** Filter episode participant display names before composing titles. */
 export function filterEpisodeParticipantNames(names: Array<string | null | undefined>): string[] {
   return names

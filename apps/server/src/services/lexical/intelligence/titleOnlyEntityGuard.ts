@@ -99,6 +99,7 @@ const PREFIX_TITLES = new Set([
 
 const NAME_TOKEN_RE = /^[A-ZÀ-Ý][\w''-]+$/;
 const GENERIC_NAME_BLOCK = new Set(['the', 'a', 'an', 'my', 'our', 'your', 'his', 'her', 'their']);
+const POSSESSIVE_DETERMINERS = new Set(['my', 'our', 'your', 'his', 'her', 'their']);
 
 export function titleOnlyTokenCategory(token: string): PersonReferenceType | undefined {
   return TOKEN_CATEGORY.get(norm(token));
@@ -165,6 +166,26 @@ export function parsePersonSurface(text: string): TitleOnlyGuardResult {
   }
 
   const tokens = raw.split(/\s+/).filter(Boolean);
+
+  // "her friend" / "my coworker" — possessive + role is an unresolved reference,
+  // not a named person. A following name token ("her friend Maya") stays attached.
+  if (tokens.length >= 2 && POSSESSIVE_DETERMINERS.has(norm(tokens[0]!))) {
+    const rest = tokens.slice(1);
+    const restHasName = rest.some((t) => looksLikeNameToken(t));
+    const restIsTitleOnly = rest.every(
+      (t) => isTitleOnlyToken(t) || MULTI_WORD_TITLE_ONLY.some((e) => norm(e.phrase) === rest.map(norm).join(' ')),
+    );
+    if (!restHasName && (restIsTitleOnly || rest.every((t) => !looksLikeNameToken(t) && (isTitleOnlyToken(t) || GENERIC_NAME_BLOCK.has(norm(t)))))) {
+      return {
+        isTitleOnly: true,
+        referenceType: referenceTypeForPhrase(rest.join(' ')),
+        displayName,
+        needsResolution: true,
+        hasAttachedName: false,
+      };
+    }
+  }
+
   if (tokens.length === 1) {
     const cat = TOKEN_CATEGORY.get(norm(tokens[0]!));
     if (cat) {

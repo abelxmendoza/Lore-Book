@@ -14,6 +14,7 @@ import { guardDuplicateEntity } from './duplicateEntityGuard';
 import { guardGenericReference } from './genericReferenceGuard';
 import { guardOrganizationCandidate } from './organizationCandidateGuard';
 import { guardPlaceCandidate } from './placeCandidateGuard';
+import { guardCharacterCandidate } from './characterCandidateGuard';
 import { guardProductMetaCommentary } from './productMetaCommentaryGuard';
 import { guardSensitiveEntity } from './sensitiveEntityGuard';
 import { guardStandaloneTimePhrase } from '../../timeline/timelineSuggestionGuard';
@@ -85,6 +86,9 @@ export function evaluateEntityQuality(
   // named organizations. Same rationale as guardPlaceCandidate above.
   const org = guardOrganizationCandidate(normalized);
   if (org) return org;
+
+  const character = guardCharacterCandidate(normalized);
+  if (character) return character;
 
   const bare = guardBareCategoryWord(normalized);
   if (bare) {

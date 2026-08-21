@@ -144,6 +144,8 @@ function buildUnavailableDbHealthPayload(error: unknown): DbHealthPayload {
       utilizationRatio: null,
       checkedAt,
       error: message,
+      writeBlocked: false,
+      writeBlockedReason: null,
     },
     upgrade: {
       status: 'unknown',

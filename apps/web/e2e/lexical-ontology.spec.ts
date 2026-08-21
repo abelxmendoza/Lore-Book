@@ -3,7 +3,7 @@ import { test, expect, type Page } from '@playwright/test';
 /**
  * E2E smoke coverage for the lexical-intelligence / ontology surfaces:
  *   - /ontology       → admin Ontology Explorer (hierarchy + analytics)
- *   - /characters     → Character Book (hosts the Lexical compliance panel)
+ *   - /characters     → Character Book
  *   - /love           → Dating & Romance (romantic lexical insights)
  *
  * Assertions are intentionally tolerant: admin gating, mock-data availability,
@@ -37,6 +37,7 @@ test.describe('Lexical & ontology surfaces', () => {
   test.beforeEach(async ({ context }) => {
     await context.addInitScript(() => {
       window.localStorage.setItem('dev-notice-dismissed', 'true');
+      window.localStorage.setItem('lorebook.whatsNew.seenId', '*');
     });
   });
 
@@ -55,19 +56,13 @@ test.describe('Lexical & ontology surfaces', () => {
     await expectNoFatalCrash(page);
   });
 
-  test('character book route renders (may host lexical compliance panel)', async ({ page }) => {
+  test('character book route renders', async ({ page }) => {
     await page.goto('/characters');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(600);
     await dismissDevNotice(page);
 
     await expectNoFatalCrash(page);
-
-    // If the compliance panel surfaced (unhealthy data), it must be labelled.
-    const panel = page.locator('text=/Lexical compliance/i');
-    if (await panel.isVisible({ timeout: 1500 }).catch(() => false)) {
-      await expect(panel.first()).toBeVisible();
-    }
   });
 
   test('love route renders romantic relationship surface', async ({ page }) => {

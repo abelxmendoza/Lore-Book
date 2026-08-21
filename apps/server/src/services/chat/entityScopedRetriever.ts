@@ -25,6 +25,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { listCurrentCharacterRelationships } from '../relationships/characterRelationshipHistoryService';
 
 // ─── Query pattern detection ──────────────────────────────────────────────────
 
@@ -150,7 +151,7 @@ export interface EntityContinuitySummary {
 async function loadCharacterArc(userId: string, entityId: string): Promise<EntityContinuitySummary | null> {
   try {
     // All three queries fire in parallel — no serial waits
-    const [eventsResult, attrsResult, relResult] = await Promise.all([
+    const [eventsResult, attrsResult, currentRels] = await Promise.all([
       supabaseAdmin
         .from('resolved_events')
         .select('id, title, summary, start_time, end_time, confidence, people, locations')
@@ -166,13 +167,7 @@ async function loadCharacterArc(userId: string, entityId: string): Promise<Entit
         .eq('entity_id', entityId)
         .order('confidence', { ascending: false }),
 
-      supabaseAdmin
-        .from('character_relationships')
-        .select('relationship_type, strength, sentiment, notes, updated_at')
-        .eq('user_id', userId)
-        .or(`source_character_id.eq.${entityId},target_character_id.eq.${entityId}`)
-        .order('strength', { ascending: false })
-        .limit(10),
+      listCurrentCharacterRelationships(userId, { characterId: entityId }),
     ]);
 
     return {
@@ -181,7 +176,13 @@ async function loadCharacterArc(userId: string, entityId: string): Promise<Entit
       entityType: 'character',
       events: (eventsResult.data ?? []) as ResolvedEvent[],
       attributes: (attrsResult.data ?? []) as EntityAttribute[],
-      relationships: (relResult.data ?? []) as CharacterRelationship[],
+      relationships: currentRels.slice(0, 10).map((rel) => ({
+        relationship_type: rel.relationship_type,
+        strength: rel.strength ?? rel.closeness_score ?? null,
+        sentiment: null,
+        notes: rel.summary ?? null,
+        updated_at: rel.updated_at ?? null,
+      })),
       narrativeBlock: '', // filled below
     };
   } catch (err) {

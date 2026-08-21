@@ -21,6 +21,19 @@ vi.mock('../../src/services/supabaseClient', () => ({
   },
 }));
 
+vi.mock('../../src/services/kinship/characterLinkGraphSync', () => ({
+  syncCharacterLinkGraph: vi.fn().mockResolvedValue(undefined),
+}));
+
+const { applyCharacterRelationshipWrite } = vi.hoisted(() => ({
+  applyCharacterRelationshipWrite: vi.fn(),
+}));
+
+vi.mock('../../src/services/relationships/characterRelationshipHistoryService', () => ({
+  applyCharacterRelationshipWrite,
+  listCurrentCharacterRelationships: vi.fn().mockResolvedValue([]),
+}));
+
 const app = express();
 app.use(express.json());
 app.use('/api/relationships', relationshipsRouter);
@@ -185,6 +198,89 @@ describe('Relationships Routes', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.taxonomy).toBeDefined();
       expect(typeof res.body.taxonomy).toBe('object');
+    });
+  });
+
+  describe('DELETE /api/relationships/character-links/:id', () => {
+    const sourceId = '11111111-1111-4111-8111-111111111111';
+    const targetId = '22222222-2222-4222-8222-222222222222';
+    const relId = '33333333-3333-4333-8333-333333333333';
+
+    async function mockOwnedLink() {
+      applyCharacterRelationshipWrite.mockResolvedValue({ applied: true });
+      const { supabaseAdmin } = await import('../../src/services/supabaseClient');
+      vi.mocked(supabaseAdmin.from).mockImplementation((table: string) => {
+        if (table === 'characters') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            in: vi.fn().mockResolvedValue({
+              data: [
+                { id: sourceId, name: 'Jamie' },
+                { id: targetId, name: 'Marcus' },
+              ],
+              error: null,
+            }),
+          } as any;
+        }
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          or: vi.fn().mockReturnThis(),
+          order: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: {
+              id: relId,
+              user_id: mockUser.id,
+              source_character_id: sourceId,
+              target_character_id: targetId,
+              relationship_type: 'friend',
+              status: 'active',
+              metadata: {},
+            },
+            error: null,
+          }),
+        } as any;
+      });
+    }
+
+    it('defaults to ending the relationship instead of hard-deleting', async () => {
+      await mockOwnedLink();
+      const res = await request(app)
+        .delete(`/api/relationships/character-links/${relId}`)
+        .expect(200);
+      expect(res.body).toEqual({ success: true, action: 'end' });
+      expect(applyCharacterRelationshipWrite).toHaveBeenCalledWith(expect.objectContaining({
+        intent: 'end',
+        authority: 'USER_EXPLICIT',
+        relationshipType: 'friend',
+      }));
+    });
+
+    it('corrects a never-was relationship when intent=correct', async () => {
+      await mockOwnedLink();
+      const res = await request(app)
+        .delete(`/api/relationships/character-links/${relId}`)
+        .query({ intent: 'correct' })
+        .expect(200);
+      expect(res.body.action).toBe('correct');
+      expect(applyCharacterRelationshipWrite).toHaveBeenCalledWith(expect.objectContaining({
+        intent: 'correct',
+      }));
+    });
+
+    it('records relationship-change time separately from write time', async () => {
+      await mockOwnedLink();
+      await request(app)
+        .delete(`/api/relationships/character-links/${relId}`)
+        .send({ intent: 'end', valid_until: '2026-07-01T00:00:00.000Z', valid_precision: 'month' })
+        .expect(200);
+      expect(applyCharacterRelationshipWrite).toHaveBeenCalledWith(expect.objectContaining({
+        intent: 'end',
+        validUntil: '2026-07-01T00:00:00.000Z',
+        validPrecision: 'month',
+      }));
     });
   });
 });

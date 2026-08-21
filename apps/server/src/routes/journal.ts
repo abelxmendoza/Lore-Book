@@ -16,7 +16,7 @@ const journalSchema = z.object({
   arcId: z.string().nullable().optional(),
   fabricLinks: z.array(z.string()).optional(),
   references: z.array(z.string()).optional(),
-  timestamp: z.string().optional()
+  timestamp: z.string().nullish()
 });
 
 router.post('/create', requireAuth, async (req: AuthenticatedRequest, res) => {

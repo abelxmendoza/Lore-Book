@@ -501,7 +501,7 @@ class CharacterFoundationService {
     id: string;
     name: string;
     aliases: string[];
-    firstSeen: string | null;
+    firstMentionedAt: string | null;
     mentionCount: number;
     memoryCount: number;
     sourceEntityId: string | null;
@@ -522,7 +522,7 @@ class CharacterFoundationService {
       id: row.id,
       name: row.name,
       aliases: row.alias ?? [],
-      firstSeen: row.first_appearance,
+      firstMentionedAt: row.first_appearance,
       mentionCount: row.metadata?.mention_count ?? 0,
       memoryCount: row.metadata?.source_memory_count ?? 0,
       sourceEntityId: row.metadata?.source_entity_id ?? null,

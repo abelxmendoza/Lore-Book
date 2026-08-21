@@ -109,13 +109,14 @@ describe('useChatComposer', () => {
     window.history.replaceState({}, '', '/demo');
     enterDemoRuntime();
 
-    const { result } = renderHook(() => useChatComposer(vi.fn()), { wrapper });
+    const { result, unmount } = renderHook(() => useChatComposer(vi.fn()), { wrapper });
     expect(result.current.input).toBe('');
 
     // Typing in demo must write under the demo namespace, never the real account key.
     act(() => {
       result.current.setInput('demo-only note');
     });
+    unmount();
     expect(window.localStorage.getItem(
       `lorekeeper.composerDraft.v1:${realUserId}:new-thread`,
     )).toBe(privateDraft);
@@ -131,7 +132,7 @@ describe('useChatComposer', () => {
       result.current.setInput('Tell me about Abel');
     });
     // analyze now receives the active threadId as a second arg (undefined here).
-    expect(analyze).toHaveBeenCalledWith('Tell me about Abel', undefined);
+    expect(analyze).toHaveBeenCalledWith('Tell me about Abel', undefined, 'keystroke');
 
     act(() => {
       result.current.setInput('');

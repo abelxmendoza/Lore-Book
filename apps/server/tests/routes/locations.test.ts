@@ -9,6 +9,9 @@ import { locationsRouter } from '../../src/routes/locations';
 vi.mock('../../src/services/locationService');
 vi.mock('../../src/middleware/auth');
 vi.mock('../../src/services/conversationCentered/entityTimelineBuilder');
+vi.mock('../../src/services/temporal/userTimezoneService', () => ({
+  resolveUserTimezoneForRequest: vi.fn().mockResolvedValue('America/Los_Angeles'),
+}));
 vi.mock('../../src/logger', () => ({
   logger: {
     error: vi.fn(),
@@ -64,12 +67,16 @@ describe('Locations API Routes', () => {
         .expect(200);
 
       expect(response.body).toEqual({ success: true, timelines });
-      expect(locationTimelineBuilder.buildTimelines).toHaveBeenCalledWith('user-123', 'loc-1');
+      expect(locationTimelineBuilder.buildTimelines).toHaveBeenCalledWith(
+        'user-123',
+        'loc-1',
+        'America/Los_Angeles',
+      );
     });
   });
 
   describe('POST /api/locations/:id/rebuild-timelines', () => {
-    it('rebuilds and returns success', async () => {
+    it('returns deprecated compatibility no-op instead of rebuilding chronology', async () => {
       const { locationTimelineBuilder } = await import(
         '../../src/services/conversationCentered/entityTimelineBuilder'
       );
@@ -79,7 +86,12 @@ describe('Locations API Routes', () => {
         .post('/api/locations/loc-1/rebuild-timelines')
         .expect(200);
 
-      expect(response.body).toEqual({ success: true, message: 'Timelines rebuilt' });
+      expect(response.body).toMatchObject({
+        success: true,
+        deprecated: true,
+        rebuilt: false,
+      });
+      expect(response.body.message).toMatch(/deprecated/i);
       expect(locationTimelineBuilder.rebuildTimelinesForEntity).toHaveBeenCalledWith('user-123', 'loc-1');
     });
   });

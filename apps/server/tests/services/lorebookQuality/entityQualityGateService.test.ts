@@ -19,6 +19,9 @@ describe('entityQualityGateService — acceptance corpus', () => {
     { name: 'fixing', domain: 'skills' },
     { name: 'friend', domain: 'relationships' },
     { name: 'Find My app', domain: 'projects' },
+    { name: 'Background Check', domain: 'characters' },
+    { name: 'that was a', domain: 'quests' },
+    { name: 'Failure Analysis', domain: 'organizations' },
   ];
 
   it.each(rejectCases)('rejects bare garbage "$name" in $domain', ({ name, domain }) => {

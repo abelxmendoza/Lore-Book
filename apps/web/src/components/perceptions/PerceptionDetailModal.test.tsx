@@ -37,6 +37,10 @@ describe('PerceptionDetailModal main chat handoff', () => {
 
     render(<PerceptionDetailModal perception={perception} onClose={onClose} />);
 
+    expect(screen.getByRole('heading', { name: 'Avoiding the group' })).toBeInTheDocument();
+    expect(screen.getByText('Perception about Jamie')).toBeInTheDocument();
+    expect(screen.getByText('LoreBook responds first with context.')).toBeVisible();
+    expect(screen.getByText('Evidence, uncertainty, and changes.')).toBeVisible();
     expect(screen.queryByRole('button', { name: /^chat$/i })).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText(/tell your story/i)).not.toBeInTheDocument();
     expect(screen.getByText('Certainty')).toBeInTheDocument();
@@ -50,7 +54,7 @@ describe('PerceptionDetailModal main chat handoff', () => {
 
     expect(handoff.detail).toMatchObject({
       entityId: perception.id,
-      entityName: 'Perception about Jamie',
+      entityName: 'Avoiding the group',
       entityType: 'perception',
       sourceSurface: 'perceptions',
       sourceLabel: 'Perception Book',

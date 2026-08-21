@@ -26,7 +26,10 @@ export async function recoverLifeLogCoverageForUser(userId: string): Promise<voi
 
   const task = (async () => {
     const recovery = await ingestionRecoveryService.scan({ userId, dryRun: false, limit: 100 });
-    const events = await eventAssemblyService.assembleEvents(userId, undefined, { windowDays: 365 });
+    const events = await eventAssemblyService.assembleEvents(userId, undefined, {
+      mode: 'recovery',
+      windowDays: 365,
+    });
     logger.info(
       {
         userId,

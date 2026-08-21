@@ -19,7 +19,7 @@ export type RelationshipEdge = {
 
 export type CharacterMemory = {
   id: string;
-  date: string;
+  date: string | null;
   title: string;
   summary?: string;
 };

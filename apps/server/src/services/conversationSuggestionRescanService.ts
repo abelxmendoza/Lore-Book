@@ -1,6 +1,12 @@
 /**
  * Unified conversation rescan — re-runs lexical intelligence and domain extractors
  * across chat + journal history for suggestion books (characters, quests, skills, etc.).
+ *
+ * Cost rules:
+ * - Load the recent corpus once and share it.
+ * - Seed every book from a single LoreBook lexical parse.
+ * - Run only the requested domain extractors (no emotion/media/timeline side pipelines).
+ * - Skip LLM nickname/extraction passes unless `fullRescan` is set.
  */
 
 import { logger } from '../logger';
@@ -18,23 +24,29 @@ import { projectService } from './projectService';
 import { projectSuggestionService } from './projects/projectSuggestionService';
 import { locationSuggestionService } from './locationSuggestionService';
 import { runCorpusParseAndApply } from './lorebook/parser/loreBookParseCorpusService';
-import type { TimelineStitchingRunSummary } from './timeline/timelineStitchingIntegrationService';
-import type { OrganizationInferenceRunSummary } from './organizations/inference/organizationInferenceIntegrationService';
-import type { QuestLogInferenceRunSummary } from './questLog/inference/questLogInferenceIntegrationService';
-import type { EmotionInferenceRunSummary } from './emotion/emotionInferenceIntegrationService';
-import type { PreferenceInferenceRunSummary } from './preferences/preferenceInferenceIntegrationService';
-import type { MediaInferenceRunSummary } from './media/mediaInferenceIntegrationService';
-import type { StatusInferenceRunSummary } from './status/statusInferenceIntegrationService';
-import type { ProvenanceInferenceRunSummary } from './provenance/provenanceInferenceIntegrationService';
-import type { TruthStateRunSummary } from './truthState/truthStateIntegrationService';
+import { mapSuggestionDomainsToApplyDomains } from './lorebook/suggestions/suggestionApplyDomains';
+import { withSuggestionWriteContext } from './lorebook/suggestions/suggestionWriteContext';
 
-export type SuggestionDomain =
-  | 'characters'
-  | 'quests'
-  | 'skills'
-  | 'projects'
-  | 'locations'
-  | 'romantic';
+export const SUGGESTION_DOMAINS = [
+  'characters',
+  'quests',
+  'skills',
+  'projects',
+  'locations',
+  'romantic',
+  'organizations',
+] as const;
+
+export type SuggestionDomain = (typeof SUGGESTION_DOMAINS)[number];
+
+export type SuggestionRescanOptions = {
+  incremental?: boolean;
+  cardCleanup?: boolean;
+  cardAudit?: boolean;
+  fullRescan?: boolean;
+};
+
+export type CorpusEntry = { id: string; content: string; date: string };
 
 export type SuggestionRescanSummary = {
   domains: SuggestionDomain[];
@@ -55,18 +67,25 @@ export type SuggestionRescanSummary = {
       }
     >
   >;
-  timelineStitching?: TimelineStitchingRunSummary;
-  organizationInference?: OrganizationInferenceRunSummary;
-  questLogInference?: QuestLogInferenceRunSummary;
-  emotionInference?: EmotionInferenceRunSummary;
-  preferenceInference?: PreferenceInferenceRunSummary;
-  mediaInference?: MediaInferenceRunSummary;
-  statusInference?: StatusInferenceRunSummary;
-  provenanceInference?: ProvenanceInferenceRunSummary;
-  truthState?: TruthStateRunSummary;
 };
 
-async function loadRecentCorpus(userId: string): Promise<Array<{ id: string; content: string; date: string }>> {
+const INCREMENTAL_GROUP_DAYS = 21;
+const INCREMENTAL_GROUP_CAP = 80;
+const FULL_GROUP_DAYS = 90;
+const FULL_GROUP_CAP = 120;
+
+export function corpusToParseLines(corpus: CorpusEntry[], limit = 80): string[] {
+  const lines: string[] = [];
+  for (const entry of corpus) {
+    for (const line of entry.content.split(/\n+/)) {
+      const trimmed = line.trim();
+      if (trimmed.length >= 12) lines.push(trimmed);
+    }
+  }
+  return [...new Set(lines)].slice(0, limit);
+}
+
+async function loadRecentCorpus(userId: string): Promise<CorpusEntry[]> {
   const [entriesRes, messagesRes] = await Promise.all([
     supabaseAdmin
       .from('journal_entries')
@@ -99,11 +118,13 @@ async function loadRecentCorpus(userId: string): Promise<Array<{ id: string; con
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
-async function rescanQuests(userId: string): Promise<{ scanned: boolean; upserted: number }> {
+async function rescanQuests(
+  userId: string,
+  corpus: CorpusEntry[],
+): Promise<{ scanned: boolean; upserted: number }> {
   const existing = await questStorage.getQuests(userId, { status: ['active', 'paused'] });
   const haveTitles = new Set(existing.map((q) => q.title.trim().toLowerCase()));
-  const combined = await loadRecentCorpus(userId);
-  const extracted = await questExtractor.extractQuests(userId, combined);
+  const extracted = await questExtractor.extractQuests(userId, corpus);
   let upserted = 0;
   for (const q of extracted) {
     if (!q.title?.trim() || haveTitles.has(q.title.trim().toLowerCase())) continue;
@@ -131,11 +152,13 @@ async function rescanQuests(userId: string): Promise<{ scanned: boolean; upserte
   return { scanned: true, upserted };
 }
 
-async function rescanSkills(userId: string): Promise<{ scanned: boolean; upserted: number }> {
+async function rescanSkills(
+  userId: string,
+  corpus: CorpusEntry[],
+): Promise<{ scanned: boolean; upserted: number }> {
   const existing = await skillService.getSkills(userId, { active_only: false });
   const haveNames = new Set(existing.map((s) => s.skill_name.toLowerCase()));
-  const combined = await loadRecentCorpus(userId);
-  const text = combined
+  const text = corpus
     .map((e) => e.content)
     .filter(Boolean)
     .join('\n')
@@ -148,16 +171,18 @@ async function rescanSkills(userId: string): Promise<{ scanned: boolean; upserte
       await skillSuggestionService.upsertFromExtraction(userId, s, { source: 'llm_scan' });
       upserted += 1;
     }
-    await skillRelationshipService.resolvePendingParentLinks(userId);
   }
+  await skillRelationshipService.resolvePendingParentLinks(userId);
   return { scanned: true, upserted };
 }
 
-async function rescanProjects(userId: string): Promise<{ scanned: boolean; upserted: number }> {
+async function rescanProjects(
+  userId: string,
+  corpus: CorpusEntry[],
+): Promise<{ scanned: boolean; upserted: number }> {
   const existing = await projectService.listProjects(userId);
   const haveNames = new Set(existing.map((p) => p.normalized_name ?? p.name.trim().toLowerCase()));
-  const combined = await loadRecentCorpus(userId);
-  const extracted = await projectExtractor.extractProjects(userId, combined);
+  const extracted = await projectExtractor.extractProjects(userId, corpus);
   const unseen = extracted
     .filter((p) => !haveNames.has(p.name.trim().toLowerCase().replace(/\s+/g, ' ')))
     .map((p) => ({ ...p, reasoning: p.reasoning ?? 'Detected from your recent journals and chats' }));
@@ -165,9 +190,13 @@ async function rescanProjects(userId: string): Promise<{ scanned: boolean; upser
   return { scanned: true, upserted: unseen.length };
 }
 
-async function rescanLocations(userId: string): Promise<{ scanned: boolean; count: number }> {
-  const suggestions = await locationSuggestionService.rescanFromCorpus(userId);
-  return { scanned: true, count: suggestions.length };
+async function rescanLocations(
+  userId: string,
+  opts: SuggestionRescanOptions,
+): Promise<{ scanned: boolean; count: number; skipAi: boolean }> {
+  const skipAi = opts.fullRescan !== true;
+  const suggestions = await locationSuggestionService.rescanFromCorpus(userId, { skipAi });
+  return { scanned: true, count: suggestions.length, skipAi };
 }
 
 async function rescanRomantic(userId: string): Promise<{ scanned: boolean; summary: unknown }> {
@@ -176,193 +205,115 @@ async function rescanRomantic(userId: string): Promise<{ scanned: boolean; summa
   return { scanned: true, summary };
 }
 
+async function rescanOrganizations(
+  userId: string,
+  corpus: CorpusEntry[],
+  opts: SuggestionRescanOptions,
+): Promise<{
+  scanned: boolean;
+  omegaPromoted: number;
+  groupScanDays: number;
+  inferenceUpserted: number;
+}> {
+  const { omegaOrgPromotionService } = await import('./entities/omegaOrgPromotionService');
+  const omega = await omegaOrgPromotionService.backfillForUser(userId);
+
+  const days = opts.fullRescan ? FULL_GROUP_DAYS : INCREMENTAL_GROUP_DAYS;
+  const cap = opts.fullRescan ? FULL_GROUP_CAP : INCREMENTAL_GROUP_CAP;
+  const { groupDetectionWorker } = await import('../workers/groupDetectionWorker');
+  await groupDetectionWorker.runForUser(userId, days, cap);
+
+  const { rescanOrganizationInference } = await import(
+    './organizations/inference/organizationInferenceIntegrationService'
+  );
+  const inference = await rescanOrganizationInference(
+    userId,
+    corpus.map((e) => ({ id: e.id, text: e.content })),
+  );
+
+  return {
+    scanned: true,
+    omegaPromoted: omega.promoted,
+    groupScanDays: days,
+    inferenceUpserted: inference.suggestionsUpserted,
+  };
+}
+
 class ConversationSuggestionRescanService {
   async rescan(
     userId: string,
     domains: SuggestionDomain[],
-    opts: { incremental?: boolean; cardCleanup?: boolean; cardAudit?: boolean; fullRescan?: boolean } = {},
+    opts: SuggestionRescanOptions = {},
   ): Promise<SuggestionRescanSummary> {
     const unique = [...new Set(domains)];
     const results: SuggestionRescanSummary['results'] = {};
+    const corpus = await loadRecentCorpus(userId);
 
-    let lorebookParse: SuggestionRescanSummary['lorebookParse'];
-    try {
-      const { apply } = await runCorpusParseAndApply(userId);
-      lorebookParse = {
-        linesParsed: apply.linesParsed,
-        operationsSeen: apply.operationsSeen,
-        applied: apply.applied,
-        skipped: apply.skipped,
-        byDomain: apply.byDomain as Record<string, number>,
-      };
-    } catch (err) {
-      logger.warn({ err, userId }, 'LoreBook corpus parse failed (continuing domain rescans)');
-    }
-
-    await Promise.all(
-      unique.map(async (domain) => {
+    return withSuggestionWriteContext(
+      userId,
+      async () => {
+        let lorebookParse: SuggestionRescanSummary['lorebookParse'];
         try {
-          switch (domain) {
-            case 'characters':
-              results.characters = await characterConversationRescanService.rescan(userId, {
-                incremental: opts.incremental,
-                cardCleanup: opts.cardCleanup,
-                cardAudit: opts.cardAudit !== false,
-                fullRescan: opts.fullRescan,
-              });
-              break;
-            case 'quests':
-              results.quests = await rescanQuests(userId);
-              break;
-            case 'skills':
-              results.skills = await rescanSkills(userId);
-              break;
-            case 'projects':
-              results.projects = await rescanProjects(userId);
-              break;
-            case 'locations':
-              results.locations = await rescanLocations(userId);
-              break;
-            case 'romantic':
-              results.romantic = await rescanRomantic(userId);
-              break;
-            default:
-              break;
-          }
+          const { apply } = await runCorpusParseAndApply(userId, {
+            lines: corpusToParseLines(corpus),
+            applyDomains: mapSuggestionDomainsToApplyDomains(unique),
+          });
+          lorebookParse = {
+            linesParsed: apply.linesParsed,
+            operationsSeen: apply.operationsSeen,
+            applied: apply.applied,
+            skipped: apply.skipped,
+            byDomain: apply.byDomain as Record<string, number>,
+          };
         } catch (err) {
-          logger.warn({ err, userId, domain }, 'Suggestion domain rescan failed');
-          results[domain] = { scanned: false, error: err instanceof Error ? err.message : 'Rescan failed' };
+          logger.warn({ err, userId }, 'LoreBook corpus parse failed (continuing domain rescans)');
         }
-      })
+
+        await Promise.all(
+          unique.map(async (domain) => {
+            try {
+              switch (domain) {
+                case 'characters':
+                  results.characters = await characterConversationRescanService.rescan(userId, {
+                    incremental: opts.fullRescan ? false : opts.incremental !== false,
+                    cardCleanup: opts.cardCleanup,
+                    cardAudit: opts.fullRescan === true || opts.cardAudit === true,
+                    fullRescan: opts.fullRescan,
+                  });
+                  break;
+                case 'quests':
+                  results.quests = await rescanQuests(userId, corpus);
+                  break;
+                case 'skills':
+                  results.skills = await rescanSkills(userId, corpus);
+                  break;
+                case 'projects':
+                  results.projects = await rescanProjects(userId, corpus);
+                  break;
+                case 'locations':
+                  results.locations = await rescanLocations(userId, opts);
+                  break;
+                case 'romantic':
+                  results.romantic = await rescanRomantic(userId);
+                  break;
+                case 'organizations':
+                  results.organizations = await rescanOrganizations(userId, corpus, opts);
+                  break;
+                default:
+                  break;
+              }
+            } catch (err) {
+              logger.warn({ err, userId, domain }, 'Suggestion domain rescan failed');
+              results[domain] = { scanned: false, error: err instanceof Error ? err.message : 'Rescan failed' };
+            }
+          }),
+        );
+
+        logger.info({ userId, domains: unique, results, lorebookParse }, 'Conversation suggestion rescan completed');
+        return { domains: unique, lorebookParse, results };
+      },
+      { applyDomains: mapSuggestionDomainsToApplyDomains(unique) },
     );
-
-    logger.info({ userId, domains: unique, results, lorebookParse }, 'Conversation suggestion rescan completed');
-
-    let timelineStitching: TimelineStitchingRunSummary | undefined;
-    try {
-      const { rescanTimelineStitching } = await import('./timeline/timelineStitchingIntegrationService');
-      const episodes = await loadRecentCorpus(userId);
-      const episodeRows = episodes.map((e, i) => ({
-        id: `rescan-${i}`,
-        text: e.content,
-        at: e.date,
-      }));
-      timelineStitching = await rescanTimelineStitching(userId, episodeRows);
-    } catch (err) {
-      logger.warn({ err, userId }, 'Timeline stitching rescan failed (non-blocking)');
-    }
-
-    let organizationInference: OrganizationInferenceRunSummary | undefined;
-    try {
-      const { rescanOrganizationInference } = await import(
-        './organizations/inference/organizationInferenceIntegrationService'
-      );
-      const episodes = await loadRecentCorpus(userId);
-      const episodeRows = episodes.map((e, i) => ({
-        id: `org-rescan-${i}`,
-        text: e.content,
-      }));
-      organizationInference = await rescanOrganizationInference(userId, episodeRows);
-    } catch (err) {
-      logger.warn({ err, userId }, 'Organization inference rescan failed (non-blocking)');
-    }
-
-    let questLogInference: QuestLogInferenceRunSummary | undefined;
-    try {
-      const { rescanQuestLogInference } = await import(
-        './questLog/inference/questLogInferenceIntegrationService'
-      );
-      const episodes = await loadRecentCorpus(userId);
-      const episodeRows = episodes.map((e) => ({
-        id: e.id,
-        text: e.content,
-      }));
-      questLogInference = await rescanQuestLogInference(userId, episodeRows);
-    } catch (err) {
-      logger.warn({ err, userId }, 'Quest Log inference rescan failed (non-blocking)');
-    }
-
-    let emotionInference: EmotionInferenceRunSummary | undefined;
-    try {
-      const { rescanEmotionInference } = await import('./emotion/emotionInferenceIntegrationService');
-      const episodes = await loadRecentCorpus(userId);
-      const episodeRows = episodes.map((e, i) => ({
-        id: `emotion-rescan-${i}`,
-        text: e.content,
-      }));
-      emotionInference = await rescanEmotionInference(userId, episodeRows);
-    } catch (err) {
-      logger.warn({ err, userId }, 'Emotion inference rescan failed (non-blocking)');
-    }
-
-    let preferenceInference: PreferenceInferenceRunSummary | undefined;
-    try {
-      const { rescanPreferenceInference } = await import('./preferences/preferenceInferenceIntegrationService');
-      const episodes = await loadRecentCorpus(userId);
-      const episodeRows = episodes.map((e, i) => ({
-        id: `pref-rescan-${i}`,
-        text: e.content,
-      }));
-      preferenceInference = await rescanPreferenceInference(userId, episodeRows);
-    } catch (err) {
-      logger.warn({ err, userId }, 'Preference inference rescan failed (non-blocking)');
-    }
-
-    let mediaInference: MediaInferenceRunSummary | undefined;
-    try {
-      const { rescanMediaInference } = await import('./media/mediaInferenceIntegrationService');
-      const episodes = await loadRecentCorpus(userId);
-      const episodeRows = episodes.map((e, i) => ({
-        id: `media-rescan-${i}`,
-        text: e.content,
-      }));
-      mediaInference = await rescanMediaInference(userId, episodeRows);
-    } catch (err) {
-      logger.warn({ err, userId }, 'Media inference rescan failed (non-blocking)');
-    }
-
-    let statusInference: StatusInferenceRunSummary | undefined;
-    try {
-      const { rescanStatusInference } = await import('./status/statusInferenceIntegrationService');
-      const episodes = await loadRecentCorpus(userId);
-      const episodeRows = episodes.map((e, i) => ({
-        id: `status-rescan-${i}`,
-        text: e.content,
-      }));
-      statusInference = await rescanStatusInference(userId, episodeRows);
-    } catch (err) {
-      logger.warn({ err, userId }, 'Status inference rescan failed (non-blocking)');
-    }
-
-    let provenanceInference: ProvenanceInferenceRunSummary | undefined;
-    try {
-      const { rescanProvenanceInference } = await import('./provenance/provenanceInferenceIntegrationService');
-      const episodes = await loadRecentCorpus(userId);
-      const episodeRows = episodes.map((e, i) => ({
-        id: `prov-rescan-${i}`,
-        text: e.content,
-        authorRole: 'user' as const,
-      }));
-      provenanceInference = await rescanProvenanceInference(userId, episodeRows);
-    } catch (err) {
-      logger.warn({ err, userId }, 'Provenance inference rescan failed (non-blocking)');
-    }
-
-    let truthState: TruthStateRunSummary | undefined;
-    try {
-      const { rescanTruthState } = await import('./truthState/truthStateIntegrationService');
-      const episodes = await loadRecentCorpus(userId);
-      const episodeRows = episodes.map((e, i) => ({
-        id: `truth-rescan-${i}`,
-        text: e.content,
-        authorRole: 'user' as const,
-      }));
-      truthState = await rescanTruthState(userId, episodeRows);
-    } catch (err) {
-      logger.warn({ err, userId }, 'Truth-state rescan failed (non-blocking)');
-    }
-
-    return { domains: unique, lorebookParse, results, timelineStitching, organizationInference, questLogInference, emotionInference, preferenceInference, mediaInference, statusInference, provenanceInference, truthState };
   }
 }
 

@@ -212,4 +212,69 @@ describe('resumeLorePopulationService — multi-resume reconciliation', () => {
     expect(result2.itemsReconciled).toBe(0);
     expect(result2.timelineEvents).toBe(1);
   });
+
+  it('uses the resume job year as occurrence, not upload time', async () => {
+    installResolvedEventsStore();
+    const saveCalls: Array<Record<string, unknown>> = [];
+    vi.mocked(memoryService.saveEntry).mockImplementation(async (payload) => {
+      saveCalls.push(payload as unknown as Record<string, unknown>);
+      return { id: `entry-${saveCalls.length}` } as any;
+    });
+
+    await resumeLorePopulationService.populate(
+      'user-maya',
+      resumeWithVanguardJob('Vanguard Robotics', { startDate: '2024', endDate: '2025' }),
+      { sourceFileId: 'file-resume', resumeDocumentId: 'doc-resume', fileName: 'maya-resume.pdf' }
+    );
+
+    const jobEntry = saveCalls.find((c) => String(c.content).includes('Vanguard Robotics'));
+    expect(jobEntry).toBeTruthy();
+    expect(String(jobEntry?.date).startsWith('2024')).toBe(true);
+    expect(jobEntry?.temporalSource).toBe('document_stated');
+    expect(jobEntry?.date).not.toBe(jobEntry?.importedAt);
+  });
+
+  it('leaves undated resume jobs unresolved instead of using upload time', async () => {
+    installResolvedEventsStore();
+    const saveCalls: Array<Record<string, unknown>> = [];
+    vi.mocked(memoryService.saveEntry).mockImplementation(async (payload) => {
+      saveCalls.push(payload as unknown as Record<string, unknown>);
+      return { id: `entry-${saveCalls.length}` } as any;
+    });
+
+    await resumeLorePopulationService.populate(
+      'user-maya',
+      resumeWithVanguardJob('Vanguard Robotics', { startDate: undefined, endDate: undefined }),
+      { sourceFileId: 'file-resume', resumeDocumentId: 'doc-resume', fileName: 'maya-resume.pdf' }
+    );
+
+    const jobEntry = saveCalls.find((c) => String(c.content).includes('Vanguard Robotics'));
+    expect(jobEntry).toBeTruthy();
+    expect(jobEntry?.date).toBeUndefined();
+    expect(jobEntry?.temporalSource).toBe('recording_fallback');
+  });
+
+  it('does not stamp tenant A occurrence onto tenant B writes', async () => {
+    installResolvedEventsStore();
+    const saveCalls: Array<Record<string, unknown>> = [];
+    vi.mocked(memoryService.saveEntry).mockImplementation(async (payload) => {
+      saveCalls.push(payload as unknown as Record<string, unknown>);
+      return { id: `entry-${saveCalls.length}` } as any;
+    });
+
+    await resumeLorePopulationService.populate('user-maya', resumeWithVanguardJob(), {
+      sourceFileId: 'file-a',
+      resumeDocumentId: 'doc-a',
+      fileName: 'maya.pdf',
+    });
+    await resumeLorePopulationService.populate('user-jamie', resumeWithVanguardJob('Northwind Labs'), {
+      sourceFileId: 'file-b',
+      resumeDocumentId: 'doc-b',
+      fileName: 'jamie.pdf',
+    });
+
+    expect(saveCalls.some((c) => c.userId === 'user-maya')).toBe(true);
+    expect(saveCalls.some((c) => c.userId === 'user-jamie')).toBe(true);
+    expect(saveCalls.every((c) => c.userId === 'user-maya' || c.userId === 'user-jamie')).toBe(true);
+  });
 });

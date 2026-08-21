@@ -8,6 +8,8 @@ function makeChain(result: TableResult) {
     eq: () => chain,
     or: () => chain,
     in: () => chain,
+    contains: () => chain,
+    overlaps: () => chain,
     not: () => chain,
     gt: () => chain,
     order: () => chain,
@@ -96,6 +98,14 @@ describe('Sprint AF — foundation recall', () => {
           { character_id: 'c2' },
           { character_id: 'c3' },
           { character_id: 'c3' },
+        ],
+        error: null,
+      },
+      resolved_events: {
+        data: [
+          { people: ['c2'] },
+          { people: ['c3'] },
+          { people: ['c3'] },
         ],
         error: null,
       },
@@ -237,6 +247,7 @@ describe('routeRecallQuery — character list intent (Sprint H fix)', () => {
       },
       character_memories: { data: [], error: null },
       character_timeline_events: { data: [], error: null },
+      resolved_events: { data: [], error: null },
       character_relationships: { data: [], error: null },
       narrative_accounts: { data: { narrative_text: 'Some narrative.', metadata: {} }, error: null },
     };

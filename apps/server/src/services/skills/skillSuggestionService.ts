@@ -15,6 +15,7 @@ import { normalizeSkillKey } from './skillIdentity';
 import { progressionTracker } from '../progression/progressionTracker';
 import { suggestionDismissalService } from '../suggestionDismissalService';
 import { evaluateEntityQuality, passesEntityQualityGate, resolveDisplayName } from '../lorebook/quality/entityQualityGateService';
+import { applySuggestionCandidate } from '../lorebook/suggestions/applySuggestionCandidate';
 import { skillCognitionEngine } from './skillCognitionEngine';
 
 export type SkillSuggestionRow = {
@@ -250,13 +251,27 @@ class SkillSuggestionService {
       updated_at: new Date().toISOString(),
     };
 
-    const { error } = await supabaseAdmin
-      .from('skill_suggestions')
-      .upsert(payload, { onConflict: 'user_id,skill_name' });
+    const persist = async () => {
+      const { error } = await supabaseAdmin
+        .from('skill_suggestions')
+        .upsert(payload, { onConflict: 'user_id,skill_name' });
 
-    if (error && !isTableMissing(error)) {
-      logger.warn({ error, userId, skill: extracted.skill_name }, 'Failed to upsert skill suggestion');
-    }
+      if (error && !isTableMissing(error)) {
+        logger.warn({ error, userId, skill: extracted.skill_name }, 'Failed to upsert skill suggestion');
+      }
+    };
+
+    await applySuggestionCandidate({
+      userId,
+      domain: 'skills',
+      name: safeName.trim(),
+      evidence: evidenceText,
+      sourceMessageId: opts.sourceMessageId,
+      extractor: 'skill_suggestion',
+      source: opts.source,
+      onCreate: persist,
+      onReview: persist,
+    });
   }
 
   async getPendingSuggestions(userId: string): Promise<SkillSuggestionRow[]> {
@@ -342,6 +357,7 @@ class SkillSuggestionService {
       sourceSuggestionId: suggestionId,
       threadId: opts?.threadId,
       reason: opts?.reason,
+      permanent: true,
     });
 
     if (result.isPermanent) {
@@ -381,6 +397,7 @@ class SkillSuggestionService {
       sourceSuggestionId: opts?.suggestionId ?? existing?.id,
       threadId: opts?.threadId,
       reason: opts?.reason,
+      permanent: true,
     });
 
     if (result.isPermanent) {

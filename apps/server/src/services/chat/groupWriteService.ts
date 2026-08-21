@@ -200,29 +200,45 @@ async function ensureCharacter(
     }
     if (decision.action !== 'create') return null;
 
-    const now = new Date().toISOString();
-    const parts = decision.cleanName.split(/\s+/);
-    const { data, error } = await supabaseAdmin
-      .from('characters')
-      .insert({
-        id: randomUUID(),
-        user_id: userId,
-        name: decision.cleanName,
-        first_name: parts[0],
-        last_name: parts.slice(1).join(' ') || null,
-        status: 'active',
-        has_met: true,
-        metadata: { created_via: 'organization_group_write' },
-        created_at: now,
-        updated_at: now,
-      })
-      .select('id, name')
-      .single();
-    if (error || !data) {
-      logger.warn({ err: error, name }, 'groupWriteService: character create failed');
-      return null;
+    let created: { id: string; name: string; created: boolean } | null = null;
+    const { applySuggestionCandidate } = await import('../lorebook/suggestions/applySuggestionCandidate');
+    const write = await applySuggestionCandidate({
+      userId,
+      domain: 'characters',
+      name: decision.cleanName,
+      extractor: 'group_write_chat',
+      source: 'chat_group_write',
+      writePolicy: 'user',
+      onCreate: async () => {
+        const now = new Date().toISOString();
+        const parts = decision.cleanName.split(/\s+/);
+        const { data, error } = await supabaseAdmin
+          .from('characters')
+          .insert({
+            id: randomUUID(),
+            user_id: userId,
+            name: decision.cleanName,
+            first_name: parts[0],
+            last_name: parts.slice(1).join(' ') || null,
+            status: 'active',
+            has_met: true,
+            metadata: { created_via: 'organization_group_write' },
+            created_at: now,
+            updated_at: now,
+          })
+          .select('id, name')
+          .single();
+        if (error || !data) {
+          logger.warn({ err: error, name }, 'groupWriteService: character create failed');
+          return;
+        }
+        created = { id: data.id as string, name: data.name as string, created: true };
+      },
+    });
+    if (write.outcome === 'ATTACHED' && write.canonical?.id) {
+      return { id: write.canonical.id, name: write.canonical.name, created: false };
     }
-    return { id: data.id as string, name: data.name as string, created: true };
+    return created;
   });
 }
 
@@ -299,6 +315,16 @@ export async function writeOrganizationGroupFromChat(
     focusCharacterName?: string | null;
   },
 ): Promise<GroupWriteResult> {
+  const { getSuggestionWriteContext, withSuggestionWriteContext } = await import(
+    '../lorebook/suggestions/suggestionWriteContext'
+  );
+  const existing = getSuggestionWriteContext();
+  if (!existing || existing.userId !== userId) {
+    return withSuggestionWriteContext(userId, () =>
+      writeOrganizationGroupFromChat(userId, message, threadId, options),
+    );
+  }
+
   const history = options?.conversationHistory ?? [];
 
   const deleteMatch = message.match(
@@ -359,16 +385,33 @@ export async function writeOrganizationGroupFromChat(
       organizationId = existing.id;
       organizationName = existing.name;
     } else {
-      const org = await organizationService.createOrganization(userId, {
+      const { applySuggestionCandidate } = await import('../lorebook/suggestions/applySuggestionCandidate');
+      const write = await applySuggestionCandidate({
+        userId,
+        domain: 'organizations',
         name: organizationName,
-        type: 'club',
-        group_type: 'crew',
-        description: `Created from chat: ${message.slice(0, 180)}`,
-        metadata: { created_via: 'organization_group_write', source_thread_id: threadId },
+        incomingType: 'crew',
+        evidence: message,
+        extractor: 'group_write_chat',
+        source: 'chat_group_write',
+        writePolicy: 'user',
+        onCreate: async () => {
+          const org = await organizationService.createOrganization(userId, {
+            name: organizationName,
+            type: 'club',
+            group_type: 'crew',
+            description: `Created from chat: ${message.slice(0, 180)}`,
+            metadata: { created_via: 'organization_group_write', source_thread_id: threadId },
+          });
+          organizationId = org.id;
+          organizationName = org.name;
+          created = true;
+        },
       });
-      organizationId = org.id;
-      organizationName = org.name;
-      created = true;
+      if (write.outcome === 'ATTACHED' && write.canonical) {
+        organizationId = write.canonical.id;
+        organizationName = write.canonical.name;
+      }
     }
     await writePendingGroup(userId, threadId, {
       organizationId,

@@ -8,6 +8,13 @@ import { config } from '../../config';
 import { openai } from '../openaiClient';
 import { logger } from '../../logger';
 import type { ExtractedUnit } from '../../types/conversationCentered';
+import { classifyMessageComplexity, shouldBypassMultiEventSplit } from '../ingestion/messageComplexityGate';
+import { recordSkippedOperation } from '../../lib/messageCostTracker';
+
+type SplitExtractedUnit = Pick<
+  ExtractedUnit,
+  'type' | 'content' | 'confidence' | 'temporal_context' | 'entity_ids' | 'metadata'
+> & { id: string };
 
 
 export interface SplitEvent {
@@ -31,6 +38,16 @@ export interface EventSplittingResult {
   spanish_terms?: string[];
 }
 
+export function classifySplitSemanticType(content: string): ExtractedUnit['type'] {
+  if (/\b(?:correction|actually|i was wrong|i remembered incorrectly|it wasn['’]?t|it was not|same entity as|are the same entity)\b/i.test(content)) {
+    return 'CORRECTION';
+  }
+  if (/\b(?:looking back|in hindsight|on reflection|i should have|i shouldn['’]?t have|i wish|i regret|i now realize)\b/i.test(content)) {
+    return 'THOUGHT';
+  }
+  return 'EXPERIENCE';
+}
+
 /**
  * Splits a single entry into multiple distinct events
  * Handles: temporal boundaries, character groups, location changes, activity changes
@@ -44,6 +61,25 @@ export class MultiEventSplittingService {
     language?: string
   ): Promise<EventSplittingResult> {
     try {
+      const complexity = classifyMessageComplexity(text);
+      if (shouldBypassMultiEventSplit(complexity)) {
+        recordSkippedOperation('multi_event_split');
+        return {
+          events: [{
+            id: 'event-0',
+            content: text,
+            type: 'other',
+            characters: [],
+            activities: [],
+            confidence: 1.0,
+            start_index: 0,
+            end_index: text.length,
+          }],
+          original_text: text,
+          language_detected: language || 'en',
+        };
+      }
+
       // First, detect if this is a multi-event entry
       const isMultiEvent = this.detectMultiEvent(text);
       
@@ -244,10 +280,10 @@ Be precise with indices. Split by distinct experiences, not just sentences.`,
   convertToExtractedUnits(
     splitResult: EventSplittingResult,
     baseMetadata?: Record<string, any>
-  ): ExtractedUnit[] {
+  ): SplitExtractedUnit[] {
     return splitResult.events.map((event, index) => ({
       id: `unit-${Date.now()}-${index}`,
-      type: 'EXPERIENCE' as const,
+      type: classifySplitSemanticType(event.content),
       content: event.content,
       confidence: event.confidence,
       temporal_context: {
@@ -267,6 +303,7 @@ Be precise with indices. Split by distinct experiences, not just sentences.`,
         spanish_terms: splitResult.spanish_terms,
         language: splitResult.language_detected,
         split_from_multi_event: true,
+        semantic_segment_kind: classifySplitSemanticType(event.content),
       },
     }));
   }

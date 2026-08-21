@@ -16,7 +16,9 @@ import { organizationDomainAuditService } from '../services/organizationDomainAu
 import { organizationNormalizationService } from '../services/organizationNormalizationService';
 import { locationMergeService } from '../services/locationMergeService';
 import { organizationTimelineBuilder } from '../services/conversationCentered/entityTimelineBuilder';
+import { persistOrganizationAttributionCorrection } from '../services/organizations/organizationEventAttributionService';
 import { queryOrganizationsForUser } from '../services/organizations/organizationQueryService';
+import { resolveUserTimezoneForRequest } from '../services/temporal/userTimezoneService';
 import { supabaseAdmin } from '../services/supabaseClient';
 
 const router = Router();
@@ -243,7 +245,11 @@ router.get('/:id/timelines', requireAuth, async (req: AuthenticatedRequest, res)
   const userId = req.user!.id;
   const organizationId = String(req.params.id);
   try {
-    const timelines = await organizationTimelineBuilder.buildTimelines(userId, organizationId);
+    const timezone = await resolveUserTimezoneForRequest(
+      userId,
+      req.headers['x-user-timezone'],
+    );
+    const timelines = await organizationTimelineBuilder.buildTimelines(userId, organizationId, timezone);
     res.json({ success: true, timelines });
   } catch (error) {
     logger.error({ error, userId, organizationId }, 'Failed to build organization timelines');
@@ -252,15 +258,68 @@ router.get('/:id/timelines', requireAuth, async (req: AuthenticatedRequest, res)
 });
 
 // POST /api/organizations/:id/rebuild-timelines
+// Deprecated compatibility endpoint. Does not write entity_timeline_events
+// and does not rebuild canonical Organization Timeline.
 router.post('/:id/rebuild-timelines', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
   const organizationId = String(req.params.id);
   try {
-    await organizationTimelineBuilder.rebuildTimelinesForEntity(userId, organizationId);
-    res.json({ success: true, message: 'Timelines rebuilt' });
+    const result = await organizationTimelineBuilder.rebuildTimelinesForEntity(userId, organizationId);
+    res.json({
+      success: true,
+      deprecated: true,
+      rebuilt: false,
+      ...(result && typeof result === 'object' ? result : {}),
+      message: 'entity_timeline_events rebuild is deprecated. Canonical Organization Timeline is not rebuilt from this table.',
+    });
   } catch (error) {
     logger.error({ error, userId, organizationId }, 'Failed to rebuild organization timelines');
     res.status(500).json({ success: false, error: 'Failed to rebuild organization timelines' });
+  }
+});
+
+router.post('/:id/event-attributions/:eventId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const eventId = String(req.params.eventId);
+  const body = z.object({
+    fromOrganizationId: z.string().optional(),
+    toOrganizationId: z.string().optional(),
+    toOrganizationName: z.string().optional(),
+    retractOrganizationId: z.string().optional(),
+    retractRole: z.enum([
+      'employer',
+      'host',
+      'organizer',
+      'institution',
+      'interview_target',
+      'client',
+      'vendor',
+      'project_owner',
+      'community',
+      'software_tool',
+      'referenced',
+      'department',
+      'parent_context',
+    ]).optional(),
+  }).safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ success: false, error: body.error.issues });
+    return;
+  }
+  try {
+    const result = await persistOrganizationAttributionCorrection({
+      userId,
+      eventId,
+      ...body.data,
+    });
+    if (!result) {
+      res.status(404).json({ success: false, error: 'Event not found' });
+      return;
+    }
+    res.json({ success: true, eventId: result.eventId, attributions: result.attributions });
+  } catch (error) {
+    logger.error({ error, userId, eventId }, 'Failed to correct organization attribution');
+    res.status(500).json({ success: false, error: 'Failed to correct organization attribution' });
   }
 });
 

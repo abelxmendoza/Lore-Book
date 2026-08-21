@@ -20,4 +20,9 @@ describe('isFollowUpShaped', () => {
   it('treats a retry request as follow-up shaped so it inherits active context', () => {
     expect(isFollowUpShaped('try again')).toBe(true);
   });
+
+  it('treats who-is-he as follow-up shaped even without a question mark', () => {
+    expect(isFollowUpShaped('who is he')).toBe(true);
+    expect(isFollowUpShaped('who is she?')).toBe(true);
+  });
 });

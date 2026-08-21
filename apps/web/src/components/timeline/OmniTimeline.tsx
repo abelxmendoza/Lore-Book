@@ -57,8 +57,8 @@ type GenPhase = 'idle' | 'generating' | 'revealed';
 
 const VIEWS: { id: View; label: string; shortLabel: string; Icon: React.ElementType; desc: string }[] = [
   { id: 'swimlanes', label: 'Swimlanes', shortLabel: 'Lanes', Icon: LayoutTemplate, desc: 'Your life across parallel tracks in calendar time' },
-  { id: 'events',    label: 'Chronology', shortLabel: 'Chronology', Icon: CalendarDays,  desc: 'Same scenes stitched in time — copyable, with an explicit reorder mode' },
   { id: 'calendar',  label: 'Calendar',  shortLabel: 'Calendar', Icon: Calendar,  desc: 'Named occasions and events by day' },
+  { id: 'events',    label: 'Chronology', shortLabel: 'Chronology', Icon: CalendarDays,  desc: 'Same scenes stitched in time — copyable, with an explicit reorder mode' },
   { id: 'story',     label: 'Story',     shortLabel: 'Story', Icon: BookOpen,       desc: 'Read life arcs in order' },
   { id: 'library',   label: 'Library',   shortLabel: 'Library', Icon: Clock3,       desc: 'All generated timeline history you’ve spun up' },
 ];
@@ -118,18 +118,6 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
     (dateKey: string) => {
       const params = new URLSearchParams(searchParams);
       params.set('view', 'calendar');
-      params.set('date', dateKey);
-      setSearchParams(params, { replace: true });
-    },
-    [searchParams, setSearchParams],
-  );
-
-  // Same as handleCalendarDateChange, but for the calendar embedded next to
-  // Swimlanes — picking a date there should update the URL without
-  // navigating away from the combined view.
-  const handleEmbeddedCalendarDateChange = useCallback(
-    (dateKey: string) => {
-      const params = new URLSearchParams(searchParams);
       params.set('date', dateKey);
       setSearchParams(params, { replace: true });
     },
@@ -767,34 +755,23 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
         return libraryPanel;
       case 'swimlanes':
         return (
-          <div className="timeline-swimlanes-calendar-split">
-            <div className="timeline-swimlanes-calendar-split__swimlanes">
-              <TimelineSwimlanes
-                arcs={arcs}
-                arcsByTrack={arcsByTrack}
-                activeArcs={activeArcs}
-                entries={displayEntries}
-                loading={loading}
-                unresolvedItems={unresolvedItems}
-                lifeEras={lifeEras.map((era) => ({
-                  id: era.id,
-                  label: era.chapter_title,
-                  startDate: era.start_date,
-                  endDate: era.end_date,
-                }))}
-                onOpenArcTimeline={handleOpenArcTimeline}
-                onCreateLorebook={handleCreateLorebookFromArc}
-                canCreateLorebookForArc={canCreateLorebookForArc}
-              />
-            </div>
-            <div className="timeline-swimlanes-calendar-split__calendar">
-              <TimelineCalendarView
-                initialDate={calendarDateParam}
-                onDateChange={handleEmbeddedCalendarDateChange}
-                onOpenDayInTimeline={handleOpenDayInTimeline}
-              />
-            </div>
-          </div>
+          <TimelineSwimlanes
+            arcs={arcs}
+            arcsByTrack={arcsByTrack}
+            activeArcs={activeArcs}
+            entries={displayEntries}
+            loading={loading}
+            unresolvedItems={unresolvedItems}
+            lifeEras={lifeEras.map((era) => ({
+              id: era.id,
+              label: era.chapter_title,
+              startDate: era.start_date,
+              endDate: era.end_date,
+            }))}
+            onOpenArcTimeline={handleOpenArcTimeline}
+            onCreateLorebook={handleCreateLorebookFromArc}
+            canCreateLorebookForArc={canCreateLorebookForArc}
+          />
         );
       case 'events':
         return (

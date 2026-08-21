@@ -4,9 +4,10 @@ import express from 'express';
 
 const mockUser = { id: 'u-romance', email: 'love@test.com' };
 
-const { rescan, enrichRomanticRelationshipsForUser } = vi.hoisted(() => ({
+const { rescan, enrichRomanticRelationshipsForUser, addCharacterToDatingBook } = vi.hoisted(() => ({
   rescan: vi.fn(),
   enrichRomanticRelationshipsForUser: vi.fn(async (_userId: string, rows: unknown[]) => rows),
+  addCharacterToDatingBook: vi.fn(),
 }));
 
 vi.mock('../../src/middleware/auth', () => ({
@@ -23,6 +24,16 @@ vi.mock('../../src/services/romanticConversationRescanService', () => ({
 vi.mock('../../src/services/conversationCentered/romanticRelationshipEnrichment', () => ({
   enrichRomanticRelationshipsForUser,
 }));
+
+vi.mock('../../src/services/conversationCentered/addCharacterToDatingBook', async () => {
+  const actual = await vi.importActual<
+    typeof import('../../src/services/conversationCentered/addCharacterToDatingBook')
+  >('../../src/services/conversationCentered/addCharacterToDatingBook');
+  return {
+    ...actual,
+    addCharacterToDatingBook,
+  };
+});
 
 vi.mock('../../src/services/supabaseClient', () => ({
   supabaseAdmin: {
@@ -79,6 +90,31 @@ describe('Romantic Relationships API', () => {
     expect(res.body.success).toBe(true);
     expect(Array.isArray(res.body.relationships)).toBe(true);
     expect(enrichRomanticRelationshipsForUser).toHaveBeenCalled();
+  });
+
+  it('POST /romantic-relationships adds a character for the authenticated user only', async () => {
+    addCharacterToDatingBook.mockResolvedValue({
+      created: true,
+      relationship: {
+        id: 'rel-new',
+        user_id: mockUser.id,
+        person_id: '11111111-1111-4111-8111-111111111111',
+      },
+    });
+
+    const res = await request(app)
+      .post('/api/conversation/romantic-relationships')
+      .send({ character_id: '11111111-1111-4111-8111-111111111111' })
+      .expect(201);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.created).toBe(true);
+    expect(addCharacterToDatingBook).toHaveBeenCalledWith({
+      userId: mockUser.id,
+      characterId: '11111111-1111-4111-8111-111111111111',
+      relationshipType: undefined,
+      status: undefined,
+    });
   });
 
   it('POST /romantic-relationships/rescan triggers lexical rescan', async () => {

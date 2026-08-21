@@ -36,7 +36,7 @@ export function useSuggestionRescan(domain: SuggestionDomain, options: UseSugges
     setRescanning(true);
     setError(null);
     try {
-      const result = await suggestionRescanApi.rescan([domain]);
+      const result = await suggestionRescanApi.rescan([domain], { incremental: true });
       setLastSummary(result.summary);
       notify?.success(formatSuggestionRescanToast(result.summary, domain), 6500);
       return result.summary;

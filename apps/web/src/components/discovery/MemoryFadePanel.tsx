@@ -3,6 +3,7 @@ import { Ghost, RefreshCw, BookOpen } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { formatJournalOccurrenceLabel } from '../../lib/journalOccurrence';
 
 interface FadingEntry {
   id: string;
@@ -91,9 +92,7 @@ export const MemoryFadePanel = () => {
 
       {entries.map(entry => {
         const score = entry.accessibility_score ?? 1;
-        const dateStr = entry.date
-          ? new Date(entry.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-          : '—';
+        const dateStr = formatJournalOccurrenceLabel(entry.date);
         const preview = (entry.summary || entry.content || '').slice(0, 120);
         const isRevisited = revisited.has(entry.id);
 

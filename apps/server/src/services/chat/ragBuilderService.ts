@@ -1,15 +1,33 @@
 import { logger } from '../../logger';
 import type { ResolvedMemoryEntry } from '../../types';
 import type { CurrentContext } from '../../types/currentContext';
-import { chapterService } from '../chapterService';
 import { hqiService } from '../hqiService';
 import { loadPromptClaims } from '../knowledgeCrystallization';
-import { locationService } from '../locationService';
 import { memoryGraphService } from '../memoryGraphService';
 import type { ChatSource } from '../omegaChatService';
 import { orchestratorService } from '../orchestratorService';
 import { ragPacketCacheService } from '../ragPacketCacheService';
+import { formatSelfRomanticIdentityLines } from '../identity/selfRomanticIdentity';
 import { supabaseAdmin } from '../supabaseClient';
+import { recordBroadFallback, recordPromptPayload, recordRetrievalSection, recordSkippedOperation } from '../../lib/messageCostTracker';
+import {
+  isWorkingMemoryEvidenceSufficient,
+  planQuestionScopedRetrieval,
+} from './questionScopedRetrieval';
+import {
+  RAG_ARC_COLS,
+  RAG_BIOMETRIC_COLS,
+  RAG_CHAPTER_COLS,
+  RAG_CHARACTER_COLS,
+  RAG_CORRECTION_COLS,
+  RAG_DEPRECATED_UNIT_COLS,
+  RAG_ENTITY_ATTR_COLS,
+  RAG_ERA_COLS,
+  RAG_LOCATION_COLS,
+  RAG_ORG_COLS,
+  RAG_ROMANCE_COLS,
+  RAG_SAGA_COLS,
+} from './ragLoreProjections';
 
 import {
   isEntityQuery,
@@ -36,21 +54,14 @@ import {
   type WorkingMemoryItem,
 } from './workingMemoryAssembler';
 
+export type RagFocus = {
+  id: string;
+  name: string;
+  type: 'character' | 'location' | 'organization' | string;
+};
+
 // ─── Fitness keyword gate ────────────────────────────────────────────────────
 const FITNESS_RE = /\b(workout|exercise|gym|ran|run|lifted|bench|squat|deadlift|calories|weight|lbs|kg|miles|steps|cardio|biometric|body fat|muscle)\b/i;
-
-// Every `characters` column EXCEPT the 1536-dim `embedding` vector (~6KB/row).
-// The RAG packet never reads the embedding (semantic match runs in the DB via the
-// HNSW index), so pulling it on this per-message, all-rows scan is pure egress
-// waste. Keep this in sync with the characters table if columns are added.
-const CHARACTER_COLS =
-  'id, user_id, name, alias, pronouns, archetype, role, status, first_appearance, ' +
-  'summary, tags, metadata, created_at, updated_at, embedding_model, embedding_version, ' +
-  'last_embedded_at, perception_count, first_perception_at, last_perception_at, ' +
-  'sensitivity_level, requires_extra_confirmation, first_name, last_name, is_nickname, ' +
-  'avatar_url, importance_level, importance_score, proximity_level, has_met, ' +
-  'relationship_depth, associated_with_character_ids, mentioned_by_character_ids, ' +
-  'context_of_mention, likelihood_to_meet';
 
 // ─── Public entry point ───────────────────────────────────────────────────────
 
@@ -65,20 +76,38 @@ export async function buildRAGPacket(
   extractDatesAndTimes?: (msg: string) => Promise<Array<{ date: string; context: string; precision: string; confidence: number }>>,
   scopePlan?: import('../responseScope').ResponseScopePlan,
   currentMessageId?: string,
+  focus?: RagFocus | null,
 ) {
   // Full-packet cache hit — skip everything
   // Retellings deliberately bypass the message-text cache: an identical new
   // telling changes the evidence set even when the text is unchanged.
   const retellingRecall = isRetellingRecallMessage(message);
-  const cached = retellingRecall ? null : ragPacketCacheService.getCachedPacket(userId, message);
+  const cacheContextKey = [
+    currentContext?.kind ?? 'none',
+    currentContext?.threadId ?? '',
+    currentContext?.timelineNodeId ?? '',
+    focus?.type ?? '',
+    focus?.id ?? '',
+  ].join(':');
+  const cached = retellingRecall
+    ? null
+    : ragPacketCacheService.getCachedPacket(userId, message, cacheContextKey);
   if (cached) return cached;
+
+  const { planResponseScope } = await import('../responseScope');
+  const resolvedScope = scopePlan ?? planResponseScope(message);
+  const retrievalPlan = planQuestionScopedRetrieval(message, resolvedScope);
 
   // ── Orchestrator summary ─────────────────────────────────────────────────
   let orchestratorSummary: any = { timeline: { events: [], arcs: [] }, characters: [] };
-  try {
-    orchestratorSummary = await orchestratorService.getSummary(userId);
-  } catch (error) {
-    logger.warn({ error }, 'RAGBuilder: orchestrator summary failed');
+  if (retrievalPlan.loadOrchestrator) {
+    try {
+      orchestratorSummary = await orchestratorService.getSummary(userId);
+    } catch (error) {
+      logger.warn({ error }, 'RAGBuilder: orchestrator summary failed');
+    }
+  } else {
+    recordSkippedOperation('rag_orchestrator');
   }
 
   // ── Static lore (characters, locations, chapters, etc.) ─────────────────
@@ -97,37 +126,45 @@ export async function buildRAGPacket(
   // Episodic evidence: recent character_memories grouped by character_id
   let characterMemoriesMap: Record<string, any[]> = {};
 
-  const cachedLore = ragPacketCacheService.getLoreCache(userId);
+  const shouldLoadStaticLore = retrievalPlan.breadth === 'full';
+  const cachedLore = shouldLoadStaticLore ? ragPacketCacheService.getLoreCache(userId) : null;
   if (cachedLore) {
     ({ allCharacters, allLocations, allChapters, timelineHierarchy, allPeoplePlaces,
       romanticRelationships, corrections, deprecatedUnits, workoutEvents, recentBiometrics, topInterests } = cachedLore);
     characterAttributesMap = new Map(Object.entries(cachedLore.characterAttributesMap || {}));
     characterMemoriesMap = (cachedLore as any).characterMemoriesMap || {};
-  } else {
+  } else if (shouldLoadStaticLore) {
     // Characters
     try {
       const { data } = await supabaseAdmin
-        .from('characters').select(CHARACTER_COLS).eq('user_id', userId).order('created_at', { ascending: false });
+        .from('characters').select(RAG_CHARACTER_COLS).eq('user_id', userId).order('created_at', { ascending: false });
       allCharacters = (data as any[]) || [];
+      recordRetrievalSection('characters', allCharacters);
     } catch (e) { logger.debug({ e }, 'RAGBuilder: characters fetch failed'); }
 
     // Locations, chapters, timeline hierarchy, people/places — parallel
     try {
       const [locResult, chapResult, erasResult, sagasResult, arcsResult, orgsResult] = await Promise.all([
-        locationService.listLocations(userId).catch((): any[] => []),
-        chapterService.listChapters(userId).catch((): any[] => []),
-        supabaseAdmin.from('eras').select('*').eq('user_id', userId).order('start_date', { ascending: false }),
-        supabaseAdmin.from('sagas').select('*').eq('user_id', userId).order('start_date', { ascending: false }),
-        supabaseAdmin.from('arcs').select('*').eq('user_id', userId).order('start_date', { ascending: false }),
-        supabaseAdmin.from('organizations').select('id, name, aliases').eq('user_id', userId),
+        supabaseAdmin.from('locations').select(RAG_LOCATION_COLS).eq('user_id', userId),
+        supabaseAdmin.from('chapters').select(RAG_CHAPTER_COLS).eq('user_id', userId).order('start_date', { ascending: false }),
+        supabaseAdmin.from('eras').select(RAG_ERA_COLS).eq('user_id', userId).order('start_date', { ascending: false }),
+        supabaseAdmin.from('sagas').select(RAG_SAGA_COLS).eq('user_id', userId).order('start_date', { ascending: false }),
+        supabaseAdmin.from('arcs').select(RAG_ARC_COLS).eq('user_id', userId).order('start_date', { ascending: false }),
+        supabaseAdmin.from('organizations').select(RAG_ORG_COLS).eq('user_id', userId),
       ]);
-      allLocations = locResult as any[];
-      allChapters = chapResult as any[];
+      allLocations = ((locResult as any).data as any[]) || [];
+      allChapters = ((chapResult as any).data as any[]) || [];
       timelineHierarchy = {
         eras: (erasResult as any).data || [],
         sagas: (sagasResult as any).data || [],
         arcs: (arcsResult as any).data || [],
       };
+      recordRetrievalSection('locations', allLocations);
+      recordRetrievalSection('arcs', [
+        ...(timelineHierarchy.eras ?? []),
+        ...(timelineHierarchy.sagas ?? []),
+        ...(timelineHierarchy.arcs ?? []),
+      ]);
       allPeoplePlaces = buildLegacyPeoplePlacesView(
         allCharacters,
         allLocations,
@@ -140,7 +177,7 @@ export async function buildRAGPacket(
       try {
         const charIds = allCharacters.map((c: any) => c.id);
         const { data: attrData } = await supabaseAdmin
-          .from('entity_attributes').select('*')
+          .from('entity_attributes').select(RAG_ENTITY_ATTR_COLS)
           .eq('user_id', userId).eq('entity_type', 'character').eq('is_current', true)
           .in('entity_id', charIds);
         for (const attr of ((attrData as any[]) || [])) {
@@ -177,7 +214,7 @@ export async function buildRAGPacket(
     // Romantic relationships — fetch + resolve partner names (batched, not N+1)
     try {
       const { data } = await supabaseAdmin
-        .from('romantic_relationships').select('*').eq('user_id', userId)
+        .from('romantic_relationships').select(RAG_ROMANCE_COLS).eq('user_id', userId)
         .order('created_at', { ascending: false }).limit(20);
       const raw = (data as any[]) || [];
       romanticRelationships = await resolveRelationshipNames(raw);
@@ -186,8 +223,8 @@ export async function buildRAGPacket(
     // Corrections + deprecated units
     try {
       const [corrResult, deprResult] = await Promise.all([
-        supabaseAdmin.from('correction_records').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(20),
-        supabaseAdmin.from('extracted_units').select('*').eq('user_id', userId).or('metadata->>deprecated.eq.true,superseded_at.not.is.null').order('created_at', { ascending: false }).limit(30),
+        supabaseAdmin.from('correction_records').select(RAG_CORRECTION_COLS).eq('user_id', userId).order('created_at', { ascending: false }).limit(20),
+        supabaseAdmin.from('extracted_units').select(RAG_DEPRECATED_UNIT_COLS).eq('user_id', userId).or('metadata->>deprecated.eq.true,superseded_at.not.is.null').order('created_at', { ascending: false }).limit(30),
       ]);
       corrections = ((corrResult as any).data as any[]) || [];
       deprecatedUnits = ((deprResult as any).data as any[]) || [];
@@ -199,7 +236,7 @@ export async function buildRAGPacket(
         const { workoutEventDetector } = await import('../conversationCentered/workoutEventDetector');
         workoutEvents = await workoutEventDetector.getWorkoutEvents(userId, 20, 0);
         const { data } = await supabaseAdmin
-          .from('biometric_measurements').select('*').eq('user_id', userId)
+          .from('biometric_measurements').select(RAG_BIOMETRIC_COLS).eq('user_id', userId)
           .order('measurement_date', { ascending: false }).limit(10);
         recentBiometrics = (data as any[]) || [];
       } catch (e) { logger.debug({ e }, 'RAGBuilder: fitness data fetch failed'); }
@@ -217,6 +254,8 @@ export async function buildRAGPacket(
       characterMemoriesMap,
       romanticRelationships, corrections, deprecatedUnits, workoutEvents, recentBiometrics, topInterests,
     } as any);
+  } else {
+    recordSkippedOperation('rag_lore_bundle');
   }
 
   // ── Social centrality → character salience boost ────────────────────────
@@ -265,16 +304,44 @@ export async function buildRAGPacket(
         userId,
         question: message,
         threadId: (currentContext as { threadId?: string } | undefined)?.threadId,
+        focus: focus
+          ? { id: focus.id, name: focus.name, type: focus.type }
+          : undefined,
       });
       const { planResponseScope, applyScopePlanToAssembly } = await import('../responseScope');
       workingMemory = applyScopePlanToAssembly(
         workingMemory,
-        scopePlan ?? planResponseScope(message),
+        resolvedScope,
       );
+      const wmaSufficient = isWorkingMemoryEvidenceSufficient(workingMemory, retrievalPlan);
+      if (retrievalPlan.earlyStopOnWmaEvidence && wmaSufficient) {
+        recordSkippedOperation('rag_early_stop');
+      } else if (!shouldLoadStaticLore && retrievalPlan.allowFocusedRetry && !wmaSufficient) {
+        recordSkippedOperation('rag_focused_retry');
+        try {
+          const names = retrievalPlan.primaryEntityNames;
+          if (names.length > 0) {
+            const orFilter = names.map((name) => `name.ilike.%${name.replace(/[,]/g, ' ')}%`).join(',');
+            const [chars, orgs] = await Promise.all([
+              supabaseAdmin.from('characters').select(RAG_CHARACTER_COLS).eq('user_id', userId).or(orFilter).limit(8),
+              supabaseAdmin.from('organizations').select(RAG_ORG_COLS).eq('user_id', userId).or(orFilter).limit(8),
+            ]);
+            allCharacters = ((chars as any).data as any[]) || [];
+            allPeoplePlaces = buildLegacyPeoplePlacesView(allCharacters, [], ((orgs as any).data as any[]) || []);
+            recordRetrievalSection('characters', allCharacters);
+          }
+        } catch (e) { logger.debug({ e }, 'RAGBuilder: focused retry failed'); }
+      } else if (!shouldLoadStaticLore && retrievalPlan.allowBroadFallback && !wmaSufficient) {
+        recordBroadFallback('wma_insufficient_general_intent');
+      } else if (!shouldLoadStaticLore && !wmaSufficient && !retrievalPlan.allowBroadFallback) {
+        recordSkippedOperation('rag_no_broad_fallback');
+      }
       workingMemoryPacket = buildWorkingMemoryPacket(workingMemory);
       foundationRecallBlock = workingMemoryPacket.text;
-      foundationRelationships = workingMemory.relationships;
-      foundationTimeline = workingMemory.timeline;
+      // Packet already lists events/timeline/relationships once. Extra copies
+      // in the system prompt were the same canonical evidence restated.
+      foundationRelationships = [];
+      foundationTimeline = [];
       retrievalPaths.push('working_memory');
 
       const selectedItems: WorkingMemoryItem[] = [
@@ -390,7 +457,7 @@ export async function buildRAGPacket(
     const retrievalPath = chooseRetrievalPath({
       hasWorkingMemory: Boolean(workingMemory && workingMemory.budget.selected > 0),
       contextKind: currentContext?.kind,
-      entityQuery: isEntityQuery(message),
+      entityQuery: Boolean(focus) || isEntityQuery(message),
     });
     retrievalPaths.push(retrievalPath);
 
@@ -418,7 +485,9 @@ export async function buildRAGPacket(
 
     } else if (retrievalPath === 'entity_arc_fallback') {
       // Entity-scoped retrieval path
-      const mentionedEntities = detectMentionedEntities(message, allCharacters, allLocations);
+      const mentionedEntities = focus && (focus.type === 'character' || focus.type === 'location')
+        ? [{ id: focus.id, type: focus.type, name: focus.name, matchScore: 1 } as const]
+        : detectMentionedEntities(message, allCharacters, allLocations);
       let arcLoadedForPrimary = false;
 
       if (mentionedEntities.length > 0) {
@@ -532,7 +601,7 @@ export async function buildRAGPacket(
     ...allCharacters.slice(0, 20).map((c: any) => ({
       type: 'character' as const, id: c.id, title: c.name || 'Unknown',
       snippet: c.summary || `${c.role || ''} ${c.archetype || ''}`.trim() || 'Character',
-      date: c.first_appearance,
+      date: undefined,
     })),
     ...allLocations.slice(0, 15).map((l: any) => ({
       type: 'location' as const, id: l.id, title: l.name || 'Unknown Location',
@@ -566,59 +635,61 @@ export async function buildRAGPacket(
   // These drive the "YOUR SOCIAL CIRCLES" system prompt block so the LLM can
   // answer questions like "who are my gym people?" by cluster, not enumeration.
   let socialCommunities: any[] = [];
-  try {
-    const { data: commData } = await supabaseAdmin
-      .from('social_communities')
-      .select('id, theme, members, cohesion, size')
-      .eq('user_id', userId)
-      .order('size', { ascending: false })
-      .limit(8);
-    socialCommunities = (commData as any[]) ?? [];
-  } catch (e) { logger.debug({ e }, 'RAGBuilder: social communities fetch failed'); }
+  if (retrievalPlan.loadSocialCommunities) {
+    try {
+      const { data: commData } = await supabaseAdmin
+        .from('social_communities')
+        .select('id, theme, members, cohesion, size')
+        .eq('user_id', userId)
+        .order('size', { ascending: false })
+        .limit(8);
+      socialCommunities = (commData as any[]) ?? [];
+    } catch (e) { logger.debug({ e }, 'RAGBuilder: social communities fetch failed'); }
+  }
 
-  // ── Episodic events (resolved_events, structured) ───────────────────────
-  // These are the most semantically clean temporal units: structured events with
-  // start_time/end_time, people[] UUIDs, and confidence scores. Previously orphaned.
   let episodicEvents: any[] = [];
-  try {
-    const { data: evData } = await supabaseAdmin
-      .from('resolved_events')
-      .select('id, title, summary, type, start_time, end_time, confidence, people, locations, activities, metadata')
-      .eq('user_id', userId)
-      .gte('confidence', 0.35)
-      .order('start_time', { ascending: false })
-      .limit(40);
-    episodicEvents = (evData as any[]) ?? [];
-  } catch (e) { logger.debug({ e }, 'RAGBuilder: episodic events fetch failed'); }
+  if (retrievalPlan.loadEpisodicEvents) {
+    try {
+      const { data: evData } = await supabaseAdmin
+        .from('resolved_events')
+        .select('id, title, summary, type, start_time, end_time, confidence, people, locations, activities, metadata')
+        .eq('user_id', userId)
+        .gte('confidence', 0.35)
+        .order('start_time', { ascending: false })
+        .limit(40);
+      episodicEvents = (evData as any[]) ?? [];
+      recordRetrievalSection('events', episodicEvents);
+    } catch (e) { logger.debug({ e }, 'RAGBuilder: episodic events fetch failed'); }
+  }
 
-  // ── Recent interpretations (reconsolidation layer) ───────────────────────
   let recentInterpretations: any[] = [];
-  try {
-    const { interpretationService } = await import('../interpretationService');
-    recentInterpretations = await interpretationService.getRecentInterpretations(userId, 5);
-  } catch (e) { logger.debug({ e }, 'RAGBuilder: interpretations fetch failed'); }
+  if (retrievalPlan.loadInterpretations) {
+    try {
+      const { interpretationService } = await import('../interpretationService');
+      recentInterpretations = await interpretationService.getRecentInterpretations(userId, 5);
+    } catch (e) { logger.debug({ e }, 'RAGBuilder: interpretations fetch failed'); }
+  }
 
-  // ── Stable life arcs (stability_score >= 0.5) ────────────────────────────
   let stableArcs: any[] = [];
-  try {
-    const { data } = await supabaseAdmin
-      .from('life_arcs')
-      .select('id, title, arc_type, start_date, end_date, summary, confidence, stability_score, is_active')
-      .eq('user_id', userId)
-      .gte('stability_score', 0.5)
-      .order('stability_score', { ascending: false })
-      .limit(8);
-    stableArcs = (data as any[]) ?? [];
-  } catch (e) { logger.debug({ e }, 'RAGBuilder: stable arcs fetch failed'); }
+  if (retrievalPlan.loadStableArcs) {
+    try {
+      const { data } = await supabaseAdmin
+        .from('life_arcs')
+        .select('id, title, arc_type, start_date, end_date, summary, confidence, stability_score, is_active')
+        .eq('user_id', userId)
+        .gte('stability_score', 0.5)
+        .order('stability_score', { ascending: false })
+        .limit(8);
+      stableArcs = (data as any[]) ?? [];
+    } catch (e) { logger.debug({ e }, 'RAGBuilder: stable arcs fetch failed'); }
+  }
 
-  // ── Crystallized knowledge (confidence >= 0.70, ACTIVE only) ────────────
-  // Fetched here so the system prompt builder receives pre-ranked claims.
-  // loadPromptClaims applies the 6-claim cap and per-type limits internally.
-  // Failure is non-fatal — the WHAT LOREBOOK KNOWS block is simply omitted.
   let crystallizedKnowledge: Array<{ id?: string; knowledge_type: string; human_readable_claim: string; confidence: number; last_reinforced_at?: string | null }> = [];
-  try {
-    crystallizedKnowledge = await loadPromptClaims(userId);
-  } catch (e) { logger.debug({ e }, 'RAGBuilder: crystallized knowledge fetch failed'); }
+  if (retrievalPlan.loadCrystallizedKnowledge) {
+    try {
+      crystallizedKnowledge = await loadPromptClaims(userId);
+    } catch (e) { logger.debug({ e }, 'RAGBuilder: crystallized knowledge fetch failed'); }
+  }
 
   // Crystallized claims are first-class sources: retrieval prefers durable
   // knowledge over re-deriving the same truth from many observations.
@@ -645,44 +716,44 @@ export async function buildRAGPacket(
   // ── Active Narrative Threads (what is unfolding, not what happened) ──────
   // Derived fresh from life_arcs + recent moments/scenes; failure is non-fatal.
   let activeThreadsBlock: string | null = null;
-  try {
-    const { buildThreadsPromptBlock } = await import('../narrativeThreads/narrativeThreadService');
-    activeThreadsBlock = await buildThreadsPromptBlock(userId);
-  } catch (e) { logger.debug({ e }, 'RAGBuilder: narrative threads fetch failed'); }
+  if (retrievalPlan.loadNarrativeThreads) {
+    try {
+      const { buildThreadsPromptBlock } = await import('../narrativeThreads/narrativeThreadService');
+      activeThreadsBlock = await buildThreadsPromptBlock(userId);
+    } catch (e) { logger.debug({ e }, 'RAGBuilder: narrative threads fetch failed'); }
+  }
 
-  // ── Continuity That Feels Alive (0–3 structured candidates) ──────────────
-  // Selective autobiographical continuity with explainable relevance + modes.
-  // Does not replace Working Memory; adds composition guidance for the LLM.
   let continuityAliveBlock: string | null = null;
   let continuityAliveTrace: unknown = null;
-  try {
-    const { selectContinuityForUser, CONTINUITY_COMPOSITION_RULES } = await import(
-      '../continuityAlive'
-    );
-    const claimMemories = crystallizedKnowledge.map((k, i) => ({
-      memoryId: `claim-${i}`,
-      memoryType: 'claim' as const,
-      summary: k.human_readable_claim,
-      confidence: k.confidence,
-      epistemicType: 'direct_statement',
-      correctionState: 'active' as const,
-      tags: [k.knowledge_type],
-      source: 'crystallized_knowledge',
-    }));
-    const selection = await selectContinuityForUser({
-      userId,
-      message,
-      extraMemories: claimMemories,
-    });
-    continuityAliveTrace = selection.trace;
-    if (selection.promptBlock) {
-      continuityAliveBlock = `${CONTINUITY_COMPOSITION_RULES}\n\n${selection.promptBlock}`;
-    } else if (selection.selected.length === 0) {
-      // Explicit none — helps the model avoid forcing callbacks on definitional Qs
-      continuityAliveBlock = `${CONTINUITY_COMPOSITION_RULES}\n\nCONTINUITY MODE: none\nNo continuity candidate selected for this message. Answer directly.`;
+  if (retrievalPlan.loadContinuityAlive) {
+    try {
+      const { selectContinuityForUser, CONTINUITY_COMPOSITION_RULES } = await import(
+        '../continuityAlive'
+      );
+      const claimMemories = crystallizedKnowledge.map((k, i) => ({
+        memoryId: `claim-${i}`,
+        memoryType: 'claim' as const,
+        summary: k.human_readable_claim,
+        confidence: k.confidence,
+        epistemicType: 'direct_statement',
+        correctionState: 'active' as const,
+        tags: [k.knowledge_type],
+        source: 'crystallized_knowledge',
+      }));
+      const selection = await selectContinuityForUser({
+        userId,
+        message,
+        extraMemories: claimMemories,
+      });
+      continuityAliveTrace = selection.trace;
+      if (selection.promptBlock) {
+        continuityAliveBlock = `${CONTINUITY_COMPOSITION_RULES}\n\n${selection.promptBlock}`;
+      } else if (selection.selected.length === 0) {
+        continuityAliveBlock = `${CONTINUITY_COMPOSITION_RULES}\n\nCONTINUITY MODE: none\nNo continuity candidate selected for this message. Answer directly.`;
+      }
+    } catch (e) {
+      logger.debug({ e }, 'RAGBuilder: continuityAlive selection failed');
     }
-  } catch (e) {
-    logger.debug({ e }, 'RAGBuilder: continuityAlive selection failed');
   }
 
   // ── Relationship context — per-request, NOT cached ────────────────────────
@@ -713,26 +784,30 @@ export async function buildRAGPacket(
   let lifeArcSynthesis: Awaited<ReturnType<typeof import('../continuityRuntime/arcs/lifeArcSynthesisService').synthesizeLifeArcs>> | null = null;
   let storyContextBlock = '';
   let storyContext: Awaited<ReturnType<typeof import('../storyContextService').buildStoryContext>> | null = null;
-  try {
-    const intent = workingMemory?.intent;
-    const { isStoryIntent, buildStoryContext } = await import('../storyContextService');
-    if (intent && isStoryIntent(intent)) {
-      storyContext = await buildStoryContext(userId, intent);
-      storyContextBlock = storyContext.text;
-      lifeArcSynthesisBlock = storyContextBlock;
-      lifeArcSynthesis = storyContext.synthesis;
-    }
-  } catch (e) { logger.debug({ e }, 'RAGBuilder: story context assembly failed'); }
+  if (retrievalPlan.loadStoryContext) {
+    try {
+      const intent = workingMemory?.intent;
+      const { isStoryIntent, buildStoryContext } = await import('../storyContextService');
+      if (intent && isStoryIntent(intent)) {
+        storyContext = await buildStoryContext(userId, intent);
+        storyContextBlock = storyContext.text;
+        lifeArcSynthesisBlock = storyContextBlock;
+        lifeArcSynthesis = storyContext.synthesis;
+      }
+    } catch (e) { logger.debug({ e }, 'RAGBuilder: story context assembly failed'); }
+  }
 
   let confirmedSkills: Array<{ id: string; name: string; category: string; skill_key: string }> = [];
-  try {
-    const { skillIndexService } = await import('../skills/skillIndexService');
-    confirmedSkills = (await skillIndexService.listForContext(userId, 20)).map((s) => ({
-      ...s,
-      skill_key: s.name.toLowerCase().replace(/\s+/g, ' ').trim(),
-    }));
-  } catch (e) {
-    logger.debug({ e }, 'RAGBuilder: skills index fetch failed');
+  if (retrievalPlan.loadSkillsIndex) {
+    try {
+      const { skillIndexService } = await import('../skills/skillIndexService');
+      confirmedSkills = (await skillIndexService.listForContext(userId, 20)).map((s) => ({
+        ...s,
+        skill_key: s.name.toLowerCase().replace(/\s+/g, ' ').trim(),
+      }));
+    } catch (e) {
+      logger.debug({ e }, 'RAGBuilder: skills index fetch failed');
+    }
   }
 
   // Scope every downstream evidence surface once. This filtered list feeds
@@ -859,7 +934,17 @@ export async function buildRAGPacket(
     allCharacters, allLocations, allChapters, timelineHierarchy, allPeoplePlaces,
     characterAttributesMap: Object.fromEntries(characterAttributesMap),
     characterMemoriesMap,
-    romanticRelationships, romanticContext, corrections, deprecatedUnits,
+    romanticRelationships,
+    selfRomanticIdentity: (() => {
+      const selfChar = (allCharacters as Array<{ metadata?: Record<string, unknown> | null }> | undefined)?.find((row) => {
+        const meta = row.metadata ?? {};
+        return meta.is_self === true || meta.is_user === true;
+      });
+      if (!selfChar?.metadata) return null;
+      const lines = formatSelfRomanticIdentityLines(selfChar.metadata);
+      return lines.length ? { lines } : null;
+    })(),
+    romanticContext, corrections, deprecatedUnits,
     workoutEvents, recentBiometrics, topInterests,
     recentInterpretations, stableArcs, episodicEvents, socialCommunities,
     crystallizedKnowledge,
@@ -882,8 +967,18 @@ export async function buildRAGPacket(
     foundationTimeline,
     workingMemory,
     workingMemoryPacket,
+    retrievalPlan,
+    promptBreadth: retrievalPlan.breadth,
     retrievalTrace: {
       paths: retrievalPaths,
+      focus: focus
+        ? {
+            id: focus.id,
+            name: focus.name,
+            type: focus.type,
+            resolution: 'authoritative_navigation_focus',
+          }
+        : null,
       promptSections: [
         foundationRecallBlock ? 'working_memory' : null,
         retellingRecallBlock ? 'retelling_recall' : null,
@@ -892,6 +987,8 @@ export async function buildRAGPacket(
       ].filter(Boolean),
       queryCount: workingMemory?.timing?.queryCount ?? 0,
       rejectedEvidence,
+      breadth: retrievalPlan.breadth,
+      earlyStop: retrievalPlan.earlyStopOnWmaEvidence,
     },
     lifeArcSynthesisBlock,
     lifeArcSynthesis,
@@ -905,8 +1002,14 @@ export async function buildRAGPacket(
     paths: retrievalPaths,
     promptSections: packet.retrievalTrace.promptSections,
     queryCount: packet.retrievalTrace.queryCount,
+    breadth: retrievalPlan.breadth,
   }, 'RAGBuilder: retrieval trace');
 
-  if (!retellingRecall) ragPacketCacheService.cachePacket(userId, message, packet);
+  recordPromptPayload([
+    foundationRecallBlock,
+    JSON.stringify(sources.slice(0, 20)),
+  ].join('\n'));
+
+  if (!retellingRecall) ragPacketCacheService.cachePacket(userId, message, packet, cacheContextKey);
   return packet;
 }

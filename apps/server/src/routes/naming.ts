@@ -40,7 +40,7 @@ router.post('/chapter-name', requireAuth, async (req: AuthenticatedRequest, res)
       .select('content, date')
       .eq('user_id', userId)
       .eq('chapter_id', chapterId)
-      .order('date', { ascending: false })
+      .order('date', { ascending: false, nullsFirst: false })
       .limit(50);
 
     const entries = (entriesData || []).map((e: any) => ({

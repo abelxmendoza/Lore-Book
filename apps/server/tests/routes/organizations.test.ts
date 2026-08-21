@@ -12,6 +12,9 @@ import { requireAuth } from '../../src/middleware/auth';
 vi.mock('../../src/services/organizationService');
 vi.mock('../../src/middleware/auth');
 vi.mock('../../src/services/conversationCentered/entityTimelineBuilder');
+vi.mock('../../src/services/temporal/userTimezoneService', () => ({
+  resolveUserTimezoneForRequest: vi.fn().mockResolvedValue('America/Los_Angeles'),
+}));
 
 const app = express();
 app.use(express.json());
@@ -252,7 +255,11 @@ describe('Organizations Routes', () => {
         .expect(200);
 
       expect(response.body).toEqual({ success: true, timelines });
-      expect(organizationTimelineBuilder.buildTimelines).toHaveBeenCalledWith('test-user-id', 'org-1');
+      expect(organizationTimelineBuilder.buildTimelines).toHaveBeenCalledWith(
+        'test-user-id',
+        'org-1',
+        'America/Los_Angeles',
+      );
     });
 
     it('returns 500 when the builder throws', async () => {
@@ -270,7 +277,7 @@ describe('Organizations Routes', () => {
   });
 
   describe('POST /api/organizations/:id/rebuild-timelines', () => {
-    it('rebuilds and returns success', async () => {
+    it('returns deprecated compatibility no-op instead of rebuilding chronology', async () => {
       const { organizationTimelineBuilder } = await import(
         '../../src/services/conversationCentered/entityTimelineBuilder'
       );
@@ -280,7 +287,12 @@ describe('Organizations Routes', () => {
         .post('/api/organizations/org-1/rebuild-timelines')
         .expect(200);
 
-      expect(response.body).toEqual({ success: true, message: 'Timelines rebuilt' });
+      expect(response.body).toMatchObject({
+        success: true,
+        deprecated: true,
+        rebuilt: false,
+      });
+      expect(response.body.message).toMatch(/deprecated/i);
       expect(organizationTimelineBuilder.rebuildTimelinesForEntity).toHaveBeenCalledWith('test-user-id', 'org-1');
     });
   });

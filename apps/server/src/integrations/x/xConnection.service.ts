@@ -11,6 +11,7 @@ import { xApiGuard } from '../../lib/externalCircuitBreaker';
 import { logger } from '../../logger';
 import { encrypt, decrypt } from '../../services/encryption';
 import { memoryService } from '../../services/memoryService';
+import { occurrenceFromImportedText } from '../../services/journal/journalOccurrenceWrite';
 import { supabaseAdmin } from '../../services/supabaseClient';
 import {
   ingestExternalPost,
@@ -543,10 +544,17 @@ async function persistXImports(
       continue;
     }
 
+    const occurrence = occurrenceFromImportedText(summary.text ?? summary.summary, {
+      sourceCreatedAt: summary.timestamp,
+    });
     const entry = await memoryService.saveEntry({
       userId,
       content: summary.text ?? summary.summary,
-      date: summary.timestamp,
+      date: occurrence.date,
+      temporalSource: occurrence.temporalSource,
+      mentionedAt: summary.timestamp,
+      sourceCreatedAt: summary.timestamp,
+      importedAt: new Date().toISOString(),
       tags: Array.from(new Set(['x-import', summary.type, ...(summary.tags ?? [])])),
       summary: summary.milestone ?? summary.summary,
       source: PROVIDER,

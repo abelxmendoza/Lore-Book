@@ -163,11 +163,16 @@ export class UniversalSearchService {
         .map(char => ({
           id: char.id,
           title: char.name,
-          date: char.first_appearance || new Date().toISOString(),
+          date: '',
           timelineType: 'people',
           sourceType: 'character',
           description: char.summary,
-          metadata: { tags: char.tags, alias: char.alias }
+          metadata: {
+            tags: char.tags,
+            alias: char.alias,
+            firstMentionedAt: char.first_appearance ?? null,
+            dateClock: 'mention_not_occurrence',
+          }
         }));
     } catch (error) {
       logger.debug({ error }, 'Failed to search people');
@@ -196,11 +201,11 @@ export class UniversalSearchService {
         .map(loc => ({
           id: loc.id,
           title: loc.name,
-          date: loc.created_at || new Date().toISOString(),
+          date: loc.created_at ?? '',
           timelineType: 'locations',
           sourceType: 'location',
           description: loc.type ? `Type: ${loc.type}` : undefined,
-          metadata: { type: loc.type }
+          metadata: { type: loc.type, dateClock: 'recording_not_occurrence' }
         }));
     } catch (error) {
       logger.debug({ error }, 'Failed to search locations');

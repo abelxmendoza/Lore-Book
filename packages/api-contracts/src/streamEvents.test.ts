@@ -51,6 +51,29 @@ describe('chat SSE contracts', () => {
     });
   });
 
+  it('preserves visible-response discipline fields on done', () => {
+    const event = parseChatStreamEvent(JSON.stringify({
+      type: 'done',
+      verified: true,
+      rewritten: true,
+      unsupportedCount: 1,
+      causalRewriteCount: 1,
+      embellishmentRewriteCount: 0,
+      epistemicRewriteCount: 1,
+      content: 'The user believed jealousy may also have been involved.',
+    }));
+
+    expect(event).toMatchObject({
+      type: 'done',
+      verified: true,
+      rewritten: true,
+      unsupportedCount: 1,
+      causalRewriteCount: 1,
+      epistemicRewriteCount: 1,
+      content: 'The user believed jealousy may also have been involved.',
+    });
+  });
+
   it('returns null for garbage JSON', () => {
     expect(parseChatStreamEvent('not-json')).toBeNull();
     expect(parseChatStreamEvent('')).toBeNull();

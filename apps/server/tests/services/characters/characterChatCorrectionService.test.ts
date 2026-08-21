@@ -96,4 +96,36 @@ describe('applyCharacterChatKnowledgeUpdate', () => {
       expect.stringContaining('She works at the coffee shop'),
     );
   });
+
+  it('infers pronouns from focused chat and writes them onto the card', async () => {
+    const update = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnThis() });
+    vi.mocked(supabaseAdmin.from).mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: {
+          id: 'char-1',
+          name: 'Jamie',
+          alias: [],
+          summary: null,
+          role: null,
+          pronouns: null,
+          metadata: {},
+        },
+      }),
+      update,
+    } as never);
+
+    const result = await applyCharacterChatKnowledgeUpdate(
+      'user-1',
+      'char-1',
+      'She works at the coffee shop on Main Street.',
+      { sessionId: 'sess-1', characterName: 'Jamie' },
+    );
+
+    expect(result.fieldUpdates).toContain('pronouns');
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ pronouns: 'she/her' }),
+    );
+  });
 });

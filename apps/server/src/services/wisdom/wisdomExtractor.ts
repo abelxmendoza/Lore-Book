@@ -67,7 +67,7 @@ export class WisdomExtractor {
     content: string,
     source: WisdomSource,
     sourceId: string,
-    sourceDate: string
+    sourceDate: string | null | null
   ): Promise<WisdomStatement[]> {
     const wisdom: WisdomStatement[] = [];
 
@@ -108,7 +108,7 @@ export class WisdomExtractor {
     content: string,
     source: WisdomSource,
     sourceId: string,
-    sourceDate: string
+    sourceDate: string | null
   ): WisdomStatement[] {
     const wisdom: WisdomStatement[] = [];
     const lowerContent = content.toLowerCase();
@@ -134,13 +134,13 @@ export class WisdomExtractor {
                 confidence,
                 source,
                 source_id: sourceId,
-                source_date: sourceDate,
+                source_date: sourceDate ?? '',
                 tags: [],
                 related_experiences: [],
                 related_patterns: [],
                 recurrence_count: 1,
-                first_seen: sourceDate,
-                last_seen: sourceDate,
+                first_seen: sourceDate ?? '',
+                last_seen: sourceDate ?? '',
                 evolution: [],
                 metadata: {},
                 created_at: new Date().toISOString(),
@@ -260,7 +260,7 @@ export class WisdomExtractor {
     content: string,
     source: WisdomSource,
     sourceId: string,
-    sourceDate: string
+    sourceDate: string | null
   ): Promise<WisdomStatement[]> {
     try {
       const completion = await openai.chat.completions.create({
@@ -305,13 +305,13 @@ If no wisdom is found, return {"wisdom": []}.`,
         confidence: w.confidence || 0.6,
         source,
         source_id: sourceId,
-        source_date: sourceDate,
+        source_date: sourceDate ?? '',
         tags: [],
         related_experiences: [],
         related_patterns: [],
         recurrence_count: 1,
-        first_seen: sourceDate,
-        last_seen: sourceDate,
+        first_seen: sourceDate ?? '',
+        last_seen: sourceDate ?? '',
         evolution: [],
         metadata: {},
         created_at: new Date().toISOString(),

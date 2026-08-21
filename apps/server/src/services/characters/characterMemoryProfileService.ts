@@ -14,7 +14,13 @@ export type CharacterMemoryProfile = {
   relationshipToUser: string | null;
   majorMemories: string[];
   recurringPatterns: string[];
+  firstKnownOccurrence: string | null;
+  lastKnownOccurrence: string | null;
+  firstMentionedAt: string | null;
+  lastMentionedAt: string | null;
+  /** @deprecated occurrence clock. Use firstKnownOccurrence. */
   firstSeen: string | null;
+  /** @deprecated occurrence clock. Use lastKnownOccurrence. */
   lastSeen: string | null;
   importanceScore: number;
   biography: string;
@@ -128,8 +134,12 @@ export async function buildCharacterMemoryProfile(
     relationshipToUser,
     majorMemories: memorySummaries.slice(0, 6),
     recurringPatterns: patterns,
-    firstSeen: bio?.firstSeen ?? null,
-    lastSeen: bio?.lastSeen ?? null,
+    firstKnownOccurrence: bio?.firstKnownOccurrence ?? null,
+    lastKnownOccurrence: bio?.lastKnownOccurrence ?? null,
+    firstMentionedAt: bio?.firstMentionedAt ?? null,
+    lastMentionedAt: bio?.lastMentionedAt ?? null,
+    firstSeen: bio?.firstKnownOccurrence ?? null,
+    lastSeen: bio?.lastKnownOccurrence ?? null,
     importanceScore: importance.importanceScore,
     biography: bio?.narrativeSummary ?? `${char.name} in your story.`,
   };
@@ -154,8 +164,15 @@ export function formatCharacterMemoryProfileForChat(profile: CharacterMemoryProf
 
   lines.push(
     `**Importance:** ${profile.importanceScore}/100`,
-    profile.firstSeen ? `**First seen:** ${new Date(profile.firstSeen).toLocaleDateString()}` : '',
-    profile.lastSeen ? `**Last seen:** ${new Date(profile.lastSeen).toLocaleDateString()}` : '',
+    profile.firstKnownOccurrence
+      ? `**First known occurrence:** ${new Date(profile.firstKnownOccurrence).toLocaleDateString()}`
+      : '',
+    profile.lastKnownOccurrence
+      ? `**Last known occurrence:** ${new Date(profile.lastKnownOccurrence).toLocaleDateString()}`
+      : '',
+    profile.firstMentionedAt
+      ? `**First mentioned in LoreBook:** ${new Date(profile.firstMentionedAt).toLocaleDateString()}`
+      : '',
     '',
     '**Biography:**',
     profile.biography

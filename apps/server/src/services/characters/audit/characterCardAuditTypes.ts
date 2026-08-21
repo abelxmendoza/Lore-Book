@@ -12,6 +12,7 @@ export type CharacterAuditStatus =
   | 'wrong_domain_role'
   | 'wrong_domain_event'
   | 'wrong_domain_process'
+  | 'wrong_domain_organization'
   | 'sentence_bleed'
   | 'pronoun_fragment'
   | 'broken_span'
@@ -89,6 +90,7 @@ export type CharacterCardAuditResult = {
     | 'role'
     | 'event'
     | 'process'
+    | 'organization'
     | 'skill'
     | 'place';
   provenanceSummary?: string;

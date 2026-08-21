@@ -64,7 +64,7 @@ export async function buildMemoryCoverageAudit(userId: string): Promise<MemoryCo
     peoplePlacesResult,
     omegaResult,
     characterMemoriesResult,
-    characterEventsResult,
+    resolvedEventsResult,
     characterRelationshipsResult,
     entityFactsResult,
     omegaClaimsResult,
@@ -74,7 +74,7 @@ export async function buildMemoryCoverageAudit(userId: string): Promise<MemoryCo
     supabaseAdmin.from('people_places').select('id, name, type, related_entries').eq('user_id', userId),
     supabaseAdmin.from('omega_entities').select('id, primary_name, type, mention_count').eq('user_id', userId).limit(500),
     supabaseAdmin.from('character_memories').select('character_id').eq('user_id', userId),
-    supabaseAdmin.from('character_timeline_events').select('character_id').eq('user_id', userId),
+    supabaseAdmin.from('resolved_events').select('people').eq('user_id', userId),
     supabaseAdmin.from('character_relationships').select('source_character_id, target_character_id').eq('user_id', userId),
     supabaseAdmin.from('entity_facts').select('entity_id, entity_type').eq('user_id', userId).eq('status', 'active'),
     supabaseAdmin.from('omega_claims').select('entity_id').eq('user_id', userId).eq('is_active', true),
@@ -82,7 +82,13 @@ export async function buildMemoryCoverageAudit(userId: string): Promise<MemoryCo
   ]);
 
   const memoryCounts = countBy((characterMemoriesResult.data ?? []) as any[], 'character_id');
-  const eventCounts = countBy((characterEventsResult.data ?? []) as any[], 'character_id');
+  const eventCounts = new Map<string, number>();
+  for (const row of (resolvedEventsResult.data ?? []) as Array<{ people?: string[] | null }>) {
+    for (const personId of row.people ?? []) {
+      if (typeof personId !== 'string' || !personId) continue;
+      eventCounts.set(personId, (eventCounts.get(personId) ?? 0) + 1);
+    }
+  }
   const factCounts = countBy(
     ((entityFactsResult.data ?? []) as any[]).filter((row) => row.entity_type === 'character'),
     'entity_id'

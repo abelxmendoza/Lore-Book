@@ -15,6 +15,7 @@ function makeChain(result: TableResult) {
     not: () => chain,
     gt: () => chain,
     gte: () => chain,
+    overlaps: () => chain,
     order: () => chain,
     limit: () => chain,
     single: () => Promise.resolve(result),
@@ -32,9 +33,16 @@ vi.mock('../../src/services/supabaseClient', () => ({
   },
 }));
 
-const { getBiography, generateBiography } = vi.hoisted(() => ({
+const { getBiography, generateBiography, getStitchedTimelineMock } = vi.hoisted(() => ({
   getBiography: vi.fn(),
   generateBiography: vi.fn(),
+  getStitchedTimelineMock: vi.fn().mockResolvedValue({ items: [], unresolved_items: [] }),
+}));
+
+vi.mock('../../src/services/chronologyV2/stitchedTimelineService', () => ({
+  stitchedTimelineService: {
+    getStitchedTimeline: (...args: unknown[]) => getStitchedTimelineMock(...args),
+  },
 }));
 
 vi.mock('../../src/services/biographyFoundationService', async () => {
@@ -50,6 +58,7 @@ import {
   getNarrativeIdentityRecall,
   formatNarrativeIdentityRecall,
   deriveCurrentChapter,
+  deriveCurrentFocus,
   shouldRefreshBiography,
   getBiographyChanges,
 } from '../../src/services/livingBiographyService';
@@ -94,6 +103,7 @@ function makeBio(overrides: Partial<BiographyOutput> = {}): BiographyOutput {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  getStitchedTimelineMock.mockResolvedValue({ items: [], unresolved_items: [] });
   tableResults = {};
 });
 
@@ -116,7 +126,7 @@ describe('getLivingBiographyCard', () => {
     const bio = makeBio();
     getBiography.mockResolvedValue(bio);
     tableResults.journal_entries = { data: [], error: null, count: 0 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.resolved_events = { data: [], error: null, count: 0 };
     tableResults.quests = { data: [], error: null };
 
     const card = await getLivingBiographyCard('user-1');
@@ -137,7 +147,7 @@ describe('getLivingBiographyCard', () => {
     });
     getBiography.mockResolvedValue(bio);
     tableResults.journal_entries = { data: [], error: null, count: 0 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.resolved_events = { data: [], error: null, count: 0 };
     tableResults.quests = {
       data: [{ title: 'Finish career lore review' }, { title: 'Ship MemoVault beta' }],
       error: null,
@@ -157,7 +167,7 @@ describe('getLivingBiographyCard', () => {
     });
     getBiography.mockResolvedValue(bio);
     tableResults.journal_entries = { data: [], error: null, count: 0 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.resolved_events = { data: [], error: null, count: 0 };
     tableResults.quests = { data: [], error: null };
 
     const card = await getLivingBiographyCard('user-1');
@@ -170,7 +180,7 @@ describe('getLivingBiographyCard', () => {
     const bio = makeBio();
     getBiography.mockResolvedValue(bio);
     tableResults.journal_entries = { data: [], error: null, count: 0 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.resolved_events = { data: [], error: null, count: 0 };
     tableResults.quests = { data: [], error: null };
 
     const card = await getLivingBiographyCard('user-1');
@@ -194,7 +204,7 @@ describe('getLivingBiographyCard', () => {
     });
     getBiography.mockResolvedValue(bio);
     tableResults.journal_entries = { data: [], error: null, count: 0 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.resolved_events = { data: [], error: null, count: 0 };
     tableResults.quests = { data: [], error: null };
 
     const card = await getLivingBiographyCard('user-1');
@@ -207,7 +217,7 @@ describe('getLivingBiographyCard', () => {
     const bio = makeBio();
     getBiography.mockResolvedValue(bio);
     tableResults.journal_entries = { data: [], error: null, count: 0 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.resolved_events = { data: [], error: null, count: 0 };
     tableResults.quests = { data: [], error: null };
 
     const card = await getLivingBiographyCard('user-1');
@@ -266,7 +276,7 @@ describe('Narrative Recall v2 identity projection', () => {
     });
     getBiography.mockResolvedValue(bio);
     tableResults.journal_entries = { data: [], error: null, count: 0 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.resolved_events = { data: [], error: null, count: 0 };
     tableResults.quests = { data: [], error: null };
 
     const recall = await getNarrativeIdentityRecall('user-1');
@@ -351,7 +361,7 @@ describe('shouldRefreshBiography', () => {
   it('does not refresh within the minimum cooldown window, regardless of new evidence', async () => {
     const recent = new Date(Date.now() - 1 * 3_600_000).toISOString();
     tableResults.journal_entries = { data: [], error: null, count: 99 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 99 };
+    tableResults.resolved_events = { data: [], error: null, count: 99 };
 
     expect(await shouldRefreshBiography('user-1', recent)).toBe(false);
   });
@@ -359,7 +369,7 @@ describe('shouldRefreshBiography', () => {
   it('refreshes once the cooldown has passed and enough new journal entries exist', async () => {
     const stale = new Date(Date.now() - 48 * 3_600_000).toISOString();
     tableResults.journal_entries = { data: [], error: null, count: 5 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.resolved_events = { data: [], error: null, count: 0 };
 
     expect(await shouldRefreshBiography('user-1', stale)).toBe(true);
   });
@@ -367,7 +377,7 @@ describe('shouldRefreshBiography', () => {
   it('refreshes once the cooldown has passed and enough new timeline events exist', async () => {
     const stale = new Date(Date.now() - 48 * 3_600_000).toISOString();
     tableResults.journal_entries = { data: [], error: null, count: 0 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 3 };
+    tableResults.resolved_events = { data: [], error: null, count: 3 };
 
     expect(await shouldRefreshBiography('user-1', stale)).toBe(true);
   });
@@ -375,7 +385,7 @@ describe('shouldRefreshBiography', () => {
   it('does not refresh past cooldown when neither threshold is met', async () => {
     const stale = new Date(Date.now() - 48 * 3_600_000).toISOString();
     tableResults.journal_entries = { data: [], error: null, count: 1 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 0 };
+    tableResults.resolved_events = { data: [], error: null, count: 0 };
 
     expect(await shouldRefreshBiography('user-1', stale)).toBe(false);
   });
@@ -383,7 +393,7 @@ describe('shouldRefreshBiography', () => {
   it('refreshes with a single new timeline event once cooldown has passed', async () => {
     const stale = new Date(Date.now() - 48 * 3_600_000).toISOString();
     tableResults.journal_entries = { data: [], error: null, count: 0 };
-    tableResults.character_timeline_events = { data: [], error: null, count: 1 };
+    tableResults.resolved_events = { data: [], error: null, count: 1 };
 
     expect(await shouldRefreshBiography('user-1', stale)).toBe(true);
   });
@@ -458,3 +468,50 @@ describe('getBiographyChanges', () => {
     expect(changes.some(c => c.kind === 'emerging_theme')).toBe(false);
   });
 });
+
+describe('living biography upcoming events — canonical occurrence only', () => {
+  it('does not treat a legacy 2030 CTE date as upcoming when canonical occurrence is unresolved', async () => {
+    const bio = makeBio({ facts: { ...makeBio().facts, upcomingEvents: [] } });
+    tableResults.projects = { data: [], error: null };
+    tableResults.quests = { data: [], error: null };
+    tableResults.character_timeline_events = {
+      data: [{ event_title: 'Dinner with Maya', event_date: '2030-01-01' }],
+      error: null,
+    };
+    getStitchedTimelineMock.mockResolvedValue({
+      items: [{
+        id: 'event:evt-dinner',
+        title: 'Dinner with Maya',
+        occurredAt: null,
+        occurrenceStatus: 'unresolved',
+        temporalProjection: { isUnresolved: true, temporalState: 'unresolved', occurredStart: null },
+      }],
+      unresolved_items: [],
+    });
+
+    expect(await deriveCurrentFocus('user-1', bio)).not.toContain('Dinner with Maya');
+  });
+
+  it('treats a canonical future occurrence as upcoming', async () => {
+    const bio = makeBio({ facts: { ...makeBio().facts, upcomingEvents: [] } });
+    tableResults.projects = { data: [], error: null };
+    tableResults.quests = { data: [], error: null };
+    getStitchedTimelineMock.mockResolvedValue({
+      items: [{
+        id: 'event:evt-future',
+        title: 'Dinner with Maya',
+        occurredAt: '2030-01-01T19:00:00.000Z',
+        occurrenceStatus: 'point',
+        temporalProjection: {
+          isUnresolved: false,
+          temporalState: 'future',
+          occurredStart: '2030-01-01T19:00:00.000Z',
+        },
+      }],
+      unresolved_items: [],
+    });
+
+    expect(await deriveCurrentFocus('user-1', bio)).toContain('Dinner with Maya');
+  });
+});
+

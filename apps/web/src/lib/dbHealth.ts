@@ -10,6 +10,8 @@ export type DatabaseStorageSnapshot = {
   utilizationRatio: number | null;
   checkedAt: string;
   error?: string;
+  writeBlocked?: boolean;
+  writeBlockedReason?: 'read_only' | 'disk_full' | 'in_recovery' | null;
 };
 
 export type DatabaseUpgradeSnapshot = {
@@ -64,8 +66,13 @@ export function resolveOpsSeverity(payload: DbHealthPayload | null | undefined):
   return Math.max(opsSeverity(payload.storage.status), opsSeverity(payload.upgrade.status));
 }
 
-export function shouldShowOpsBanner(payload: DbHealthPayload | null | undefined): boolean {
+export function shouldShowOpsBanner(
+  payload: DbHealthPayload | null | undefined,
+  opts?: { isAdmin?: boolean }
+): boolean {
   if (!payload) return false;
+  if (payload.storage.writeBlocked) return true;
+  if (opts?.isAdmin === false) return false;
   return (
     payload.storage.status === 'warn' ||
     payload.storage.status === 'critical' ||
@@ -95,10 +102,17 @@ export function buildStorageBannerMessage(
   storage: DatabaseStorageSnapshot,
   opts?: { compact?: boolean }
 ): string {
+  const compact = opts?.compact ?? false;
+
+  if (storage.writeBlocked) {
+    return compact
+      ? 'Supabase spend cap is blocking saves'
+      : 'Supabase spend cap or a usage quota is blocking saves. LoreBook can still recall existing memories. New chats, journal entries, and uploads will fail until the next billing cycle or the cap is raised.';
+  }
+
   const pct = formatUtilizationPercent(storage.utilizationRatio);
   const used = formatBytes(storage.databaseBytes);
   const quota = formatBytes(storage.quotaBytes);
-  const compact = opts?.compact ?? false;
 
   if (storage.status === 'critical') {
     if (compact) {
@@ -154,7 +168,7 @@ export function buildOpsBannerContent(
   const upgradeRank = opsSeverity(payload.upgrade.status);
 
   let severity: StorageHealthStatus = 'ok';
-  if (storageRank >= 2 || upgradeRank >= 2) severity = 'critical';
+  if (payload.storage.writeBlocked || storageRank >= 2 || upgradeRank >= 2) severity = 'critical';
   else if (storageRank >= 1 || upgradeRank >= 1) severity = 'warn';
 
   let headline = storageMsg;
@@ -168,6 +182,9 @@ export function buildOpsBannerContent(
   }
 
   const linkUrl = (() => {
+    if (payload.storage.writeBlocked) {
+      return resolveSupabaseBillingUrl();
+    }
     if (payload.upgrade.deprecatedExtensions.length > 0) {
       return resolveSupabaseExtensionsUrl();
     }
@@ -177,6 +194,7 @@ export function buildOpsBannerContent(
 
   const linkLabel = (() => {
     if (!linkUrl) return null;
+    if (payload.storage.writeBlocked) return 'Open Supabase billing / Spend Cap';
     if (payload.upgrade.deprecatedExtensions.length > 0) {
       return 'Open Supabase Extensions';
     }
@@ -199,6 +217,11 @@ export function resolveSupabaseProjectRef(): string | null {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
   const match = supabaseUrl?.match(/https:\/\/([^.]+)\.supabase\.co/i);
   return match?.[1] ?? null;
+}
+
+export function resolveSupabaseBillingUrl(): string | null {
+  const ref = resolveSupabaseProjectRef();
+  return ref ? `https://supabase.com/dashboard/project/${ref}/settings/billing` : null;
 }
 
 export function resolveSupabaseDatabaseSettingsUrl(): string | null {

@@ -109,7 +109,7 @@ class MemoirService {
       .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .gte('date', yesterday.toISOString())
-      .order('date', { ascending: false })
+      .order('date', { ascending: false, nullsFirst: false })
       .limit(50);
 
     if (!recentEntries || recentEntries.length === 0) return;
@@ -376,7 +376,7 @@ Then provide corrected content that integrates the new information truthfully an
       query = query.lte('date', options.period.to);
     }
 
-    const { data: entriesData } = await query.order('date', { ascending: false }).limit(100);
+    const { data: entriesData } = await query.order('date', { ascending: false, nullsFirst: false }).limit(100);
 
     if (!entriesData || entriesData.length === 0) {
       throw new Error('Not enough entries to generate section');

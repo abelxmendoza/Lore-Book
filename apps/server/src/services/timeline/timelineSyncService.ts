@@ -152,10 +152,12 @@ export class TimelineSyncService {
       return [];
     }
 
-    return (entries || []).flatMap(entry => 
-      normalizeJournalEntry({
+    return (entries || []).flatMap(entry => {
+      const occurrence = entry.date || entry.timestamp || null;
+      if (!occurrence) return [];
+      return normalizeJournalEntry({
         id: entry.id,
-        date: entry.date || entry.timestamp || entry.created_at,
+        date: occurrence,
         content: entry.content || '',
         summary: entry.summary,
         tags: entry.tags || [],
@@ -164,8 +166,8 @@ export class TimelineSyncService {
         chapter_id: entry.chapter_id,
         source: entry.source,
         metadata: entry.metadata
-      })
-    );
+      });
+    });
   }
 
   /**

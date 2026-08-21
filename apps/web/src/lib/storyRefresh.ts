@@ -46,6 +46,17 @@ export function storyScopeMatches(
   return detail.scopes.includes('all') || detail.scopes.includes(scope);
 }
 
+/** After a canonical date mutation, refresh Omni + Calendar without a full reload. */
+export function dispatchTemporalViewsUpdated() {
+  dispatchStoryDataUpdated({ scopes: ['timeline'] });
+}
+
+export function subscribeTemporalRefresh(reload: () => void): () => void {
+  return onStoryDataUpdated(() => {
+    reload();
+  }, 'timeline');
+}
+
 export function onStoryDataUpdated(
   handler: (detail: StoryDataUpdatedDetail) => void,
   scope?: StoryRefreshScope

@@ -41,7 +41,7 @@ export const createChapter = async (req: AuthenticatedRequest, res: Response) =>
           .select('content, date')
           .eq('user_id', req.user!.id)
           .eq('chapter_id', chapter.id)
-          .order('date', { ascending: false })
+          .order('date', { ascending: false, nullsFirst: false })
           .limit(50);
 
         const entries = (entriesData || []).map((e: any) => ({

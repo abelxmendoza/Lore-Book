@@ -34,8 +34,8 @@ const CANONICAL_GROUPS: Array<{ canonical: string; aliases: string[] }> = [
     ],
   },
   {
-    canonical: 'Software Debugging',
-    aliases: ['debugging', 'software debugging', 'debug', 'bug fixing'],
+    canonical: 'Python',
+    aliases: ['python programming', 'python coding', 'programming in python', 'programming python'],
   },
   {
     canonical: 'Professional Self-Marketing',

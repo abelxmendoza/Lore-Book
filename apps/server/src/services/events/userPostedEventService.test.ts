@@ -35,6 +35,10 @@ vi.mock('../supabaseClient', () => ({
   },
 }));
 
+vi.mock('../organizations/organizationEventAttributionService', () => ({
+  attributeOrganizationsForEventText: vi.fn(async ({ existingMetadata }) => existingMetadata ?? {}),
+}));
+
 import {
   createUserPostedEvent,
   addStoryToUserPostedEvent,

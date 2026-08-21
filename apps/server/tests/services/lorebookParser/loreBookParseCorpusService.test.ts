@@ -51,6 +51,30 @@ vi.mock('../../../src/services/omegaMemoryService', () => ({
   omegaMemoryService: { createEntity: mockCreateEntity },
 }));
 
+vi.mock('../../../src/services/organizations/organizationSuggestionService', () => ({
+  organizationSuggestionService: { upsertFromInference: vi.fn().mockResolvedValue(true) },
+}));
+
+const mockApplyAttachPlan = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const mockLoadAttachCanon = vi.hoisted(() => vi.fn().mockResolvedValue({}));
+
+vi.mock('../../../src/services/lorebook/suggestions/suggestionAttachApply', async () => {
+  const actual = await vi.importActual<
+    typeof import('../../../src/services/lorebook/suggestions/suggestionAttachApply')
+  >('../../../src/services/lorebook/suggestions/suggestionAttachApply');
+  return {
+    ...actual,
+    applyAttachPlan: mockApplyAttachPlan,
+    loadAttachCanonIndex: mockLoadAttachCanon,
+    loadAttachCanonResult: vi.fn().mockResolvedValue({
+      index: {},
+      status: 'ok',
+      successfulLoads: 1,
+      failedLoads: 0,
+    }),
+  };
+});
+
 import {
   applyParseOperations,
   loadRecentCorpusLines,
@@ -106,12 +130,13 @@ describe('loreBookParseCorpusService', () => {
     const suggestAdd = (
       domain: LoreBookOperation & { kind: 'suggest_add' }['domain'],
       name: string,
-      gate: 'suggest' | 'block' = 'suggest'
+      gate: 'suggest' | 'block' = 'suggest',
+      quote?: string,
     ): LoreBookOperation => ({
       kind: 'suggest_add',
       domain,
       name,
-      evidence: { quote: `mention of ${name}` },
+      evidence: { quote: quote ?? `mention of ${name}` },
       confidence: 0.8,
       sourceSpans: [],
       gate,
@@ -129,10 +154,22 @@ describe('loreBookParseCorpusService', () => {
 
     it('applies quest suggest_add via questSuggestionService', async () => {
       const summary = await applyParseOperations('user-1', [
-        suggestAdd('quests', 'Ship LoreBook beta'),
+        suggestAdd('quests', 'Ship LoreBook beta', 'suggest', 'I need to ship LoreBook beta this week'),
       ]);
       expect(summary.applied).toBe(1);
       expect(mockQuestUpsert).toHaveBeenCalled();
+    });
+
+    it('skips writes outside applyDomains so a Places rescan cannot seed quests', async () => {
+      const summary = await applyParseOperations(
+        'user-1',
+        [suggestAdd('locations', 'Blue Note Lounge'), suggestAdd('quests', 'Finish my resume')],
+        { applyDomains: ['locations'] },
+      );
+      expect(mockCreateEntity).toHaveBeenCalledWith('user-1', 'Blue Note Lounge', 'LOCATION');
+      expect(mockQuestUpsert).not.toHaveBeenCalled();
+      expect(summary.byDomain.locations).toBe(1);
+      expect(summary.byDomain.quests).toBeUndefined();
     });
 
     it('skips blocked and non-suggest_add operations', async () => {
@@ -152,10 +189,35 @@ describe('loreBookParseCorpusService', () => {
       expect(summary.skipped).toBe(3);
     });
 
+    it('attaches a known acronym instead of spawning a second card', async () => {
+      const summary = await applyParseOperations(
+        'user-1',
+        [suggestAdd('organizations', 'USC')],
+        {
+          attachCanon: {
+            organizations: [
+              {
+                id: 'org-usc',
+                name: 'University of Southern California',
+                aliases: [],
+                domain: 'organizations',
+                canonicalType: 'university',
+                userId: 'user-1',
+              },
+            ],
+          },
+        },
+      );
+      expect(mockApplyAttachPlan).toHaveBeenCalled();
+      expect(mockCreateEntity).not.toHaveBeenCalled();
+      expect(summary.applied).toBe(0);
+      expect(summary.skipped).toBe(1);
+    });
+
     it('dedupes appliedItems within one batch', async () => {
       const summary = await applyParseOperations('user-1', [
         suggestAdd('characters', 'Oscar Martinez'),
-        suggestAdd('characters', 'oscar martinez'),
+        suggestAdd('characters', 'Oscar Martinez'),
       ]);
       expect(summary.applied).toBe(2);
       expect(summary.appliedItems).toHaveLength(1);

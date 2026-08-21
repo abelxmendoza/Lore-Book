@@ -22,11 +22,13 @@ import {
   X,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
+import { compareJournalOccurrenceAsc, formatJournalOccurrenceLabel } from '../../lib/journalOccurrence';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card, CardContent } from '../ui/card';
 import { fetchJson } from '../../lib/api';
-import { onStoryDataUpdated } from '../../lib/storyRefresh';
+import { formatEventTime } from '../../lib/formatEventTime';
+import { onStoryDataUpdated, subscribeTemporalRefresh } from '../../lib/storyRefresh';
 import { sortTimelineEventsChronologically } from '../../lib/timelineSort';
 import type { SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
 import { EntityTimelinePanel } from '../common/EntityTimelinePanel';
@@ -50,6 +52,31 @@ export type CharTimelineEvent = {
   characterRole?: string;
   connectionCharacter?: string;
   emotionalImpact?: string;
+  canonicalItemId?: string;
+  entityId?: string;
+  occurredStart?: string | null;
+  occurredEnd?: string | null;
+  userLocalStartDay?: string | null;
+  userLocalEndDay?: string | null;
+  timezone?: string | null;
+  precision?: string;
+  temporalState?: 'past' | 'ongoing' | 'future' | 'unresolved';
+  isRange?: boolean;
+  isTimed?: boolean;
+  isAllDay?: boolean;
+  isUnresolved?: boolean;
+  isUnscheduled?: boolean;
+  legacyOnly?: boolean;
+  provenanceLabel?: string;
+};
+
+export type EntityTemporalSummary = {
+  lastInteractionAt?: string | null;
+  lastInteractionId?: string | null;
+  lastMentionedAt?: string | null;
+  lastMentionedId?: string | null;
+  firstKnownAppearanceAt?: string | null;
+  firstKnownAppearanceId?: string | null;
 };
 
 export type StoryScope = 'all' | 'events' | 'memories';
@@ -57,8 +84,8 @@ export type StoryScope = 'all' | 'events' | 'memories';
 export type RelationshipStage = { stage: string; start_date?: string | null };
 
 type StoryItem =
-  | { kind: 'event'; id: string; date: string; event: CharTimelineEvent & { lane: 'with' | 'without' } }
-  | { kind: 'memory'; id: string; date: string; memory: MemoryCard; highlight?: string };
+  | { kind: 'event'; id: string; date: string | null; event: CharTimelineEvent & { lane: 'with' | 'without' } }
+  | { kind: 'memory'; id: string; date: string | null; memory: MemoryCard; highlight?: string };
 
 interface Props {
   characterId: string;
@@ -77,13 +104,54 @@ interface Props {
   onOpenDatingArc?: () => void;
 }
 
-function fmtEventDate(iso: string): string {
+function fmtEventDate(iso: string | null | undefined): string {
+  if (!iso) return 'Date unknown';
   try {
     return format(parseISO(iso), 'MMM d, yyyy');
   } catch {
-    const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? iso : format(d, 'MMM d, yyyy');
+    return formatJournalOccurrenceLabel(iso);
   }
+}
+
+export function formatCharacterTimelineWhen(event: CharTimelineEvent): string {
+  if (event.isUnresolved || !event.occurredStart) {
+    return 'Date unresolved';
+  }
+  const precision = event.isTimed ? 'exact' : (event.precision || 'date');
+  const start = formatEventTime({
+    start_time: event.occurredStart,
+    temporal_precision: precision,
+    timezone: event.timezone,
+  });
+  if (event.temporalState === 'ongoing') return `${start} – ongoing`;
+  if (event.isRange && event.occurredEnd) {
+    const end = formatEventTime({
+      start_time: event.occurredEnd,
+      temporal_precision: precision,
+      timezone: event.timezone,
+    });
+    if (start !== end) return `${start} – ${end}`;
+  }
+  return start;
+}
+
+function formatSummaryInstant(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const label = formatEventTime({ start_time: iso, temporal_precision: 'date' });
+  return label === 'Date unknown' ? null : label;
+}
+
+function formatSummaryField(
+  iso: string | null | undefined,
+  id: string | null | undefined,
+  events: CharTimelineEvent[],
+): string | null {
+  const match = id ? events.find((event) => event.canonicalItemId === id) : undefined;
+  if (match) {
+    const label = formatCharacterTimelineWhen(match);
+    return label === 'Date unresolved' ? null : label;
+  }
+  return formatSummaryInstant(iso);
 }
 
 function toSwim(event: CharTimelineEvent, laneKey: string): SwimlaneEvent {
@@ -174,6 +242,8 @@ export function CharacterStoryPanel({
 
   const [sharedExperiences, setSharedExperiences] = useState<CharTimelineEvent[]>([]);
   const [loreEvents, setLoreEvents] = useState<CharTimelineEvent[]>([]);
+  const [unresolvedEvents, setUnresolvedEvents] = useState<CharTimelineEvent[]>([]);
+  const [temporalSummary, setTemporalSummary] = useState<EntityTemporalSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
@@ -218,15 +288,24 @@ export function CharacterStoryPanel({
         const mock = getMockCharacterTimeline(mockCharacter);
         setSharedExperiences(mock.sharedExperiences);
         setLoreEvents(mock.lore);
+        setUnresolvedEvents([]);
+        setTemporalSummary(null);
         return;
       }
       const r = await fetchJson<{
         success: boolean;
-        timelines: { sharedExperiences: CharTimelineEvent[]; lore: CharTimelineEvent[] };
+        timelines: {
+          sharedExperiences: CharTimelineEvent[];
+          lore: CharTimelineEvent[];
+          unresolved?: CharTimelineEvent[];
+          summary?: EntityTemporalSummary;
+        };
       }>(`/api/conversation/characters/${characterId}/timelines`);
       if (r.success) {
         setSharedExperiences(r.timelines.sharedExperiences || []);
         setLoreEvents(r.timelines.lore || []);
+        setUnresolvedEvents(r.timelines.unresolved || []);
+        setTemporalSummary(r.timelines.summary ?? null);
       }
     } catch {
       // keep prior data on refresh failure
@@ -240,6 +319,8 @@ export function CharacterStoryPanel({
     setLoaded(false);
     setSharedExperiences([]);
     setLoreEvents([]);
+    setUnresolvedEvents([]);
+    setTemporalSummary(null);
   }, [characterId]);
 
   useEffect(() => {
@@ -248,10 +329,18 @@ export function CharacterStoryPanel({
   }, [active, loaded, loadTimelines]);
 
   useEffect(() => {
-    return onStoryDataUpdated(() => {
-      setLoaded(false);
+    const stopTemporal = subscribeTemporalRefresh(() => {
+      void loadTimelines();
     });
-  }, [characterId]);
+    const stopCharacters = onStoryDataUpdated((detail) => {
+      if (detail.characterIds?.length && !detail.characterIds.includes(characterId)) return;
+      void loadTimelines();
+    }, 'characters');
+    return () => {
+      stopTemporal();
+      stopCharacters();
+    };
+  }, [characterId, loadTimelines]);
 
   const sortedShared = useMemo(
     () => sortTimelineEventsChronologically(sharedExperiences, 'asc'),
@@ -306,7 +395,7 @@ export function CharacterStoryPanel({
         items.push({ kind: 'memory', id: `memory-${memory.id}`, date: memory.date, memory, highlight });
       }
     }
-    return items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    return items.sort((a, b) => compareJournalOccurrenceAsc(a.date, b.date));
   }, [scope, chronologicalEvents, sortedMemories, firstMemory, mostSignificant]);
 
   const filteredItems = useMemo(() => {
@@ -385,20 +474,36 @@ export function CharacterStoryPanel({
     copyTimer.current = setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleRescan = () => {
+  const handleRefresh = () => {
     if (mockMode) return;
     setRebuilding(true);
-    fetchJson(`/api/conversation/characters/${characterId}/rebuild-timelines`, {
-      method: 'POST',
-      body: JSON.stringify({}),
-    })
-      .then(() => loadTimelines())
-      .finally(() => setRebuilding(false));
+    void loadTimelines().finally(() => setRebuilding(false));
   };
 
   const isBusy = loading || memoriesLoading;
+  const summaryEvents = [...sharedExperiences, ...loreEvents];
+  const lastInteractionLabel = formatSummaryField(
+    temporalSummary?.lastInteractionAt,
+    temporalSummary?.lastInteractionId,
+    summaryEvents,
+  );
+  const lastMentionedLabel = formatSummaryField(
+    temporalSummary?.lastMentionedAt,
+    temporalSummary?.lastMentionedId,
+    summaryEvents,
+  );
+  const firstKnownLabel = formatSummaryField(
+    temporalSummary?.firstKnownAppearanceAt,
+    temporalSummary?.firstKnownAppearanceId,
+    summaryEvents,
+  );
+  const hasTemporalSummary = Boolean(lastInteractionLabel || lastMentionedLabel || firstKnownLabel);
+
   const hasAny =
-    chronologicalEvents.length > 0 || sortedMemories.length > 0 || isBusy;
+    chronologicalEvents.length > 0
+    || sortedMemories.length > 0
+    || unresolvedEvents.length > 0
+    || isBusy;
   const finalEmptyTitle = searchTerm && chronologicalEvents.length > 0 ? 'No matches' : emptyTitle;
   const finalEmptyHint =
     searchTerm && chronologicalEvents.length > 0 ? `No events match "${searchTerm}".` : emptyHint;
@@ -432,6 +537,29 @@ export function CharacterStoryPanel({
         </Card>
       )}
 
+      {hasTemporalSummary && (
+        <div
+          className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-white/50 px-0.5"
+          data-testid="character-temporal-summary"
+        >
+          {lastInteractionLabel && (
+            <span data-testid="character-last-interaction">
+              Last interaction <span className="text-white/75 font-mono">{lastInteractionLabel}</span>
+            </span>
+          )}
+          {lastMentionedLabel && lastMentionedLabel !== lastInteractionLabel && (
+            <span data-testid="character-last-mentioned">
+              Last mentioned <span className="text-white/75 font-mono">{lastMentionedLabel}</span>
+            </span>
+          )}
+          {firstKnownLabel && (
+            <span data-testid="character-first-known-appearance">
+              First known appearance <span className="text-white/75 font-mono">{firstKnownLabel}</span>
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-2 justify-end">
         {chronologicalEvents.length > 0 && (
           <Button
@@ -456,14 +584,14 @@ export function CharacterStoryPanel({
             size="sm"
             className="text-xs"
             disabled={rebuilding}
-            onClick={handleRescan}
+            onClick={handleRefresh}
           >
             {rebuilding ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
             ) : (
               <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
             )}
-            Rescan
+            Refresh
           </Button>
         )}
       </div>
@@ -581,7 +709,7 @@ export function CharacterStoryPanel({
                   className="w-full text-left rounded-lg border border-white/10 bg-black/25 p-3 hover:bg-black/35 transition-colors disabled:cursor-default disabled:hover:bg-black/25"
                 >
                   <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <time className="text-xs font-mono text-primary/80">{fmtEventDate(event.eventDate)}</time>
+                    <time className="text-xs font-mono text-primary/80">{formatCharacterTimelineWhen(event)}</time>
                     <Badge
                       variant="outline"
                       className={`text-[10px] ${
@@ -595,6 +723,16 @@ export function CharacterStoryPanel({
                     <Badge variant="outline" className="text-[10px] text-white/45">
                       Event
                     </Badge>
+                    {event.temporalState === 'ongoing' && (
+                      <Badge variant="outline" className="text-[10px] text-amber-200 border-amber-500/30">
+                        Ongoing
+                      </Badge>
+                    )}
+                    {event.temporalState === 'future' && (
+                      <Badge variant="outline" className="text-[10px] text-sky-200 border-sky-500/30">
+                        Planned
+                      </Badge>
+                    )}
                     {event.eventType && (
                       <Badge variant="outline" className="text-[10px] text-white/50">
                         {event.eventType}
@@ -609,6 +747,9 @@ export function CharacterStoryPanel({
                   <h4 className="text-sm font-semibold text-white">{event.eventTitle}</h4>
                   {event.eventSummary && (
                     <p className="text-xs text-white/60 mt-1 leading-relaxed">{event.eventSummary}</p>
+                  )}
+                  {event.provenanceLabel && (
+                    <p className="text-[10px] text-white/35 mt-1">{event.provenanceLabel}</p>
                   )}
                 </button>
               </>
@@ -712,6 +853,37 @@ export function CharacterStoryPanel({
           </div>
         }
       />
+
+      {unresolvedEvents.length > 0 && (
+        <div
+          className="rounded-lg border border-white/10 bg-black/20 p-3 space-y-2"
+          data-testid="character-unresolved-tray"
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-white/40">
+            Date unresolved ({unresolvedEvents.length})
+          </p>
+          {unresolvedEvents.map((event) => (
+            <button
+              key={event.id}
+              type="button"
+              data-testid={`character-unresolved-event-${event.id}`}
+              disabled={!mockMode && !event.eventId}
+              onClick={() => void openEventDetail(event)}
+              className="w-full text-left rounded-md border border-white/8 bg-black/25 px-3 py-2 hover:bg-black/35"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-white/80">{event.eventTitle}</span>
+                {event.provenanceLabel && (
+                  <span className="text-[10px] text-white/35">{event.provenanceLabel}</span>
+                )}
+              </div>
+              {event.eventSummary && (
+                <p className="text-[11px] text-white/50 mt-0.5">{event.eventSummary}</p>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
 
       {selectedEvent && (
         <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />

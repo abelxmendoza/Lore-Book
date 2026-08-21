@@ -8,7 +8,7 @@ import {
   evaluateProjectIdentity,
   identityTierToRedirectDisposition,
 } from '../../identityIntegrityPolicy';
-import { normalizeNameKey } from '../../../utils/nameNormalization';
+import { normalizeNameKey, namesMatchAsAcronym } from '../../../utils/nameNormalization';
 import type {
   EntityQualityCandidate,
   EntityQualityContext,
@@ -32,6 +32,13 @@ function findInKnownBook(
   const targetKey = keyForDomain(name, domain);
   for (const label of known) {
     if (keyForDomain(label, domain) === targetKey) {
+      const id = ids?.get(keyForDomain(label, domain)) ?? ids?.get(normalizeNameKey(label));
+      return { id: id ?? label, name: label };
+    }
+    if (
+      (domain === 'organizations' || domain === 'groups' || domain === 'schools') &&
+      namesMatchAsAcronym(name, label)
+    ) {
       const id = ids?.get(keyForDomain(label, domain)) ?? ids?.get(normalizeNameKey(label));
       return { id: id ?? label, name: label };
     }

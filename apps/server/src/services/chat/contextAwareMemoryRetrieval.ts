@@ -71,7 +71,7 @@ export async function retrieveMemoriesByThread(
       .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .in('chapter_id', chapterIds)
-      .order('date', { ascending: false })
+      .order('date', { ascending: false, nullsFirst: false })
       .limit(limit);
 
     if (entErr) {
@@ -206,7 +206,7 @@ export async function retrieveEntityMentionsAcrossThreads(
         .select(JOURNAL_COLS)
         .eq('user_id', userId)
         .in('id', entryIds)
-        .order('date', { ascending: false })
+        .order('date', { ascending: false, nullsFirst: false })
         .limit(limit);
       journalEntries.push(...((entries ?? []) as MemoryEntry[]));
     }
@@ -279,7 +279,7 @@ export async function retrieveMemoriesUnderNode(
       .select(JOURNAL_COLS)
       .eq('user_id', userId)
       .in('chapter_id', chapterIds)
-      .order('date', { ascending: false })
+      .order('date', { ascending: false, nullsFirst: false })
       .limit(limit);
 
     if (error) {

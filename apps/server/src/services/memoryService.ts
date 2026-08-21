@@ -25,9 +25,11 @@ import { peoplePlacesService } from './peoplePlacesService';
 import { skillExtractionService } from './skills/skillExtractionService';
 import { questSuggestionService } from './quests/questSuggestionService';
 import { projectSuggestionService } from './projects/projectSuggestionService';
-import { supabaseAdmin } from './supabaseClient';
+import { throwIfStorageBlocked } from '../utils/postgresError';
 import { ingestJournalEntry } from './unifiedErIngestion';
 import { dateAssignmentService } from './dateAssignmentService';
+import { mergeOccurrenceMetadata } from './journal/journalOccurrenceWrite';
+import type { TemporalSource } from './temporal/temporalEvidence';
 
 const ENTRY_LIST_CACHE_TTL_MS = 30_000;
 const BOOTSTRAP_ENTRY_FETCH_LIMIT = 500;
@@ -72,7 +74,13 @@ type EntryListCacheEntry = {
 export type SaveEntryPayload = {
   userId: string;
   content: string;
-  date?: string;
+  /** Autobiographical occurrence only. Omit or null when unknown — never pass now() as a stand-in. */
+  date?: string | null;
+  /** Existing TemporalSource when an explicit date is supplied from a non-user path. */
+  temporalSource?: TemporalSource;
+  mentionedAt?: string | null;
+  sourceCreatedAt?: string | null;
+  importedAt?: string | null;
   tags?: string[];
   chapterId?: string | null;
   mood?: string | null;
@@ -111,7 +119,7 @@ class MemoryService {
 
   async saveEntry(payload: SaveEntryPayload): Promise<MemoryEntry> {
     const isEncrypted = Boolean((payload.metadata as { encrypted?: boolean } | undefined)?.encrypted);
-    const metadata = { ...(payload.metadata ?? {}) } as Record<string, unknown>;
+    const metadata: Record<string, unknown> = { ...(payload.metadata ?? {}) };
     if (payload.relationships?.length) {
       metadata.relationships = payload.relationships;
     }
@@ -125,32 +133,44 @@ class MemoryService {
         summary = await titleGenerationService.generateEntrySummary(
           payload.userId,
           payload.content,
-          payload.date
+          payload.date ?? undefined
         );
       } catch (error) {
         logger.debug({ error }, 'Failed to auto-generate summary, continuing without');
       }
     }
 
-    // If no date supplied, ask dateAssignmentService to infer one from content.
-    // Only use the suggestion when confidence is reasonable (≥0.5); otherwise keep now().
-    let entryDate = payload.date;
+    // Occurrence is evidence-backed only. Omitted date stays unknown — never now().
+    let entryDate = payload.date && String(payload.date).trim() ? payload.date : undefined;
+    let inferredSource: TemporalSource | undefined = payload.temporalSource;
     if (!entryDate && payload.content && payload.content.length > 20) {
       try {
         const suggestion = await dateAssignmentService.suggestDate(payload.userId, payload.content);
         if (suggestion.confidence >= 0.5 && suggestion.source !== 'default') {
           entryDate = suggestion.date.toISOString();
+          inferredSource = inferredSource ?? 'relative_expression';
         }
       } catch (error) {
-        logger.debug({ error }, 'Date suggestion failed, using current date');
+        logger.debug({ error }, 'Date suggestion failed; occurrence remains unresolved');
       }
     }
+
+    Object.assign(
+      metadata,
+      mergeOccurrenceMetadata(metadata, {
+        date: entryDate,
+        temporalSource: inferredSource ?? (entryDate ? undefined : 'recording_fallback'),
+        mentionedAt: payload.mentionedAt,
+        sourceCreatedAt: payload.sourceCreatedAt,
+        importedAt: payload.importedAt,
+      }),
+    );
 
     const entry: MemoryEntry = {
       id: uuid(),
       user_id: payload.userId,
       content: payload.content,
-      date: entryDate ?? new Date().toISOString(),
+      date: entryDate ?? null,
       tags: payload.tags ?? [],
       chapter_id: payload.chapterId ?? null,
       mood: payload.mood ?? null,
@@ -172,6 +192,11 @@ class MemoryService {
     }
 
     const insertRow: Record<string, unknown> = { ...entry };
+    if (!entryDate) {
+      insertRow.date = null;
+      insertRow.timestamp = null;
+      insertRow.time_precision = 'unknown';
+    }
     if (payload.narrativeOrder != null) insertRow.narrative_order = payload.narrativeOrder;
     if (payload.derivedFromEntryId != null) insertRow.derived_from_entry_id = payload.derivedFromEntryId;
     // Derive emotional intensity at ingestion — high-emotion entries decay slower (see migration 20260529000007)
@@ -179,6 +204,7 @@ class MemoryService {
 
     const { error } = await supabaseAdmin.from('journal_entries').insert(insertRow);
     if (error) {
+      throwIfStorageBlocked(error);
       // Check if table doesn't exist
       if (error.code === '42P01' || error.message?.includes('does not exist')) {
         logger.error({ error }, 'journal_entries table does not exist. Please run database migrations.');
@@ -322,7 +348,7 @@ class MemoryService {
         ? Math.max(requestedLimit, BOOTSTRAP_ENTRY_FETCH_LIMIT)
         : requestedLimit;
 
-      const { data, error } = await builder.order('date', { ascending: false }).limit(fetchLimit);
+      const { data, error } = await builder.order('date', { ascending: false, nullsFirst: false }).limit(fetchLimit);
       if (error) {
         // Check if table doesn't exist
         if (error.code === '42P01' || error.message?.includes('does not exist')) {
@@ -395,7 +421,11 @@ class MemoryService {
     };
 
     if (updates.content !== undefined) updateData.content = updates.content;
-    if (updates.date !== undefined) updateData.date = updates.date;
+    if (updates.date !== undefined) {
+      updateData.date = updates.date;
+      updateData.timestamp = updates.date ?? null;
+      if (updates.date == null) updateData.time_precision = 'unknown';
+    }
     if (updates.tags !== undefined) updateData.tags = updates.tags;
     if (updates.chapterId !== undefined) updateData.chapter_id = updates.chapterId;
     if (updates.mood !== undefined) updateData.mood = updates.mood;
@@ -649,7 +679,7 @@ class MemoryService {
         .from('journal_entries')
         .select('tags')
         .eq('user_id', userId)
-        .order('date', { ascending: false })
+        .order('date', { ascending: false, nullsFirst: false })
         .limit(BOOTSTRAP_ENTRY_FETCH_LIMIT);
 
       dbMs = Date.now() - dbStart;
@@ -758,7 +788,7 @@ class MemoryService {
       // and filter in memory if needed (not ideal, but works for MVP)
 
       const { data, error } = await builder
-        .order('date', { ascending: false })
+        .order('date', { ascending: false, nullsFirst: false })
         .limit(options.limit ?? 20);
 
       if (error) {
@@ -841,7 +871,7 @@ class MemoryService {
       }
 
       const { data, error } = await builder
-        .order('date', { ascending: false })
+        .order('date', { ascending: false, nullsFirst: false })
         .limit(options.limit ?? 50);
 
       if (error) {

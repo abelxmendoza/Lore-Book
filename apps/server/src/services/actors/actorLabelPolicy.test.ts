@@ -65,6 +65,14 @@ describe('actorLabelPolicy', () => {
     expect(mayPromoteToCharacter('Jamie')).toBe(true);
   });
 
+  it('keeps possessive role phrases unresolved instead of promoting a person card', () => {
+    const c = classifyActorLabel('her friend');
+    expect(c.action).toBe('unresolved');
+    expect(c.reason).toBe('unresolved_reference');
+    expect(mayPromoteToCharacter('her friend')).toBe(false);
+    expect(isVagueOrIndefiniteActorPhrase('her friend')).toBe(true);
+  });
+
   it('classifies contextual groups as GROUP', () => {
     const c = classifyActorLabel('Other girls who reposted allegations on Instagram');
     expect(c.action).toBe('group');

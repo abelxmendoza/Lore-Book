@@ -15,6 +15,13 @@ import {
 } from './narrativeCohesion';
 import { projectCanonicalTimeline } from '../chronologyAuthority/canonicalTimelineProjector';
 import type { CanonicalTemporalModel } from '../temporal/canonicalTemporalModel';
+import { projectTemporalItem, type TemporalSurfaceProjection } from '../temporal/temporalSurfaceProjection';
+import { getUserTimezone } from '../temporal/userTimezoneService';
+import {
+  eventAcceptedForOrganization,
+  readOrganizationAttributions,
+  type OrganizationAttribution,
+} from '../organizations/organizationEventAttribution';
 import {
   buildHistoricalNeighborhoods,
   type HistoricalNeighborhood,
@@ -26,6 +33,23 @@ export type StitchedItemKind = 'moment' | 'event';
 export type ChronologyScopeType = 'global' | 'life_arc';
 
 export const GLOBAL_SCOPE_ID = '00000000-0000-0000-0000-000000000000';
+
+function resolvedEventBelongsToOrganization(
+  row: { metadata?: unknown },
+  organizationId: string,
+): boolean {
+  const metadata = (row.metadata ?? {}) as Record<string, unknown>;
+  const attributions = readOrganizationAttributions(metadata);
+  if (attributions.length > 0) {
+    return eventAcceptedForOrganization(attributions, organizationId);
+  }
+  const ids = Array.isArray(metadata.organization_ids) ? metadata.organization_ids : [];
+  return ids.some((id) => String(id) === organizationId);
+}
+
+function attributionsFromResolvedRow(row: { metadata?: unknown }): OrganizationAttribution[] {
+  return readOrganizationAttributions((row.metadata ?? {}) as Record<string, unknown>);
+}
 
 export type StitchedTimelineItem = {
   id: string;
@@ -69,6 +93,10 @@ export type StitchedTimelineItem = {
   validUntil?: string | null;
   /** Independent temporal coordinates; sortTime remains a compatibility field. */
   temporal?: CanonicalTemporalModel;
+  /** Shared Omni/Calendar projection. Occurrence meaning is fixed here. */
+  temporalProjection?: TemporalSurfaceProjection;
+  /** Event→organization roles. Presence is not membership. */
+  organizationAttributions?: OrganizationAttribution[];
 };
 
 export type NarrativeChapterData = {
@@ -423,6 +451,17 @@ async function loadNarrativeArcEventIds(
   return [...ids];
 }
 
+function attachTemporalProjection(
+  items: StitchedTimelineItem[],
+  timezone: string,
+  now: Date,
+): StitchedTimelineItem[] {
+  return items.map((item) => ({
+    ...item,
+    temporalProjection: projectTemporalItem(item, timezone, now),
+  }));
+}
+
 export class StitchedTimelineService {
   async getStitchedTimeline(
     userId: string,
@@ -433,13 +472,27 @@ export class StitchedTimelineService {
       end_time?: string;
       /**
        * Restrict the global scope to events involving this character (matched
-       * against resolved_events.people, the same field character_timeline_events
-       * is built from). Journal moments and timeline_events carry no character
-       * linkage today, so they're excluded rather than guessed at — better an
-       * honest subset than the old free-text "?q=" search this replaces, which
-       * could silently fall back to fabricated mock results.
+       * against resolved_events.people). Journal moments and timeline_events
+       * carry no character linkage today, so they're excluded rather than guessed.
        */
       character_id?: string;
+      /**
+       * Restrict the global scope to events at this location (matched against
+       * resolved_events.locations). Same honest-subset rule as character_id.
+       */
+      location_id?: string;
+      /**
+       * Restrict the global scope to events attributed to this organization
+       * (canonical IDs in metadata.organizationAttributions). Not name search,
+       * member overlap, or same-thread co-mention.
+       */
+      organization_id?: string;
+      /**
+       * Optional title/summary text filter when the caller has a named subject
+       * but no canonical entity id. Does not replace entity/date bounds.
+       */
+      text_query?: string;
+      timezone?: string;
       /**
        * Cap the final item count after sorting/clustering (applied last, so a
        * cap never discards dedup accuracy). Undefined = unbounded, matching
@@ -453,6 +506,9 @@ export class StitchedTimelineService {
       opts.scope_type ?? (opts.life_arc_id ? 'life_arc' : 'global');
     const scopeId =
       scopeType === 'life_arc' && opts.life_arc_id ? opts.life_arc_id : GLOBAL_SCOPE_ID;
+
+    const timezone = opts.timezone ?? await getUserTimezone(userId);
+    const projectionNow = new Date();
 
     let startTime = opts.start_time;
     let endTime = opts.end_time;
@@ -498,36 +554,66 @@ export class StitchedTimelineService {
       }
     }
 
+    const entityScoped = Boolean(opts.character_id || opts.location_id || opts.organization_id);
+    const textQuery = opts.text_query?.trim();
+
+    const emptyQueryResult = { data: [] as any[], error: null as null };
+    const loadResolvedEvents = async (pushEntityFilters: boolean) => {
+      let query = supabaseAdmin
+        .from('resolved_events')
+        .select('id, title, summary, start_time, end_time, confidence, metadata, people, locations, activities, tags, temporal_precision, temporal_source, temporal_status, temporal_confidence, temporal_expression, created_at')
+        .eq('user_id', userId);
+      if (startTime) {
+        const lowerBound = `${startTime}T00:00:00.000Z`;
+        query = query.or(`start_time.gte.${lowerBound},end_time.gte.${lowerBound},start_time.is.null`);
+      }
+      if (endTime) {
+        const upperBound = `${endTime}T23:59:59.999Z`;
+        query = query.or(`start_time.lte.${upperBound},start_time.is.null`);
+      }
+      if (pushEntityFilters && opts.character_id) {
+        query = query.contains('people', [opts.character_id]);
+      }
+      if (pushEntityFilters && opts.location_id) {
+        query = query.contains('locations', [opts.location_id]);
+      }
+      if (!entityScoped && textQuery) {
+        const escaped = textQuery.replace(/[%_,]/g, ' ').slice(0, 80);
+        query = query.or(`title.ilike.%${escaped}%,summary.ilike.%${escaped}%`);
+      }
+      return query.order('start_time', { ascending: true, nullsFirst: false });
+    };
+
     const [moments, timelineEventsRes, resolvedEventsRes, orderMap, temporalRelations, narrativeRelations] = await Promise.all([
-      chronologyService.getChronologicalOrder(userId, startTime, endTime),
-      (async () => {
-        let query = supabaseAdmin
-          .from('timeline_events')
-          .select('id, title, description, event_date, occurred_at, confidence, source_type, created_at')
-          .eq('user_id', userId);
-        if (startTime) query = query.gte('event_date', startTime);
-        if (endTime) query = query.lte('event_date', endTime);
-        return query.order('event_date', { ascending: true });
-      })(),
-      (async () => {
-        let query = supabaseAdmin
-          .from('resolved_events')
-          .select('id, title, summary, start_time, end_time, confidence, metadata, people, locations, activities, tags, temporal_precision, temporal_source, temporal_status, temporal_confidence, temporal_expression, created_at')
-          .eq('user_id', userId);
-        if (startTime) {
-          const lowerBound = `${startTime}T00:00:00.000Z`;
-          query = query.or(`start_time.gte.${lowerBound},end_time.gte.${lowerBound}`);
-        }
-        if (endTime) query = query.lte('start_time', `${endTime}T23:59:59.999Z`);
-        return query.order('start_time', { ascending: true, nullsFirst: false });
-      })(),
+      entityScoped
+        ? Promise.resolve([] as Awaited<ReturnType<typeof chronologyService.getChronologicalOrder>>)
+        : chronologyService.getChronologicalOrder(userId, startTime, endTime),
+      entityScoped
+        ? Promise.resolve(emptyQueryResult)
+        : (async () => {
+            let query = supabaseAdmin
+              .from('timeline_events')
+              .select('id, title, description, event_date, occurred_at, confidence, source_type, created_at')
+              .eq('user_id', userId);
+            if (startTime) query = query.gte('event_date', startTime);
+            if (endTime) query = query.lte('event_date', endTime);
+            return query.order('event_date', { ascending: true });
+          })(),
+      loadResolvedEvents(entityScoped),
       loadUserOrder(userId, scopeType, scopeId),
       loadTemporalRelations(userId),
       loadNarrativeRelations(userId),
     ]);
 
+    let resolvedRows = resolvedEventsRes.data;
+    let resolvedError = resolvedEventsRes.error;
+    if (resolvedError && entityScoped) {
+      logger.warn({ error: resolvedError, userId }, 'Entity-scoped resolved_events filter failed; retrying without SQL entity contains');
+      const retry = await loadResolvedEvents(false);
+      resolvedRows = retry.data;
+      resolvedError = retry.error;
+    }
     const { data: eventRows, error: eventsError } = timelineEventsRes;
-    const { data: resolvedRows, error: resolvedError } = resolvedEventsRes;
     if (eventsError) {
       logger.warn({ error: eventsError, userId }, 'Failed to load timeline events for stitch');
     }
@@ -547,7 +633,7 @@ export class StitchedTimelineService {
           ? supabaseAdmin.from('resolved_events').select('id, title, summary, start_time, confidence, metadata, tags').in('id', eventIds)
           : Promise.resolve({ data: [] as any[] }),
         journalIds.length
-          ? supabaseAdmin.from('journal_entries').select('id, content, date, source, tags').in('id', journalIds)
+          ? supabaseAdmin.from('journal_entries').select('id, content, date, source, tags, created_at').in('id', journalIds)
           : Promise.resolve({ data: [] as any[] }),
       ]);
 
@@ -579,11 +665,12 @@ export class StitchedTimelineService {
           if (!m) continue;
           const sourceId = m.id;
           const key = `moment:${sourceId}`;
+          const occurrence = m.date ?? null;
           items.push({
             id: key,
             kind: 'moment',
             sourceId,
-            sortTime: link.sort_time ?? m.date ?? new Date().toISOString(),
+            sortTime: (link.sort_time ?? occurrence ?? m.created_at) as string,
             userSortIndex: orderMap.get(key) ?? null,
             title: momentTitle(m.content),
             body: m.content,
@@ -593,6 +680,10 @@ export class StitchedTimelineService {
             tags: (m.tags as string[]) ?? [],
             userPresence: (link.user_presence as StitchedTimelineItem['userPresence']) ?? 'attended',
             temporalRole: link.temporal_role ?? undefined,
+            occurredAt: occurrence,
+            occurrenceStatus: occurrence ? 'confirmed' : 'unresolved',
+            projectionRole: occurrence ? 'evidence' : 'unresolved',
+            recordedAt: m.created_at ?? null,
           });
         }
       }
@@ -651,8 +742,11 @@ export class StitchedTimelineService {
     } else {
       const candidatesByKey = new Map<string, CohesionCandidate>();
       const characterId = opts.character_id;
+      const locationId = opts.location_id;
+      const organizationId = opts.organization_id;
+      const entityScoped = Boolean(characterId || locationId || organizationId);
 
-      for (const m of characterId ? [] : moments) {
+      for (const m of entityScoped ? [] : moments) {
         const sourceId = m.journal_entry_id || m.id;
         const key = `moment:${sourceId}`;
         items.push({
@@ -690,7 +784,11 @@ export class StitchedTimelineService {
       // (who/where/what/when), not from generated wording.
       const scopedResolvedRows = characterId
         ? (resolvedRows ?? []).filter((e) => ((e.people as string[] | null) ?? []).includes(characterId))
-        : (resolvedRows ?? []);
+        : locationId
+          ? (resolvedRows ?? []).filter((e) => ((e.locations as string[] | null) ?? []).includes(locationId))
+          : organizationId
+            ? (resolvedRows ?? []).filter((e) => resolvedEventBelongsToOrganization(e, organizationId))
+            : (resolvedRows ?? []);
       const datedResolved = scopedResolvedRows.filter(
         (e) => typeof e.start_time === 'string' && e.start_time.length > 0,
       );
@@ -723,6 +821,7 @@ export class StitchedTimelineService {
           knownFrom: (e.created_at as string | null) ?? null,
           occurrenceStatus: 'unresolved',
           projectionRole: 'unresolved',
+          organizationAttributions: attributionsFromResolvedRow(e),
         });
         seenEventIds.add(e.id as string);
       }
@@ -789,6 +888,9 @@ export class StitchedTimelineService {
           validFrom: (temporalMeta.valid_from as string | undefined) ?? null,
           validUntil: (temporalMeta.valid_until as string | undefined) ?? null,
           userPresence: (meta.user_presence as StitchedTimelineItem['userPresence']) ?? 'unknown',
+          organizationAttributions: cluster.members.flatMap((member) =>
+            attributionsFromResolvedRow(member.row as { metadata?: unknown }),
+          ),
           ...(cluster.members.length > 1
             ? { mergedCount: cluster.members.length, mergedTitles: cluster.mergedTitles }
             : {}),
@@ -804,7 +906,7 @@ export class StitchedTimelineService {
         });
       }
 
-      for (const e of characterId ? [] : eventRows ?? []) {
+      for (const e of entityScoped ? [] : eventRows ?? []) {
         if (seenEventIds.has(e.id)) continue;
         const occurredAt = e.occurred_at ?? e.event_date ?? null;
         const sortTime = occurredAt ?? e.created_at ?? new Date(0).toISOString();
@@ -851,9 +953,9 @@ export class StitchedTimelineService {
             scope_type: scopeType,
             scope_id: scopeId,
             scope_label: scopeLabel,
-            items: sortedScene,
+            items: attachTemporalProjection(sortedScene, timezone, projectionNow),
             has_user_order: sortedScene.some((i) => i.userSortIndex != null),
-            background: sortItems(gated.background),
+            background: attachTemporalProjection(sortItems(gated.background), timezone, projectionNow),
             excluded_count: gated.excludedCount,
             ...(chapter ? { chapter } : {}),
             ...(mergeLog?.length ? { merge_log: mergeLog } : {}),
@@ -921,6 +1023,7 @@ export class StitchedTimelineService {
         temporalRole: items.find((i) => i.id === p.id)?.temporalRole,
         mergedCount: items.find((i) => i.id === p.id)?.mergedCount,
         mergedTitles: items.find((i) => i.id === p.id)?.mergedTitles,
+        organizationAttributions: items.find((i) => i.id === p.id)?.organizationAttributions,
       });
       const sorted = sortItems(projected.canonical.map(toStitched));
       const capped = opts.limit != null ? sorted.slice(0, opts.limit) : sorted;
@@ -930,9 +1033,9 @@ export class StitchedTimelineService {
         scope_type: scopeType,
         scope_id: scopeId,
         scope_label: scopeLabel,
-        items: capped,
+        items: attachTemporalProjection(capped, timezone, projectionNow),
         has_user_order: capped.some((i) => i.userSortIndex != null),
-        unresolved_items: unresolved,
+        unresolved_items: attachTemporalProjection(unresolved, timezone, projectionNow),
         evidence_hidden_count: projected.evidenceHidden,
         excluded_count: projected.excluded.length,
         historical_neighborhoods: historicalNeighborhoods,
@@ -952,7 +1055,7 @@ export class StitchedTimelineService {
       scope_type: scopeType,
       scope_id: scopeId,
       scope_label: scopeLabel,
-      items: capped,
+      items: attachTemporalProjection(capped, timezone, projectionNow),
       has_user_order: hasUserOrder,
       temporal_relations: temporalRelations,
       narrative_relations: narrativeRelations,
@@ -1009,6 +1112,57 @@ export class StitchedTimelineService {
     }
 
     return { saved: rows.length };
+  }
+
+  /**
+   * Character-modal seam. Filters the canonical stitched feed by people[].
+   */
+  async getStitchedTimelineForEntity(
+    userId: string,
+    entityId: string,
+    range?: { start_time?: string; end_time?: string; timezone?: string },
+  ): Promise<StitchedTimelineResult> {
+    return this.getStitchedTimeline(userId, {
+      scope_type: 'global',
+      character_id: entityId,
+      start_time: range?.start_time,
+      end_time: range?.end_time,
+      timezone: range?.timezone,
+    });
+  }
+
+  /**
+   * Location-modal seam. Filters the canonical stitched feed by locations[].
+   */
+  async getStitchedTimelineForLocation(
+    userId: string,
+    locationId: string,
+    range?: { start_time?: string; end_time?: string; timezone?: string },
+  ): Promise<StitchedTimelineResult> {
+    return this.getStitchedTimeline(userId, {
+      scope_type: 'global',
+      location_id: locationId,
+      start_time: range?.start_time,
+      end_time: range?.end_time,
+      timezone: range?.timezone,
+    });
+  }
+
+  /**
+   * Organization-modal seam. Filters by canonical organization attributions.
+   */
+  async getStitchedTimelineForOrganization(
+    userId: string,
+    organizationId: string,
+    range?: { start_time?: string; end_time?: string; timezone?: string },
+  ): Promise<StitchedTimelineResult> {
+    return this.getStitchedTimeline(userId, {
+      scope_type: 'global',
+      organization_id: organizationId,
+      start_time: range?.start_time,
+      end_time: range?.end_time,
+      timezone: range?.timezone,
+    });
   }
 }
 

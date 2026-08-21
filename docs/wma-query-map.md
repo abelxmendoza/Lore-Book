@@ -39,13 +39,13 @@ assembleWorkingMemory(question, userId, threadId?)
 | 4 | `people_places` | `people_places:filtered:{key}` | name ilike tokens | — |
 | 5 | `projects` | `projects:resolve:{key}` | ilike name | — |
 | 6 | `character_memories` | `memories:{charId}` | character_id | 8 |
-| 7 | `character_timeline_events` | `events:character:{charId}` | character_id | 6 |
+| ~~7~~ | ~~`character_timeline_events`~~ | ~~`events:character:{charId}`~~ | **DROPPED** — Character events from stitched `resolved_events` | — |
 | 8 | `character_relationships` | `relationships:character:{charId}` | source/target or | 6 |
 | 9 | `entity_facts` | `facts:character:{charId}` | entity_type=character, active | 6 |
 | ~~10~~ | ~~`characters`~~ | ~~maybeSingle~~ | **Eliminated** — row from step 1 | — |
 | 10 | `journal_entries` | `journal_entries:{intent}` | user_id, order date | 6 |
 | 11 | `chat_messages` | `chat_messages:target:{key}` | ilike content | 6 |
-| 12 | `character_timeline_events` | `timeline_events:recent:{intent}` | order event_date | 4 |
+| ~~12~~ | ~~`character_timeline_events`~~ | ~~`timeline_events:recent:{intent}`~~ | **DROPPED** — recent events from stitched chronology | — |
 | 13 | `projects` | `projects:textual` | user_id | 6 |
 | 14 | `narrative_accounts` | `narrative_accounts:{intent}` | order recorded_at | 2 |
 

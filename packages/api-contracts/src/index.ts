@@ -45,6 +45,12 @@ export {
   isEventWriteRequest,
   isClosedScopeQuery,
   isFocusEntityRelevant,
+  isPronounPersonQuery,
+  parseTalkAboutSubject,
+  parseNamedWhoIsSubject,
+  parseNamedChatSubject,
+  subjectNamesMatch,
+  messageConflictsWithPinnedFocus,
   countListedNameLikeTokens,
   type ClosedScopeReason,
 } from "./chat/closedScopeIntent";

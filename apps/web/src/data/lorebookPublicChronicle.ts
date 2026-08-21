@@ -41,6 +41,13 @@ export const LOREBOOK_VISIONS: PublicVision[] = [
     vision: 'Narrative intelligence operating system — every person, place, and story earns a living biography from evidence.',
     dateLabel: 'May 2026',
   },
+  {
+    version: 4,
+    label: 'Version 4 Vision',
+    vision:
+      'A life record that tells the truth in time — when something happened, who someone is to you now, and a conversation that stays with the story instead of resetting.',
+    dateLabel: 'Aug 2026',
+  },
 ];
 
 export const LOREBOOK_CHAPTERS: PublicChapter[] = [
@@ -73,6 +80,13 @@ export const LOREBOOK_CHAPTERS: PublicChapter[] = [
     title: 'Social Intelligence Era',
     eraLabel: 'Chapter 5',
     summary: 'Agents, kinship, and self-history — LoreBook understands relationships and its own story.',
+  },
+  {
+    id: 'continuity',
+    title: 'Continuity Era',
+    eraLabel: 'Chapter 6',
+    summary:
+      'Time means when it happened. People stay who they are to you. Chat follows the life, not the last message.',
   },
 ];
 
@@ -132,6 +146,22 @@ export const LOREBOOK_TIMELINE: PublicMilestone[] = [
     summary: 'LoreBook gains a living project history — milestones, vision, and self-narrative.',
     monthLabel: 'June 2026',
     significance: 5,
+  },
+  {
+    id: 'honest-time',
+    title: 'Time as it happened',
+    summary:
+      'Timelines, calendars, and “last week” start meaning when a moment occurred — in your timezone — not when it was typed into the app.',
+    monthLabel: 'August 2026',
+    significance: 5,
+  },
+  {
+    id: 'story-follows',
+    title: 'Conversation that stays with the story',
+    summary:
+      'People, places, and groups keep their own histories. Change the subject and LoreBook follows, instead of collapsing everything into one thread.',
+    monthLabel: 'August 2026',
+    significance: 4,
   },
 ];
 

@@ -5,6 +5,7 @@ import { openai } from '../lib/openai';
 import type { MemoryEntry } from '../types';
 
 import { memoryService } from './memoryService';
+import { occurrenceFromImportedText } from './journal/journalOccurrenceWrite';
 import { supabaseAdmin } from './supabaseClient';
 
 type XPost = {
@@ -222,10 +223,15 @@ class XService {
         ...this.extractTags(post.text, post.entities?.hashtags)
       ];
 
+      const occurrence = occurrenceFromImportedText(post.text, { sourceCreatedAt: post.created_at });
       const entry = await memoryService.saveEntry({
         userId,
         content,
-        date: post.created_at,
+        date: occurrence.date,
+        temporalSource: occurrence.temporalSource,
+        mentionedAt: post.created_at,
+        sourceCreatedAt: post.created_at,
+        importedAt: new Date().toISOString(),
         tags,
         source: 'x',
         metadata: {

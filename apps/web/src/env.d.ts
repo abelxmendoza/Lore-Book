@@ -10,3 +10,7 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+declare const __LOREBOOK_WHATS_NEW_GIT__:
+  | import('./data/whatsNewTypes').WhatsNewEntry[]
+  | undefined;

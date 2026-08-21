@@ -49,6 +49,7 @@ vi.mock('../organizationService', () => ({
   },
 }));
 
+import { organizationService } from '../organizationService';
 import { chainableQuery } from '../../../tests/fixtures/cognitionSupabaseMock';
 import {
   compileCharacterLoreProfile,
@@ -156,5 +157,44 @@ describe('characterLoreProfileService', () => {
     const profile = await compileCharacterLoreProfile('user-1', 'char-2');
     expect(profile?.mentionOnly).toBe(true);
     expect(profile?.loreSnippets.some((s) => s.label.includes('podcast'))).toBe(true);
+  });
+
+  it('includes other members of a family group in people', async () => {
+    vi.mocked(organizationService.getOrganizationsByCharacter).mockResolvedValueOnce([
+      {
+        id: 'org-family',
+        name: "Maya's Family",
+        type: 'family',
+        group_type: 'family',
+        members: [
+          { character_id: 'char-1', character_name: 'Maya', role: 'member', status: 'active' },
+          { character_id: 'char-grandson', character_name: 'Jamie', role: 'grandson', status: 'active' },
+        ],
+      },
+    ] as never);
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'characters') {
+        return chainableQuery({
+          data: {
+            id: 'char-1',
+            name: 'Maya',
+            tags: [],
+            metadata: {},
+            has_met: true,
+            associated_with_character_ids: [],
+            mentioned_by_character_ids: [],
+          },
+          error: null,
+        });
+      }
+      if (table === 'interests') return chainableQuery({ data: [], error: null });
+      if (table === 'character_relationships') return chainableQuery({ data: [], error: null });
+      if (table === 'character_organizations') return chainableQuery({ data: [], error: null });
+      return chainableQuery({ data: null, error: null });
+    });
+
+    const profile = await compileCharacterLoreProfile('user-1', 'char-1');
+    expect(profile?.people.some((p) => p.characterId === 'char-grandson' && p.relationshipType === 'grandson')).toBe(true);
   });
 });

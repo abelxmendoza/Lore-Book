@@ -5,10 +5,13 @@
 // Shows only when occurrence_count >= 2 (threshold met).
 // =====================================================
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { shortDisplayName } from '../../lib/displayName';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
-import { Users, X, Check, ChevronDown, ChevronUp, Sparkles, Loader2, Copy } from 'lucide-react';
+import { useSuggestionRescan } from '../../hooks/useSuggestionRescan';
+import { useSuggestionPanelDismissal } from '../../hooks/useSuggestionPanelDismissal';
+import { SuggestionPanelEmptyState } from '../suggestions/SuggestionPanelEmptyState';
+import { Users, X, Check, ChevronDown, ChevronUp, Sparkles, Loader2, Copy, RefreshCw } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { useToast } from '../ui/toast';
@@ -233,7 +236,12 @@ const DEMO_GROUP_CANDIDATES: GroupCandidate[] = [
 
 export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreated, categoryFilter = 'all', searchTerm = '', demoMode = false }) => {
   const { success, error, ToastContainer } = useToast({ maxVisible: 1 });
+  const { rescan: rescanChats, rescanning, RescanToastContainer } = useSuggestionRescan('organizations', {
+    notify: { success, error },
+    showToast: false,
+  });
   const [candidates, setCandidates] = useState<GroupCandidate[]>(() => demoMode ? DEMO_GROUP_CANDIDATES : []);
+  const [loading, setLoading] = useState(!demoMode);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
@@ -283,28 +291,13 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
     }
   };
 
-  useEffect(() => {
+  const loadCandidates = useCallback(async (opts?: { silent?: boolean }) => {
     if (demoMode) {
       setCandidates(DEMO_GROUP_CANDIDATES);
+      setLoading(false);
       return;
     }
-    void loadCandidates();
-    const onUpdated = () => void loadCandidates();
-    window.addEventListener('group-candidates-updated', onUpdated);
-    return () => {
-      window.removeEventListener('group-candidates-updated', onUpdated);
-    };
-  }, [demoMode]);
-
-  // Fallback poll — real-time updates already arrive via the event above, so a
-  // 5-min visibility-gated poll is plenty (was a 60s always-on poll = 1,440
-  // req/day per open tab, firing even when the tab was hidden).
-  useVisiblePolling(() => void loadCandidates(), 5 * 60_000, {
-    immediate: false,
-    enabled: !demoMode,
-  });
-
-  const loadCandidates = async () => {
+    if (!opts?.silent) setLoading(true);
     try {
       const res = await fetchJson<{ success: boolean; candidates: GroupCandidate[] }>(
         '/api/group-candidates?status=pending'
@@ -312,8 +305,32 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
       if (res.success) setCandidates(res.candidates.map(cleanCandidate));
     } catch {
       // Non-fatal — suggestions are optional
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [demoMode]);
+
+  useEffect(() => {
+    if (demoMode) {
+      setCandidates(DEMO_GROUP_CANDIDATES);
+      setLoading(false);
+      return;
+    }
+    void loadCandidates();
+    const onUpdated = () => void loadCandidates({ silent: true });
+    window.addEventListener('group-candidates-updated', onUpdated);
+    return () => {
+      window.removeEventListener('group-candidates-updated', onUpdated);
+    };
+  }, [demoMode, loadCandidates]);
+
+  // Fallback poll — real-time updates already arrive via the event above, so a
+  // 5-min visibility-gated poll is plenty (was a 60s always-on poll = 1,440
+  // req/day per open tab, firing even when the tab was hidden).
+  useVisiblePolling(() => void loadCandidates({ silent: true }), 5 * 60_000, {
+    immediate: false,
+    enabled: !demoMode,
+  });
 
   const finishAccept = async (candidateId: string, created?: Organization) => {
     if (created) {
@@ -448,7 +465,28 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
         ].filter(Boolean).join(' ').toLowerCase().includes(term);
       });
   }, [candidates, categoryFilter, dismissed, searchTerm]);
-  if (visible.length === 0) return null;
+
+  const { hidePanel, dismissEmptyPanel, reopenPanel } = useSuggestionPanelDismissal(
+    'groups',
+    visible.length,
+    { loading, scanning: rescanning },
+  );
+
+  const handleRescan = useCallback(async () => {
+    if (demoMode) return;
+    reopenPanel();
+    await rescanChats();
+    await loadCandidates();
+  }, [demoMode, reopenPanel, rescanChats, loadCandidates]);
+
+  if (hidePanel) {
+    return (
+      <>
+        <ToastContainer />
+        {RescanToastContainer ? <RescanToastContainer /> : null}
+      </>
+    );
+  }
 
   return (
     <>
@@ -464,9 +502,11 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
           <span className="truncate text-xs sm:text-sm font-semibold text-white">
             Groups detected in your chats
           </span>
-          <span className="shrink-0 rounded-full bg-purple-500/25 px-2 py-0.5 text-[10px] font-mono text-purple-200">
-            {visible.length}
-          </span>
+          {!loading && (
+            <span className="shrink-0 rounded-full bg-purple-500/25 px-2 py-0.5 text-[10px] font-mono text-purple-200">
+              {visible.length}
+            </span>
+          )}
           {demoMode && (
             <span className="shrink-0 rounded-full border border-yellow-500/25 bg-yellow-500/10 px-1.5 py-0.5 text-[9px] text-yellow-200">
               Demo
@@ -474,6 +514,18 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
           )}
         </button>
         <div className="flex shrink-0 items-center gap-1">
+          {!demoMode && (
+            <button
+              type="button"
+              onClick={() => void handleRescan()}
+              disabled={loading || rescanning}
+              className="flex h-7 w-7 items-center justify-center rounded text-white/40 transition-colors hover:bg-purple-500/10 hover:text-purple-300 disabled:opacity-40"
+              title="Rescan my chats for groups"
+              aria-label="Rescan my chats for groups"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${loading || rescanning ? 'animate-spin' : ''}`} />
+            </button>
+          )}
           {visible.length > 0 && (
             <button
               type="button"
@@ -509,6 +561,17 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
               LoreBook found recurring groups in sample conversations. Tap Create to add them to your Organizations book.
             </p>
           )}
+          {loading && visible.length === 0 ? (
+            <p className="text-xs text-white/40 py-2">Scanning your conversations…</p>
+          ) : visible.length === 0 ? (
+            <SuggestionPanelEmptyState
+              message="No pending group suggestions. Rescan your chats to find companies, crews, and communities mentioned in your story."
+              onDismiss={dismissEmptyPanel}
+              onRescan={demoMode ? undefined : () => void handleRescan()}
+              rescanning={rescanning}
+              rescanLabel="Rescan for groups"
+            />
+          ) : (
           <div className="space-y-2">
           {visible.map(c => {
             const groupName = displayGroupName(c);
@@ -685,10 +748,12 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
             );
           })}
           </div>
+          )}
         </div>
       )}
     </div>
     <ToastContainer />
+    {RescanToastContainer ? <RescanToastContainer /> : null}
     </>
   );
 };

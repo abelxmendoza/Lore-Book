@@ -7,6 +7,14 @@
 import { logger } from '../../logger';
 import type { ExtractedUnitType, ExtractionResult } from '../../types/conversationCentered';
 import { completeFor } from '../llm';
+import { isPureInterrogative } from '../meaning/factualityResolutionService';
+
+const PURE_CONFIRMATION_RE =
+  /^(?:no[, ]+)?(?:(?:that's|thats|that is) )?(?:spot on|right|correct|accurate|exactly right|true|it)(?:[.! ]*)$/i;
+
+export function isPureConfirmation(text: string): boolean {
+  return PURE_CONFIRMATION_RE.test(text.trim());
+}
 
 const UNIT_PRIORITY: Record<ExtractedUnitType, number> = {
   CORRECTION: 0,
@@ -64,6 +72,14 @@ export class SemanticExtractionService {
     isAIMessage: boolean = false
   ): Promise<ExtractionResult> {
     try {
+      // Questions and conversational confirmations belong in the transcript,
+      // not in autobiographical semantic storage. In particular, "no, that's
+      // spot on" is agreement—not a CORRECTION merely because it starts "no".
+      if (!isAIMessage && (isPureInterrogative(normalizedText) || isPureConfirmation(normalizedText))) {
+        return {
+          units: [],
+        };
+      }
       // Try rule-based extraction first (free, fast)
       const ruleBasedUnits = this.ruleBasedExtraction(normalizedText);
       
@@ -385,6 +401,109 @@ Be precise. Split multiple events when appropriate. Preserve Spanish terms. Extr
     return {
       units: parsed.units || [],
     };
+  }
+
+  /**
+   * Classify/extract many utterances in one structured call when rules fail.
+   * Falls back to per-text extraction if the batch payload is unusable.
+   */
+  async extractBatch(
+    texts: string[],
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+    isAIMessage: boolean = false
+  ): Promise<ExtractionResult[]> {
+    if (texts.length === 0) return [];
+    if (texts.length === 1) {
+      return [await this.extractSemanticUnits(texts[0], conversationHistory, isAIMessage)];
+    }
+
+    const results: ExtractionResult[] = new Array(texts.length);
+    const llmIndexes: number[] = [];
+
+    for (let i = 0; i < texts.length; i++) {
+      const text = texts[i];
+      if (!isAIMessage && (isPureInterrogative(text) || isPureConfirmation(text))) {
+        results[i] = { units: [] };
+        continue;
+      }
+      const ruleBasedUnits = this.ruleBasedExtraction(text);
+      if (isAIMessage && ruleBasedUnits.units.length > 0) {
+        ruleBasedUnits.units.forEach((unit) => {
+          unit.confidence = Math.max(0.3, unit.confidence * 0.7);
+        });
+      }
+      if (ruleBasedUnits.units.length > 0 && ruleBasedUnits.units.some((u) => u.confidence >= 0.7)) {
+        results[i] = ruleBasedUnits;
+      } else {
+        llmIndexes.push(i);
+      }
+    }
+
+    if (llmIndexes.length === 0) return results;
+
+    try {
+      const batched = await this.llmExtractionBatch(
+        llmIndexes.map((idx) => texts[idx]),
+        conversationHistory,
+        isAIMessage
+      );
+      if (batched.length !== llmIndexes.length) {
+        throw new Error('batch_length_mismatch');
+      }
+      llmIndexes.forEach((idx, j) => {
+        results[idx] = consolidateSemanticUnits(batched[j] ?? { units: [] }, texts[idx]);
+      });
+    } catch (error) {
+      logger.warn({ error, count: llmIndexes.length }, 'Batch semantic extraction failed; falling back per text');
+      await Promise.all(
+        llmIndexes.map(async (idx) => {
+          results[idx] = await this.extractSemanticUnits(texts[idx], conversationHistory, isAIMessage);
+        })
+      );
+    }
+
+    return results;
+  }
+
+  private async llmExtractionBatch(
+    texts: string[],
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+    _isAIMessage: boolean = false
+  ): Promise<ExtractionResult[]> {
+    const numbered = texts.map((text, index) => `${index}. ${text}`).join('\n');
+    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+      {
+        role: 'system',
+        content: `Extract semantic units from each numbered text independently.
+Return JSON: { "results": [ { "index": 0, "units": [ { "type": "EXPERIENCE|FEELING|THOUGHT|PERCEPTION|CLAIM|DECISION|CORRECTION", "content": "...", "confidence": 0.0-1.0, "temporal_context": {}, "entity_ids": [], "metadata": {} } ] } ] }
+One object per input index. Do not write biography prose.`,
+      },
+    ];
+    if (conversationHistory) {
+      messages.push(
+        ...conversationHistory.map((msg) => ({
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content,
+        }))
+      );
+    }
+    messages.push({ role: 'user', content: numbered });
+
+    const completion = await completeFor('extraction', {
+      temperature: 0.3,
+      messages,
+      response_format: { type: 'json_object' },
+    });
+    const response = completion.choices[0]?.message?.content;
+    if (!response) throw new Error('No response from LLM');
+    const parsed = JSON.parse(response) as { results?: Array<{ index?: number; units?: ExtractionResult['units'] }> };
+    const byIndex = new Map<number, ExtractionResult>();
+    for (const row of parsed.results ?? []) {
+      if (typeof row.index === 'number') {
+        byIndex.set(row.index, { units: row.units ?? [] });
+      }
+    }
+    return texts.map((_, index) => byIndex.get(index) ?? { units: [] });
   }
 }
 

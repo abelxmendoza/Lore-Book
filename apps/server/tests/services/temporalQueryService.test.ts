@@ -27,6 +27,8 @@ describe('temporalQueryService', () => {
     expect(r.window).not.toBeNull();
     expect(occurredInWindow('2026-06-17T10:00:00.000Z', r.window)).toBe(true);
     expect(occurredInWindow('2026-06-10T10:00:00.000Z', r.window)).toBe(false);
+    expect(occurredInWindow(null, r.window)).toBe(false);
+    expect(occurredInWindow(undefined, r.window)).toBe(false);
   });
 
   it('does not treat declarative journal text with bare today as TIME_RANGE_QUERY', () => {

@@ -11,6 +11,7 @@ import type {
   EntitySearchType,
 } from '../search/entitySearchTypes';
 import { supabaseAdmin } from '../supabaseClient';
+import { subjectWhyIncludedForOrganization } from '../organizations/organizationEventAttribution';
 
 import {
   loadThreadTimelineEvidence,
@@ -379,6 +380,20 @@ function relationFor(
   if (intent.exactDate) {
     if (item.sortTime.slice(0, 10) !== intent.exactDate) return null;
     return { relation: 'DIRECT_EVENT', relevance: 1, reason: `Occurred on ${intent.exactDate}` };
+  }
+
+  if (subject && (subject.entityType === 'organization' || subject.entityType === 'group')) {
+    const attributed = subjectWhyIncludedForOrganization(
+      item.organizationAttributions ?? [],
+      subject.entityId,
+    );
+    if (attributed) {
+      return {
+        relation: attributed.relation,
+        relevance: attributed.relation === 'DIRECT_EVENT' ? 0.96 : 0.42,
+        reason: attributed.whyIncluded,
+      };
+    }
   }
 
   // A generic domain timeline ("my career timeline") has no entity to anchor

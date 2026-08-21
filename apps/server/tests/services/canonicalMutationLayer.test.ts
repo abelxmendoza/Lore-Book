@@ -55,10 +55,36 @@ describe('Canonical Mutation Layer', () => {
     expect(decision.reason).toMatch(/cross-projection/i);
   });
 
+  it('automatically appends derived relationship assertions to history', () => {
+    const decision = new CanonicalMutationLayer().evaluate(envelope({
+      category: 'RELATIONSHIP',
+      intent: 'UPDATE',
+      authority: 'SYSTEM_DERIVED',
+      risk: 'LOW',
+      target: { artifactType: 'character_relationship', artifactId: 'pair-1', field: 'relationship_state', ownerProjection: 'relationship_projection' },
+      requestorProjection: 'relationship_projection',
+    }));
+    expect(decision.outcome).toBe('ALLOW_AUTOMATIC');
+  });
+
+  it('automatically authorizes an explicit user relationship update', () => {
+    const decision = new CanonicalMutationLayer().evaluate(envelope({
+      category: 'RELATIONSHIP',
+      intent: 'UPDATE',
+      authority: 'USER_EXPLICIT',
+      risk: 'LOW',
+      target: { artifactType: 'character_relationship', artifactId: 'pair-1', field: 'relationship_state', ownerProjection: 'relationship_projection' },
+      requestorProjection: 'relationship_projection',
+    }));
+    expect(decision.outcome).toBe('ALLOW_AUTOMATIC');
+    expect(decision.permitted).toBe(true);
+  });
+
   it('requires confirmation for relationship state and blocks derived identity canon', () => {
     const layer = new CanonicalMutationLayer();
     const relationship = layer.evaluate(envelope({
       category: 'RELATIONSHIP', authority: 'SYSTEM_DERIVED', risk: 'HIGH',
+      intent: 'RETIRE',
       target: { artifactType: 'relationship', artifactId: 'relationship-1', field: 'status', ownerProjection: 'relationship_projection' },
       requestorProjection: 'relationship_projection',
     }));

@@ -3,6 +3,7 @@ import { BookOpen, TrendingUp, Sparkles, AlertCircle, GitBranch, Brain, Activity
 import { fetchJson } from '../../lib/api';
 import { useAuth } from '../../lib/supabase';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
+import { hasJournalOccurrence } from '../../lib/journalOccurrence';
 import { useMockData } from '../../contexts/MockDataContext';
 import { AIInsightModal } from './AIInsightModal';
 import type { Character } from './CharacterProfileCard';
@@ -97,12 +98,15 @@ export const UserProfile = ({ characters = [] }: UserProfileProps) => {
 
   // ── Derived stats ───────────────────────────────────────────────────────────
   const recentEntries = entries.filter(e => {
+    if (!hasJournalOccurrence(e.date)) return false;
     const d = new Date(e.date);
-    return !isNaN(d.getTime()) && d >= new Date(Date.now() - 30 * 86_400_000);
+    return d >= new Date(Date.now() - 30 * 86_400_000);
   }).length;
 
   const activeSince = (() => {
-    const valid = entries.map(e => new Date(e.date)).filter(d => !isNaN(d.getTime()));
+    const valid = entries
+      .map(e => hasJournalOccurrence(e.date) ? new Date(e.date) : null)
+      .filter((d): d is Date => d != null && !isNaN(d.getTime()));
     if (!valid.length) return null;
     return new Date(Math.min(...valid.map(d => d.getTime())))
       .toLocaleDateString('en-US', { month: 'short', year: 'numeric' });

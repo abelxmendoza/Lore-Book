@@ -72,4 +72,44 @@ describe('executeExplicitRecall — identity hierarchy precedence', () => {
     expect(executeKind).toHaveBeenCalledTimes(1);
     expect(executeKind).toHaveBeenCalledWith('structured', expect.anything());
   });
+
+  it('falls back to journal entries instead of silence when foundation is empty', async () => {
+    executeKind.mockImplementation(async (kind: string) => {
+      if (kind === 'structured') {
+        return {
+          raw: {
+            intent: 'location',
+            entityName: 'Northwind Depot',
+            contextBlock: 'Location not recorded.',
+            confidence: 0.2,
+            foundationPrimary: true,
+          },
+        };
+      }
+      if (kind === 'semantic') {
+        return {
+          raw: {
+            silence: null,
+            confidence: 0.82,
+            entries: [
+              {
+                id: 'je-1',
+                date: '2026-03-01T00:00:00.000Z',
+                content: 'Went to Northwind Depot with Jamie after the shift.',
+              },
+            ],
+          },
+        };
+      }
+      throw new Error(`Unexpected query kind: ${kind}`);
+    });
+
+    const result = await executeExplicitRecall('user-1', 'What happened at Northwind Depot?');
+
+    expect(result.response_mode).toBe('RECALL');
+    expect(result.content).toContain('Northwind Depot');
+    expect(result.content).toContain('Jamie');
+    expect(result.content).not.toMatch(/nothing verified on record/i);
+    expect(executeKind).toHaveBeenCalledWith('semantic', expect.anything());
+  });
 });

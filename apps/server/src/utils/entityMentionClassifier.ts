@@ -16,6 +16,7 @@ export type MentionKind =
   | 'event'
   | 'game'
   | 'concept'
+  | 'place'
   | 'fragment'
   | 'common_noun'
   | 'unknown';
@@ -23,7 +24,7 @@ export type MentionKind =
 export type MentionClassification = {
   kind: MentionKind;
   /** Target omega entity type when kind !== person */
-  omegaType?: 'EVENT' | 'ORG';
+  omegaType?: 'EVENT' | 'ORG' | 'LOCATION';
   /** Canonical label for merged/retyped entities */
   canonicalName?: string;
   reason?: string;
@@ -110,6 +111,20 @@ const PHRASE_FRAGMENTS = new Set([
   'christmas',
   'valentine',
   'valentines',
+]);
+
+/**
+ * Trailing tokens that mark a name as a business/organization, never a
+ * person — "East Los Productions" should never fall through to the generic
+ * person-eligibility check just because it's capitalized and proper-noun
+ * shaped. Deliberately conservative (unambiguous business designators only)
+ * rather than an exhaustive list — the promotion-review path is what
+ * catches the rest.
+ */
+const ORG_NAME_SUFFIXES = new Set([
+  'productions', 'production', 'records', 'recordings', 'entertainment',
+  'studios', 'studio', 'promotions', 'promotion', 'presents', 'management',
+  'agency', 'agencies',
 ]);
 
 /** Capitalized common English nouns that extractors mistake for first names. */
@@ -220,14 +235,25 @@ export function classifyMentionKind(name: string, rawContext?: string): MentionC
     return { kind: 'common_noun', reason: 'common_noun' };
   }
 
+  // Business-name suffix ("East Los Productions") — never a person, even
+  // though it's capitalized and proper-noun shaped like one. Must run before
+  // the generic classifyEntity() fallback, which has no org-suffix signal
+  // and will happily call a company name character-eligible.
+  if (tokens.length >= 2 && ORG_NAME_SUFFIXES.has(tokens[tokens.length - 1])) {
+    return { kind: 'concept', omegaType: 'ORG', canonicalName: trimmed, reason: 'org_name_suffix' };
+  }
+
   const classification = classifyEntity(trimmed, rawContext);
   if (isCharacterEligible(classification.type)) return { kind: 'person', reason: classification.reason };
   if (classification.type === 'PET') return { kind: 'pet', canonicalName: trimmed, reason: classification.reason };
   if (!isUnknownEntity(classification.type)) {
     const omegaType = toOmegaType(classification.type);
+    // toOmegaType can resolve LOCATION too — must be preserved here, not
+    // silently dropped to undefined, or a correctly-classified venue mention
+    // falls back to omegaType 'EVENT' in retypeOrCreateOmegaEntity.
     return {
-      kind: omegaType === 'EVENT' ? 'event' : 'concept',
-      omegaType: omegaType === 'EVENT' ? 'EVENT' : omegaType === 'ORG' ? 'ORG' : undefined,
+      kind: omegaType === 'EVENT' ? 'event' : omegaType === 'LOCATION' ? 'place' : 'concept',
+      omegaType: omegaType === 'EVENT' || omegaType === 'ORG' || omegaType === 'LOCATION' ? omegaType : undefined,
       canonicalName: trimmed,
       reason: classification.reason,
     };

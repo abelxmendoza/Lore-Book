@@ -10,9 +10,9 @@ describe('mentionLifecycle — discourse markers', () => {
     expect(isTranscriptMentionWorthy('Also')).toBe(false);
   });
 
-  it('still treats real people as worthy', () => {
-    expect(inferMentionLifecycleStatus('Marcus')).toBe('RESOLVED');
-    expect(isTranscriptMentionWorthy('Marcus')).toBe(true);
+  it('treats her friend as an unresolved mention, not a person chip', () => {
+    expect(inferMentionLifecycleStatus('her friend')).toBe('UNRESOLVED');
+    expect(isTranscriptMentionWorthy('her friend')).toBe(true);
   });
 
   it('ignores truncated kinship, tools, dates, and personas', () => {

@@ -24,7 +24,7 @@ class OnboardingService {
 
   async importMemories(userId: string, payload: ImportPayload): Promise<{ imported: number }> {
     let imported = 0;
-    const now = formatISO(new Date());
+    const importedAt = formatISO(new Date());
 
     if (payload.files?.length) {
       for (const file of payload.files) {
@@ -33,8 +33,8 @@ class OnboardingService {
           content: file.content ?? `Imported ${file.name}`,
           tags: ['onboarding', 'imported'],
           source: 'api',
+          importedAt,
           metadata: { file: file.name, type: 'import_wizard' },
-          date: now
         });
         imported += 1;
       }
@@ -46,8 +46,8 @@ class OnboardingService {
         content: 'Calendar sync enabled during onboarding.',
         tags: ['onboarding', 'calendar'],
         source: 'calendar',
+        importedAt,
         metadata: { onboarding: true },
-        date: now
       });
       imported += 1;
     }
@@ -58,8 +58,8 @@ class OnboardingService {
         content: 'Photo metadata import enabled during onboarding.',
         tags: ['onboarding', 'photos'],
         source: 'photo',
+        importedAt,
         metadata: { onboarding: true },
-        date: now
       });
       imported += 1;
     }
@@ -70,7 +70,7 @@ class OnboardingService {
         content: 'No imports selected. Generated sample onboarding data.',
         tags: ['onboarding', 'sample'],
         source: 'system',
-        date: now,
+        importedAt,
         metadata: { id: uuid() }
       });
     }

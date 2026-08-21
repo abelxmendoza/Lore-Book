@@ -23,7 +23,7 @@ const upload = createMemoryUpload({ limits: { fileSize: 15 * 1024 * 1024 } });
 
 const entrySchema = z.object({
   content: z.string().min(3),
-  date: z.string().optional(),
+  date: z.string().nullish(),
   tags: z.array(z.string()).optional(),
   chapterId: z.string().nullable().optional(),
   mood: z.string().nullable().optional(),
@@ -343,6 +343,7 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     // Update entry
     const updatedEntry = await memoryService.updateEntry(req.user!.id, entryId, {
       content: parsed.data.content,
+      date: parsed.data.date,
       tags: parsed.data.tags,
       chapterId: parsed.data.chapterId,
       mood: parsed.data.mood,

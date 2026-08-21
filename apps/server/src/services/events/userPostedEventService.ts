@@ -8,6 +8,7 @@ import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { isPublishableLifeLogTitle } from './lifeLogEligibilityPolicy';
 import { parseApproximateWhen, titleFromStory } from './parseApproximateWhen';
+import { attributeOrganizationsForEventText } from '../organizations/organizationEventAttributionService';
 
 export type EventVenueStop = {
   location_id?: string | null;
@@ -196,6 +197,13 @@ export async function createUserPostedEvent(
     },
   };
 
+  const attributedMetadata = await attributeOrganizationsForEventText({
+    userId,
+    text: `${title}. ${input.summary ?? ''} ${storyText}`.trim(),
+    explicitOrganizationId: input.organization_id ?? null,
+    existingMetadata: metadata,
+  });
+
   const { data, error } = await supabaseAdmin
     .from('resolved_events')
     .insert({
@@ -211,7 +219,7 @@ export async function createUserPostedEvent(
       temporal_source: 'user_stated',
       temporal_precision: when.temporalPrecision,
       temporal_status: when.temporalStatus,
-      metadata,
+      metadata: attributedMetadata,
     })
     .select('*')
     .single();

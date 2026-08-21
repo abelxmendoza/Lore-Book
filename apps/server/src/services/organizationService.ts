@@ -22,6 +22,8 @@ import {
 import { groupAnalyticsService, type GroupAnalytics } from './groupAnalyticsService';
 import { BOOK_QUERY_SOURCE_ROW_CAP } from './query/bookQuerySourceCaps';
 import { supabaseAdmin } from './supabaseClient';
+import { stitchedTimelineService } from './chronologyV2/stitchedTimelineService';
+import { stitchedOccurredStart } from './chronologyV2/stitchedOccurrence';
 
 // ── Canonical group type enum ─────────────────────────────────────────
 export type GroupType =
@@ -191,10 +193,11 @@ export interface OrganizationLocation {
 }
 
 // ── Conversation-derived context ──────────────────────────────────────
-// Events & locations inferred from a group's MEMBERS appearing in the
-// user's chat threads / journal entries (character_timeline_events +
-// locations.associated_character_ids). Read-only; recomputed on demand so
-// they always reflect the latest conversations without manual entry.
+// Events come from canonical organization attribution
+// (resolved_events.metadata.organizationAttributions → stitched org scope).
+// Member roster only annotates who among the group was in people[].
+// Membership + a person's other life events must not manufacture org chronology.
+// Locations still overlay from locations.associated_character_ids (presence, not when).
 export interface DerivedGroupEvent {
   id: string;
   title: string;
@@ -568,12 +571,12 @@ export class OrganizationService {
           .from('organization_stories')
           .select(ORG_STORY_COLS)
           .in('organization_id', organizationIds)
-          .order('date', { ascending: false }),
+          .order('date', { ascending: false, nullsFirst: false }),
         supabaseAdmin
           .from('organization_events')
           .select(ORG_EVENT_COLS)
           .in('organization_id', organizationIds)
-          .order('date', { ascending: false }),
+          .order('date', { ascending: false, nullsFirst: false }),
         supabaseAdmin
           .from('organization_locations')
           .select(ORG_LOCATION_COLS)
@@ -839,15 +842,19 @@ export class OrganizationService {
       // the current aliases so we can append to them rather than clobber.
       let existingName: string | null = null;
       let existingAliases: string[] = [];
-      if (updates.name !== undefined) {
+      let existingType: string | null = null;
+      if (updates.name !== undefined || updates.type !== undefined || updates.group_type !== undefined) {
         const { data: current } = await supabaseAdmin
           .from('organizations')
-          .select('name, aliases')
+          .select('name, aliases, type, group_type')
           .eq('id', organizationId)
           .eq('user_id', userId)
           .maybeSingle();
         existingName = (current?.name as string | undefined) ?? null;
         existingAliases = (current?.aliases as string[] | null) ?? [];
+        existingType = String((current as { type?: string; group_type?: string } | null)?.type
+          ?? (current as { group_type?: string } | null)?.group_type
+          ?? '');
       }
 
       // Only patch fields that were actually provided so partial updates
@@ -924,6 +931,20 @@ export class OrganizationService {
         .single();
 
       if (error) throw error;
+
+      const nextType = String(updates.type ?? updates.group_type ?? '');
+      if (nextType && existingType && nextType !== existingType) {
+        void import('./lorebook/suggestions/suggestionDecisionStore').then(({ recordTypeCorrection }) =>
+          recordTypeCorrection({
+            userId,
+            domain: 'organizations',
+            entityId: organizationId,
+            name: String(org?.name ?? existingName ?? ''),
+            canonicalType: nextType,
+            previousType: existingType,
+          }),
+        );
+      }
 
       return await this.getOrganization(userId, organizationId) || org;
     } catch (error) {
@@ -1436,7 +1457,7 @@ export class OrganizationService {
         .from('organization_stories')
         .select(ORG_STORY_COLS)
         .eq('organization_id', organizationId)
-        .order('date', { ascending: false });
+        .order('date', { ascending: false, nullsFirst: false });
 
       if (error) throw error;
       return data || [];
@@ -1455,7 +1476,7 @@ export class OrganizationService {
         .from('organization_events')
         .select(ORG_EVENT_COLS)
         .eq('organization_id', organizationId)
-        .order('date', { ascending: false });
+        .order('date', { ascending: false, nullsFirst: false });
 
       if (error) throw error;
       return data || [];
@@ -1522,13 +1543,11 @@ export class OrganizationService {
       }
 
       const characterIds = [...idToName.keys()];
-      if (characterIds.length === 0) {
-        return { events: [], locations: [], hierarchy };
-      }
-
       const [rawEvents, locations] = await Promise.all([
-        this.deriveEvents(userId, characterIds, idToName),
-        this.deriveLocations(userId, characterIds, idToName),
+        this.deriveEvents(userId, organizationId, idToName),
+        characterIds.length > 0
+          ? this.deriveLocations(userId, characterIds, idToName)
+          : Promise.resolve([]),
       ]);
 
       const events = rawEvents.map(ev => {
@@ -1631,55 +1650,52 @@ export class OrganizationService {
     return 'without_user';
   }
 
-  /** Events members took part in, from character_timeline_events. */
+  /**
+   * Canonical organization events. Not member-overlap chronology.
+   * A member attending an unrelated concert does not become an org event.
+   */
   private async deriveEvents(
     userId: string,
-    characterIds: string[],
+    organizationId: string,
     idToName: Map<string, string>
   ): Promise<DerivedGroupEvent[]> {
-    const { data, error } = await supabaseAdmin
-      .from('character_timeline_events')
-      .select('event_id, character_id, event_title, event_date, event_summary, event_type, user_was_present')
-      .eq('user_id', userId)
-      .in('character_id', characterIds)
-      .order('event_date', { ascending: false })
-      .limit(400);
-    if (error || !data) return [];
+    const stitched = await stitchedTimelineService.getStitchedTimelineForOrganization(userId, organizationId);
+    const rows = [...(stitched.items ?? []), ...(stitched.unresolved_items ?? [])];
+    if (rows.length === 0) return [];
 
-    // Collapse rows that describe the SAME event (multiple members → one card).
-    const byEvent = new Map<string, DerivedGroupEvent>();
-    for (const row of data as Array<{
-      event_id: string | null;
-      character_id: string;
-      event_title: string | null;
-      event_date: string | null;
-      event_summary: string | null;
-      event_type: string | null;
-      user_was_present: boolean | null;
-    }>) {
-      const title = (row.event_title ?? '').trim();
-      if (!title) continue;
-      const key = row.event_id ?? `${title.toLowerCase()}|${row.event_date ?? ''}`;
-      const memberName = idToName.get(row.character_id);
-      const existing = byEvent.get(key);
-      if (existing) {
-        if (memberName && !existing.involved.includes(memberName)) existing.involved.push(memberName);
-        if (row.user_was_present) existing.user_was_present = true;
-      } else {
-        byEvent.set(key, {
-          id: key,
-          title,
-          date: row.event_date ?? null,
-          type: row.event_type ?? 'other',
-          summary: row.event_summary ?? undefined,
-          involved: memberName ? [memberName] : [],
-          user_was_present: row.user_was_present ?? undefined,
-          source: 'conversation',
-        });
-      }
+    const eventIds = [...new Set(rows.map((item) => item.sourceId).filter(Boolean))];
+    const { data: peopleRows } = eventIds.length
+      ? await supabaseAdmin
+          .from('resolved_events')
+          .select('id, people')
+          .eq('user_id', userId)
+          .in('id', eventIds)
+      : { data: [] };
+    const peopleByEvent = new Map(
+      (peopleRows ?? []).map((row) => [row.id as string, (row.people as string[] | null) ?? []]),
+    );
+
+    const events: DerivedGroupEvent[] = [];
+    for (const item of rows) {
+      const occurred = stitchedOccurredStart(item);
+      const unresolved = !occurred;
+      const peopleIds = peopleByEvent.get(item.sourceId) ?? [];
+      const involved = peopleIds
+        .map((id) => idToName.get(id))
+        .filter((name): name is string => Boolean(name));
+      events.push({
+        id: item.id,
+        title: item.title,
+        date: unresolved ? null : occurred,
+        type: item.canonicalEventType ?? item.sourceType ?? 'other',
+        summary: item.body || undefined,
+        involved,
+        user_was_present: item.userPresence === 'attended',
+        source: 'conversation',
+      });
     }
 
-    return [...byEvent.values()]
+    return events
       .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
       .slice(0, 50);
   }

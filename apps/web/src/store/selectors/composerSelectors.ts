@@ -4,6 +4,7 @@ import { composerMatchSlot } from '../slices/composerSlice';
 import type { RootState } from '../index';
 
 export const selectComposerDraft = (state: RootState) => state.composer.draftText;
+export const selectComposerHasDraft = (state: RootState) => state.composer.hasDraft;
 export const selectComposerMatches = (state: RootState) => state.composer.matches;
 export const selectComposerIndexReady = (state: RootState) => state.composer.indexReady;
 

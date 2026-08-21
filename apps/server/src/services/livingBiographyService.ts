@@ -25,6 +25,8 @@
 
 import { supabaseAdmin } from './supabaseClient';
 import { logger } from '../logger';
+import { stitchedTimelineService } from './chronologyV2/stitchedTimelineService';
+import { stitchedIsFuture } from './chronologyV2/stitchedOccurrence';
 import {
   biographyFoundationService,
   type BiographyOutput,
@@ -284,7 +286,6 @@ function deriveKeyPeople(bio: BiographyOutput): LivingBiographyPerson[] {
  * biography snapshot regenerate.
  */
 export async function deriveCurrentFocus(userId: string, bio: BiographyOutput): Promise<string[]> {
-  const todayIso = new Date().toISOString().slice(0, 10);
   const focus: string[] = [];
   const seen = new Set<string>();
 
@@ -297,7 +298,7 @@ export async function deriveCurrentFocus(userId: string, bio: BiographyOutput): 
     focus.push(trimmed);
   };
 
-  const [{ data: focusedProjects }, { data: quests }, { data: futureEvents }] = await Promise.all([
+  const [{ data: focusedProjects }, { data: quests }, stitched] = await Promise.all([
     supabaseAdmin
       .from('projects')
       .select('name, status, metadata')
@@ -312,13 +313,7 @@ export async function deriveCurrentFocus(userId: string, bio: BiographyOutput): 
       .eq('status', 'active')
       .order('updated_at', { ascending: false })
       .limit(MAX_FOCUS),
-    supabaseAdmin
-      .from('character_timeline_events')
-      .select('event_title')
-      .eq('user_id', userId)
-      .gte('event_date', todayIso)
-      .order('event_date', { ascending: true })
-      .limit(MAX_FOCUS),
+    stitchedTimelineService.getStitchedTimeline(userId, { limit: 40 }),
   ]);
 
   for (const project of focusedProjects ?? []) {
@@ -327,7 +322,10 @@ export async function deriveCurrentFocus(userId: string, bio: BiographyOutput): 
     }
   }
   for (const quest of quests ?? []) push(quest.title);
-  for (const event of futureEvents ?? []) push(event.event_title);
+  for (const item of stitched.items ?? []) {
+    if (!stitchedIsFuture(item)) continue;
+    push(item.title);
+  }
 
   // Snapshot upcoming events only when live sources produced nothing —
   // never pad live focus with potentially stale snapshot strings.
@@ -348,7 +346,8 @@ export async function deriveCurrentFocus(userId: string, bio: BiographyOutput): 
  */
 function deriveRecentDevelopments(bio: BiographyOutput): string[] {
   return [...bio.facts.keyEvents]
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .filter((e) => Boolean(e.date) && e.unresolved !== true)
+    .sort((a, b) => Date.parse(b.date as string) - Date.parse(a.date as string))
     .slice(0, MAX_DEVELOPMENTS)
     .map(e => e.connection ? `${e.title} (with ${e.connection})` : e.title);
 }
@@ -475,8 +474,9 @@ function maybeRefreshInBackground(userId: string, bio: BiographyOutput): void {
 }
 
 /**
- * Threshold check: enough new memories OR new timeline events since the
- * snapshot was generated, and at least REFRESH_MIN_HOURS_BETWEEN has passed.
+ * Threshold check: enough newly *recorded* journal rows OR new resolved events
+ * since the snapshot was generated. Uses created_at (recording), never journal
+ * date (occurrence) — an imported 2018 memory recorded today should refresh.
  */
 export async function shouldRefreshBiography(userId: string, generatedAtIso: string): Promise<boolean> {
   const hoursSince = (Date.now() - new Date(generatedAtIso).getTime()) / 3_600_000;
@@ -487,9 +487,9 @@ export async function shouldRefreshBiography(userId: string, generatedAtIso: str
       .from('journal_entries')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
-      .gt('date', generatedAtIso),
+      .gt('created_at', generatedAtIso),
     supabaseAdmin
-      .from('character_timeline_events')
+      .from('resolved_events')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
       .gt('created_at', generatedAtIso),
@@ -523,6 +523,7 @@ export async function getBiographyChanges(userId: string, sinceIso: string): Pro
 
   // New milestones — key events dated after `since`
   for (const event of bio.facts.keyEvents) {
+    if (!event.date || event.unresolved) continue;
     if (new Date(event.date) > since) {
       changes.push({ kind: 'new_milestone', label: `New milestone: ${event.title}` });
     }

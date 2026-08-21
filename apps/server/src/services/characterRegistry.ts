@@ -71,9 +71,16 @@ const JUNK_NAMES = new Set([
   'i', 'me', 'my', 'mine', 'you', 'your', 'yours', 'he', 'him', 'his', 'she',
   'her', 'hers', 'they', 'them', 'their', 'we', 'us', 'our', 'it', 'its',
   'ive', 'im', 'id', 'ill', 'youre', 'youve', 'hes', 'shes', 'theyre',
+  'thats', 'whats', 'wheres', 'whens', 'whos', 'hows', 'lets', 'wholl',
+  'thatll', 'therell', 'weve', 'wed', 'well', 'theyve', 'theyd', 'youd',
   'the', 'a', 'an', 'this', 'that', 'these', 'those', 'just', 'from',
   'someone', 'somebody', 'anyone', 'anybody', 'everyone', 'everybody',
   'people', 'person', 'guy', 'girl', 'man', 'woman', 'narrator', 'user',
+  // Common sentence-initial imperatives extraction mistakes for a name
+  // ("Help me capture..."). Deliberately narrow — real first names that
+  // double as these words are rare enough that the false-negative risk is
+  // low next to how often these show up as extraction junk.
+  'help', 'please', 'okay', 'ok', 'yes', 'no', 'wait', 'stop', 'thanks',
 ]);
 
 const NON_PERSON_NAME_PATTERNS = [
@@ -257,7 +264,13 @@ class CharacterRegistry {
       return { action: 'reject', reason: 'known_location_or_org' };
     }
 
-    if (await isUserRejectedEntityCard(userId, cleanName)) {
+    const { getSuggestionWriteContext } = await import('./lorebook/suggestions/suggestionWriteContext');
+    const { isCharacterRejectedInIndex } = await import('./lorebook/suggestions/suggestionDecisionIndex');
+    const decisionCtx = getSuggestionWriteContext();
+    if (decisionCtx?.decisions && isCharacterRejectedInIndex(decisionCtx.decisions, cleanName)) {
+      return { action: 'reject', reason: 'user_deleted_entity_card' };
+    }
+    if (!decisionCtx?.decisions && await isUserRejectedEntityCard(userId, cleanName)) {
       return { action: 'reject', reason: 'user_deleted_entity_card' };
     }
 

@@ -14,6 +14,9 @@ import {
 import { chronologyService } from '../services/chronologyV2';
 import { stitchedTimelineService } from '../services/chronologyV2/stitchedTimelineService';
 import { calendarAggregationService } from '../services/chronologyV2/calendarAggregationService';
+import { compareTemporalProjections, projectTemporalItem } from '../services/temporal/temporalSurfaceProjection';
+import { inspectEntityTemporalProjection } from '../services/characters/characterEntityTimelineService';
+import { resolveUserTimezoneForRequest } from '../services/temporal/userTimezoneService';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { JOURNAL_COLS } from '../db/journalEntryColumns';
 
@@ -89,7 +92,7 @@ router.post(
         .from('journal_entries')
         .select(JOURNAL_COLS)
         .eq('user_id', userId)
-        .order('date', { ascending: false })
+        .order('date', { ascending: false, nullsFirst: false })
         .limit(100);
 
       eventsToProcess = eventMapper.mapMemoryEntriesToEvents(entries || []);
@@ -166,7 +169,7 @@ router.get(
       .from('journal_entries')
       .select(JOURNAL_COLS)
       .eq('user_id', userId)
-      .order('date', { ascending: false })
+        .order('date', { ascending: false, nullsFirst: false })
       .limit(limit);
 
     const events = eventMapper.mapMemoryEntriesToEvents(entries || []);
@@ -204,7 +207,7 @@ router.get(
       .from('journal_entries')
       .select(JOURNAL_COLS)
       .eq('user_id', userId)
-      .order('date', { ascending: false })
+        .order('date', { ascending: false, nullsFirst: false })
       .limit(100);
 
     const { data: components } = await supabaseAdmin
@@ -386,6 +389,10 @@ router.get(
     const endTime = req.query.end_time as string | undefined;
     const scopeType = req.query.scope_type as 'global' | 'life_arc' | undefined;
     const characterId = req.query.character_id as string | undefined;
+    const timezone = await resolveUserTimezoneForRequest(
+      req.user!.id,
+      req.headers['x-user-timezone'],
+    );
 
     const result = await stitchedTimelineService.getStitchedTimeline(req.user!.id, {
       scope_type: scopeType,
@@ -393,6 +400,7 @@ router.get(
       start_time: startTime,
       end_time: endTime,
       character_id: characterId,
+      timezone,
     });
 
     res.json(result);
@@ -435,8 +443,55 @@ router.get(
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const year = parseInt(req.query.year as string, 10) || new Date().getFullYear();
     const month = parseInt(req.query.month as string, 10) || new Date().getMonth() + 1;
-    const result = await calendarAggregationService.getMonth(req.user!.id, year, month);
+    const timezone = await resolveUserTimezoneForRequest(
+      req.user!.id,
+      req.headers['x-user-timezone'],
+    );
+    const result = await calendarAggregationService.getMonth(req.user!.id, year, month, timezone);
     res.json(result);
+  })
+);
+
+/**
+ * GET /api/chronology/temporal-projection?id=&entityId=
+ * Dev/debug comparison of Omni vs Calendar vs Character modal projection.
+ */
+router.get(
+  '/temporal-projection',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const id = String(req.query.id ?? '').trim();
+    if (!id) {
+      return res.status(400).json({ error: 'id is required' });
+    }
+    const entityId = String(req.query.entityId ?? '').trim();
+    const timezone = await resolveUserTimezoneForRequest(
+      req.user!.id,
+      req.headers['x-user-timezone'],
+    );
+    const stitched = entityId
+      ? await stitchedTimelineService.getStitchedTimelineForEntity(req.user!.id, entityId, { timezone })
+      : await stitchedTimelineService.getStitchedTimeline(req.user!.id, {
+          scope_type: 'global',
+          timezone,
+        });
+    const found =
+      stitched.items.find((item) => item.id === id || item.sourceId === id)
+      ?? stitched.unresolved_items?.find((item) => item.id === id || item.sourceId === id);
+    if (!found) {
+      return res.status(404).json({ error: 'Canonical item not found' });
+    }
+    const compared = compareTemporalProjections(found, timezone);
+    res.json({
+      timezone,
+      entityId: entityId || null,
+      ...compared,
+      omniProjection: found.temporalProjection ?? projectTemporalItem(found, timezone, new Date(), 'omni'),
+      calendarProjection: projectTemporalItem(found, timezone, new Date(), 'calendar'),
+      entityModalProjection: entityId
+        ? inspectEntityTemporalProjection(found, entityId, timezone)
+        : projectTemporalItem(found, timezone, new Date(), 'entity_modal'),
+    });
   })
 );
 

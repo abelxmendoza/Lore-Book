@@ -54,4 +54,14 @@ describe('suggestionRescanToast', () => {
       appendLorebookParseToast('Rescan complete.', { domains: ['characters'], results: {} })
     ).toBe('Rescan complete.');
   });
+
+  it('formats organizations/groups rescan outcome', () => {
+    const summary: SuggestionRescanSummary = {
+      domains: ['organizations'],
+      results: { organizations: { scanned: true, omegaPromoted: 1, inferenceUpserted: 2 } },
+    };
+    expect(formatSuggestionRescanToast(summary, 'organizations')).toBe(
+      'Found 3 groups in your chats.'
+    );
+  });
 });

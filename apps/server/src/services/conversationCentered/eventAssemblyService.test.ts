@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const h = vi.hoisted(() => ({
   upsertMoment: vi.fn(),
@@ -17,6 +17,9 @@ vi.mock('../confidenceTrackingService', () => ({ confidenceTrackingService: {} }
 vi.mock('../knowledgeTypeEngineService', () => ({ knowledgeTypeEngineService: {} }));
 vi.mock('../metaControlService', () => ({ metaControlService: {} }));
 vi.mock('../omegaMemoryService', () => ({ omegaMemoryService: {} }));
+vi.mock('../organizations/organizationEventAttributionService', () => ({
+  attributeOrganizationsForEventText: vi.fn(async ({ existingMetadata }) => existingMetadata ?? {}),
+}));
 vi.mock('../narrative/narrativeMomentService', () => ({
   narrativeMomentService: { upsertMoment: h.upsertMoment, markPromoted: h.markMomentPromoted },
 }));
@@ -36,6 +39,7 @@ vi.mock('../narrative/narrativeStoryChapterService', () => ({
 
 import { supabaseAdmin } from '../supabaseClient';
 import { EventAssemblyService } from './eventAssemblyService';
+import { resetWorkerCursorsForTests } from '../ingestion/workerHighWaterMark';
 
 const extractTitle = (units: Array<{ content: string }>) =>
   (new EventAssemblyService() as any).extractEventTitle(units) as string;
@@ -124,17 +128,28 @@ describe('EventAssemblyService.assembleEvents — milestone wiring', () => {
   const userId = 'user-1';
   const now = new Date().toISOString();
 
+  beforeEach(() => {
+    resetWorkerCursorsForTests();
+  });
+
   function mockExtractedUnitsQuery(units: unknown[]) {
     (supabaseAdmin.from as any).mockImplementation((table: string) => {
-      if (table !== 'extracted_units') {
-        return { select: () => ({ eq: () => ({ eq: () => ({ gte: () => Promise.resolve({ data: [], error: null }) }) }) }) };
-      }
+      const data = table === 'extracted_units' ? units : [];
       const builder: Record<string, any> = {
         select: () => builder,
         eq: () => builder,
         gte: () => builder,
+        or: () => builder,
+        in: () => builder,
         order: () => builder,
-        limit: () => Promise.resolve({ data: units, error: null }),
+        limit: () => builder,
+        insert: () => Promise.resolve({ data: null, error: null }),
+        update: () => builder,
+        upsert: () => Promise.resolve({ data: null, error: null }),
+        maybeSingle: () => Promise.resolve({ data: null, error: null }),
+        single: () => Promise.resolve({ data: null, error: null }),
+        then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+          Promise.resolve({ data, error: null }).then(resolve, reject),
       };
       return builder;
     });

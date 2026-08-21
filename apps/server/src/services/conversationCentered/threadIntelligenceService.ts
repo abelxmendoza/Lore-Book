@@ -14,7 +14,7 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { countMissingAssistantTurns } from './threadDurabilityChecks';
-import { unionThreadMetaLabels } from '../actors/entityLabelPollution';
+import { unionThreadMetaLabels, applyCanonicalEntityTypeAuthority } from '../actors/entityLabelPollution';
 
 export interface ThreadMetadata {
   title: string | null;
@@ -75,10 +75,13 @@ const unionCap = (existing: string[], add: string[] | undefined, cap = 50): stri
  * People/places are scrubbed for junk labels and possessive-duplicate keys.
  */
 export function mergeThreadMetadata(existing: ThreadMetadata, turn: ThreadTurn): ThreadMetadata {
+  const people = unionThreadMetaLabels(existing.people, turn.people, { kind: 'people' });
+  const places = unionThreadMetaLabels(existing.places, turn.places, { kind: 'places' });
+  const typed = applyCanonicalEntityTypeAuthority(people, places);
   const next: ThreadMetadata = {
     title: turn.title?.trim() ? turn.title.trim() : existing.title,
-    people: unionThreadMetaLabels(existing.people, turn.people, { kind: 'people' }),
-    places: unionThreadMetaLabels(existing.places, turn.places, { kind: 'places' }),
+    people: typed.people,
+    places: typed.places,
     projects: unionCap(existing.projects, turn.projects),
     themes: unionCap(existing.themes, turn.themes),
     episodes: turn.replaceEpisodes

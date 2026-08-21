@@ -3,12 +3,15 @@
  * Apply pending migrations to the isolated staging Supabase database only.
  *
  * Usage: npm run staging:migrate
+ *        STAGING_MIGRATE_ONLY=20260821140000 npm run staging:migrate
  *
  * Hard rules:
  *  - Never loads root `.env`
  *  - Refuses production project refs / hosts
  *  - Applies SQL files in repository order
  *  - Records versions in supabase_migrations.schema_migrations
+ *  - STAGING_MIGRATE_ONLY applies one version and fails closed on SQL error
+ *  - Do not combine STAGING_MIGRATE_ONLY with STAGING_MIGRATE_FULL
  *
  * Exit 0 = critical migrations present
  * Exit 2 = safety failure or critical migration missing
@@ -125,15 +128,32 @@ const files = readdirSync(migDir)
 // files (and optionally full backlog when STAGING_MIGRATE_FULL=1).
 const missingCritical = CRITICAL.filter((v) => !applied.has(v));
 const fullBacklog = process.env.STAGING_MIGRATE_FULL === '1';
-const targets = fullBacklog
-  ? files
-  : missingCritical.length
-    ? files.filter((f) => CRITICAL.includes(f.split('_')[0]) || !applied.has(f.split('_')[0]))
-    : [];
+const onlyVersion = (process.env.STAGING_MIGRATE_ONLY || '').trim();
+if (onlyVersion && !/^\d+$/.test(onlyVersion)) {
+  console.error('NO-GO: STAGING_MIGRATE_ONLY must be a numeric migration version');
+  process.exit(2);
+}
+if (onlyVersion && fullBacklog) {
+  console.error('NO-GO: STAGING_MIGRATE_ONLY and STAGING_MIGRATE_FULL cannot be combined');
+  process.exit(2);
+}
+const targets = onlyVersion
+  ? files.filter((f) => f.split('_')[0] === onlyVersion)
+  : fullBacklog
+    ? files
+    : missingCritical.length
+      ? files.filter((f) => CRITICAL.includes(f.split('_')[0]) || !applied.has(f.split('_')[0]))
+      : [];
 
 // When critical already applied and not doing full backlog, skip bulk re-apply of
 // historically broken greenfield migrations.
-if (!missingCritical.length && !fullBacklog) {
+if (onlyVersion) {
+  if (!targets.length) {
+    console.error('NO-GO: STAGING_MIGRATE_ONLY=', onlyVersion, 'did not match a supabase/migrations file');
+    process.exit(2);
+  }
+  console.log('Applying only:', targets.join(', '));
+} else if (!missingCritical.length && !fullBacklog) {
   console.log(
     'Critical migrations already recorded; skipping non-critical backlog (set STAGING_MIGRATE_FULL=1 to force).',
   );
@@ -145,7 +165,13 @@ let skip = 0;
 const failedCritical = [];
 const appliedCritical = [];
 
-const iterate = !missingCritical.length && !fullBacklog ? [] : targets.length ? targets : files;
+const iterate = onlyVersion
+  ? targets
+  : !missingCritical.length && !fullBacklog
+    ? []
+    : targets.length
+      ? targets
+      : files;
 
 for (const file of files) {
   const ver = file.split('_')[0];
@@ -162,7 +188,7 @@ for (const file of iterate) {
     continue;
   }
 
-  const r = psql(['-v', 'ON_ERROR_STOP=0', '-f', join(migDir, file)], {
+  const r = psql(['-v', onlyVersion ? 'ON_ERROR_STOP=1' : 'ON_ERROR_STOP=0', '-f', join(migDir, file)], {
     timeout: 180000,
   });
   const out = `${r.stdout || ''}\n${r.stderr || ''}`;
@@ -234,6 +260,11 @@ const meaningOk = parts[1] === 'yes';
 console.log('ingestion_jobs:', jobsOk ? 'present' : 'MISSING');
 console.log('autobiographical_meaning_artifacts:', meaningOk ? 'present' : 'MISSING');
 console.log('CRITICAL_FAILED:', failedCritical.length ? failedCritical.join(', ') : 'none');
+
+if (onlyVersion && fail) {
+  console.error('\nNO-GO: targeted migration failed');
+  process.exit(2);
+}
 
 if (!jobsOk || !meaningOk || failedCritical.length) {
   console.error('\nNO-GO: critical staging schema incomplete');

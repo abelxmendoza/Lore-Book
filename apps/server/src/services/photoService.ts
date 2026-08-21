@@ -7,6 +7,7 @@ import { logger } from '../logger';
 import { memoryService } from './memoryService';
 import type { PhotoAnalysisResult } from './photoAnalysisService';
 import { supabaseAdmin as supabase } from './supabaseClient';
+import { photoCaptureOccurrence } from './journal/journalOccurrenceWrite';
 
 export type PhotoMetadata = {
   latitude?: number;
@@ -247,7 +248,9 @@ class PhotoService {
       const entry = await memoryService.saveEntry({
         userId: input.userId,
         content,
-        date: input.date || new Date().toISOString(),
+        date: input.date || undefined,
+        importedAt: new Date().toISOString(),
+        temporalSource: input.date ? 'document_stated' : 'recording_fallback',
         tags,
         source: 'photo',
         metadata: {
@@ -370,7 +373,7 @@ Generate a journal entry:`;
           source: 'photo_metadata',
           content: summary,
           tags,
-          date: metadata.dateTimeOriginal || metadata.dateTime || new Date().toISOString(),
+          date: photoCaptureOccurrence(metadata),
           metadata: {
             photoMetadata: metadata,
           },
@@ -381,7 +384,9 @@ Generate a journal entry:`;
       const entry = await memoryService.saveEntry({
         userId,
         content: summary,
-        date: metadata.dateTimeOriginal || metadata.dateTime || new Date().toISOString(),
+        date: photoCaptureOccurrence(metadata),
+        importedAt: new Date().toISOString(),
+        temporalSource: photoCaptureOccurrence(metadata) ? 'document_stated' : 'recording_fallback',
         tags,
         source: 'photo',
         metadata: {
@@ -441,7 +446,7 @@ Generate a journal entry:`;
           source: 'upload_junk',
           content: `Photo uploaded: ${filename}`,
           tags: ['photo', 'junk', category],
-          date: metadata.dateTimeOriginal || metadata.dateTime || new Date().toISOString(),
+          date: photoCaptureOccurrence(metadata),
           metadata: {
             photoType: 'junk',
             photoMetadata: metadata,
@@ -478,10 +483,13 @@ Generate a journal entry:`;
       ...detectedPeople.map((person) => person.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')),
     ].filter(Boolean)));
 
+    const captureDate = photoCaptureOccurrence(metadata);
     const entry = await memoryService.saveEntry({
       userId,
       content: summary,
-      date: metadata.dateTimeOriginal || metadata.dateTime || analysis.metadata?.date || new Date().toISOString(),
+      date: captureDate,
+      importedAt: new Date().toISOString(),
+      temporalSource: captureDate ? 'document_stated' : 'recording_fallback',
       tags,
       source: 'photo',
       metadata: {

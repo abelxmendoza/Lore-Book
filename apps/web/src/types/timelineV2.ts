@@ -59,6 +59,8 @@ export interface ChronologyEntry {
   tags?: string[];
   user_presence?: 'attended' | 'heard_about' | 'unknown';
   temporal_role?: string;
+  user_local_day?: string | null;
+  temporal_state?: 'past' | 'ongoing' | 'future' | 'unresolved';
 }
 
 export interface ChronologyOverlap {

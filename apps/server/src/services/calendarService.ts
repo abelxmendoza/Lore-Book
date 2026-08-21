@@ -116,6 +116,9 @@ Generate a journal entry:`;
         userId,
         content: summary,
         date: event.startDate,
+        temporalSource: 'document_stated',
+        sourceCreatedAt: event.startDate,
+        importedAt: new Date().toISOString(),
         tags,
         source: 'calendar',
         metadata: {

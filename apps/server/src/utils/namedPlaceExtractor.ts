@@ -73,6 +73,27 @@ function normalizeOwnerToken(raw: string): string {
   return titleCaseWord(trimmed);
 }
 
+/**
+ * Function words that a possessive-place regex can mistake for a person's
+ * name ("at home", "the house", "his house", "stayed home"). None of these
+ * can ever be a real owner, so a match here means the text isn't naming a
+ * place at all.
+ */
+const POSSESSIVE_OWNER_STOPWORDS = new Set([
+  'the', 'a', 'an', 'at', 'in', 'on', 'to', 'for', 'with', 'of', 'and', 'or', 'but',
+  'his', 'her', 'their', 'my', 'our', 'your', 'its', 'this', 'that', 'these', 'those',
+  'going', 'went', 'was', 'is', 'am', 'are', 'been', 'being', 'stayed', 'staying', 'stay',
+  'name', 'here', 'there',
+]);
+
+export function isValidPossessiveOwner(owner: string): boolean {
+  const raw = owner.trim();
+  if (!raw) return false;
+  if (raw.toLowerCase().startsWith('name:')) return false;
+  const key = raw.toLowerCase().replace(/['']s$/i, '').replace(/s$/i, '');
+  return key.length > 0 && !POSSESSIVE_OWNER_STOPWORDS.has(key);
+}
+
 export function formatPossessivePlace(owner: string, placeType: string): string {
   const ownerLabel = normalizeOwnerToken(owner);
   const typeKey = placeType.toLowerCase();
@@ -190,6 +211,7 @@ export function extractNamedPlacesFromText(text: string): ExtractedNamedPlace[] 
       /\b([a-zA-ZÀ-ÿ]+(?:'s|s)?)\s+(house|home|apartment|condo|casa|place)\b/gi;
     for (const match of line.matchAll(possessiveRe)) {
       const owner = match[1];
+      if (!isValidPossessiveOwner(owner)) continue;
       const placeType = match[2];
       const name = formatPossessivePlace(owner, placeType);
       const anchor = placeClusterKey(name, placeType);

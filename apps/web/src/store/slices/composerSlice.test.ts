@@ -5,6 +5,7 @@ import {
   clearComposerState,
   dismissComposerMatch,
   setComposerDraft,
+  setComposerHasDraft,
   setComposerIndexError,
   setComposerMatches,
   type ComposerState,
@@ -14,6 +15,7 @@ import { makeStore } from '../index';
 
 const initial: ComposerState = {
   draftText: '',
+  hasDraft: false,
   matches: [],
   dismissedSlots: [],
   confirmingSlots: [],
@@ -34,12 +36,23 @@ const sampleMatch = {
 };
 
 describe('composerSlice', () => {
+  it('setComposerHasDraft is a no-op when occupancy does not change', () => {
+    let state = composerReducer(initial, setComposerHasDraft(false));
+    expect(state.hasDraft).toBe(false);
+    state = composerReducer(state, setComposerHasDraft(true));
+    expect(state.hasDraft).toBe(true);
+    const same = composerReducer(state, setComposerHasDraft(true));
+    expect(same).toBe(state);
+  });
+
   it('tracks draft text and clears on empty draft', () => {
     let state = composerReducer(initial, setComposerDraft('hello'));
     expect(state.draftText).toBe('hello');
+    expect(state.hasDraft).toBe(true);
     state = composerReducer(state, setComposerDraft(''));
     expect(state.matches).toEqual([]);
     expect(state.dismissedSlots).toEqual([]);
+    expect(state.hasDraft).toBe(false);
   });
 
   it('stores matches and clears dismissed slots that are no longer active', () => {
@@ -71,6 +84,7 @@ describe('composerSelectors', () => {
     const store = makeStore({
       composer: {
         draftText: 'Abel',
+        hasDraft: true,
         matches: [sampleMatch, { ...sampleMatch, id: 'sug:character:kelly', name: 'Kelly', status: 'suggestion' }],
         dismissedSlots: ['character:uuid-abel'],
         confirmingSlots: [],

@@ -17,7 +17,7 @@ function readDismissedSeverity(): number {
 }
 
 /**
- * Admin-only banner for Supabase ops: storage quota, upgrade blockers, SSL hints.
+ * Admin-visible by default; write-blocked spend-cap notices also show for signed-in users.
  * Dismissible per session; reappears if severity escalates.
  */
 export function DatabaseOpsBanner() {

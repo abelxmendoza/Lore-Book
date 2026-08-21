@@ -171,7 +171,7 @@ export const DetectedCharacterSuggestions = ({
     try {
       apiCache.deletePattern(/\/api\/(characters|knowledge|conversation\/romantic|quests|locations|skills|projects)/);
       if (variant === 'romantic') {
-        const { summary } = await suggestionRescanApi.rescan(['romantic', 'characters']);
+        const { summary } = await suggestionRescanApi.rescan(['romantic', 'characters'], { incremental: true });
         const romantic = summary.results.romantic as { relationshipsUpserted?: number; romanticEpisodes?: number } | undefined;
         const total = romantic?.relationshipsUpserted ?? 0;
         const episodes = romantic?.romanticEpisodes ?? 0;
@@ -185,7 +185,7 @@ export const DetectedCharacterSuggestions = ({
         );
         invalidateEntityTags(['Character']);
       } else {
-        const { summary } = await suggestionRescanApi.rescan(['characters']);
+        const { summary } = await suggestionRescanApi.rescan(['characters'], { incremental: true });
         const charSummary = summary.results.characters as {
           charactersPromoted?: number;
           restoredFromEvidence?: number;

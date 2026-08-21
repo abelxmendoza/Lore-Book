@@ -1,0 +1,290 @@
+.whats-new-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right))
+    max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(232, 176, 92, 0.22), transparent 55%),
+    radial-gradient(900px 500px at 100% 100%, rgba(168, 85, 247, 0.28), transparent 50%),
+    rgba(4, 2, 8, 0.88);
+  backdrop-filter: blur(14px);
+  animation: whats-new-overlay-in 0.45s ease both;
+}
+
+.whats-new-panel {
+  position: relative;
+  width: min(40rem, 100%);
+  max-height: min(92dvh, 52rem);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(232, 176, 92, 0.35);
+  background:
+    linear-gradient(180deg, rgba(42, 18, 64, 0.96) 0%, rgba(10, 6, 18, 0.98) 42%, rgba(6, 4, 12, 0.98) 100%);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 30px 80px rgba(0, 0, 0, 0.55),
+    0 0 80px rgba(168, 85, 247, 0.18);
+  animation: whats-new-panel-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.whats-new-panel::before {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, #f3c77a, #e879f9, #a855f7, #f3c77a);
+  background-size: 200% 100%;
+  animation: whats-new-sheen 6s linear infinite;
+}
+
+.whats-new-close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 0;
+  border-radius: 0.75rem;
+  color: rgba(255, 255, 255, 0.55);
+  background: transparent;
+  cursor: pointer;
+}
+
+.whats-new-close:hover,
+.whats-new-close:focus-visible {
+  color: white;
+  background: rgba(255, 255, 255, 0.08);
+  outline: none;
+}
+
+.whats-new-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1.5rem 1.25rem 0.5rem;
+}
+
+.whats-new-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.85rem;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(243, 199, 122, 0.35);
+  background: rgba(243, 199, 122, 0.1);
+  color: #f8e3b8;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.whats-new-kicker--pulse {
+  box-shadow: 0 0 18px rgba(232, 176, 92, 0.28);
+}
+
+.whats-new-kicker--alpha {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.14);
+  color: #fde68a;
+}
+
+.whats-new-title {
+  margin: 0 2rem 0.6rem 0;
+  color: #fffaf0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(1.65rem, 4vw, 2.35rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.whats-new-lede {
+  margin: 0 0 1.25rem;
+  max-width: 36rem;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.whats-new-alpha {
+  margin: 0 0 1.25rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  background: rgba(251, 191, 36, 0.12);
+  color: rgba(255, 236, 179, 0.95);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.whats-new-alpha strong {
+  color: #fde68a;
+}
+
+.whats-new-chips {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+}
+
+.whats-new-chip {
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.whats-new-chip strong {
+  display: block;
+  margin-bottom: 0.15rem;
+  color: white;
+  font-size: 0.78rem;
+}
+
+.whats-new-chip span {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.whats-new-section-label {
+  margin: 0 0 0.7rem;
+  color: rgba(232, 176, 92, 0.9);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.whats-new-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.whats-new-card {
+  position: relative;
+  padding: 0.9rem 1rem 0.95rem 1.05rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+}
+
+.whats-new-card--fresh {
+  border-color: rgba(232, 176, 92, 0.38);
+  background: linear-gradient(135deg, rgba(232, 176, 92, 0.14), rgba(168, 85, 247, 0.1));
+  box-shadow: 0 0 24px rgba(168, 85, 247, 0.12);
+}
+
+.whats-new-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.whats-new-card h3 {
+  margin: 0 0 0.3rem;
+  color: white;
+  font-size: 0.98rem;
+  font-weight: 600;
+}
+
+.whats-new-card p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.whats-new-date {
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+}
+
+.whats-new-badge {
+  flex-shrink: 0;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f3c77a, #e879f9);
+  color: #1a0b24;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.whats-new-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem 1.25rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.22));
+}
+
+.whats-new-footer p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.75rem;
+}
+
+@keyframes whats-new-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes whats-new-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes whats-new-sheen {
+  from { background-position: 0 0; }
+  to { background-position: 200% 0; }
+}
+
+@media (min-width: 640px) {
+  .whats-new-body {
+    padding: 2rem 1.75rem 0.75rem;
+  }
+
+  .whats-new-chips {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .whats-new-footer {
+    padding: 1.1rem 1.75rem 1.4rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .whats-new-overlay,
+  .whats-new-panel,
+  .whats-new-panel::before {
+    animation: none;
+  }
+}

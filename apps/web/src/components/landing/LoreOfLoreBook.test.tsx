@@ -14,12 +14,16 @@ describe('LoreOfLoreBookContent', () => {
     expect(screen.getByText(/Personal AI memory — a chatbot that remembers what you tell it/i)).toBeInTheDocument();
     expect(screen.getByText('Jan 2025')).toBeInTheDocument();
     expect(screen.getByText('May 2026')).toBeInTheDocument();
+    expect(screen.getByText('Aug 2026')).toBeInTheDocument();
+    expect(screen.getByText('Version 4 Vision')).toBeInTheDocument();
+    expect(screen.getByText(/Your life, on a real calendar/i)).toBeInTheDocument();
   });
 
   it('switches to timeline tab', () => {
     render(<LoreOfLoreBookContent />);
     fireEvent.click(screen.getByRole('tab', { name: 'Timeline' }));
     expect(screen.getByText('LoreBook Created')).toBeInTheDocument();
+    expect(screen.getByText('Time as it happened')).toBeInTheDocument();
   });
 
   it('switches to chapters tab', () => {
@@ -27,5 +31,6 @@ describe('LoreOfLoreBookContent', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Chapters' }));
     expect(screen.getByText('The Idea Era')).toBeInTheDocument();
     expect(screen.getByText('Social Intelligence Era')).toBeInTheDocument();
+    expect(screen.getByText('Continuity Era')).toBeInTheDocument();
   });
 });

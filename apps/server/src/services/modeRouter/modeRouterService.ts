@@ -37,6 +37,8 @@ import {
 } from '../chat/therapistSuppressionRules';
 import { openai } from '../openaiClient';
 import { isUniversalBookQueryRequest } from '../query/bookQueryIntent';
+import { classifyMessageComplexity } from '../ingestion/messageComplexityGate';
+import { recordLlmReason, recordSkippedOperation } from '../../lib/messageCostTracker';
 
 export type ChatMode =
   | 'EMOTIONAL_EXISTENTIAL'  // Mode 1: Thoughts, fears, insecurities
@@ -94,11 +96,36 @@ class ModeRouterService {
     const startTime = Date.now();
 
     try {
+      // Compound project-state questions must resolve a canonical project and
+      // retrieve its history before any generic/ingestion classifier can run.
+      // This intentionally precedes quickModeCheck: a question such as
+      // "What's the current state of LoreBook, and what should I do next?"
+      // contains no literal "project" noun and used to fall into ingestion.
+      const { isProjectStateRecallShape, resolveProjectStateTarget } = await import(
+        '../projects/projectStateRecallService'
+      );
+      if (isProjectStateRecallShape(message)) {
+        const project = await resolveProjectStateTarget(userId, message);
+        if (project) {
+          const result: ModeRoutingResult = {
+            mode: 'PROJECT_QUERY',
+            confidence: 0.99,
+            reasoning: `Grounded project-state recall detected for ${project.name}`,
+          };
+          logger.info(
+            { mode: result.mode, confidence: result.confidence, via: 'canonical-project', projectId: project.id, elapsed: Date.now() - startTime },
+            'Mode routed',
+          );
+          return result;
+        }
+      }
+
       // Step 1: Quick pattern checks (fast, <50ms)
       const quickCheck = this.quickModeCheck(message, conversationHistory);
-      if (quickCheck.confidence > 0.8) {
+      if (quickCheck.confidence >= 0.8) {
         // Always log routing decisions at info — the router gates the entire
         // conversational pipeline, and silent misroutes cost weeks to find.
+        recordSkippedOperation('mode_router_llm');
         logger.info(
           { mode: quickCheck.mode, confidence: quickCheck.confidence, via: 'pattern', reason: quickCheck.reasoning, elapsed: Date.now() - startTime },
           'Mode routed'
@@ -107,6 +134,7 @@ class ModeRouterService {
       }
 
       // Step 2: LLM classification (if needed, <250ms)
+      recordLlmReason('mode_router_ambiguous');
       const llmCheck = await this.llmModeCheck(message, conversationHistory);
 
       // Step 3: Combine and decide
@@ -359,6 +387,22 @@ class ModeRouterService {
       };
     }
 
+    const complexity = classifyMessageComplexity(message);
+    if (complexity.class === 'CORRECTION') {
+      if (message.includes('?') || complexity.features.isInterrogative) {
+        return {
+          mode: 'MEMORY_RECALL',
+          confidence: 0.9,
+          reasoning: 'Correction-shaped factual question; deterministic recall, no routing LLM',
+        };
+      }
+      return {
+        mode: 'EXPERIENCE_INGESTION',
+        confidence: 0.86,
+        reasoning: 'Explicit correction of a prior fact; ingest without routing LLM',
+      };
+    }
+
     // Foundation recall queries — structured lore, not LLM + journal fallback
     if (matchesFoundationRecallQuery(message)) {
       return {
@@ -401,6 +445,21 @@ class ModeRouterService {
         mode: 'MEMORY_RECALL',
         confidence: 0.9,
         reasoning: 'Factual recall query detected',
+      };
+    }
+
+    const akRecallIntent = classifyQuestionIntent(message);
+    if (
+      akRecallIntent === 'recall_person' ||
+      akRecallIntent === 'person_profile' ||
+      akRecallIntent === 'daily_recall' ||
+      akRecallIntent === 'memory_verification' ||
+      akRecallIntent === 'character_creation_check'
+    ) {
+      return {
+        mode: 'MEMORY_RECALL',
+        confidence: 0.9,
+        reasoning: `Deterministic ${akRecallIntent} intent`,
       };
     }
 
@@ -601,6 +660,10 @@ class ModeRouterService {
       /^(what did i|what did you|when did i|when did you|where did i|where did you)/i,
       /^(do you remember|do i have|have i ever|did i ever)/i,
       /^(what did|when did|where did|who did) (i|you) (eat|do|go|see|hear)/i,
+      /^how (long|many years|many times|often|old|soon)/i,
+      /^(did|was|were) i (ever )?(work|start|leave|join|meet|date|live|go|know|get|stay)/i,
+      /^(when|where) was i /i,
+      /^how (is|are|was|were) .{1,40} related/i,
     ];
     
     return factualPatterns.some(p => p.test(text));

@@ -10,6 +10,11 @@ import { supabaseAdmin } from '../supabaseClient';
 import { timelineEngine } from '../timeline';
 
 import type { NarrativeAtom, NarrativeAtomType, Domain } from './types';
+import {
+  biographyJournalOccurrence,
+  biographyJournalRecordedAt,
+  isUsableOccurrenceTimestamp,
+} from './biographyOccurrenceClock';
 
 /**
  * Build narrative atoms from timeline entries
@@ -109,11 +114,15 @@ export async function buildAtomsFromTimeline(userId: string): Promise<NarrativeA
         ? preservedContent // Use full original content for preserved entries
         : (entry.summary || entry.content?.substring(0, 200) || ''); // Pre-summarized text for others
       
+      const occurredAt = biographyJournalOccurrence(entry);
+      const recordedAt = biographyJournalRecordedAt(entry);
+      const occurrenceUnknown = !isUsableOccurrenceTimestamp(occurredAt);
+
       // Create atom (AST node)
       const atom: NarrativeAtom = {
         id: `atom-${entry.id}`,
         type: atomType,
-        timestamp: entry.date || entry.created_at,
+        timestamp: occurredAt ?? '',
         domains,
         emotionalWeight,
         sensitivity, // NEW: for content filtering
@@ -131,6 +140,8 @@ export async function buildAtomsFromTimeline(userId: string): Promise<NarrativeA
           skillIds,
           preserve_original_language: isPreserved,
           content_type: (entry as any).content_type,
+          recordedAt,
+          occurrenceUnknown,
         }
       };
       
@@ -187,7 +198,7 @@ export async function buildAtomsFromEventCandidates(userId: string): Promise<Nar
       return {
         id: `event-candidate-${c.id}`,
         type: 'event',
-        timestamp: c.last_seen_at || c.first_seen_at,
+        timestamp: '',
         domains: inferDomains(c.canonical_title, c.recurring_activities || []),
         emotionalWeight: 0.5,
         sensitivity: 0.3,
@@ -201,7 +212,9 @@ export async function buildAtomsFromEventCandidates(userId: string): Promise<Nar
           source: 'event_candidate',
           occurrenceCount: c.occurrence_count,
           continuityStrength: c.continuity_strength,
-          firstSeenAt: c.first_seen_at,
+          firstMentionedAt: c.first_seen_at,
+          lastMentionedAt: c.last_seen_at,
+          occurrenceUnknown: true,
         },
       };
     });

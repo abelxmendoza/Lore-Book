@@ -8,6 +8,7 @@ import { questStorage } from './questStorage';
 import type { CreateQuestInput, Quest, QuestType } from './types';
 import { suggestionDismissalService } from '../suggestionDismissalService';
 import { evaluateEntityQuality, passesEntityQualityGate, resolveDisplayName } from '../lorebook/quality/entityQualityGateService';
+import { applySuggestionCandidate } from '../lorebook/suggestions/applySuggestionCandidate';
 import { hasQuestSignal } from '../conversationCentered/extractionSignals';
 import { goalCognitionEngine } from '../goals/goalCognitionEngine';
 import { explainGoalEvidence } from '../goals/goalEvidenceService';
@@ -148,15 +149,16 @@ class QuestSuggestionService {
       updated_at: new Date().toISOString(),
     };
 
-    const { error } = await supabaseAdmin
-      .from('quest_suggestions')
-      .upsert(payload, { onConflict: 'user_id,title' });
+    const persist = async () => {
+      const { error } = await supabaseAdmin
+        .from('quest_suggestions')
+        .upsert(payload, { onConflict: 'user_id,title' });
 
-    if (error && !isTableMissing(error)) {
-      logger.warn({ error, userId, title }, 'Failed to upsert quest suggestion');
-      return false;
-    }
-    const { error: metadataError } = await supabaseAdmin
+      if (error && !isTableMissing(error)) {
+        logger.warn({ error, userId, title }, 'Failed to upsert quest suggestion');
+        return;
+      }
+      const { error: metadataError } = await supabaseAdmin
       .from('quest_suggestions')
       .update({
         item_type: cognition.candidate.kind.toLowerCase(),
@@ -179,7 +181,20 @@ class QuestSuggestionService {
         'Quest cognition metadata unavailable; core suggestion was preserved',
       );
     }
-    return !error;
+    };
+
+    const write = await applySuggestionCandidate({
+      userId,
+      domain: 'quests',
+      name: safeTitle,
+      evidence: evidenceText,
+      sourceMessageId: opts.sourceMessageId,
+      extractor: 'quest_suggestion',
+      source: opts.source,
+      onCreate: persist,
+      onReview: persist,
+    });
+    return write.outcome === 'CREATED' || write.outcome === 'REVIEW' || write.outcome === 'ATTACHED';
   }
 
   async getPendingSuggestions(userId: string): Promise<QuestSuggestionRow[]> {
@@ -313,6 +328,7 @@ class QuestSuggestionService {
       sourceSuggestionId: suggestionId,
       threadId: opts?.threadId,
       reason: opts?.reason,
+      permanent: true,
     });
 
     if (result.isPermanent) {
@@ -351,6 +367,7 @@ class QuestSuggestionService {
       sourceSuggestionId: opts?.suggestionId ?? existing?.id,
       threadId: opts?.threadId,
       reason: opts?.reason,
+      permanent: true,
     });
 
     if (result.isPermanent) {

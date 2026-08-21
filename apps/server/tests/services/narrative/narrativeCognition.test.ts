@@ -244,6 +244,42 @@ describe('salience: who matters most', () => {
   });
 });
 
+describe('salience: rising people requires a real before/after comparison', () => {
+  it('does not call a recently seen Character Book entity rising without historical evidence', () => {
+    const cctx = fixtureContext();
+    const answer = answerCognitionQuestion('rising_people', cctx);
+
+    expect(answer?.grounded).toBe(false);
+    expect(answer?.sources).toEqual([]);
+    expect(answer?.content).toContain("don't have enough grounded history");
+  });
+
+  it('calls a person rising only when recent activity increased over a prior period', () => {
+    const cctx = fixtureContext();
+    cctx.activityByEntity = new Map([
+      ['priya', {
+        recentMentions: 8,
+        priorMentions: 2,
+        recentThreadIds: ['recent-thread'],
+        priorThreadIds: ['prior-thread'],
+        recentLastSeen: daysAgo(1),
+        priorLastSeen: daysAgo(60),
+        recentWindowDays: 30,
+        priorWindowDays: 120,
+      }],
+    ]);
+
+    const answer = answerCognitionQuestion('rising_people', cctx);
+
+    expect(answer?.grounded).toBe(true);
+    expect(answer?.content).toContain('Priya');
+    expect(answer?.sources?.map((source) => source.id)).toEqual([
+      'conversation:recent-thread',
+      'conversation:prior-thread',
+    ]);
+  });
+});
+
 describe('era + arcs: one era, many arcs', () => {
   it('resolves the current era from the live work context', () => {
     const cctx = fixtureContext();

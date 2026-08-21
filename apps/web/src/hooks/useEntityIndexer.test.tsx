@@ -122,12 +122,13 @@ describe('useEntityIndexer', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    expect(result.current.matches.some((m) => m.name === 'Abel')).toBe(true);
+    await waitFor(() => {
+      expect(result.current.matches.some((m) => m.name === 'Abel')).toBe(true);
+    });
   });
 
-  it('merges LoreBook parse chips after debounced preview fetch', async () => {
+  it('does not fetch LoreBook parse on the keystroke path', async () => {
     const { result } = renderHook(() => useEntityIndexer(), { wrapper });
-
     await waitFor(() => expect(result.current.indexReady).toBe(true));
 
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -139,13 +140,25 @@ describe('useEntityIndexer', () => {
       await vi.advanceTimersByTimeAsync(350);
     });
 
+    expect(mockFetchLoreBookParseShared).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('merges LoreBook parse chips only on the authoritative path', async () => {
+    const { result } = renderHook(() => useEntityIndexer(), { wrapper });
+
+    await waitFor(() => expect(result.current.indexReady).toBe(true));
+
+    act(() => {
+      result.current.analyze('Oscar Martinez joined the team', undefined, 'authoritative');
+    });
+
     await waitFor(() => {
       expect(mockFetchLoreBookParseShared).toHaveBeenCalledWith(
         'Oscar Martinez joined the team',
         undefined
       );
     });
-    vi.useRealTimers();
   });
 
   it('keeps index matches when LoreBook parse fails but lexical preview succeeds', async () => {
@@ -157,11 +170,11 @@ describe('useEntityIndexer', () => {
 
     vi.useFakeTimers({ shouldAdvanceTime: true });
     act(() => {
-      result.current.analyze('Tell me about Abel');
+      result.current.analyze('Tell me about Abel', undefined, 'authoritative');
     });
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(350);
+      await Promise.resolve();
     });
 
     expect(result.current.matches.some((m) => m.name === 'Abel')).toBe(true);

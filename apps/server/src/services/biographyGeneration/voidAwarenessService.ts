@@ -28,8 +28,12 @@ export class VoidAwarenessService {
     timelineSpan?: { start: string; end: string }
   ): VoidPeriod[] {
     if (atoms.length === 0) {
-      // If no atoms, the entire timeline span is a void
-      if (timelineSpan) {
+      if (
+        timelineSpan?.start
+        && timelineSpan?.end
+        && Number.isFinite(Date.parse(timelineSpan.start))
+        && Number.isFinite(Date.parse(timelineSpan.end))
+      ) {
         const durationDays = Math.ceil(
           (new Date(timelineSpan.end).getTime() - new Date(timelineSpan.start).getTime()) /
           (1000 * 60 * 60 * 24)

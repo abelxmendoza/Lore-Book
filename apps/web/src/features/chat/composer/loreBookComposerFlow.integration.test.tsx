@@ -128,7 +128,7 @@ describe('LoreBook composer flow (integration)', () => {
     mockComposerFetch();
   });
 
-  it('shows LoreBook parse draft chips after typing', async () => {
+  it('shows LoreBook parse draft chips after blur, not while typing', async () => {
     render(
       <Provider store={makeStore()}>
         <ChatComposer onSubmit={vi.fn()} loading={false} />
@@ -137,13 +137,10 @@ describe('LoreBook composer flow (integration)', () => {
 
     await waitFor(() => expect(screen.getByRole('textbox')).toBeInTheDocument());
 
-    vi.useFakeTimers({ shouldAdvanceTime: true });
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Oscar went to Gothicumbia' } });
+    expect(mockFetchLoreBookParseShared).not.toHaveBeenCalled();
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(350);
-    });
-    vi.useRealTimers();
+    fireEvent.blur(screen.getByRole('textbox'));
 
     await waitFor(
       () => {

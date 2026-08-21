@@ -10,6 +10,19 @@ import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { organizationService, type GroupEventAudience } from '../organizationService';
 import { listUserPostedEventsForOrganization, type UserPostedEventRow } from '../events/userPostedEventService';
+import {
+  buildCanonicalLocationTimeline,
+  type LocationEntityTimelineResult,
+} from '../locations/locationEntityTimelineService';
+import {
+  buildCanonicalOrganizationTimeline,
+  type OrganizationEntityTimelineResult,
+} from '../organizations/organizationEntityTimelineService';
+import {
+  ENTITY_TIMELINE_COMPATIBILITY,
+  skippedEntityTimelineRebuild,
+  type EntityTimelineRebuildResult,
+} from './entityTimelineCompatibilityPolicy';
 
 export type EntityKind = 'organization' | 'location';
 export type TimelineType = 'shared_experience' | 'lore' | 'mentioned_in';
@@ -68,54 +81,49 @@ export class EntityTimelineBuilder {
 
   async buildTimelines(
     userId: string,
-    entityId: string
-  ): Promise<{ sharedExperiences: EntityTimelineEvent[]; lore: EntityTimelineEvent[] }> {
-    try {
-      const { data: rows, error } = await supabaseAdmin
-        .from('entity_timeline_events')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('entity_type', this.kind)
-        .eq('entity_id', entityId)
-        .order('event_date', { ascending: true });
-
-      if (error) throw error;
-
-      const sharedExperiences: EntityTimelineEvent[] = [];
-      const lore: EntityTimelineEvent[] = [];
-
-      for (const row of rows || []) {
-        const entry: EntityTimelineEvent = {
-          id: row.id,
-          eventId: row.event_id ?? undefined,
-          sourceThreadId: row.source_thread_id ?? undefined,
-          sourceEpisodeId: row.source_episode_id ?? undefined,
-          eventTitle: row.event_title || 'Untitled',
-          eventDate: row.event_date || row.created_at,
-          eventSummary: row.event_summary,
-          eventType: row.event_type,
-          timelineType: row.timeline_type as TimelineType,
-          entityRole: row.entity_role,
-          userWasPresent: row.user_was_present,
-          confidence: row.confidence,
-          involvedNames: row.involved_names ?? undefined,
-          audience: row.audience ?? undefined,
-          source: row.source ?? undefined,
-          subgroupNames: row.subgroup_names ?? undefined,
+    entityId: string,
+    timezone?: string,
+  ): Promise<
+    | LocationEntityTimelineResult
+    | OrganizationEntityTimelineResult
+    | { sharedExperiences: EntityTimelineEvent[]; lore: EntityTimelineEvent[] }
+  > {
+    if (this.kind === 'location') {
+      try {
+        return await buildCanonicalLocationTimeline(userId, entityId, timezone);
+      } catch (error) {
+        logger.error({ error, userId, entityId }, 'Failed to build canonical location timelines');
+        return {
+          sharedExperiences: [],
+          lore: [],
+          unresolved: [],
+          legacyOnly: [],
+          compatibilityReview: [],
+          summary: {
+            lastVisitAt: null,
+            lastVisitId: null,
+            firstKnownVisitAt: null,
+            firstKnownVisitId: null,
+          },
         };
-
-        if (row.timeline_type === 'shared_experience') {
-          sharedExperiences.push(entry);
-        } else {
-          lore.push(entry);
-        }
       }
-
-      return { sharedExperiences, lore };
-    } catch (error) {
-      logger.error({ error, userId, entityId, kind: this.kind }, 'Failed to build entity timelines');
-      return { sharedExperiences: [], lore: [] };
     }
+    if (this.kind === 'organization') {
+      try {
+        return await buildCanonicalOrganizationTimeline(userId, entityId, timezone);
+      } catch (error) {
+        logger.error({ error, userId, entityId }, 'Failed to build canonical organization timelines');
+        return {
+          sharedExperiences: [],
+          lore: [],
+          unresolved: [],
+          legacyOnly: [],
+          compatibilityReview: [],
+          summary: { lastEventAt: null, lastEventId: null },
+        };
+      }
+    }
+    return { sharedExperiences: [], lore: [] };
   }
 
   /** Resolve organization membership → the org's member character id→name map. */
@@ -154,8 +162,8 @@ export class EntityTimelineBuilder {
   }
 
   /**
-   * Process a resolved_events row that involves this entity (org via member
-   * overlap, location via direct containment) into a timeline entry.
+   * Historical compatibility write. Disabled: Location/Organization Timeline
+   * and Working Memory no longer treat entity_timeline_events as chronology.
    */
   async processEventForEntity(
     userId: string,
@@ -169,6 +177,7 @@ export class EntityTimelineBuilder {
       people: string[];
     }
   ): Promise<void> {
+    if (!ENTITY_TIMELINE_COMPATIBILITY.writesEnabled) return;
     try {
       const selfCharacterId = await findSelfCharacterId(userId);
       const userWasPresent = Boolean(selfCharacterId && event.people.includes(selfCharacterId));
@@ -240,6 +249,7 @@ export class EntityTimelineBuilder {
     organizationId: string,
     postedEvent: UserPostedEventRow
   ): Promise<void> {
+    if (!ENTITY_TIMELINE_COMPATIBILITY.writesEnabled) return;
     try {
       const memberMap = await this.getOrganizationMembersMap(userId, organizationId);
       const involvedIds = (postedEvent.people ?? []).filter((id) => memberMap.has(id));
@@ -279,6 +289,7 @@ export class EntityTimelineBuilder {
 
   /** Fold a conversation thread opened about this entity into its timeline as a lore entry. */
   private async processThreadForEntity(userId: string, entityId: string, sessionId: string): Promise<void> {
+    if (!ENTITY_TIMELINE_COMPATIBILITY.writesEnabled) return;
     try {
       const { data: session } = await supabaseAdmin
         .from('conversation_sessions')
@@ -336,6 +347,7 @@ export class EntityTimelineBuilder {
     entityId: string,
     episode: { id: string; title: string; start_at: string }
   ): Promise<void> {
+    if (!ENTITY_TIMELINE_COMPATIBILITY.writesEnabled) return;
     try {
       const { error } = await supabaseAdmin.from('entity_timeline_events').upsert(
         {
@@ -369,8 +381,18 @@ export class EntityTimelineBuilder {
     }
   }
 
-  /** Rebuild an entity's full timeline from resolved_events, posted events (orgs), and its primary-linked threads. */
-  async rebuildTimelinesForEntity(userId: string, entityId: string): Promise<void> {
+  /**
+   * Compatibility rebuild of entity_timeline_events. Disabled — it must not
+   * recreate a second chronology authority from member overlap or episode dates.
+   */
+  async rebuildTimelinesForEntity(userId: string, entityId: string): Promise<EntityTimelineRebuildResult | void> {
+    if (!ENTITY_TIMELINE_COMPATIBILITY.writesEnabled) {
+      logger.info(
+        { userId, entityId, kind: this.kind },
+        'entity_timeline_events rebuild skipped; compatibility writes disabled',
+      );
+      return skippedEntityTimelineRebuild();
+    }
     try {
       let events: Array<{ id: string; title: string; summary?: string; type?: string; start_time: string; people: string[] }> = [];
 

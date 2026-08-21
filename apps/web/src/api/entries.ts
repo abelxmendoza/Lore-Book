@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 export type Entry = {
   id: string;
   content: string;
-  date: string;
+  date: string | null;
   tags?: string[];
   chapterId?: string;
   mood?: string;

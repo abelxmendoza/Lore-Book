@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  applyCanonicalEntityTypeAuthority,
   filterEpisodeParticipantNames,
   isPollutingPersonLabel,
   isPollutingPlaceLabel,
@@ -91,5 +92,21 @@ describe('entityLabelPollution', () => {
       'Yuli',
       'James',
     ]);
+  });
+
+  it('treats her friend as pollution for People chips', () => {
+    expect(isPollutingPersonLabel('her friend')).toBe(true);
+    expect(
+      unionThreadMetaLabels(['Maya', 'her friend'], undefined, { kind: 'people' }),
+    ).toEqual(['Maya']);
+  });
+
+  it('drops a canonical person from Places', () => {
+    const typed = applyCanonicalEntityTypeAuthority(
+      ['Maya', 'Priya'],
+      ['Priya', 'Northwind Depot'],
+    );
+    expect(typed.people).toEqual(['Maya', 'Priya']);
+    expect(typed.places).toEqual(['Northwind Depot']);
   });
 });

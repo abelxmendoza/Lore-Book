@@ -7,12 +7,15 @@
 import { supabaseAdmin } from '../supabaseClient';
 import { resolveCharacterByName } from '../chat/foundationRecallDataService';
 import { extractSignificanceFromText } from '../chat/significanceRecall';
+import { stitchedTimelineService } from '../chronologyV2/stitchedTimelineService';
+import { stitchedOccurredStart } from '../chronologyV2/stitchedOccurrence';
+import { JOURNAL_OCCURRENCE_ORDER_DESC } from '../journal/journalOccurrenceRead';
 
 export type EventReconstruction = {
   title: string;
   facts: string[];
   people: string[];
-  timeline: Array<{ date: string | null; label: string }>;
+  timeline: Array<{ date: string | null; label: string; canonicalItemId?: string }>;
   meaning: string | null;
   currentRelevance: string | null;
   evidence: { events: number; memories: number; meaning_cached: boolean };
@@ -69,26 +72,21 @@ export async function reconstructEventByQuery(
 
   let targetEvents = events;
   if (targetEvents.length === 0 && char) {
-    const { data: linked } = await supabaseAdmin
-      .from('character_timeline_events')
-      .select('event_title, event_date, event_summary, resolved_event_id')
-      .eq('user_id', userId)
-      .eq('character_id', char.id)
-      .order('event_date', { ascending: false })
-      .limit(5);
-
-    if (linked?.length) {
+    const stitched = await stitchedTimelineService.getStitchedTimelineForEntity(userId, char.id);
+    const items = [...(stitched.items ?? []), ...(stitched.unresolved_items ?? [])].slice(0, 5);
+    if (items.length) {
       return {
         title: `Story with ${char.name}`,
-        facts: linked.map((e) => e.event_summary ?? e.event_title).filter(Boolean) as string[],
+        facts: items.map((item) => item.body || item.title).filter(Boolean),
         people: [char.name],
-        timeline: linked.map((e) => ({
-          date: e.event_date as string | null,
-          label: e.event_title as string,
+        timeline: items.map((item) => ({
+          date: stitchedOccurredStart(item),
+          label: item.title,
+          canonicalItemId: item.id,
         })),
         meaning: null,
-        currentRelevance: char.name ? `${char.name} remains part of your ongoing story.` : null,
-        evidence: { events: linked.length, memories: 0, meaning_cached: false },
+        currentRelevance: `${char.name} remains part of your ongoing story.`,
+        evidence: { events: items.length, memories: 0, meaning_cached: false },
       };
     }
   }
@@ -99,7 +97,7 @@ export async function reconstructEventByQuery(
       .select('content, date')
       .eq('user_id', userId)
       .ilike('content', `%${query}%`)
-      .order('date', { ascending: false })
+      .order('date', JOURNAL_OCCURRENCE_ORDER_DESC)
       .limit(5);
 
     if (!journal?.length) return null;
@@ -109,9 +107,12 @@ export async function reconstructEventByQuery(
       title: query,
       facts: journal.map((j) => String(j.content).slice(0, 200)),
       people: [],
-      timeline: journal.map((j) => ({ date: j.date as string, label: String(j.content).slice(0, 60) })),
+      timeline: journal.map((j) => ({
+        date: null,
+        label: String(j.content).slice(0, 60),
+      })),
       meaning: extractSignificanceFromText(combined)[0] ?? null,
-      currentRelevance: 'Reconstructed from journal entries — no resolved event yet.',
+      currentRelevance: 'Reconstructed from journal entries — occurrence unresolved.',
       evidence: { events: 0, memories: journal.length, meaning_cached: false },
     };
   }
@@ -124,10 +125,18 @@ export async function reconstructEventByQuery(
   if (primary.summary) facts.push(String(primary.summary));
   if (primary.significance_level) facts.push(`Significance: ${primary.significance_level} (${primary.significance_score}/100)`);
 
-  const timeline = targetEvents.map((e) => ({
-    date: (e.start_time as string) ?? null,
-    label: e.title as string,
-  }));
+  const stitched = await stitchedTimelineService.getStitchedTimeline(userId, { limit: 40 });
+  const bySource = new Map(
+    [...(stitched.items ?? []), ...(stitched.unresolved_items ?? [])].map((item) => [item.sourceId, item]),
+  );
+  const timeline = targetEvents.map((e) => {
+    const item = bySource.get(e.id as string);
+    return {
+      date: item ? stitchedOccurredStart(item) : null,
+      label: e.title as string,
+      canonicalItemId: item?.id ?? `event:${e.id}`,
+    };
+  });
 
   const combined = targetEvents.map((e) => `${e.title} ${e.summary ?? ''}`).join('\n');
   let meaning = extractSignificanceFromText(combined)[0] ?? null;

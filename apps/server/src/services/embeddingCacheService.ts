@@ -22,19 +22,19 @@ class EmbeddingCacheService {
   private dbHitCount = 0;
 
   /**
-   * Generate content hash for cache key
+   * Generate content hash for cache key (content + embedding model/version).
+   * A model change is an intentional re-embed, not a cache hit.
    */
-  private hashContent(content: string): string {
-    // Normalize content (trim, lowercase for comparison)
+  private hashContent(content: string, model = 'text-embedding-3-small'): string {
     const normalized = content.trim().slice(0, 8000).toLowerCase();
-    return crypto.createHash('sha256').update(normalized).digest('hex');
+    return crypto.createHash('sha256').update(`${model}\n${normalized}`).digest('hex');
   }
 
   /**
    * Get cached embedding for content
    */
-  async getCachedEmbedding(content: string): Promise<number[] | null> {
-    const hash = this.hashContent(content);
+  async getCachedEmbedding(content: string, model?: string): Promise<number[] | null> {
+    const hash = this.hashContent(content, model);
 
     // Check memory cache first (fastest)
     const mem = this.memoryCache.get(hash);
@@ -90,8 +90,8 @@ class EmbeddingCacheService {
   /**
    * Cache embedding for content
    */
-  async cacheEmbedding(content: string, embedding: number[]): Promise<void> {
-    const hash = this.hashContent(content);
+  async cacheEmbedding(content: string, embedding: number[], model?: string): Promise<void> {
+    const hash = this.hashContent(content, model);
 
     // Store in memory cache
     this.setMemoryCache(hash, embedding);

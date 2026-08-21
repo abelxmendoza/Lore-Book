@@ -9,6 +9,8 @@ import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { fetchJson } from '../../lib/api';
 import { TimelineNode, TimelineLayer } from '../../types/timeline';
+import { hasJournalOccurrence } from '../../lib/journalOccurrence';
+import { hasJournalOccurrence } from '../../lib/journalOccurrence';
 
 type MemoryPoint = {
   id: string;
@@ -51,8 +53,8 @@ export const TimelineMemoryTree = ({
       const entries = response.entries || [];
       
       // Map entries to memory points and try to link them to timeline nodes
-      const memoryPoints: MemoryPoint[] = entries.map(entry => {
-        // Find which timeline node this entry belongs to based on date
+      const memoryPoints: MemoryPoint[] = entries.flatMap(entry => {
+        if (!hasJournalOccurrence(entry.date)) return [];
         const entryDate = new Date(entry.date).getTime();
         let linkedNode: TimelineNode | undefined;
         let linkedLayer: TimelineLayer | undefined;
@@ -73,14 +75,14 @@ export const TimelineMemoryTree = ({
           }
         }
 
-        return {
+        return [{
           id: entry.id,
           content: entry.content.substring(0, 100) + (entry.content.length > 100 ? '...' : ''),
           date: entry.date,
           tags: entry.tags || [],
           node_id: linkedNode?.id,
           layer: linkedLayer
-        };
+        }];
       });
 
       setMemories(memoryPoints);

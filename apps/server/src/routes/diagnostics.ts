@@ -226,7 +226,7 @@ router.post('/graph-recovery/run', requireAuth, async (req: Request, res: Respon
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     const { graphRecoveryTrigger } = await import('../services/conversationCentered/graphRecoveryTrigger');
-    const result = await graphRecoveryTrigger.runNow(userId);
+    const result = await graphRecoveryTrigger.runNow(userId, { mode: 'recovery' });
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: 'Graph recovery run failed', detail: String(err) });
@@ -849,13 +849,13 @@ router.post('/recover-relationships', requireAuth, async (req: Request, res: Res
 
 /**
  * POST /api/diagnostics/recover-events
- * Backfill character_timeline_events from chat, facts, and thread summaries.
+ * Backfill missing resolved_events from chat, facts, and thread summaries.
  */
 router.post('/recover-events', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = (req as AuthenticatedRequest).user!.id;
     const { eventRecoveryService } = await import('../services/eventRecoveryService');
-    const stats = await eventRecoveryService.recoverMissingEvents(userId);
+    const stats = await eventRecoveryService.recoverMissingEvents(userId, { mode: 'recovery' });
     const coverage = await eventRecoveryService.benchmarkCoverage(userId);
     return res.json({ stats, coverage });
   } catch (err) {

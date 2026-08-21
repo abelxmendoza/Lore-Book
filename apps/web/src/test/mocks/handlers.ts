@@ -20,6 +20,8 @@ export const handlers = [
         walBytes: 1_000_000,
         quotaBytes: 524_288_000,
         utilizationRatio: 0.095,
+        writeBlocked: false,
+        writeBlockedReason: null,
         checkedAt: new Date().toISOString(),
       },
       upgrade: {

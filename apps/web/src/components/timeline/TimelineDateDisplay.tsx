@@ -14,10 +14,11 @@ import type { TimePrecision } from '../../types/timelineV2';
  * Returns null when the date is precise enough to show as-is.
  */
 export function occurrenceUncertaintyLabel(
-  iso: string,
+  iso: string | null | undefined,
   precision?: TimePrecision | string,
   confidence?: number,
 ): string | null {
+  if (!iso || iso === 'unscheduled' || iso === 'Date unknown') return 'date unknown';
   if (precision === 'approximate' || (typeof confidence === 'number' && confidence < 0.2)) {
     return 'date unknown';
   }
@@ -46,6 +47,16 @@ export function parseTimelineDate(isoOrKey: string): {
   weekday: string;
   fullLabel: string;
 } {
+  if (!isoOrKey || isoOrKey === 'unscheduled' || isoOrKey === 'Date unknown') {
+    return {
+      dateKey: 'unscheduled',
+      day: 0,
+      monthShort: '—',
+      year: 0,
+      weekday: '',
+      fullLabel: 'Date unknown',
+    };
+  }
   const dateKey = isoOrKey.length === 10 ? isoOrKey : isoOrKey.slice(0, 10);
   const d = new Date(`${dateKey}T12:00:00`);
   return {
@@ -186,13 +197,13 @@ export function TimelineInlineDate({
   precision,
   confidence,
 }: {
-  iso: string;
+  iso: string | null | undefined;
   showTime?: boolean;
   size?: 'sm' | 'md' | 'lg';
   precision?: TimePrecision | string;
   confidence?: number;
 }) {
-  const parsed = parseTimelineDate(iso);
+  const parsed = parseTimelineDate(iso ?? 'unscheduled');
   // Suppress the exact clock time when occurrence is uncertain — an "around 2018"
   // memory has no meaningful minute.
   const uncertainty = occurrenceUncertaintyLabel(iso, precision, confidence);

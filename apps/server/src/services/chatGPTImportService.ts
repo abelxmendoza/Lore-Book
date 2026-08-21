@@ -8,6 +8,8 @@ import { factExtractionService, type ExtractedFact } from './factExtractionServi
 import { ruleBasedFactExtractionService } from './ruleBasedFactExtraction';
 import { supabaseAdmin } from './supabaseClient';
 import { truthVerificationService } from './truthVerificationService';
+import { memoryService } from './memoryService';
+import { occurrenceFromImportedText } from './journal/journalOccurrenceWrite';
 
 import { openai } from './openaiClient';
 
@@ -20,6 +22,7 @@ export type ImportedFact = {
   evidence?: Array<{ entryId: string; text: string }>;
   source: string;
   extractedFact?: ExtractedFact;
+  sourceCreatedAt?: string | null;
 };
 
 class ChatGPTImportService {
@@ -54,7 +57,8 @@ class ChatGPTImportService {
               contradictions: verification.contradictions,
               evidence: verification.evidence,
               source: `${message.role === 'user' ? 'Your message' : 'ChatGPT response'}: "${message.content.substring(0, 100)}..."`,
-              extractedFact: fact
+              extractedFact: fact,
+              sourceCreatedAt: message.sourceCreatedAt ?? null,
             });
           }
         }
@@ -108,30 +112,32 @@ class ChatGPTImportService {
           verified++;
         }
 
-        // Create a journal entry from the fact
-        const entryId = uuid();
-        const entryContent = `[Imported from ChatGPT] ${fact.text}`;
-
-        // Store the entry
-        const { error: entryError } = await supabaseAdmin
-          .from('journal_entries')
-          .insert({
-            id: entryId,
-            user_id: userId,
-            content: entryContent,
-            date: new Date().toISOString().split('T')[0],
-            source: 'chatgpt_import',
+        // Create a journal entry from the fact. Import time is not occurrence.
+        const occurrence = occurrenceFromImportedText(fact.text, {
+          sourceCreatedAt: fact.sourceCreatedAt,
+        });
+        const importedAt = new Date().toISOString();
+        let entryId: string;
+        try {
+          const saved = await memoryService.saveEntry({
+            userId,
+            content: `[Imported from ChatGPT] ${fact.text}`,
+            date: occurrence.date,
+            temporalSource: occurrence.temporalSource,
+            mentionedAt: fact.sourceCreatedAt ?? null,
+            sourceCreatedAt: fact.sourceCreatedAt ?? null,
+            importedAt,
+            source: 'api',
             metadata: {
               imported: true,
               originalFact: fact.extractedFact,
               verificationStatus: fact.verificationStatus,
-              source: fact.source
+              source: fact.source,
+              importChannel: 'chatgpt_import',
             },
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
           });
-
-        if (entryError) {
+          entryId = saved.id;
+        } catch (entryError) {
           logger.warn({ error: entryError, fact }, 'Failed to create entry from imported fact');
           continue;
         }
@@ -177,8 +183,12 @@ class ChatGPTImportService {
   /**
    * Parse ChatGPT conversation format
    */
-  private parseChatGPTConversation(conversation: string): Array<{ role: 'user' | 'assistant'; content: string }> {
-    const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  private parseChatGPTConversation(conversation: string): Array<{
+    role: 'user' | 'assistant';
+    content: string;
+    sourceCreatedAt?: string | null;
+  }> {
+    const messages: Array<{ role: 'user' | 'assistant'; content: string; sourceCreatedAt?: string | null }> = [];
     
     // Try to parse different ChatGPT formats
     // Format 1: "You: ..." / "ChatGPT: ..." or "User: ..." / "Assistant: ..."
@@ -203,7 +213,8 @@ class ChatGPTImportService {
             if (Array.isArray(parsed)) {
               return parsed.map((msg: any) => ({
                 role: msg.role === 'user' ? 'user' : 'assistant',
-                content: msg.content || msg.text || ''
+                content: msg.content || msg.text || '',
+                sourceCreatedAt: unixOrIsoToIso(msg.create_time ?? msg.created_at ?? msg.timestamp),
               }));
             }
           }
@@ -387,6 +398,24 @@ class ChatGPTImportService {
     if (confidence >= 0.4) return 'medium';
     return 'low';
   }
+}
+
+function unixOrIsoToIso(value: unknown): string | null {
+  if (value == null || value === '') return null;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const ms = value > 1e12 ? value : value * 1000;
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  if (typeof value === 'string') {
+    const asNum = Number(value);
+    if (Number.isFinite(asNum) && value.trim() !== '') {
+      return unixOrIsoToIso(asNum);
+    }
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  return null;
 }
 
 export const chatGPTImportService = new ChatGPTImportService();

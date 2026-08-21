@@ -64,3 +64,19 @@ export function resolveRequestTimezone(
   }
   return tz;
 }
+
+/**
+ * Header wins and is persisted; otherwise the cached/profile timezone.
+ * Do not call resolveRequestTimezone with a missing header — that would
+ * collapse the user to UTC for this request.
+ */
+export async function resolveUserTimezoneForRequest(
+  userId: string,
+  headerValue: string | string[] | undefined,
+): Promise<string> {
+  const raw = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+  if (isValidIanaTimezone(raw ?? null)) {
+    return resolveRequestTimezone(userId, raw);
+  }
+  return getUserTimezone(userId);
+}

@@ -1,4 +1,5 @@
 import { logger } from '../../logger';
+import { pickJournalOccurredAt } from '../journal/journalOccurrenceRead';
 
 import type { TimeEvent, TimeCategory } from './types';
 
@@ -63,9 +64,11 @@ export class TimeExtractor {
               }
             }
 
+            const occurredAt = pickJournalOccurredAt(entry);
+            if (!occurredAt) continue;
             events.push({
               id: `time_${entry.id}_${pattern.cat}_${Date.now()}`,
-              timestamp: entry.date || entry.created_at || entry.timestamp || new Date().toISOString(),
+              timestamp: occurredAt,
               category: pattern.cat,
               description: content.substring(0, 500),
               durationMinutes,

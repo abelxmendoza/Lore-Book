@@ -13,12 +13,12 @@ import {
   openProjectBookModal,
   openSkillBookModal,
 } from '../../../lib/skillEntityNavigation';
-import { useAppDispatch, useAppSelector } from '../../../store/hooks';
+import { useAppDispatch, useAppSelector, useAppStore } from '../../../store/hooks';
 import { selectVisibleComposerMatches, selectComposerConfirmingSlots, selectComposerIncludedSlots } from '../../../store/selectors/composerSelectors';
 import {
   clearComposerState,
   dismissComposerMatch,
-  setComposerDraft,
+  setComposerHasDraft,
   composerMatchSlot,
   addComposerConfirming,
   removeComposerConfirming,
@@ -36,8 +36,15 @@ import {
   latestRecoverableStory,
   readComposerDraft,
   saveComposerDraft,
+  scheduleComposerDraftSave,
+  flushComposerDraftSave,
   subscribeStoryRecovery,
 } from '../services/storySafetyVault';
+import {
+  COMPOSER_LIGHTWEIGHT_PREVIEW_MS,
+  composerIntelligenceMetrics,
+  noteRawComposerDraft,
+} from '../../../lib/composerIntelligence';
 
 type UseChatComposerOptions = {
   /** Desktop default: Enter sends, Shift+Enter newline. Mobile should pass false. */
@@ -86,6 +93,7 @@ export const useChatComposer = (
     ? demoThreadStorageUserId()
     : (user?.id ?? 'guest-or-anonymous');
   const dispatch = useAppDispatch();
+  const store = useAppStore();
   const visibleMatches = useAppSelector(selectVisibleComposerMatches);
   const confirmingSlots = useAppSelector(selectComposerConfirmingSlots);
   const includedSlots = useAppSelector(selectComposerIncludedSlots);
@@ -101,6 +109,9 @@ export const useChatComposer = (
   const [imageCompressing, setImageCompressing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef(input);
+  inputRef.current = input;
+  const hasDraftRef = useRef(false);
   /**
    * After an intentional submit we must keep the composer empty even if:
    * - threadId changes while the send is still in-flight, or
@@ -113,13 +124,31 @@ export const useChatComposer = (
   const autoTagger = useAutoTagger();
   const entityIndexer = useEntityIndexer();
 
+  const syncOccupancy = useCallback(
+    (value: string) => {
+      const has = Boolean(value.trim());
+      if (has === hasDraftRef.current) return;
+      hasDraftRef.current = has;
+      composerIntelligenceMetrics.noteReduxOccupancySync();
+      dispatch(setComposerHasDraft(has));
+    },
+    [dispatch],
+  );
+
+  useEffect(() => {
+    noteRawComposerDraft(inputRef.current);
+    syncOccupancy(inputRef.current);
+  }, [syncOccupancy]);
+
   const setInput = useCallback(
     (value: string) => {
+      composerIntelligenceMetrics.noteKeystroke();
       setInputState(value);
-      saveComposerDraft(draftOwnerId, threadId, value);
-      dispatch(setComposerDraft(value));
+      inputRef.current = value;
+      scheduleComposerDraftSave(draftOwnerId, threadId, value);
+      syncOccupancy(value);
     },
-    [dispatch, draftOwnerId, threadId]
+    [draftOwnerId, syncOccupancy, threadId]
   );
 
   // Restore unsent drafts on thread switch / remount.
@@ -133,45 +162,49 @@ export const useChatComposer = (
     const recovered = draft || vaultText || '';
     if (recovered && !input) {
       setInputState(recovered);
-      dispatch(setComposerDraft(recovered));
+      noteRawComposerDraft(recovered);
+      syncOccupancy(recovered);
     }
     return subscribeStoryRecovery((attempt) => {
       if (attempt.ownerId !== draftOwnerId || attempt.threadId !== threadId) return;
       skipVaultAutoRestoreRef.current = false;
       setInputState(attempt.text);
       saveComposerDraft(draftOwnerId, threadId, attempt.text);
-      dispatch(setComposerDraft(attempt.text));
+      noteRawComposerDraft(attempt.text);
+      syncOccupancy(attempt.text);
       requestAnimationFrame(() => textareaRef.current?.focus());
     });
-  }, [dispatch, draftOwnerId, threadId]); // input intentionally checked only when the owner/thread changes
+  }, [dispatch, draftOwnerId, threadId, syncOccupancy]); // input intentionally checked only when the owner/thread changes
 
-  // Analyze input for mood, tags, and characters (debounced to avoid excessive API calls)
   useEffect(() => {
-    // Immediate updates for non-API operations
-    if (input.trim()) {
-      // Non-API operations can run immediately
-      autoTagger.refreshSuggestions(input);
-      entityIndexer.analyze(input, threadId);
-      
-      // Check for slash commands
-      if (input.startsWith('/')) {
-        const suggestions = getCommandSuggestions(input);
-        setCommandSuggestions(suggestions);
-        setShowCommandSuggestions(suggestions.length > 0);
-      } else {
-        setShowCommandSuggestions(false);
-      }
+    return () => {
+      flushComposerDraftSave(draftOwnerId, threadId, inputRef.current);
+    };
+  }, [draftOwnerId, threadId]);
+
+  // Lightweight assistance is delayed. Slash commands stay immediate (tiny, prefix-only).
+  useEffect(() => {
+    if (input.startsWith('/')) {
+      const suggestions = getCommandSuggestions(input);
+      setCommandSuggestions(suggestions);
+      setShowCommandSuggestions(suggestions.length > 0);
     } else {
-      moodEngine.setScore(0);
-      autoTagger.refreshSuggestions('');
-      entityIndexer.analyze('');
       setShowCommandSuggestions(false);
     }
 
-    // Use local heuristic for realtime mood feedback — no API call during typing
-    if (input.trim()) {
-      moodEngine.setScore(localHeuristic(input));
+    if (!input.trim()) {
+      moodEngine.setScore(0);
+      autoTagger.refreshSuggestions('');
+      entityIndexer.analyze('');
+      return;
     }
+
+    entityIndexer.analyze(input, threadId, 'keystroke');
+    const timer = window.setTimeout(() => {
+      autoTagger.refreshSuggestions(input);
+      moodEngine.setScore(localHeuristic(input));
+    }, COMPOSER_LIGHTWEIGHT_PREVIEW_MS);
+    return () => window.clearTimeout(timer);
   }, [input, threadId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addPendingImages = useCallback(async (files: FileList | File[]) => {
@@ -213,45 +246,39 @@ export const useChatComposer = (
 
   const handleSubmit = useCallback((e?: React.FormEvent, overrideText?: string) => {
     if (e) e.preventDefault();
-    // overrideText lets a caller (auto-submit) send a specific captured string
-    // instead of whatever the live textarea currently holds — see ChatComposer's
-    // auto-submit effect for why this matters: without it, a fast follow-up
-    // typed during the auto-submit delay gets folded into the same message.
     const text = (overrideText ?? input).trim();
     if (!text && pendingImages.length === 0) return;
 
-    const entitiesToSend = visibleMatches.filter(
+    flushComposerDraftSave(draftOwnerId, threadId, overrideText ?? input);
+    if (typeof entityIndexer.flushNow === 'function') {
+      entityIndexer.flushNow(text, threadId);
+    }
+    const composerState = store.getState();
+    const includedNow = selectComposerIncludedSlots(composerState);
+    const visibleNow = selectVisibleComposerMatches(composerState);
+    const entitiesToSend = visibleNow.filter(
       (m) =>
-        includedSlots.includes(composerMatchSlot(m)) &&
+        includedNow.includes(composerMatchSlot(m)) &&
         m.status !== 'draft' &&
         m.composerChipKind !== 'needs_clarification' &&
         m.composerChipKind !== 'relationship' &&
         m.composerChipKind !== 'shared_history',
     );
     const imagesToSend = pendingImages.length > 0 ? pendingImages : undefined;
-    // Suppress vault auto-restore before clearing — threadId often changes
-    // while the send is in flight and would otherwise re-fill the composer.
     skipVaultAutoRestoreRef.current = true;
     onSubmit(text, entitiesToSend, previewCorrections, imagesToSend);
-    // Entity-chip state (matches/dismissed/confirming/included) always belonged
-    // to the turn we just submitted, so it always clears.
     dispatch(clearComposerState());
-    // Only clear the composer text when we actually submitted what's in it. An
-    // override that no longer matches the live input means the user typed
-    // something during the auto-submit delay — leave their text in place as
-    // their own draft instead of silently discarding it. clearComposerState
-    // above also wipes Redux's draftText mirror, so resync it to the
-    // preserved local input rather than leaving the two out of sync.
+    hasDraftRef.current = false;
     if (overrideText === undefined || overrideText === input) {
       setInput('');
     } else {
-      dispatch(setComposerDraft(input));
-      saveComposerDraft(draftOwnerId, threadId, input);
+      scheduleComposerDraftSave(draftOwnerId, threadId, input);
+      syncOccupancy(input);
     }
     setPreviewCorrections([]);
     setPendingImages([]);
     setImageError(null);
-  }, [input, pendingImages, onSubmit, visibleMatches, includedSlots, previewCorrections, setInput, dispatch, draftOwnerId, threadId]);
+  }, [input, pendingImages, onSubmit, previewCorrections, setInput, dispatch, draftOwnerId, threadId, entityIndexer, syncOccupancy, store]);
 
   const dismissMatch = useCallback(
     (match: CertifiedEntityMatch) => {
@@ -269,7 +296,7 @@ export const useChatComposer = (
       try {
         const confirmed = await confirmComposerEntity(match);
         entityIndexer.retryLoad();
-        entityIndexer.analyze(input);
+        entityIndexer.analyze(input, threadId, 'lightweight');
         openConfirmedComposerEntity(confirmed);
       } catch (error) {
         setConfirmError(error instanceof Error ? error.message : 'Could not confirm entity');
@@ -277,8 +304,16 @@ export const useChatComposer = (
         dispatch(removeComposerConfirming(slot));
       }
     },
-    [dispatch, entityIndexer, input]
+    [dispatch, entityIndexer, input, threadId]
   );
+
+  const handleComposerBlur = useCallback(() => {
+    const value = inputRef.current;
+    flushComposerDraftSave(draftOwnerId, threadId, value);
+    if (value.trim() && typeof entityIndexer.requestAuthoritativePreview === 'function') {
+      entityIndexer.requestAuthoritativePreview(value, threadId);
+    }
+  }, [draftOwnerId, entityIndexer, threadId]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (!submitOnEnter) return;
@@ -323,6 +358,7 @@ export const useChatComposer = (
     dismissMatch,
     confirmMatch,
     handleSubmit,
+    handleComposerBlur,
     handleKeyDown,
     insertSuggestion,
     previewCorrections,

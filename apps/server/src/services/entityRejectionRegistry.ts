@@ -5,6 +5,17 @@
 import { normalizeNameKey } from '../utils/nameNormalization';
 import { supabaseAdmin } from './supabaseClient';
 
+let lookupCount = 0;
+
+/** Test helper — per-name deletion lookups since last reset. */
+export function entityRejectionLookupCount(): number {
+  return lookupCount;
+}
+
+export function resetEntityRejectionLookupCount(): void {
+  lookupCount = 0;
+}
+
 export type EntityRejectionHit = {
   eventId: string;
   entityId: string;
@@ -20,6 +31,7 @@ export async function findUserRejectedEntityCard(
   const key = normalizeNameKey(mentionName);
   if (!key || key.length < 2) return null;
 
+  lookupCount += 1;
   const { data } = await supabaseAdmin
     .from('entity_deletion_events')
     .select('id, entity_id, entity_name, normalized_keys, deletion_count, deletion_kind')

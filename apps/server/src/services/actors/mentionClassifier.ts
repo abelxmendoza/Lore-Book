@@ -103,6 +103,16 @@ export function classifyMention(input: ClassifyMentionInput): ClassifiedMention 
     };
   }
 
+  if (actor.action === 'unresolved') {
+    return {
+      text,
+      status: 'UNRESOLVED',
+      actorType: actor.actorType,
+      confidence: 0.35,
+      reason: actor.reason ?? 'unresolved_reference',
+    };
+  }
+
   if (actor.action === 'reject') {
     const genericReasons = new Set([
       'indefinite_reference',

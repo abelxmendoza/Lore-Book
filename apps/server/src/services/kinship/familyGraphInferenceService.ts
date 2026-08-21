@@ -278,26 +278,44 @@ export class FamilyGraphInferenceService {
       await this.linkMembersToOrg(userId, orgId, members);
     } else {
       try {
-        const org = await organizationService.createOrganization(userId, {
+        const write = await (
+          await import('../lorebook/suggestions/applySuggestionCandidate')
+        ).applySuggestionCandidate({
+          userId,
+          domain: 'organizations',
           name: proposedName,
-          type: 'family',
-          description: `Inferred from: ${context.slice(0, 200)}`,
-          metadata: {
-            inferred: true,
-            inference_source: 'kinship_graph',
-            source_message_id: messageId,
-            member_character_ids: members.map((m) => m.id),
-            head_of_household: members[0]?.name,
+          incomingType: 'family',
+          evidence: context,
+          extractor: 'family_graph_inference',
+          source: 'kinship',
+          writePolicy: 'inference',
+          onCreate: async () => {
+            const org = await organizationService.createOrganization(userId, {
+              name: proposedName,
+              type: 'family',
+              description: `Inferred from: ${context.slice(0, 200)}`,
+              metadata: {
+                inferred: true,
+                inference_source: 'kinship_graph',
+                source_message_id: messageId,
+                member_character_ids: members.map((m) => m.id),
+                head_of_household: members[0]?.name,
+              },
+            });
+            orgId = org.id;
           },
         });
-        orgId = org.id;
-        await this.linkMembersToOrg(userId, orgId, members);
+        if (write.outcome === 'ATTACHED' && write.canonical?.id) {
+          orgId = write.canonical.id;
+        }
+        if (orgId) await this.linkMembersToOrg(userId, orgId, members);
       } catch (err) {
         logger.warn({ err, userId }, 'Family group auto-create failed');
         return undefined;
       }
     }
 
+    if (!orgId) return undefined;
     await this.expandHouseholdFromTree(userId, orgId, members.map((m) => m.id));
     return orgId;
   }

@@ -63,6 +63,8 @@ export function stitchedItemsToChronology(
       tags: item.tags ?? [],
       user_presence: item.userPresence,
       temporal_role: item.temporalRole,
+      user_local_day: item.temporalProjection?.userLocalStartDay ?? null,
+      temporal_state: item.temporalProjection?.temporalState,
     };
   });
 }
@@ -72,7 +74,10 @@ export function filterChronologyByExactDate(
   date: string,
 ): ChronologyEntry[] {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return [];
-  return entries.filter((entry) => entry.start_time.slice(0, 10) === date);
+  return entries.filter((entry) => {
+    const key = entry.user_local_day ?? entry.start_time.slice(0, 10);
+    return key === date;
+  });
 }
 
 export function sortStitchedItemsNewestFirst(

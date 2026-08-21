@@ -63,7 +63,7 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
           .from('journal_entries')
           .select('content, date')
           .eq('user_id', userId)
-          .order('date', { ascending: false })
+          .order('date', { ascending: false, nullsFirst: false })
           .limit(30),
         supabaseAdmin
           .from('chat_messages')

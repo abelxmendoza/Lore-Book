@@ -21,6 +21,15 @@ export const chatStreamDoneEventSchema = z.object({
   type: z.literal('done'),
   usage: z.unknown().optional(),
   cost: z.unknown().optional(),
+  /** Disciplined final text. Present only when the streamed draft was rewritten. */
+  content: z.string().optional(),
+  verified: z.boolean().optional(),
+  rewritten: z.boolean().optional(),
+  unsupportedCount: z.number().optional(),
+  causalRewriteCount: z.number().optional(),
+  embellishmentRewriteCount: z.number().optional(),
+  epistemicRewriteCount: z.number().optional(),
+  verificationDegraded: z.boolean().optional(),
   responseCompiler: z
     .object({
       actionCandidates: z
@@ -34,6 +43,18 @@ export const chatStreamDoneEventSchema = z.object({
           }),
         )
         .optional(),
+      verified: z.boolean().optional(),
+      rewritten: z.boolean().optional(),
+      unsupportedCount: z.number().optional(),
+      causalRewriteCount: z.number().optional(),
+      embellishmentRewriteCount: z.number().optional(),
+      epistemicRewriteCount: z.number().optional(),
+      certaintyScore: z.number().optional(),
+      groundedCount: z.number().optional(),
+      inferredCount: z.number().optional(),
+      contradictionCount: z.number().optional(),
+      memoryCandidatesBlocked: z.number().optional(),
+      summaryDiscipline: z.boolean().optional(),
     })
     .optional(),
   continuityCallback: z

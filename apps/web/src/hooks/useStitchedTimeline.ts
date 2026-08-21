@@ -7,6 +7,7 @@ import {
 import { useAuth } from '../lib/supabase';
 import { useMockData } from '../contexts/MockDataContext';
 import { buildMockStitchedTimeline } from '../mocks/stitchedTimelineMock';
+import { subscribeTemporalRefresh } from '../lib/storyRefresh';
 
 type UseStitchedTimelineOptions = {
   life_arc_id?: string;
@@ -61,6 +62,8 @@ export function useStitchedTimeline(opts: UseStitchedTimelineOptions = {}) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => subscribeTemporalRefresh(() => { void load(); }), [load]);
 
   const reorderItems = useCallback((next: StitchedTimelineItem[]) => {
     setItems(next);

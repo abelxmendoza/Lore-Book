@@ -188,7 +188,9 @@ export class UnifiedFileIngestionService {
     const summaryEntry = await memoryService.saveEntry({
       userId,
       content: `[Resume: ${filename}]\n\n${artifact.text.slice(0, 4000)}`,
-      date: artifact.detectedDate ?? new Date().toISOString(),
+      date: artifact.detectedDate || undefined,
+      temporalSource: artifact.detectedDate ? 'document_stated' : 'recording_fallback',
+      importedAt: new Date().toISOString(),
       tags: ['resume', 'career', 'imported'],
       source: 'document_upload',
       metadata: {
@@ -302,7 +304,7 @@ export class UnifiedFileIngestionService {
   private async runGraphRecovery(userId: string, sourceFileId: string): Promise<void> {
     try {
       const relStats = await relationshipFoundationService.recoverRelationshipGraph(userId);
-      const eventStats = await eventRecoveryService.recoverMissingEvents(userId);
+      const eventStats = await eventRecoveryService.recoverMissingEvents(userId, { mode: 'recovery' });
 
       await userFileRegistry.updateDerivedCounts(sourceFileId, {
         relationships: relStats.pairs ?? relStats.created + relStats.updated,

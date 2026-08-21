@@ -19,6 +19,8 @@ export type AssistantPersistMetadataInput = {
   continuityWarnings?: unknown;
   response_mode?: unknown;
   recall_sources?: unknown;
+  citations?: unknown;
+  ragStats?: unknown;
   mentionedEntities?: unknown;
   characterIds?: unknown;
   creationOutcomes?: unknown;
@@ -46,6 +48,8 @@ export function buildAssistantPersistMetadata(
     continuityWarnings: input.continuityWarnings,
     response_mode: input.response_mode,
     recall_sources: input.recall_sources,
+    citations: input.citations,
+    ragStats: input.ragStats,
     mentionedEntities: input.mentionedEntities,
     characterIds: input.characterIds,
   };

@@ -119,40 +119,24 @@ export class HybridExtractor {
     conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
     isAIMessage: boolean = false
   ): Promise<HybridExtractionResult[]> {
-    // Classify all messages
     const classifications = patternClassifier.classifyBatch(texts);
+    const extracted = await semanticExtractionService.extractBatch(texts, conversationHistory, isAIMessage);
 
-    // Group by route
-    const ruleBasedTexts: Array<{ text: string; index: number }> = [];
-    const llmTexts: Array<{ text: string; index: number }> = [];
-
-    classifications.forEach((classification, index) => {
-      if (classification.suggestedExtractor === 'rule-based') {
-        ruleBasedTexts.push({ text: texts[index], index });
-      } else {
-        llmTexts.push({ text: texts[index], index });
-      }
+    return extracted.map((result, index) => {
+      const classification = classifications[index];
+      const usedRules =
+        classification.suggestedExtractor === 'rule-based' ||
+        classification.suggestedExtractor === 'lightweight';
+      return {
+        ...result,
+        route: usedRules && result.units.some((u) => (u.confidence ?? 0) >= 0.7) ? 'rule-based' : 'llm',
+        classification: {
+          complexity: classification.complexity,
+          category: classification.category,
+          confidence: classification.confidence,
+        },
+      };
     });
-
-    const results: HybridExtractionResult[] = new Array(texts.length);
-
-    // Process rule-based in parallel
-    await Promise.all(
-      ruleBasedTexts.map(async ({ text, index }) => {
-        const result = await this.extractSemanticUnits(text, conversationHistory, isAIMessage);
-        results[index] = result;
-      })
-    );
-
-    // Process LLM texts (could batch these in the future)
-    await Promise.all(
-      llmTexts.map(async ({ text, index }) => {
-        const result = await this.extractSemanticUnits(text, conversationHistory, isAIMessage);
-        results[index] = result;
-      })
-    );
-
-    return results;
   }
 
   /**

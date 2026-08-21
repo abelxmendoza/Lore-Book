@@ -70,9 +70,17 @@ describe('titleOnlyEntityGuard', () => {
       expect(guard.referenceType).toBe('FAMILY_REFERENCE');
     });
 
-    it('promoter → ROLE_REFERENCE', () => {
-      const guard = parsePersonSurface('promoter');
-      expect(guard.referenceType).toBe('ROLE_REFERENCE');
+    it('friend → UNRESOLVED_PERSON_REFERENCE', () => {
+      const guard = parsePersonSurface('friend');
+      expect(guard.referenceType).toBe('UNRESOLVED_PERSON_REFERENCE');
+    });
+
+    it('her friend remains an unresolved reference', () => {
+      const guard = evaluateTitleOnlyPersonGuard('her friend');
+      expect(guard.isTitleOnly).toBe(true);
+      expect(guard.needsResolution).toBe(true);
+      expect(guard.hasAttachedName).toBe(false);
+      expect(isMinimumPersonEntity('her friend')).toBe(false);
     });
   });
 

@@ -18,7 +18,7 @@ export type MemoryCard = {
   id: string;
   title: string;
   content: string;
-  date: string;
+  date: string | null;
   tags: string[];
   mood?: string;
   source: 'journal' | 'x' | 'task' | 'photo' | 'calendar' | 'chat' | 'manual' | 'api' | 'system';
@@ -42,7 +42,7 @@ export type MemoryCard = {
 export type LinkedMemory = {
   id: string;
   title: string;
-  date: string;
+  date: string | null;
   linkType: 'era' | 'saga' | 'arc' | 'character' | 'temporal' | 'tag' | 'source';
   linkLabel: string;
   daysDiff?: number;
@@ -68,7 +68,7 @@ export type MemoryFilters = {
 
 export function memoryEntryToCard(entry: {
   id: string;
-  date: string;
+  date: string | null;
   content: string;
   summary?: string | null;
   tags: string[];

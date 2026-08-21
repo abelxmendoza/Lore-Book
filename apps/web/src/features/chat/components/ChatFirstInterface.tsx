@@ -39,6 +39,7 @@ import {
   peekChatJumpSessionId,
 } from '../../../lib/chatThreadJump';
 import { ThreadSummaryBar } from './ThreadSummaryBar';
+import { ComposerChromeTray } from './ComposerChromeTray';
 import { ThreadRosterBar } from './ThreadRosterBar';
 import { CastTrendsNudge } from './CastTrendsNudge';
 import { fetchCastThreads, fetchThreadRoster } from '../../../api/threadRoster';
@@ -49,13 +50,14 @@ import {
   toEntityContext,
 } from '../utils/collectThreadEntities';
 import {
+  applyCanonicalEntityTypeAuthority,
   isCastDisplayWorthy,
   scrubPeopleLabels,
   scrubPlacesLabels,
   scrubSummaryDisplayLine,
 } from '../utils/threadSurfaceScrub';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
-import { isClosedScopeQuery, isFocusEntityRelevant } from '@lorebook/api-contracts';
+import { isClosedScopeQuery, isFocusEntityRelevant, messageConflictsWithPinnedFocus, parseNamedChatSubject, subjectNamesMatch } from '@lorebook/api-contracts';
 import { ChatSourcesBar } from '../sources/ChatSourcesBar';
 import { ChatSourceNavigator } from '../sources/ChatSourceNavigator';
 import { ChatSearchModal } from '../search/ChatSearchModal';
@@ -91,10 +93,11 @@ import { clearChatFocus } from '../../../store/slices/selectionSlice';
 import { selectChatFocus } from '../../../store/selectors';
 import {
   selectComposerConfirmingSlots,
-  selectComposerDraft,
+  selectComposerHasDraft,
   selectComposerIncludedSlots,
   selectVisibleComposerMatches,
 } from '../../../store/selectors/composerSelectors';
+import { getLatestRawComposerDraft } from '../../../lib/composerIntelligence';
 import { focusToComposerEntities, focusToEntityContext } from '../../../lib/chatFocusUtils';
 import { takePostEventChatHandoff } from '../../../lib/postEventChatHandoff';
 import { scrubLegacyComposerPrefill } from '../../../lib/scrubLegacyComposerPrefill';
@@ -164,7 +167,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   const { subscription } = useSubscription();
   const dispatch = useAppDispatch();
   const chatFocus = useAppSelector(selectChatFocus);
-  const composerDraft = useAppSelector(selectComposerDraft);
+  const composerHasDraft = useAppSelector(selectComposerHasDraft);
   const composerVisibleMatches = useAppSelector(selectVisibleComposerMatches);
   const composerConfirmingSlots = useAppSelector(selectComposerConfirmingSlots);
   const composerIncludedSlots = useAppSelector(selectComposerIncludedSlots);
@@ -195,6 +198,16 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     registerMessageRef,
     GroupToastContainer,
   } = useChat();
+
+  const visibleSources = useMemo(
+    () => (sources ?? []).filter((source) => source.usage !== 'rejected'),
+    [sources],
+  );
+  const composerSourceMeta =
+    visibleSources.length > 0 ? `${visibleSources.length} sources` : undefined;
+  const composerSourceSignal = visibleSources
+    .map((source) => `${source.type}:${source.id}`)
+    .join('|');
 
   // ── Thread lifecycle (owned by useConversationRuntime) ────────────────────────
   const {
@@ -280,6 +293,41 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       if (focused) return chatSendOptions;
 
       const { closedScope } = isClosedScopeQuery(msg);
+      const namedConflict = Boolean(
+        chatFocus && messageConflictsWithPinnedFocus(msg, chatFocus.entityName ?? ''),
+      );
+      if (namedConflict && chatFocus) {
+        const named = parseNamedChatSubject(msg);
+        const match = named
+          ? threadEntities.find(
+              (entity) => entity.type === 'character' && subjectNamesMatch(entity.name, named),
+            )
+          : undefined;
+        if (match) {
+          return {
+            ...chatSendOptions,
+            entityContext: toEntityContext(match),
+            composerEntities: [
+              {
+                id: match.id,
+                name: match.name,
+                type: 'character',
+                status: 'confirmed',
+                aliases: [],
+                mentionKeys: [match.name.toLowerCase()],
+                matchedLabel: match.name,
+              },
+            ],
+            chatFocus: {
+              ...chatFocus,
+              entityId: match.id,
+              entityName: match.name,
+              entityType: 'character',
+            },
+          };
+        }
+        return { ...chatSendOptions, entityContext: undefined, composerEntities: undefined, chatFocus: undefined };
+      }
       const focusRelevant = !chatFocus || !closedScope || isFocusEntityRelevant(msg, chatFocus.entityName ?? '');
       if (focusRelevant) return chatSendOptions;
 
@@ -790,7 +838,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     });
     const composerAndContext = buildComposerAndContextDebugSnapshot({
       chatFocus,
-      composerDraft,
+      composerDraft: getLatestRawComposerDraft(),
       composerEntityChips: liveChips?.certifiedEntities ?? composerVisibleMatches,
       confirmingSlots: liveChips?.confirmingSlots ?? composerConfirmingSlots,
       includedSlots: liveChips?.includedSlots ?? composerIncludedSlots,
@@ -831,13 +879,14 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           ...(summary.places ?? []),
           ...threadEntities.filter((entity) => entity.type === 'location').map((entity) => entity.name),
         ]);
+        const typed = applyCanonicalEntityTypeAuthority(people, places);
         threadSurface = {
           ...threadSurface,
-          people,
-          places,
+          people: typed.people,
+          places: typed.places,
           themes: (summary.themes ?? []).map((t) => t.trim()).filter(Boolean),
           summaryLine:
-            scrubSummaryDisplayLine(summary.medium || summary.short || summary.long, people, places) ??
+            scrubSummaryDisplayLine(summary.medium || summary.short || summary.long, typed.people, typed.places) ??
             null,
         };
       }
@@ -1259,12 +1308,6 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             </div>
           )}
 
-          {messages.length > 0 && (
-            <div className="flex-shrink-0">
-              <ChatSourcesBar sources={sources} onSourceClick={handleSourceClick} />
-            </div>
-          )}
-
           {isGuest && !canSendChatMessage() && (
             <div className="px-4 pb-4 flex-shrink-0">
               <GuestSignUpPrompt />
@@ -1275,19 +1318,43 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
         {/* What LoreBook Knows strip — desktop only; mobile uses context menu */}
         {!contextPanelOpen && !isMobile && <WhatLoreBookKnows />}
 
-        {/* Modal / book focus — character + source section */}
-        {chatFocus && (
-          <ChatFocusChipBar focus={chatFocus} onDismiss={() => dispatch(clearChatFocus())} />
-        )}
+        {/* Sources, focus chips, and thread entities — one collapse over the composer */}
+        <ComposerChromeTray
+          key={activeThreadId ?? 'new-thread'}
+          defaultCollapsed={isMobile}
+          label="On this chat"
+          meta={composerSourceMeta}
+          expandSignal={composerSourceSignal}
+        >
+          {messages.length > 0 && (
+            <ChatSourcesBar
+              sources={sources}
+              onSourceClick={handleSourceClick}
+              embedded
+            />
+          )}
 
-        {!composerDraft.trim() && (
-          <ThreadEntityChips
-            messages={messages}
-            variant="composer"
-            selectedEntityId={focusedEntityId}
-            onSelectEntity={(entity) => setFocusedEntityId(entity?.id ?? null)}
+          {chatFocus && (
+            <ChatFocusChipBar focus={chatFocus} onDismiss={() => dispatch(clearChatFocus())} />
+          )}
+
+          {!composerHasDraft && (
+            <ThreadEntityChips
+              messages={messages}
+              variant="composer"
+              selectedEntityId={focusedEntityId}
+              onSelectEntity={(entity) => setFocusedEntityId(entity?.id ?? null)}
+            />
+          )}
+
+          <ReturnPointBanner
+            threadId={activeThreadId ?? undefined}
+            onContinue={(ctx: ContinueContext, surfaceLine: string) => {
+              const prompt = `${surfaceLine}\n\n[return_point:${ctx.returnPointId} mode=${ctx.recommendedContinuityMode} state=${ctx.unresolvedState}]`;
+              setInitialPrompt(prompt);
+            }}
           />
-        )}
+        </ComposerChromeTray>
 
         {/* Composer */}
         <div
@@ -1299,14 +1366,6 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
               : ''
           }`}
         >
-          <ReturnPointBanner
-            threadId={activeThreadId ?? undefined}
-            onContinue={(ctx: ContinueContext, surfaceLine: string) => {
-              // Prefill a natural continue prompt; structured context rides in the message for the model.
-              const prompt = `${surfaceLine}\n\n[return_point:${ctx.returnPointId} mode=${ctx.recommendedContinuityMode} state=${ctx.unresolvedState}]`;
-              setInitialPrompt(prompt);
-            }}
-          />
           <ChatComposer
             onSubmit={handleSubmit}
             loading={isLoading}

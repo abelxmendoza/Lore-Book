@@ -24,7 +24,7 @@ export function groupEntriesByDate(entries: ChronologyEntry[]): DateGroup[] {
   const map = new Map<string, ChronologyEntry[]>();
 
   for (const entry of sorted) {
-    const dateKey = entry.start_time.slice(0, 10);
+    const dateKey = entry.user_local_day ?? entry.start_time.slice(0, 10);
     if (!map.has(dateKey)) map.set(dateKey, []);
     map.get(dateKey)!.push(entry);
   }

@@ -24,6 +24,7 @@ import { affectionCalculator } from '../services/conversationCentered/affectionC
 import { bumpThreadActivity } from '../services/conversationCentered/threadActivity';
 import { breakupDetector } from '../services/conversationCentered/breakupDetector';
 import { characterTimelineBuilder } from '../services/conversationCentered/characterTimelineBuilder';
+import { resolveUserTimezoneForRequest } from '../services/temporal/userTimezoneService';
 import { correctionResolutionService } from '../services/conversationCentered/correctionResolutionService';
 import { entityAttributeDetector } from '../services/conversationCentered/entityAttributeDetector';
 import { entityRelationshipDetector } from '../services/conversationCentered/entityRelationshipDetector';
@@ -50,6 +51,12 @@ import { relationshipDriftDetector } from '../services/conversationCentered/rela
 import { relationshipTreeBuilder, type RelationshipCategory } from '../services/conversationCentered/relationshipTreeBuilder';
 import { romanticRelationshipAnalytics } from '../services/conversationCentered/romanticRelationshipAnalytics';
 import { enrichRomanticRelationshipsForUser } from '../services/conversationCentered/romanticRelationshipEnrichment';
+import {
+  addCharacterToDatingBook,
+  DatingBookAddError,
+  MANUAL_DATING_ADD_STATUSES,
+  MANUAL_DATING_ADD_TYPES,
+} from '../services/conversationCentered/addCharacterToDatingBook';
 import { romanticRelationshipDetector } from '../services/conversationCentered/romanticRelationshipDetector';
 import { romanticConversationRescanService } from '../services/romanticConversationRescanService';
 import { queryRomanceForUser } from '../services/romance/romanceQueryService';
@@ -111,6 +118,12 @@ const romanticRelationshipPatchSchema = z.object({
 const romanticRelationshipDeleteSchema = z.object({
   reason: z.string().max(500).optional(),
   reason_note: z.string().max(1000).optional(),
+}).strict();
+
+const addCharacterToDatingBookSchema = z.object({
+  character_id: z.string().uuid(),
+  relationship_type: z.enum(MANUAL_DATING_ADD_TYPES).optional(),
+  status: z.enum(MANUAL_DATING_ADD_STATUSES).optional(),
 }).strict();
 
 /**
@@ -467,10 +480,10 @@ router.post(
     const schema = z.object({
       domains: z
         .array(
-          z.enum(['characters', 'quests', 'skills', 'projects', 'locations', 'romantic'])
+          z.enum(['characters', 'quests', 'skills', 'projects', 'locations', 'romantic', 'organizations'])
         )
         .min(1)
-        .max(6),
+        .max(7),
       incremental: z.boolean().optional(),
       cardCleanup: z.boolean().optional(),
       fullRescan: z.boolean().optional(),
@@ -480,8 +493,9 @@ router.post(
       '../services/conversationSuggestionRescanService'
     );
     const summary = await conversationSuggestionRescanService.rescan(userId, body.domains, {
-      incremental: body.fullRescan ? false : body.incremental,
+      incremental: body.fullRescan ? false : body.incremental !== false,
       cardCleanup: body.cardCleanup,
+      fullRescan: body.fullRescan,
     });
     res.json({ success: true, summary });
   })
@@ -3194,6 +3208,49 @@ router.get(
   })
 );
 
+/**
+ * POST /api/conversation/romantic-relationships
+ * Owner/admin only: add an existing Character Book person to Dating & Romance.
+ * Always writes to req.user.id — never accepts another account id.
+ */
+router.post(
+  '/romantic-relationships',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const parsed = addCharacterToDatingBookSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid Dating & Romance add',
+        details: parsed.error.flatten(),
+      });
+    }
+
+    try {
+      const result = await addCharacterToDatingBook({
+        userId: req.user!.id,
+        characterId: parsed.data.character_id,
+        relationshipType: parsed.data.relationship_type,
+        status: parsed.data.status,
+      });
+      res.status(result.created ? 201 : 200).json({
+        success: true,
+        created: result.created,
+        relationship: result.relationship,
+      });
+    } catch (error) {
+      if (error instanceof DatingBookAddError) {
+        return res.status(error.status).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        });
+      }
+      throw error;
+    }
+  }),
+);
+
 router.post(
   '/romantic-relationships/query',
   requireAuth,
@@ -4020,7 +4077,7 @@ router.post(
 
 /**
  * GET /api/conversation/characters/:id/timelines
- * Get character timelines (shared experiences and lore)
+ * Canonical character chronology from the shared stitched projection.
  */
 router.get(
   '/characters/:id/timelines',
@@ -4028,32 +4085,16 @@ router.get(
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
     const id = req.params.id as string;
+    const timezone = await resolveUserTimezoneForRequest(
+      userId,
+      req.headers['x-user-timezone'],
+    );
 
-    const timelines = await characterTimelineBuilder.buildTimelines(userId, id);
+    const timelines = await characterTimelineBuilder.buildTimelines(userId, id, timezone);
 
     res.json({
       success: true,
       timelines,
-    });
-  })
-);
-
-/**
- * POST /api/conversation/characters/:id/rebuild-timelines
- * Rebuild timelines for a character
- */
-router.post(
-  '/characters/:id/rebuild-timelines',
-  requireAuth,
-  asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const userId = req.user!.id;
-    const id = req.params.id as string;
-
-    await characterTimelineBuilder.rebuildTimelinesForCharacter(userId, id);
-
-    res.json({
-      success: true,
-      message: 'Timelines rebuilt',
     });
   })
 );

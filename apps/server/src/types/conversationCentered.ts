@@ -78,6 +78,7 @@ export interface ExtractedUnit {
   temporal_context: Record<string, any>;
   entity_ids: string[];
   created_at: string;
+  updated_at?: string;
   metadata?: Record<string, any>;
 }
 

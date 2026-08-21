@@ -1,11 +1,10 @@
 import type { CharacterMemory } from '../../api/characters';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { TimelineDateHeader, TimelineInlineDate } from '../timeline/TimelineDateDisplay';
+import { compareJournalOccurrenceDesc, journalOccurrenceMonthKey } from '../../lib/journalOccurrence';
 
 export const CharacterSharedTimeline = ({ memories }: { memories: CharacterMemory[] }) => {
-  const sorted = [...memories].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
+  const sorted = [...memories].sort((a, b) => compareJournalOccurrenceDesc(a.date, b.date));
 
   let lastDateKey = '';
 
@@ -16,7 +15,7 @@ export const CharacterSharedTimeline = ({ memories }: { memories: CharacterMemor
       </CardHeader>
       <CardContent className="space-y-4">
         {sorted.map((memory) => {
-          const dateKey = memory.date.slice(0, 10);
+          const dateKey = journalOccurrenceMonthKey(memory.date);
           const showHeader = dateKey !== lastDateKey;
           lastDateKey = dateKey;
 

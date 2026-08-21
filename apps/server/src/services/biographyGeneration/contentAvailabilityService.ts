@@ -3,6 +3,11 @@ import { memoryService } from '../memoryService';
 import { supabaseAdmin } from '../supabaseClient';
 import { buildAtomsFromTimeline } from './narrativeAtomBuilder';
 import type { Domain } from './types';
+import {
+  biographyJournalOccurrence,
+  mostActiveOccurrenceMonths,
+  occurrenceSpanFromDates,
+} from './biographyOccurrenceClock';
 
 export interface TimelineSpan {
   start: string; // ISO date
@@ -284,52 +289,20 @@ export class ContentAvailabilityService {
 
       if (entries.length === 0) {
         return {
-          start: new Date().toISOString(),
-          end: new Date().toISOString(),
+          start: '',
+          end: '',
           days: 0,
           months: 0,
           years: 0
         };
       }
 
-      // Get dates from entries
-      const dates = entries
-        .map(e => {
-          const dateStr = e.date || e.created_at || e.timestamp;
-          return dateStr ? new Date(dateStr) : null;
-        })
-        .filter((d): d is Date => d !== null)
-        .sort((a, b) => a.getTime() - b.getTime());
-
-      if (dates.length === 0) {
-        return {
-          start: new Date().toISOString(),
-          end: new Date().toISOString(),
-          days: 0,
-          months: 0,
-          years: 0
-        };
-      }
-
-      const start = dates[0];
-      const end = dates[dates.length - 1];
-      const diffMs = end.getTime() - start.getTime();
-      const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-      const diffMonths = Math.ceil(diffDays / 30);
-      const diffYears = diffDays / 365.25;
-
-      return {
-        start: start.toISOString(),
-        end: end.toISOString(),
-        days: diffDays,
-        months: diffMonths,
-        years: Math.round(diffYears * 100) / 100
-      };
+      return occurrenceSpanFromDates(entries.map((e) => biographyJournalOccurrence(e)));
     } catch (error) {
       logger.warn({ error, userId }, 'Failed to get timeline span');
       return {
-        start: new Date().toISOString(),
-        end: new Date().toISOString(),
+        start: '',
+        end: '',
         days: 0,
         months: 0,
         years: 0
@@ -417,34 +390,7 @@ export class ContentAvailabilityService {
    * Get most active periods
    */
   private getMostActivePeriods(entries: any[]): MostActivePeriod[] {
-    const monthCounts = new Map<string, number>();
-
-    entries.forEach(entry => {
-      const dateStr = entry.date || entry.created_at || entry.timestamp;
-      if (!dateStr) return;
-
-      const date = new Date(dateStr);
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      const monthName = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-
-      monthCounts.set(monthKey, (monthCounts.get(monthKey) || 0) + 1);
-    });
-
-    // Convert to array and sort
-    const periods: MostActivePeriod[] = Array.from(monthCounts.entries())
-      .map(([key, count]) => {
-        const [year, month] = key.split('-');
-        const date = new Date(parseInt(year), parseInt(month) - 1);
-        return {
-          month: date.toLocaleDateString('en-US', { month: 'long' }),
-          year: parseInt(year),
-          entryCount: count
-        };
-      })
-      .sort((a, b) => b.entryCount - a.entryCount)
-      .slice(0, 10); // Top 10
-
-    return periods;
+    return mostActiveOccurrenceMonths(entries);
   }
 
   /**

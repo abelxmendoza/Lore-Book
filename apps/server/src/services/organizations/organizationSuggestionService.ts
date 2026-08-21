@@ -6,6 +6,7 @@ import {
   resolveDisplayName,
 } from '../lorebook/quality/entityQualityGateService';
 import { buildCrossBookIndexForUser } from '../lexical/projects/projectCrossBookGuard';
+import { applySuggestionCandidate } from '../lorebook/suggestions/applySuggestionCandidate';
 import { organizationService, type GroupType } from '../organizationService';
 import { supabaseAdmin } from '../supabaseClient';
 import type {
@@ -129,7 +130,6 @@ class OrganizationSuggestionService {
 
     const safeName = resolveDisplayName({ name: candidate.displayName, domain: 'organizations' }, quality);
     const match = resolveMatch(safeName, existing);
-    if (match.match_status === 'existing') return false;
 
     const normalized = normalizeNameKey(safeName);
     const payload = {
@@ -155,16 +155,29 @@ class OrganizationSuggestionService {
       updated_at: new Date().toISOString(),
     };
 
-    const { error } = await supabaseAdmin
-      .from('organization_suggestions')
-      .upsert(payload, { onConflict: 'user_id,normalized_name' });
+    const persist = async () => {
+      const { error } = await supabaseAdmin
+        .from('organization_suggestions')
+        .upsert(payload, { onConflict: 'user_id,normalized_name' });
 
-    if (error && !isTableMissing(error)) {
-      logger.debug({ error, userId, name: safeName }, 'Failed to upsert organization suggestion');
-      return false;
-    }
+      if (error && !isTableMissing(error)) {
+        logger.debug({ error, userId, name: safeName }, 'Failed to upsert organization suggestion');
+      }
+    };
 
-    return !error;
+    const write = await applySuggestionCandidate({
+      userId,
+      domain: 'organizations',
+      name: safeName,
+      evidence: evidenceText,
+      incomingType: candidate.organizationType,
+      sourceMessageId: opts.sourceMessageId,
+      extractor: 'organization_suggestion',
+      source: opts.source,
+      onCreate: persist,
+      onReview: persist,
+    });
+    return write.outcome === 'CREATED' || write.outcome === 'REVIEW' || write.outcome === 'ATTACHED';
   }
 }
 

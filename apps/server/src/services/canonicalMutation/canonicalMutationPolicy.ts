@@ -29,9 +29,31 @@ export function resolveCanonicalMutationPolicy(envelope: CanonicalMutationEnvelo
     return { policy: 'AUTOMATIC', reason: 'Only the user can canonize their personal interpretation.' };
   }
   if (envelope.category === 'RELATIONSHIP') {
-    return envelope.authority === 'USER_CONFIRMED'
-      ? { policy: 'REVIEW', reason: 'Relationship state is user-confirmed and reviewable before canon changes.' }
-      : { policy: 'CONFIRMATION', reason: 'Relationship state requires explicit user confirmation.' };
+    if (envelope.intent === 'RETIRE' && envelope.risk === 'CRITICAL') {
+      return { policy: 'MANUAL_ONLY', reason: 'Destructive relationship delete is explicit/manual only.' };
+    }
+    if (
+      (envelope.intent === 'RETIRE' || envelope.intent === 'INVALIDATE')
+      && envelope.authority === 'SYSTEM_DERIVED'
+    ) {
+      return {
+        policy: 'CONFIRMATION',
+        reason: 'Derived code cannot end or never-was a relationship without confirmation.',
+      };
+    }
+    if (envelope.authority === 'USER_EXPLICIT' || envelope.authority === 'USER_CONFIRMED') {
+      return { policy: 'AUTOMATIC', reason: 'The user explicitly changed relationship history or current state.' };
+    }
+    if (
+      envelope.authority === 'SYSTEM_DERIVED'
+      && (envelope.intent === 'UPDATE' || envelope.intent === 'SUPERSEDE')
+    ) {
+      return {
+        policy: 'AUTOMATIC',
+        reason: 'Derived relationship assertions append history; current state is authority-ranked.',
+      };
+    }
+    return { policy: 'CONFIRMATION', reason: 'Relationship state requires explicit user confirmation.' };
   }
   if (envelope.category === 'PROFILE' && /(?:employment|birth|legal)/i.test(envelope.target.field)) {
     return /birth|legal/i.test(envelope.target.field)

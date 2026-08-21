@@ -21,6 +21,7 @@ import {
   classifyActorLabel,
   type ActorType,
 } from '../actors/actorLabelPolicy';
+import { isContextualTimingOnlyMention } from '../actors/contextualActorMention';
 import { isPollutingPersonLabel } from '../actors/entityLabelPollution';
 import {
   classifyMention,
@@ -37,8 +38,6 @@ import {
   namesOverlapByContainment,
 } from '../../utils/nameNormalization';
 import {
-  composeDisplayNameWithEpithet,
-  resolveStoredEpithet,
   stripPersonNameEpithet,
 } from '../../utils/personNameEpithet';
 import { supabaseAdmin } from '../supabaseClient';
@@ -165,25 +164,20 @@ export function normalizeRosterPersonName(name: string): string {
 }
 
 /**
- * Overlay intentional story epithets onto linked cast members so Actors shows
- * "Aunt Maribel the Hallway Guardian" when the Character Book has one.
+ * Overlay intentional story epithets onto linked cast members so Character
+ * Book cards can still show "Aunt Maribel the Hallway Guardian".
+ *
+ * Actors chrome uses the canonical preferred name only — never concatenate
+ * contextual descriptors into the display label.
  */
 export function applyCharacterEpithetsToRoster(
   entries: RosterEntry[],
   charactersById: Map<string, { name: string; metadata?: Record<string, unknown> | null }>,
 ): RosterEntry[] {
-  if (charactersById.size === 0) return entries;
   return entries.map((entry) => {
-    if (!entry.entityId) return entry;
-    const row = charactersById.get(entry.entityId);
-    if (!row) return entry;
-    const epithet = resolveStoredEpithet(row.metadata ?? null);
-    if (!epithet) return entry;
-    const base = stripPersonNameEpithet(row.name || entry.name);
-    return {
-      ...entry,
-      name: composeDisplayNameWithEpithet(base, epithet),
-    };
+    const row = entry.entityId ? charactersById.get(entry.entityId) : undefined;
+    const canonical = stripPersonNameEpithet(row?.name || entry.name);
+    return canonical === entry.name ? entry : { ...entry, name: canonical };
   });
 }
 
@@ -385,7 +379,9 @@ export function deriveRosterEntries(
     });
   }
 
-  const entries = collapseRosterDuplicates([...byKey.values()]);
+  const collapsed = collapseRosterDuplicates([...byKey.values()]);
+  const texts = messages.map((row) => row.content ?? '');
+  const entries = collapsed.filter((entry) => !isContextualTimingOnlyMention(entry.name, texts));
   const maxMentions = entries.reduce((max, e) => Math.max(max, e.mentions), 0);
   for (const entry of entries) entry.role = rosterRole(entry.mentions, maxMentions);
   return entries.sort(

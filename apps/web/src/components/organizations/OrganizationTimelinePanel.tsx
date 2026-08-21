@@ -9,7 +9,7 @@ import { Clock } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { Badge } from '../ui/badge';
 import { fetchJson } from '../../lib/api';
-import { onStoryDataUpdated } from '../../lib/storyRefresh';
+import { onStoryDataUpdated, subscribeTemporalRefresh } from '../../lib/storyRefresh';
 import { sortTimelineEventsChronologically } from '../../lib/timelineSort';
 import { EntityTimelinePanel } from '../common/EntityTimelinePanel';
 import type { SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
@@ -42,13 +42,19 @@ type EntityTimelineEntry = {
   audience?: OrgDerivedEvent['audience'];
   source?: OrgDerivedEvent['source'];
   subgroupNames?: string[];
+  occurredStart?: string | null;
+  isUnresolved?: boolean;
+  canonicalItemId?: string;
+  whyIncluded?: string;
+  attributionRole?: string;
+  attributionDirect?: boolean;
 };
 
 function toOrgDerivedEvent(entry: EntityTimelineEntry): OrgDerivedEvent {
   return {
     id: entry.id,
     title: entry.eventTitle,
-    date: entry.eventDate,
+    date: entry.occurredStart || '',
     type: entry.eventType ?? '',
     summary: entry.eventSummary,
     involved: entry.involvedNames ?? [],
@@ -138,6 +144,8 @@ export function OrganizationTimelinePanel({
 }: Props) {
   const controlled = externalEvents !== undefined;
   const [derivedEvents, setDerivedEvents] = useState<OrgDerivedEvent[]>([]);
+  const [unresolvedEvents, setUnresolvedEvents] = useState<Array<{ id: string; title: string }>>([]);
+  const [compatibilityReview, setCompatibilityReview] = useState<Array<{ id: string; title: string }>>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
@@ -153,36 +161,21 @@ export function OrganizationTimelinePanel({
       }
       const r = await fetchJson<{
         success: boolean;
-        timelines: { sharedExperiences: EntityTimelineEntry[]; lore: EntityTimelineEntry[] };
+        timelines: {
+          sharedExperiences: EntityTimelineEntry[];
+          lore: EntityTimelineEntry[];
+          unresolved?: EntityTimelineEntry[];
+          compatibilityReview?: Array<{ id: string; title: string }>;
+        };
       }>(`/api/organizations/${organization.id}/timelines`);
       if (r.success) {
-        const events = [...r.timelines.sharedExperiences, ...r.timelines.lore].map(toOrgDerivedEvent);
-        setDerivedEvents(events);
-        // Existing pre-feature history never got backfilled into
-        // entity_timeline_events (only new events populate it going
-        // forward via the live-ingestion hook) — an empty first load likely
-        // means this org just hasn't been rebuilt yet, not that it has no
-        // history. Self-heal once, silently, rather than requiring a manual
-        // rebuild trigger the org panel doesn't otherwise expose.
-        if (events.length === 0) {
-          fetchJson(`/api/organizations/${organization.id}/rebuild-timelines`, { method: 'POST' })
-            .then(() =>
-              fetchJson<{
-                success: boolean;
-                timelines: { sharedExperiences: EntityTimelineEntry[]; lore: EntityTimelineEntry[] };
-              }>(`/api/organizations/${organization.id}/timelines`),
-            )
-            .then((rebuilt) => {
-              if (rebuilt.success) {
-                setDerivedEvents(
-                  [...rebuilt.timelines.sharedExperiences, ...rebuilt.timelines.lore].map(toOrgDerivedEvent),
-                );
-              }
-            })
-            .catch(() => {
-              // leave the (empty) state from the first fetch — not worth surfacing an error for a background backfill
-            });
-        }
+        const dated = [...r.timelines.sharedExperiences, ...r.timelines.lore]
+          .filter((entry) => entry.occurredStart && entry.isUnresolved !== true);
+        setDerivedEvents(dated.map(toOrgDerivedEvent));
+        setUnresolvedEvents(
+          (r.timelines.unresolved || []).map((entry) => ({ id: entry.id, title: entry.eventTitle })),
+        );
+        setCompatibilityReview(r.timelines.compatibilityReview || []);
       }
     } catch {
       // keep prior data on refresh failure
@@ -205,9 +198,16 @@ export function OrganizationTimelinePanel({
 
   useEffect(() => {
     if (controlled) return;
-    return onStoryDataUpdated(() => {
+    const stopStory = onStoryDataUpdated(() => {
       setLoaded(false);
     });
+    const stopTemporal = subscribeTemporalRefresh(() => {
+      setLoaded(false);
+    });
+    return () => {
+      stopStory();
+      stopTemporal();
+    };
   }, [organization.id, controlled]);
 
   const events = controlled
@@ -320,6 +320,27 @@ export function OrganizationTimelinePanel({
           </div>
         }
       />
+      {unresolvedEvents.length > 0 && (
+        <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+          <p className="text-xs font-semibold text-white/70">Date unresolved ({unresolvedEvents.length})</p>
+          <ul className="mt-2 space-y-1.5">
+            {unresolvedEvents.map((item) => (
+              <li key={item.id} className="text-sm text-white/80">{item.title}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {compatibilityReview.length > 0 && (
+        <div className="mt-3 rounded-xl border border-amber-400/20 bg-amber-500/[0.06] px-4 py-3">
+          <p className="text-xs font-semibold text-amber-100">Not on the canonical timeline ({compatibilityReview.length})</p>
+          <p className="text-[11px] text-white/40 mt-1">Legacy record — date not verified. Titles only; these rows are not chronology.</p>
+          <ul className="mt-2 space-y-1.5">
+            {compatibilityReview.map((item) => (
+              <li key={item.id} className="text-sm text-white/80">{item.title}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

@@ -87,7 +87,7 @@ export class LearningExtractor {
     content: string,
     source: LearningSource,
     sourceId: string,
-    sourceDate: string
+    sourceDate: string | null
   ): Promise<LearningRecord[]> {
     const learning: LearningRecord[] = [];
 
@@ -128,7 +128,7 @@ export class LearningExtractor {
     content: string,
     source: LearningSource,
     sourceId: string,
-    sourceDate: string
+    sourceDate: string | null
   ): LearningRecord[] {
     const learning: LearningRecord[] = [];
     const lowerContent = content.toLowerCase();
@@ -157,7 +157,7 @@ export class LearningExtractor {
                 confidence,
                 source,
                 source_id: sourceId,
-                source_date: sourceDate,
+                source_date: sourceDate ?? '',
                 tags: [],
                 related_experiences: [],
                 related_projects: [],
@@ -338,7 +338,7 @@ export class LearningExtractor {
     content: string,
     source: LearningSource,
     sourceId: string,
-    sourceDate: string
+    sourceDate: string | null
   ): Promise<LearningRecord[]> {
     try {
       const completion = await openai.chat.completions.create({
@@ -384,7 +384,7 @@ If no learning is found, return {"learning": []}.`,
         confidence: l.confidence || 0.6,
         source,
         source_id: sourceId,
-        source_date: sourceDate,
+        source_date: sourceDate ?? '',
         tags: [],
         related_experiences: [],
         related_projects: [],

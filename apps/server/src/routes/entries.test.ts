@@ -73,6 +73,29 @@ describe('Entries API', () => {
       expect(memoryService.saveEntry).toHaveBeenCalled();
     });
 
+    it('accepts date: null for unknown occurrence', async () => {
+      const { memoryService } = await import('../services/memoryService');
+      vi.mocked(memoryService.saveEntry).mockResolvedValue({
+        id: 'entry-undated',
+        content: 'I told you this today, but I do not know when it happened.',
+        date: null,
+        user_id: 'test-user-id',
+      } as any);
+
+      const response = await request(app)
+        .post('/api/entries')
+        .send({
+          content: 'I told you this today, but I do not know when it happened.',
+          date: null,
+        })
+        .expect(201);
+
+      expect(response.body.entry.date).toBeNull();
+      expect(memoryService.saveEntry).toHaveBeenCalledWith(
+        expect.objectContaining({ date: null, content: expect.any(String) }),
+      );
+    });
+
     it('should validate required fields', async () => {
       const response = await request(app)
         .post('/api/entries')
@@ -104,6 +127,23 @@ describe('Entries API', () => {
 
       expect(response.body).toHaveProperty('entry');
       expect(response.body.entry.id).toBe('entry-1');
+    });
+
+    it('returns date: null without substituting created_at', async () => {
+      const { memoryService } = await import('../services/memoryService');
+      vi.mocked(memoryService.getEntry).mockResolvedValue({
+        id: 'entry-undated',
+        content: 'Unknown when this happened.',
+        date: null,
+        created_at: '2026-08-21T12:00:00.000Z',
+        user_id: 'test-user-id',
+      } as any);
+
+      const response = await request(app)
+        .get('/api/entries/entry-undated')
+        .expect(200);
+
+      expect(response.body.entry.date).toBeNull();
     });
 
     it('should return 404 for non-existent entry', async () => {

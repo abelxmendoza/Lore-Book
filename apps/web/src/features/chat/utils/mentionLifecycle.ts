@@ -50,6 +50,8 @@ const DEMONSTRATIVE_KINSHIP =
   /^(?:cousin|uncle|aunt|tio|tia|tío|tía|nephew|niece|brother|sister|sibling)s?\s+(?:those|these|that|this|them|they|the)$/i;
 const POSSESSIVE_PLACE =
   /^(?:my|his|her|their|our)\s+(?:house|home|place|room|apartment|pad)$/i;
+const POSSESSIVE_UNRESOLVED_ROLE =
+  /^(?:my|his|her|their|our|your)\s+(?:friend|best friend|coworker|co-worker|colleague|roommate|neighbor|classmate|bandmate|teammate|cousin|uncle|aunt|promoter|manager|boss)$/i;
 const POSSESSIVE_NAME_PLACE =
   /^(?:t[íi]o|t[íi]a|uncle|aunt|abuela|abuelo|grandma|grandpa)\s+[^\s'']+['']s$/i;
 const RELATIONSHIP_ROLE =
@@ -84,6 +86,7 @@ export function inferMentionLifecycleStatus(name: string): MentionLifecycleStatu
   ) {
     return 'IGNORE';
   }
+  if (POSSESSIVE_UNRESOLVED_ROLE.test(key)) return 'UNRESOLVED';
   if (INDEFINITE.test(key) || VAGUE_COLLECTIVE.test(key) || TRUNCATED.test(key)) return 'GENERIC';
   if (/\b(?:girls|guys|people|friends|commenters|members)\b/i.test(name) && CONTEXTUAL_GROUP.test(name)) {
     return 'GROUP';

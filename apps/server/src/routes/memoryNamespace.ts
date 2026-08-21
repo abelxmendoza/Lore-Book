@@ -100,7 +100,7 @@ router.post(
   '/graph-recovery/run',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const result = await graphRecoveryTrigger.runNow(req.user!.id);
+    const result = await graphRecoveryTrigger.runNow(req.user!.id, { mode: 'recovery' });
     sendSuccessDual(res, result as unknown as Record<string, unknown>);
   })
 );

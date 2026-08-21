@@ -66,6 +66,21 @@ describe('findDuplicateGroups — false-positive guards', () => {
     expect(groupNames(groups)[0]).toContain('Maria Lopez');
   });
 
+  it('does not force a Character merge from shared event overlap alone', async () => {
+    ROWS = [
+      { id: 'maya-chen', name: 'Maya Chen', alias: [], metadata: {} },
+      { id: 'jamie-park', name: 'Jamie Park', alias: [], metadata: {} },
+    ];
+    const groups = await characterDeduplicationService.findDuplicateGroups('u1');
+    expect(groups).toHaveLength(0);
+    const boosted = characterDeduplicationService.boostConfidenceFromOverlap(0.4, {
+      sharedRelationships: 0,
+      sharedEpisodes: 0,
+      sharedEvents: 50,
+    });
+    expect(boosted).toBeLessThan(0.88);
+  });
+
   it('merges two cards for the same relational placeholder', async () => {
     ROWS = [
       { id: 'a', name: 'friend of Shana', alias: [], metadata: {} },

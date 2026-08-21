@@ -116,10 +116,13 @@ function backendDownMiddlewarePlugin(flag: { current: boolean }) {
   };
 }
 
+import { lorebookWhatsNewPlugin } from './vite.whatsNewPlugin';
+
 // https://vitejs.dev/config/
 export default defineConfig({
   base: '/',
   plugins: [
+    lorebookWhatsNewPlugin(),
     backendDownMiddlewarePlugin(backendUnreachable),
     react(),
   ],

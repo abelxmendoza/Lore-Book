@@ -13,7 +13,7 @@ if (!uid) {
 }
 
 async function main() {
-  const stats = await eventRecoveryService.recoverMissingEvents(uid);
+  const stats = await eventRecoveryService.recoverMissingEvents(uid, { mode: 'recovery' });
   const coverage = await eventRecoveryService.benchmarkCoverage(uid);
   logger.info({ stats, coverage }, 'Event recovery complete');
 }

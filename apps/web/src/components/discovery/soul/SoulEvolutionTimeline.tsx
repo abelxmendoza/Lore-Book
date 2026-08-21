@@ -1,6 +1,7 @@
 import { TrendingUp } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../ui/card';
 import type { EvolutionEntry } from '../../../types/essence';
+import { formatJournalOccurrenceLabel } from '../../../lib/journalOccurrence';
 
 interface SoulEvolutionTimelineProps {
   evolution: EvolutionEntry[];
@@ -41,7 +42,7 @@ export const SoulEvolutionTimeline = ({ evolution }: SoulEvolutionTimelineProps)
                 <p className="text-sm text-white leading-relaxed">{entry.changes}</p>
                 <div className="flex items-center gap-2 mt-2">
                   <span className="text-xs text-white/50">
-                    {new Date(entry.date).toLocaleDateString()}
+                    {formatJournalOccurrenceLabel(entry.date)}
                   </span>
                   <span className="text-xs text-white/30">•</span>
                   <span className="text-xs text-white/50 capitalize">{entry.trigger}</span>

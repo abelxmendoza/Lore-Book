@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyCanonicalEntityTypeAuthority,
   isCastDisplayWorthy,
   scrubPeopleLabels,
   scrubPlacesLabels,
@@ -16,6 +17,13 @@ describe('threadSurfaceScrub', () => {
     expect(
       scrubPlacesLabels(["Abuelas House", "Abuela's house", 'this weekend', 'her house']),
     ).toEqual(["Abuela's house"]);
+  });
+
+  it('drops a canonical person from Places and her friend from People', () => {
+    expect(scrubPeopleLabels(['Maya', 'her friend', 'Priya'])).toEqual(['Maya', 'Priya']);
+    expect(
+      applyCanonicalEntityTypeAuthority(['Maya', 'Priya'], ['Priya', 'Northwind Depot']).places,
+    ).toEqual(['Northwind Depot']);
   });
 
   it('rewrites summary People/Places clauses', () => {

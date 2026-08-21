@@ -2,18 +2,10 @@ import type { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 
 import { logger } from '../logger';
+import { classifyPostgresError, postgresErrorCode } from '../utils/postgresError';
 
-export class AppError extends Error {
-  constructor(
-    public statusCode: number,
-    message: string,
-    public isOperational = true
-  ) {
-    super(message);
-    this.name = this.constructor.name;
-    Error.captureStackTrace(this, this.constructor);
-  }
-}
+export { AppError } from './appError';
+import { AppError } from './appError';
 
 export class ValidationError extends AppError {
   constructor(message: string, public errors?: any) {
@@ -83,7 +75,27 @@ export const errorHandler = (
     if ('apiCode' in err && typeof (err as { apiCode?: string }).apiCode === 'string') {
       body.code = (err as { apiCode: string }).apiCode;
     }
+    if ('notice' in err && (err as { notice?: unknown }).notice) {
+      body.notice = (err as { notice: unknown }).notice;
+    }
     return res.status(err.statusCode).json(body);
+  }
+
+  const classified = classifyPostgresError(err);
+  if (classified.kind === 'read_only' || classified.kind === 'disk_full') {
+    logger.warn(
+      { err, path: req.path, method: req.method, kind: classified.kind },
+      'Database writes blocked (spend cap or quota)'
+    );
+    return res.status(classified.httpStatus).json({
+      error: classified.userMessage,
+      code: postgresErrorCode(classified.kind),
+      notice: {
+        code: postgresErrorCode(classified.kind),
+        message: classified.userMessage,
+        writesAvailable: false,
+      },
+    });
   }
 
   // Handle unknown errors

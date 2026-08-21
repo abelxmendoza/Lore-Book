@@ -18,6 +18,7 @@ import { supabaseAdmin } from '../services/supabaseClient';
 import { locationQueryRequestSchema } from '@lorebook/api-contracts';
 import { queryLocationsForUser } from '../services/locations/locationQueryService';
 import { locationTimelineBuilder } from '../services/conversationCentered/entityTimelineBuilder';
+import { resolveUserTimezoneForRequest } from '../services/temporal/userTimezoneService';
 
 const router = Router();
 
@@ -427,26 +428,39 @@ router.get('/:id', requireAuth, asyncHandler(async (req: AuthenticatedRequest, r
 }));
 
 // GET /api/locations/:id/timelines
+// Canonical location chronology from the shared stitched projection.
 router.get(
   '/:id/timelines',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
     const locationId = String(req.params.id);
-    const timelines = await locationTimelineBuilder.buildTimelines(userId, locationId);
+    const timezone = await resolveUserTimezoneForRequest(
+      userId,
+      req.headers['x-user-timezone'],
+    );
+    const timelines = await locationTimelineBuilder.buildTimelines(userId, locationId, timezone);
     res.json({ success: true, timelines });
   })
 );
 
 // POST /api/locations/:id/rebuild-timelines
+// Deprecated compatibility endpoint. Does not write entity_timeline_events
+// and does not rebuild canonical Location Timeline.
 router.post(
   '/:id/rebuild-timelines',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
     const locationId = String(req.params.id);
-    await locationTimelineBuilder.rebuildTimelinesForEntity(userId, locationId);
-    res.json({ success: true, message: 'Timelines rebuilt' });
+    const result = await locationTimelineBuilder.rebuildTimelinesForEntity(userId, locationId);
+    res.json({
+      success: true,
+      deprecated: true,
+      rebuilt: false,
+      ...(result && typeof result === 'object' ? result : {}),
+      message: 'entity_timeline_events rebuild is deprecated. Canonical Location Timeline is not rebuilt from this table.',
+    });
   })
 );
 

@@ -97,15 +97,32 @@ class RelationshipPersistenceService {
       const evidence = link.cue;
 
       if (from.type === 'character' && to.type === 'character') {
-        const ok = await this.upsertCharacterRelationship(
+        const { applyCharacterRelationshipWrite } = await import('../relationships/characterRelationshipHistoryService');
+        const result = await applyCharacterRelationshipWrite({
           userId,
-          from,
-          to,
-          link.relationshipType,
-          link.confidence,
-          messageId,
-          evidence
-        );
+          actorId: userId,
+          sourceCharacterId: from.id,
+          targetCharacterId: to.id,
+          relationshipType: link.relationshipType,
+          intent: 'assert',
+          authority: 'SYSTEM_INFERENCE',
+          sourceMessageId: messageId,
+          evidence,
+          confidence: link.confidence,
+          rationale: 'Interpretation pipeline inferred a character relationship.',
+        });
+        let ok = Boolean(result.historyId);
+        if (!ok) {
+          ok = await this.upsertCharacterRelationship(
+            userId,
+            from,
+            to,
+            link.relationshipType,
+            link.confidence,
+            messageId,
+            evidence,
+          );
+        }
         if (ok) {
           persisted++;
           characterEdges++;

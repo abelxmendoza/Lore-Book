@@ -268,7 +268,7 @@ class LocationService {
       .from('journal_entries')
       .select(JOURNAL_COLS)
       .eq('user_id', userId)
-      .order('date', { ascending: false })
+      .order('date', { ascending: false, nullsFirst: false })
       .limit(500);
 
     if (error) {

@@ -41,7 +41,24 @@ describe('classifyPostgresError', () => {
     expect(classified.kind).toBe('read_only');
     expect(classified.httpStatus).toBe(507);
     expect(classified.retryable).toBe(false);
+    expect(classified.userMessage).toMatch(/spend cap/i);
     expect(postgresErrorCode(classified.kind)).toBe('DB_READ_ONLY');
+  });
+
+  it('classifies spend-cap / paused project copy as read-only', () => {
+    const classified = classifyPostgresError({
+      message: 'Project is paused after exceeding spend cap',
+    });
+    expect(classified.kind).toBe('read_only');
+    expect(classified.httpStatus).toBe(507);
+  });
+
+  it('classifies HTTP 507 as read-only', () => {
+    const classified = classifyPostgresError({
+      status: 507,
+      message: 'Insufficient Storage',
+    });
+    expect(classified.kind).toBe('read_only');
   });
 
   it('classifies disk full by SQLSTATE', () => {

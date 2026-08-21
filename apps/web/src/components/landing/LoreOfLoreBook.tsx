@@ -10,6 +10,7 @@ import {
   LOREBOOK_VISIONS,
   significanceStars,
 } from '../../data/lorebookPublicChronicle';
+import { CURATED_WHATS_NEW, formatWhatsNewDate } from '../../data/whatsNew';
 import './LoreOfLoreBook.css';
 
 type LoreTab = 'timeline' | 'chapters' | 'vision';
@@ -26,6 +27,7 @@ const CHAPTER_ACCENTS = [
   'from-amber-500/70 to-orange-600/70',
   'from-pink-500/70 to-rose-600/70',
   'from-emerald-500/70 to-teal-600/70',
+  'from-sky-500/70 to-indigo-600/70',
 ];
 
 export function LoreOfLoreBookContent() {
@@ -37,7 +39,7 @@ export function LoreOfLoreBookContent() {
       <section className="lore-page-hero-glow pt-6 sm:pt-8 pb-8 sm:pb-14 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
           <p className="text-[10px] sm:text-xs font-mono text-primary/80 uppercase tracking-[0.15em] sm:tracking-[0.2em] mb-3 sm:mb-4">
-            Living project history
+            Living project history · Chapter 6
           </p>
           <h1 className="text-[1.85rem] leading-tight sm:text-5xl md:text-6xl font-bold text-white mb-3 sm:mb-4 tracking-tight px-1">
             Lore of{' '}
@@ -46,8 +48,25 @@ export function LoreOfLoreBookContent() {
             </span>
           </h1>
           <p className="text-sm sm:text-lg text-white/55 max-w-2xl mx-auto leading-relaxed px-1">
-            Most products ship changelogs. LoreBook remembers its own story — milestones, eras, and how the vision evolved.
+            Most products ship changelogs. LoreBook remembers its own story — how the vision grew from a chatbot that remembers into a life record that tells the truth in time.
           </p>
+        </div>
+      </section>
+
+      <section className="px-4 sm:px-6 lg:px-8 pb-6 sm:pb-8">
+        <div className="max-w-4xl mx-auto rounded-2xl border border-amber-400/25 bg-gradient-to-br from-amber-500/10 via-purple-950/40 to-black/40 p-4 sm:p-6">
+          <p className="text-[10px] font-mono uppercase tracking-[0.18em] text-amber-200/80 mb-3">
+            This season · {formatWhatsNewDate(CURATED_WHATS_NEW[0]?.date ?? '2026-08-20')}
+          </p>
+          <h2 className="text-lg sm:text-xl font-semibold text-white mb-4">What LoreBook can do now</h2>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {CURATED_WHATS_NEW.slice(0, 4).map((entry) => (
+              <li key={entry.id} className="rounded-xl border border-white/10 bg-black/30 p-3 sm:p-4">
+                <p className="text-sm font-semibold text-white mb-1">{entry.title}</p>
+                <p className="text-xs sm:text-sm text-white/55 leading-relaxed">{entry.summary}</p>
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
 
@@ -161,8 +180,8 @@ export function LoreOfLoreBookContent() {
               <div className="mt-6 sm:mt-8 rounded-xl border border-white/8 bg-white/[0.02] px-4 py-3 sm:px-5 sm:py-4 flex items-start gap-3">
                 <BookOpen className="h-5 w-5 text-emerald-400/80 shrink-0 mt-0.5" />
                 <p className="text-sm text-white/45 leading-relaxed break-words">
-                  Phase 2 will extend this engine to every entity — people, organizations, projects, and relationships
-                  each earn their own living biography from evidence.
+                  People, places, and groups already keep living timelines. The next chapter is relationship
+                  authority — who someone is to you now, without overwriting who they were.
                 </p>
               </div>
             </div>

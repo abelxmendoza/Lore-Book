@@ -8,10 +8,11 @@ import { fetchJson } from '../../lib/api';
 import { fetchCharacterList } from '../../api/characterList';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { TagSuggestionBar } from '../composer/TagSuggestionBar';
+import { formatJournalOccurrenceLabel, hasJournalOccurrence } from '../../lib/journalOccurrence';
 
 type EntryDetail = {
   id: string;
-  date: string;
+  date: string | null;
   content: string;
   summary?: string;
   tags: string[];
@@ -206,8 +207,9 @@ export const TimelineEntryModal = ({ entryId, isOpen, onClose, onNavigate }: Pro
   const resultDate = entryDate ? new Date(entryDate) : null;
   const relatedEntries = resultDate
     ? timelineEntries.filter(e => {
-        const entryDate = new Date(e.date);
-        const diffDays = Math.abs((entryDate.getTime() - resultDate.getTime()) / (1000 * 60 * 60 * 24));
+        const neighborTime = hasJournalOccurrence(e.date) ? Date.parse(e.date) : NaN;
+        if (!Number.isFinite(neighborTime)) return false;
+        const diffDays = Math.abs((neighborTime - resultDate.getTime()) / (1000 * 60 * 60 * 24));
         return diffDays <= 7 && e.id !== entryDetail?.id;
       }).slice(0, 5)
     : [];
@@ -448,7 +450,7 @@ export const TimelineEntryModal = ({ entryId, isOpen, onClose, onNavigate }: Pro
                         >
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-xs text-white/50">
-                              {new Date(entry.date).toLocaleDateString()}
+                              {formatJournalOccurrenceLabel(entry.date)}
                             </span>
                             {entry.chapter_id && (
                               <Badge variant="outline" className="border-primary/50 text-primary text-xs">

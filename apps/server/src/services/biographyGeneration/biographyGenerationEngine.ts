@@ -26,6 +26,7 @@ import { voidAwarenessService } from './voidAwarenessService';
 import { atomPrioritizer } from './atomPrioritizer';
 import { fallbackGenerator } from './fallbackGenerator';
 import { qualityValidator } from './qualityValidator';
+import { isUsableOccurrenceTimestamp } from './biographyOccurrenceClock';
 import {
   constraintsForForm,
   formNarrativeHint,
@@ -257,9 +258,11 @@ export class BiographyGenerationEngine {
         byDomain.get(domain)!.push(atom.id);
       }
 
-      // Index by time (sorted)
-      byTime.push({ atomId: atom.id, timestamp: atom.timestamp });
-      byTime.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      // Index by occurrence time only — recording/import clocks must not order life chapters.
+      if (isUsableOccurrenceTimestamp(atom.timestamp)) {
+        byTime.push({ atomId: atom.id, timestamp: atom.timestamp });
+        byTime.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      }
 
       // Index by person
       if (atom.peopleIds) {
@@ -375,11 +378,15 @@ export class BiographyGenerationEngine {
     }
     
     if (atoms.length === 0) {
-      const now = new Date();
-      return { start: now.toISOString(), end: now.toISOString() };
+      return { start: '', end: '' };
     }
     
-    const dates = atoms.map(a => new Date(a.timestamp).getTime());
+    const dates = atoms
+      .map(a => Date.parse(a.timestamp))
+      .filter((ms) => Number.isFinite(ms));
+    if (!dates.length) {
+      return { start: '', end: '' };
+    }
     return {
       start: new Date(Math.min(...dates)).toISOString(),
       end: new Date(Math.max(...dates)).toISOString()

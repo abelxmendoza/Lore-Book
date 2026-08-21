@@ -1,4 +1,4 @@
-import { normalizeNameKey } from '../../../utils/nameNormalization';
+import { namesMatchAsAcronym, normalizeNameKey } from '../../../utils/nameNormalization';
 import type { OrganizationCandidate } from './organizationInferenceTypes';
 
 export const BARE_GENERIC_ORG_WORDS = new Set([
@@ -41,6 +41,13 @@ const KNOWN_ORGANIZATIONS: Array<{
   { displayName: 'Vercel', organizationType: 'platform', defaultRole: 'tool_provider', confidence: 0.88 },
   { displayName: 'Railway', organizationType: 'platform', defaultRole: 'tool_provider', confidence: 0.86 },
   { displayName: 'CSUF', organizationType: 'university', aliases: ['California State University Fullerton'], confidence: 0.9 },
+  {
+    displayName: 'USC',
+    organizationType: 'university',
+    aliases: ['University of Southern California', 'USC Trojans'],
+    defaultRole: 'school',
+    confidence: 0.92,
+  },
   {
     displayName: 'Whittier Christian Middle School',
     organizationType: 'school',
@@ -92,6 +99,22 @@ export function inferNamedOrganizations(text: string): OrganizationCandidate[] {
   }
 
   return out;
+}
+
+/** Match a candidate name to a known org even when surrounding text mentions other orgs. */
+export function inferNamedOrganizationForName(
+  name: string,
+  evidence = '',
+): OrganizationCandidate | undefined {
+  const key = normalizeNameKey(name);
+  const matchesName = (org: OrganizationCandidate) => {
+    const labels = [org.displayName, ...org.aliases];
+    return labels.some(
+      (label) => normalizeNameKey(label) === key || namesMatchAsAcronym(name, label),
+    );
+  };
+  return inferNamedOrganizations(name).find(matchesName)
+    ?? inferNamedOrganizations(`${name} ${evidence}`).find(matchesName);
 }
 
 function escapeRe(s: string): string {

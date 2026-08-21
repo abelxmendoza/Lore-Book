@@ -73,5 +73,6 @@ export function buildMockCalendarMonth(year: number, month: number): CalendarMon
     year,
     month,
     days: [...daysMap.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    unscheduledItems: [],
   };
 }

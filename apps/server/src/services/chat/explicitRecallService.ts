@@ -11,6 +11,7 @@ import { queryEngine } from '../../cognition/query/QueryEngine';
 import type { QueryContext } from '../../cognition/query/QueryTypes';
 import type { RecallResult as RoutedRecall } from './recallQueryRouter';
 import { detectSyncRecallIntent, isFoundationPrimaryIntent } from './recallIntentPatterns';
+import { hasFoundationContent } from './foundationContent';
 import { VERIFIED_SILENCE_FALLBACK } from './verifiedMemoryLanguage';
 import {
   buildThreadRecall,
@@ -74,7 +75,7 @@ export async function executeExplicitRecall(
 
   const routed = (await queryEngine.executeKind('structured', ctx)).raw as RoutedRecall;
 
-  if (routed.foundationPrimary && hasFoundationContent(routed)) {
+  if (routed.foundationPrimary && hasFoundationContent(routed.contextBlock)) {
     return {
       content: formatFoundationForChat(routed),
       response_mode: 'RECALL',
@@ -92,7 +93,7 @@ export async function executeExplicitRecall(
 
   // Never silence when thread had user messages
   const userTurns = conversationHistory.filter((m) => m.role === 'user');
-  if (journalRecall.silence && !hasFoundationContent(routed)) {
+  if (journalRecall.silence && !hasFoundationContent(routed.contextBlock)) {
     if (userTurns.length > 0) {
       const threadFallback = await runThread();
       return {
@@ -145,28 +146,20 @@ export async function executeExplicitRecall(
   };
 }
 
-function hasFoundationContent(routed: RoutedRecall): boolean {
-  const block = routed.contextBlock?.trim() ?? '';
-  if (!block) return false;
-  const emptyMarkers = [
-    'No biography snapshot yet.',
-    'No biography data available yet.',
-    'No characters recorded yet.',
-    'No family members recorded yet.',
-    'No character record found for',
-  ];
-  return !emptyMarkers.some((m) => block.startsWith(m) || block === m);
-}
-
 function buildCombinedContent(routed: RoutedRecall, journalRecall: JournalRecall): string {
   const parts: string[] = [];
+  const foundationHit = hasFoundationContent(routed.contextBlock);
 
   const foundation = formatFoundationForChat(routed);
   if (foundation) parts.push(foundation);
 
-  if (!isFoundationPrimaryIntent(routed.intent) && !routed.foundationPrimary) {
-    const journal = formatJournalArchivist(journalRecall);
-    if (journal) parts.push(journal);
+  const journal = formatJournalArchivist(journalRecall);
+  if (journal) {
+    // RC-2: empty foundation must surface journal/units before "no record".
+    // A real foundation hit stays foundation-only for foundation-primary intents.
+    if (!foundationHit || (!isFoundationPrimaryIntent(routed.intent) && !routed.foundationPrimary)) {
+      parts.push(journal);
+    }
   }
 
   return parts.join('\n\n');
@@ -174,7 +167,7 @@ function buildCombinedContent(routed: RoutedRecall, journalRecall: JournalRecall
 
 function formatFoundationForChat(routed: RoutedRecall): string {
   const block = routed.contextBlock?.trim() ?? '';
-  if (!block || !hasFoundationContent(routed)) return block;
+  if (!block || !hasFoundationContent(block)) return block;
 
   if (
     routed.intent === 'character_roster' ||

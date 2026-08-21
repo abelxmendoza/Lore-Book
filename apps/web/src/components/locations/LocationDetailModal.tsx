@@ -19,7 +19,7 @@ import type { LocationProfile } from './LocationProfileCard';
 // Re-export so consumers (e.g. CharacterDetailModal) can import the type from here.
 export type { LocationProfile } from './LocationProfileCard';
 import { useMockData } from '../../contexts/MockDataContext';
-import { schedulePostChatRefresh } from '../../lib/storyRefresh';
+import { schedulePostChatRefresh, subscribeTemporalRefresh } from '../../lib/storyRefresh';
 import { mockDataService } from '../../services/mockDataService';
 import { getMockLocationFacts, getMockLocationPeople } from '../../mocks/modalDemoData';
 import {
@@ -378,7 +378,20 @@ export const LocationDetailModal = ({
   const [loadingMemories, setLoadingMemories] = useState(false);
   const [memoryCards, setMemoryCards] = useState<MemoryCard[]>([]);
   const [entityTimelineEntries, setEntityTimelineEntries] = useState<
-    Array<{ id: string; timestamp: string; title: string; summary?: string }>
+    Array<{
+      id: string;
+      timestamp: string;
+      title: string;
+      summary?: string;
+      occurredStart?: string | null;
+      canonicalItemId?: string;
+    }>
+  >([]);
+  const [unresolvedLocationEvents, setUnresolvedLocationEvents] = useState<
+    Array<{ id: string; title: string; summary?: string }>
+  >([]);
+  const [locationCompatibilityReview, setLocationCompatibilityReview] = useState<
+    Array<{ id: string; title: string }>
   >([]);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
@@ -598,48 +611,71 @@ export const LocationDetailModal = ({
     void loadLocationMemories();
   }, [location.entries, location.id, location.name, location.firstVisited, location.lastVisited, location.tagCounts, location.moods, location.relatedPeople]);
 
-  // Timeline tab data — separate from memoryCards (Memories tab): sourced
-  // from resolved_events/threads via entityTimelineBuilder, with real
-  // shared_experience/lore classification the raw journal-entry list above
-  // never had.
+  // Timeline tab — canonical stitched chronology for this location.
   useEffect(() => {
     if (isMockDataEnabled) return;
     let cancelled = false;
 
-    type TimelineEntry = { id: string; eventTitle: string; eventDate: string; eventSummary?: string };
+    type TimelineRow = {
+      id: string;
+      eventTitle: string;
+      eventDate: string;
+      eventSummary?: string;
+      occurredStart?: string | null;
+      canonicalItemId?: string;
+      isUnresolved?: boolean;
+    };
+    type CompatibilityRow = { id: string; title: string };
     const fetchTimelines = () =>
-      fetchJson<{ success: boolean; timelines: { sharedExperiences: TimelineEntry[]; lore: TimelineEntry[] } }>(
-        `/api/locations/${location.id}/timelines`,
-      );
+      fetchJson<{
+        success: boolean;
+        timelines: {
+          sharedExperiences: TimelineRow[];
+          lore: TimelineRow[];
+          unresolved?: TimelineRow[];
+          compatibilityReview?: CompatibilityRow[];
+        };
+      }>(`/api/locations/${location.id}/timelines`);
 
-    (async () => {
+    const load = async () => {
       try {
         const r = await fetchTimelines();
         if (cancelled || !r.success) return;
-        let entries = [...r.timelines.sharedExperiences, ...r.timelines.lore];
-
-        // Pre-feature history never got backfilled — an empty first load
-        // likely means this location just hasn't been rebuilt yet.
-        if (entries.length === 0) {
-          await fetchJson(`/api/locations/${location.id}/rebuild-timelines`, { method: 'POST' });
-          if (cancelled) return;
-          const rebuilt = await fetchTimelines();
-          if (cancelled || !rebuilt.success) return;
-          entries = [...rebuilt.timelines.sharedExperiences, ...rebuilt.timelines.lore];
-        }
-
-        if (!cancelled) {
-          setEntityTimelineEntries(
-            entries.map((e) => ({ id: e.id, timestamp: e.eventDate, title: e.eventTitle, summary: e.eventSummary })),
-          );
-        }
+        const dated = [...(r.timelines.sharedExperiences || []), ...(r.timelines.lore || [])]
+          .filter((e) => e.occurredStart && e.isUnresolved !== true);
+        setEntityTimelineEntries(
+          dated.map((e) => ({
+            id: e.id,
+            timestamp: e.occurredStart || e.eventDate,
+            title: e.eventTitle,
+            summary: e.eventSummary,
+            occurredStart: e.occurredStart,
+            canonicalItemId: e.canonicalItemId,
+          })),
+        );
+        setUnresolvedLocationEvents(
+          (r.timelines.unresolved || []).map((e) => ({
+            id: e.id,
+            title: e.eventTitle,
+            summary: e.eventSummary,
+          })),
+        );
+        setLocationCompatibilityReview(
+          (r.timelines.compatibilityReview || []).map((e) => ({ id: e.id, title: e.title })),
+        );
       } catch {
         // keep prior state on failure
       }
-    })();
+    };
+
+    void load();
+    const stopTemporal = subscribeTemporalRefresh(() => {
+      void load();
+    });
 
     return () => {
       cancelled = true;
+      stopTemporal();
     };
   }, [location.id, isMockDataEnabled]);
 
@@ -775,9 +811,7 @@ export const LocationDetailModal = ({
   const verifiedPeople = isMockDataEnabled
     ? getMockLocationPeople(location, mockDataService.get.characters())
     : location.relatedPeople.filter(person => person.character_id);
-  const locationTimelineEntries = entityTimelineEntries.length > 0
-    ? entityTimelineEntries
-    : memoryCards.length > 0
+  const demoTimelineEntries = memoryCards.length > 0
     ? memoryCards.map((memory) => {
         const body = memory.content ?? '';
         const tags = Array.isArray(memory.tags) ? memory.tags : [];
@@ -786,60 +820,29 @@ export const LocationDetailModal = ({
           timestamp: memory.date,
           title: memory.title,
           summary: body.slice(0, 240),
-          full_text: body,
-          mood: memory.mood ?? null,
-          arc: memory.arcId ?? null,
-          saga: memory.sagaId ?? null,
-          era: memory.eraId ?? null,
-          lane:
-            tags
-              .find((tag) =>
-                ['life', 'robotics', 'mma', 'work', 'creative'].includes(tag.toLowerCase()),
-              )
-              ?.toLowerCase() ?? 'life',
-          tags,
-          character_ids: memory.characters,
-          related_entry_ids: memory.linkedMemories?.map((linked) => linked.id) ?? [],
         };
       })
-    : isMockDataEnabled
-      ? [
-          ...(location.firstVisited
-            ? [{
-                id: `${location.id}-timeline-first`,
-                timestamp: location.firstVisited,
-                title: `First recorded visit to ${location.name}`,
-                summary: location.description || `${location.name} entered your place history.`,
-                full_text: location.description || `${location.name} entered your place history.`,
-                mood: null,
-                arc: null,
-                saga: null,
-                era: null,
-                lane: 'life',
-                tags: ['place', 'first visit'],
-                character_ids: [],
-                related_entry_ids: [],
-              }]
-            : []),
-          ...(location.lastVisited
-            ? [{
-                id: `${location.id}-timeline-latest`,
-                timestamp: location.lastVisited,
-                title: `Latest recorded visit to ${location.name}`,
-                summary: `${location.visitCount} visits are currently recorded for this place.`,
-                full_text: `${location.visitCount} visits are currently recorded for this place.`,
-                mood: location.moods[0]?.mood ?? null,
-                arc: null,
-                saga: null,
-                era: null,
-                lane: 'life',
-                tags: ['place', 'recent visit'],
-                character_ids: [],
-                related_entry_ids: [],
-              }]
-            : []),
-        ]
-      : [];
+    : [
+        ...(location.firstVisited
+          ? [{
+              id: `${location.id}-timeline-first`,
+              timestamp: location.firstVisited,
+              title: `First recorded visit to ${location.name}`,
+              summary: location.description || `${location.name} entered your place history.`,
+            }]
+          : []),
+        ...(location.lastVisited
+          ? [{
+              id: `${location.id}-timeline-latest`,
+              timestamp: location.lastVisited,
+              title: `Latest recorded visit to ${location.name}`,
+              summary: `${location.visitCount} visits are currently recorded for this place.`,
+            }]
+          : []),
+      ];
+  const locationTimelineEntries = isMockDataEnabled && entityTimelineEntries.length === 0
+    ? demoTimelineEntries
+    : entityTimelineEntries;
   const linkedOrganizationIds = new Set(
     linkedOrganizations.map((link) => link.organization_id),
   );
@@ -1737,6 +1740,30 @@ export const LocationDetailModal = ({
                   if (memory) setSelectedMemory(memory);
                 }}
               />
+
+              {unresolvedLocationEvents.length > 0 && (
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                  <p className="text-xs font-semibold text-white/70">Date unresolved ({unresolvedLocationEvents.length})</p>
+                  <p className="text-[11px] text-white/40 mt-1">These belong here, but occurrence is not yet known.</p>
+                  <ul className="mt-2 space-y-1.5">
+                    {unresolvedLocationEvents.map((item) => (
+                      <li key={item.id} className="text-sm text-white/80">{item.title}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {locationCompatibilityReview.length > 0 && (
+                <div className="rounded-xl border border-amber-400/20 bg-amber-500/[0.06] px-4 py-3">
+                  <p className="text-xs font-semibold text-amber-100">Not on the canonical timeline ({locationCompatibilityReview.length})</p>
+                  <p className="text-[11px] text-white/40 mt-1">Legacy record — date not verified. Titles only; these rows are not chronology.</p>
+                  <ul className="mt-2 space-y-1.5">
+                    {locationCompatibilityReview.map((item) => (
+                      <li key={item.id} className="text-sm text-white/80">{item.title}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
 

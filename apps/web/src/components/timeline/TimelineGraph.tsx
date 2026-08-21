@@ -3,6 +3,7 @@ import { Calendar, Edit2, Sparkles } from 'lucide-react';
 import type { TimelineResponse } from '../../hooks/useLoreKeeper';
 import { Button } from '../ui/button';
 import { buildMonthlyAxisTicks, buildQuadrennialAxisTicks } from './timelineRulerTicks';
+import { hasJournalOccurrence } from '../../lib/journalOccurrence';
 
 type TimelineGraphProps = {
   timeline: TimelineResponse;
@@ -49,6 +50,7 @@ export const TimelineGraph = ({ timeline, onEditChapter, onEditSaga }: TimelineG
       // Add entries within chapters
       chapter.months.forEach((month) => {
         month.entries.forEach((entry) => {
+          if (!hasJournalOccurrence(entry.date)) return;
           allNodes.push({
             id: entry.id,
             type: 'entry',
@@ -65,6 +67,7 @@ export const TimelineGraph = ({ timeline, onEditChapter, onEditSaga }: TimelineG
     // Add unassigned entries
     timeline.unassigned.forEach((group) => {
       group.entries.forEach((entry) => {
+        if (!hasJournalOccurrence(entry.date)) return;
         allNodes.push({
           id: entry.id,
           type: 'entry',

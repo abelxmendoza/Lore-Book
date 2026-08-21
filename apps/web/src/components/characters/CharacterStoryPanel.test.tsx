@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { CharacterStoryPanel } from './CharacterStoryPanel';
+import { CharacterStoryPanel, formatCharacterTimelineWhen } from './CharacterStoryPanel';
 import type { MemoryCard } from '../../types/memory';
+import { dispatchTemporalViewsUpdated } from '../../lib/storyRefresh';
 
 vi.mock('../../contexts/MockDataContext', () => ({
   useMockData: () => ({ useMockData: false }),
@@ -12,9 +13,10 @@ vi.mock('../../lib/api', () => ({
   fetchJson: vi.fn(),
 }));
 
-vi.mock('../../lib/storyRefresh', () => ({
-  onStoryDataUpdated: () => () => {},
-}));
+vi.mock('../../lib/storyRefresh', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/storyRefresh')>();
+  return actual;
+});
 
 vi.mock('../events/EventDetailModal', () => ({
   EventDetailModal: ({ event, onClose }: { event: { title: string }; onClose: () => void }) => (
@@ -183,5 +185,165 @@ describe('CharacterStoryPanel', () => {
     await waitFor(() => expect(screen.getByTestId('open-dating-romance-overview')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('open-dating-romance-overview'));
     expect(onOpenDatingArc).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps unresolved items out of the dated list', async () => {
+    fetchJsonMock.mockResolvedValueOnce({
+      success: true,
+      timelines: {
+        sharedExperiences: [],
+        lore: [],
+        unresolved: [
+          {
+            id: 'event:unresolved',
+            eventId: 'evt-u',
+            eventTitle: 'Something with Jamie',
+            eventDate: '',
+            isUnresolved: true,
+            occurredStart: null,
+            provenanceLabel: 'Unresolved',
+          },
+        ],
+        summary: {},
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <CharacterStoryPanel characterId="char-jamie" characterName="Jamie" active />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('character-unresolved-tray')).toBeInTheDocument());
+    expect(screen.getByText('Something with Jamie')).toBeInTheDocument();
+    expect(screen.getByText(/Date unresolved/)).toBeInTheDocument();
+    expect(screen.queryByTestId('character-timeline-event-event:unresolved')).not.toBeInTheDocument();
+  });
+
+  it('15. temporal edit signal refetches the character timeline', async () => {
+    render(
+      <MemoryRouter>
+        <CharacterStoryPanel characterId="char-jamie" characterName="Jamie" active />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(fetchJsonMock).toHaveBeenCalled());
+    const before = fetchJsonMock.mock.calls.length;
+    dispatchTemporalViewsUpdated();
+    await waitFor(() => expect(fetchJsonMock.mock.calls.length).toBeGreaterThan(before));
+  });
+
+  it('Refresh reloads the canonical timeline and does not rebuild character_timeline_events', async () => {
+    render(
+      <MemoryRouter>
+        <CharacterStoryPanel characterId="char-jamie" characterName="Jamie" active />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Dinner with Jerry')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => {
+      const rebuild = fetchJsonMock.mock.calls.some(
+        (call) => String(call[0]).includes('rebuild-timelines'),
+      );
+      expect(rebuild).toBe(false);
+    });
+    expect(
+      fetchJsonMock.mock.calls.every((call) =>
+        String(call[0]).includes('/api/conversation/characters/char-jamie/timelines'),
+      ),
+    ).toBe(true);
+  });
+
+  it('does not render a leftover compatibility tray even if the API still sends one', async () => {
+    fetchJsonMock.mockResolvedValueOnce({
+      success: true,
+      timelines: {
+        sharedExperiences: [
+          {
+            id: 'event:evt_1',
+            eventId: 'evt_1',
+            eventTitle: 'Dinner with Jamie',
+            eventDate: '2026-03-12T19:00:00.000Z',
+            occurredStart: '2026-03-12T19:00:00.000Z',
+            userWasPresent: true,
+          },
+        ],
+        lore: [],
+        unresolved: [],
+        compatibilityReview: [
+          {
+            id: 'legacy-2',
+            reason: 'legacy_unmatched',
+            title: 'Old MemoVault meetup',
+            eventId: 'evt-only-legacy',
+          },
+        ],
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <CharacterStoryPanel characterId="char-jamie" characterName="Jamie" active />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Dinner with Jamie')).toBeInTheDocument());
+    expect(screen.queryByTestId('character-compatibility-review')).not.toBeInTheDocument();
+    expect(screen.queryByText('Old MemoVault meetup')).not.toBeInTheDocument();
+  });
+});
+
+describe('formatCharacterTimelineWhen', () => {
+  it('shows local time for exact precision and date only for day precision', () => {
+    expect(
+      formatCharacterTimelineWhen({
+        id: 'e1',
+        eventTitle: 'Exact',
+        eventDate: '2026-08-20T02:30:00.000Z',
+        occurredStart: '2026-08-20T02:30:00.000Z',
+        precision: 'exact',
+        isTimed: true,
+        timezone: 'America/Los_Angeles',
+      }),
+    ).toMatch(/Aug 19, 2026/);
+
+    expect(
+      formatCharacterTimelineWhen({
+        id: 'e2',
+        eventTitle: 'Day',
+        eventDate: '2026-08-10T00:00:00.000Z',
+        occurredStart: '2026-08-10T00:00:00.000Z',
+        precision: 'date',
+        isTimed: false,
+        timezone: 'UTC',
+      }),
+    ).toBe('Aug 10, 2026');
+  });
+
+  it('shows a start–end range and does not duplicate the id', () => {
+    expect(
+      formatCharacterTimelineWhen({
+        id: 'event:festival',
+        eventTitle: 'Festival',
+        eventDate: '2026-08-21T16:00:00.000Z',
+        occurredStart: '2026-08-21T16:00:00.000Z',
+        occurredEnd: '2026-08-23T04:00:00.000Z',
+        precision: 'date',
+        isRange: true,
+        timezone: 'UTC',
+      }),
+    ).toBe('Aug 21, 2026 – Aug 23, 2026');
+  });
+
+  it('does not fabricate a day from eventDate when occurrence is missing', () => {
+    expect(
+      formatCharacterTimelineWhen({
+        id: 'event:legacy-shape',
+        eventTitle: 'Card date',
+        eventDate: '2010-01-01T00:00:00.000Z',
+        occurredStart: null,
+      }),
+    ).toBe('Date unresolved');
   });
 });

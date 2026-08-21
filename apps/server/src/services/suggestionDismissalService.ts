@@ -17,7 +17,8 @@ export type SuggestionDismissalDomain =
   | 'skills'
   | 'quests'
   | 'locations'
-  | 'characters';
+  | 'characters'
+  | 'organizations';
 
 export type RecordDismissalInput = {
   name: string;
@@ -25,6 +26,8 @@ export type RecordDismissalInput = {
   sourceMessageId?: string | null;
   sourceSuggestionId?: string | null;
   reason?: DismissSuggestionReason;
+  /** Book-panel dismiss: remember as REJECTED_CANDIDATE immediately. */
+  permanent?: boolean;
 };
 
 export type DismissSuggestionReason =
@@ -118,7 +121,8 @@ class SuggestionDismissalService {
       null;
 
     const existing = await this.loadStatRow(userId, domain, normalizedName);
-    const forcePermanent = input.reason === 'not_entity' || input.reason === 'noise';
+    const forcePermanent =
+      input.permanent === true || input.reason === 'not_entity' || input.reason === 'noise';
     const nextCount = forcePermanent
       ? MAX_SUGGESTION_DISMISSALS
       : Math.min(MAX_SUGGESTION_DISMISSALS, (existing?.dismiss_count ?? 0) + 1);
@@ -158,6 +162,24 @@ class SuggestionDismissalService {
     }
 
     this.invalidate(userId);
+
+    if (isPermanent) {
+      void import('./lorebook/suggestions/suggestionDecisionStore').then(
+        async ({ recordRejectedCandidate, resolvePendingSuggestions }) => {
+          const book = domain as import('./lorebook/parser/loreBookParserTypes').LoreBookDomain;
+          if (domain === 'organizations' || statsError) {
+            await recordRejectedCandidate({
+              userId,
+              domain: book,
+              name: input.name,
+              reason: input.reason,
+              sourceSuggestionId: input.sourceSuggestionId,
+            });
+          }
+          await resolvePendingSuggestions({ userId, domain: book, names: [input.name] });
+        },
+      );
+    }
 
     return { dismissCount: nextCount, isPermanent, threadId, normalizedName, reason: input.reason };
   }

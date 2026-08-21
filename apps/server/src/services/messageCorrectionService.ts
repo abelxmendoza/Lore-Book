@@ -24,6 +24,7 @@
 
 import { logger } from '../logger';
 import { ingestionQueue } from './ingestion/ingestionQueue';
+import { invalidateSemanticIr } from './ingestion/semanticIrCache';
 import { ragPacketCacheService } from './ragPacketCacheService';
 import { supabaseAdmin } from './supabaseClient';
 
@@ -123,6 +124,8 @@ class MessageCorrectionService {
 
     // ── 5. Invalidate caches so the next reply reflects the correction ─────
     ragPacketCacheService.invalidateLoreCache(userId);
+    ragPacketCacheService.clearUserCache(userId);
+    invalidateSemanticIr(userId, messageId);
 
     logger.info(
       { userId, messageId, nextRevision, supersededUtterances, supersededUnits, reingestJobId },

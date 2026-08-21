@@ -57,4 +57,13 @@ describe('EmbeddingCacheService', () => {
       expect(await embeddingCacheService.getCachedEmbedding('content-0')).toEqual(emb);
     });
   });
+
+  describe('model version', () => {
+    it('does not reuse an embedding when the model/version changes', async () => {
+      const emb = [0.42];
+      await embeddingCacheService.cacheEmbedding('Jamie at Vanguard Robotics', emb, 'text-embedding-3-small');
+      expect(await embeddingCacheService.getCachedEmbedding('Jamie at Vanguard Robotics', 'text-embedding-3-small')).toEqual(emb);
+      expect(await embeddingCacheService.getCachedEmbedding('Jamie at Vanguard Robotics', 'text-embedding-3-large')).toBeNull();
+    });
+  });
 });

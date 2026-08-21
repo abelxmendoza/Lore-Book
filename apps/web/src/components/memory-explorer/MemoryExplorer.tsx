@@ -23,6 +23,7 @@ import { MemoryReviewQueuePanel } from '../discovery/MemoryReviewQueuePanel';
 import { buildSearchFactsClipboardText } from '../../lib/searchFactsClipboard';
 import { clipboardFilterLines } from '../../lib/listClipboard';
 import { getDisplayTitle } from '../../utils/displayTitle';
+import { formatJournalOccurrenceLabel } from '../../lib/journalOccurrence';
 
 const DEBOUNCE_DELAY = 300;
 const ITEMS_PER_PAGE = 18;
@@ -1006,14 +1007,7 @@ export const MemoryExplorer = () => {
                           people: memory.characters,
                           fallbackNoun: 'Fact',
                         });
-                        let when = '';
-                        try {
-                          when = new Date(memory.date).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric',
-                          });
-                        } catch { /* noop */ }
+                        const when = formatJournalOccurrenceLabel(memory.date);
                         return (
                           <button
                             key={memory.id || `mem-${index}`}

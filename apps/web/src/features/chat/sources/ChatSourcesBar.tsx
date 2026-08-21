@@ -12,12 +12,15 @@ import { SOURCE_TYPE_LABELS } from '../message/ChatMessage';
 type ChatSourcesBarProps = {
   sources?: ChatSource[];
   onSourceClick?: (source: ChatSource) => void;
+  /** Parent tray owns collapse — always show the list, no nested chevron. */
+  embedded?: boolean;
 };
 
-export const ChatSourcesBar = ({ sources, onSourceClick }: ChatSourcesBarProps) => {
+export const ChatSourcesBar = ({ sources, onSourceClick, embedded = false }: ChatSourcesBarProps) => {
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(true);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showList = embedded || expanded;
 
   useEffect(() => {
     return () => {
@@ -54,35 +57,53 @@ export const ChatSourcesBar = ({ sources, onSourceClick }: ChatSourcesBarProps) 
 
   return (
     <div
-      className="px-4 py-2 border-t border-border/30 bg-black/20 chat-sources-bar"
+      className={
+        embedded
+          ? 'px-3 py-2 sm:px-4 chat-sources-bar'
+          : 'px-4 py-2 border-t border-border/30 bg-black/20 chat-sources-bar'
+      }
       data-testid="chat-sources-bar"
     >
       <div className="flex items-start justify-between gap-2 mb-1.5">
-        <button
-          type="button"
-          className="min-w-0 flex-1 text-left"
-          onClick={() => setExpanded((v) => !v)}
-          aria-expanded={expanded}
-          aria-controls="chat-sources-bar-body"
-          data-testid="chat-sources-toggle"
-        >
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-3 w-3 text-primary/70 shrink-0" />
-            <span className="text-xs font-semibold text-primary/70">Sources for this answer</span>
-            <span className="text-xs text-white/40">({visible.length})</span>
-            {expanded ? (
-              <ChevronUp className="h-3 w-3 text-white/40 shrink-0" />
-            ) : (
-              <ChevronDown className="h-3 w-3 text-white/40 shrink-0" />
-            )}
-          </div>
-          {expanded && (
+        {embedded ? (
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-3 w-3 text-primary/70 shrink-0" />
+              <span className="text-xs font-semibold text-primary/70">Sources for this answer</span>
+              <span className="text-xs text-white/40">({visible.length})</span>
+            </div>
             <p className="text-[10px] text-white/35 mt-0.5 leading-snug">
               Supporting sources are cited or matched to the answer. Background sources were
               consulted but are not presented as direct support.
             </p>
-          )}
-        </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="min-w-0 flex-1 text-left"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            aria-controls="chat-sources-bar-body"
+            data-testid="chat-sources-toggle"
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-3 w-3 text-primary/70 shrink-0" />
+              <span className="text-xs font-semibold text-primary/70">Sources for this answer</span>
+              <span className="text-xs text-white/40">({visible.length})</span>
+              {expanded ? (
+                <ChevronUp className="h-3 w-3 text-white/40 shrink-0" />
+              ) : (
+                <ChevronDown className="h-3 w-3 text-white/40 shrink-0" />
+              )}
+            </div>
+            {expanded && (
+              <p className="text-[10px] text-white/35 mt-0.5 leading-snug">
+                Supporting sources are cited or matched to the answer. Background sources were
+                consulted but are not presented as direct support.
+              </p>
+            )}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => void handleCopyAll()}
@@ -99,7 +120,7 @@ export const ChatSourcesBar = ({ sources, onSourceClick }: ChatSourcesBarProps) 
           <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy all'}</span>
         </button>
       </div>
-      {expanded && (
+      {showList && (
         <div id="chat-sources-bar-body" className="flex flex-wrap gap-2">
           {visible.some((source) => source.usage === 'supporting') && (
             <span className="text-[10px] font-medium text-emerald-300/70 w-full">

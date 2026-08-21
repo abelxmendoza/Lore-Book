@@ -1,4 +1,9 @@
 import { scrubLegacyComposerPrefill } from '../../../lib/scrubLegacyComposerPrefill';
+import {
+  COMPOSER_STORAGE_DEBOUNCE_MS,
+  composerIntelligenceMetrics,
+  noteRawComposerDraft,
+} from '../../../lib/composerIntelligence';
 
 const VAULT_KEY = 'lorekeeper.storySafetyVault.v1';
 const DRAFT_PREFIX = 'lorekeeper.composerDraft.v1';
@@ -64,9 +69,58 @@ export function saveComposerDraft(ownerId: string, threadId: string | undefined,
     const key = draftKey(ownerId, threadId);
     if (text.trim()) window.localStorage.setItem(key, text);
     else window.localStorage.removeItem(key);
+    composerIntelligenceMetrics.noteStorageWrite();
   } catch {
     // Draft persistence is best-effort and must never block typing.
   }
+}
+
+type PendingDraftSave = {
+  ownerId: string;
+  threadId: string | undefined;
+  text: string;
+  timer: number;
+};
+
+let pendingDraftSave: PendingDraftSave | null = null;
+
+/** Keystroke path: remember the draft and persist after a pause. */
+export function scheduleComposerDraftSave(
+  ownerId: string,
+  threadId: string | undefined,
+  text: string,
+): void {
+  noteRawComposerDraft(text);
+  if (typeof window === 'undefined') {
+    saveComposerDraft(ownerId, threadId, text);
+    return;
+  }
+  if (pendingDraftSave?.timer) window.clearTimeout(pendingDraftSave.timer);
+  pendingDraftSave = {
+    ownerId,
+    threadId,
+    text,
+    timer: window.setTimeout(() => {
+      const next = pendingDraftSave;
+      pendingDraftSave = null;
+      if (next) saveComposerDraft(next.ownerId, next.threadId, next.text);
+    }, COMPOSER_STORAGE_DEBOUNCE_MS),
+  };
+}
+
+/** Blur / unmount / send: write the latest draft immediately. */
+export function flushComposerDraftSave(
+  ownerId?: string,
+  threadId?: string,
+  text?: string,
+): void {
+  if (pendingDraftSave?.timer) window.clearTimeout(pendingDraftSave.timer);
+  const owner = ownerId ?? pendingDraftSave?.ownerId;
+  const thread = threadId ?? pendingDraftSave?.threadId;
+  const value = text ?? pendingDraftSave?.text;
+  pendingDraftSave = null;
+  if (owner === undefined || value === undefined) return;
+  saveComposerDraft(owner, thread, value);
 }
 
 export function readComposerDraft(ownerId: string, threadId?: string): string {
@@ -137,6 +191,8 @@ export function subscribeStoryRecovery(listener: (attempt: StorySafetyAttempt) =
 
 export function resetStorySafetyVaultForTests(): void {
   inFlightAttemptIds.clear();
+  if (pendingDraftSave?.timer) window.clearTimeout(pendingDraftSave.timer);
+  pendingDraftSave = null;
   if (!storageAvailable()) return;
   window.localStorage.removeItem(VAULT_KEY);
 }

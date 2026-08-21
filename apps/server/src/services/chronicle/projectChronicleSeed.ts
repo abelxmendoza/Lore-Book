@@ -57,14 +57,14 @@ export const PRODUCT_ENTITY: ChronicleEntity = {
   fields: {
     currentVersion: '0.1.0',
     currentStage: DevelopmentStage.BETA,
-    tagline: 'A system that gradually understands your life.',
+    tagline: 'A life record that tells the truth in time.',
     majorCapabilities: [
       'Conversational runtime with durable memory ingestion',
       'Entity resolution and identity integrity',
       'Provenance graph and correction authority',
       'Narrative spine, life arcs, and chronology',
       'Lore Agents — memory, identity, narrative, contradiction, system cognition',
-      'Omni Timeline and living project chronicle',
+      'Omni Timeline with calendar, honest occurrence time, and living project chronicle',
     ],
     roadmapProgress: '72% toward platform maturity',
   },
@@ -72,9 +72,9 @@ export const PRODUCT_ENTITY: ChronicleEntity = {
 
 export const STAGE: ChronicleStage = {
   current: DevelopmentStage.BETA,
-  progressPercent: 72,
-  label: 'Beta — narrative intelligence architecture maturing',
-  updatedAt: '2026-06-18T00:00:00.000Z',
+  progressPercent: 78,
+  label: 'Beta — continuity era: honest time, living people, story-following chat',
+  updatedAt: '2026-08-20T00:00:00.000Z',
 };
 
 export const VISION_SNAPSHOTS: ChronicleVisionSnapshot[] = [
@@ -98,6 +98,14 @@ export const VISION_SNAPSHOTS: ChronicleVisionSnapshot[] = [
     label: 'Version 3 Vision',
     vision: 'Narrative intelligence operating system — every person, place, and story earns a living biography from evidence.',
     recordedAt: '2026-06-01T00:00:00.000Z',
+  },
+  {
+    id: 'vision-v4',
+    version: 4,
+    label: 'Version 4 Vision',
+    vision:
+      'A life record that tells the truth in time — when something happened, who someone is to you now, and a conversation that stays with the story instead of resetting.',
+    recordedAt: '2026-08-20T00:00:00.000Z',
   },
 ];
 
@@ -212,6 +220,28 @@ const rawMilestones: Omit<ChronicleMilestone, 'stars'>[] = [
     category: MilestoneCategory.TECHNICAL_BREAKTHROUGH,
     chapterId: 'ch-social',
   },
+  {
+    id: 'ms-honest-time',
+    slug: 'time-as-it-happened',
+    title: 'Time as it happened',
+    summary:
+      'Timelines, calendars, and “last week” start meaning when a moment occurred — in your timezone — not when it was typed into the app.',
+    occurredAt: '2026-08-20T00:00:00.000Z',
+    significance: MilestoneSignificance.TRANSFORMATIONAL,
+    category: MilestoneCategory.UX_RELEASE,
+    chapterId: 'ch-continuity',
+  },
+  {
+    id: 'ms-story-follows',
+    slug: 'conversation-stays-with-the-story',
+    title: 'Conversation that stays with the story',
+    summary:
+      'People, places, and groups keep their own histories. Change the subject and LoreBook follows, instead of collapsing everything into one thread.',
+    occurredAt: '2026-08-18T00:00:00.000Z',
+    significance: MilestoneSignificance.MAJOR,
+    category: MilestoneCategory.NEW_CAPABILITY,
+    chapterId: 'ch-continuity',
+  },
 ];
 
 export const SEED_MILESTONES: ChronicleMilestone[] = rawMilestones.map((m) => ({
@@ -265,6 +295,16 @@ export const SEED_CHAPTERS: ChronicleChapter[] = [
     sortOrder: 5,
     milestoneIds: ['ms-lore-agents', 'ms-social-intelligence', 'ms-chronicle'],
   },
+  {
+    id: 'ch-continuity',
+    slug: 'continuity-era',
+    title: 'Continuity Era',
+    eraLabel: 'Chapter 6',
+    summary:
+      'Time means when it happened. People stay who they are to you. Chat follows the life, not the last message.',
+    sortOrder: 6,
+    milestoneIds: ['ms-honest-time', 'ms-story-follows'],
+  },
 ];
 
 export const SELF_NARRATIVE_CHAPTERS: SelfNarrativeChapter[] = [
@@ -292,5 +332,10 @@ export const SELF_NARRATIVE_CHAPTERS: SelfNarrativeChapter[] = [
     chapterNumber: 5,
     title: 'Social Intelligence',
     body: 'Kinship graphs, relationship peripherals, and Lore Agents coordinate memory, identity, narrative, and contradiction — and LoreBook begins writing its own chronicle.',
+  },
+  {
+    chapterNumber: 6,
+    title: 'Continuity',
+    body: 'The record learned to tell time honestly. Moments sit when they happened. People stay who they are to you. Conversation follows the life instead of resetting around the last message.',
   },
 ];

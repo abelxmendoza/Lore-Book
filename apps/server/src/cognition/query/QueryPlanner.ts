@@ -43,10 +43,18 @@ export function planQuery(
     ];
   }
 
-  // Invariant (legacy router rule): foundation-primary intents must not fall
-  // back to raw journal snippets.
+  // RC-2: foundation-primary intents still get exactly one journal/units
+  // vector search when structured recall returns no records. Do not run
+  // semantic first, and do not run more than one semantic stage.
   if (classification.foundationPrimary) {
     stages = stages.filter((s) => s.kind !== 'semantic');
+    stages.push({
+      kind: 'semantic',
+      source: 'journal_entries',
+      priority: 9,
+      runIf: 'if_no_records',
+      profile: EXECUTOR_PROFILES.semantic,
+    });
   }
 
   const ordered = [...stages].sort((a, b) => a.priority - b.priority);

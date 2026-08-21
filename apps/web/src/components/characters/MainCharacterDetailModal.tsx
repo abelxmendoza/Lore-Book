@@ -130,11 +130,12 @@ function formatRelationshipType(type: string): string {
   return type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function formatMemoryDate(iso: string): string {
+function formatMemoryDate(iso: string | null | undefined): string {
+  if (!iso) return 'Date unknown';
   try {
     return format(parseISO(iso), 'MMM d, yyyy');
   } catch {
-    return iso;
+    return 'Date unknown';
   }
 }
 

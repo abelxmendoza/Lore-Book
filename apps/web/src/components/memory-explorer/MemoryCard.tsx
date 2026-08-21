@@ -5,6 +5,7 @@ import { Card, CardContent } from '../ui/card';
 import { fetchJson } from '../../lib/api';
 import type { MemoryCard, LinkedMemory } from '../../types/memory';
 import { getDisplayTitle } from '../../utils/displayTitle';
+import { formatJournalOccurrenceLabel, hasJournalOccurrence } from '../../lib/journalOccurrence';
 
 type MemoryCardProps = {
   memory: MemoryCard;
@@ -15,14 +16,7 @@ type MemoryCardProps = {
   onToggleFavorite?: (memory: MemoryCard) => void;
 };
 
-const formatDate = (dateString: string) => {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  });
-};
+const formatDate = (dateString: string | null | undefined) => formatJournalOccurrenceLabel(dateString);
 
 const moodColors: Record<string, string> = {
   happy: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',
@@ -63,14 +57,18 @@ export const MemoryCardComponent = ({
           source: string;
         }> }>(`/api/entries/${memory.id}/linked`);
         const linked = response.entries.map((entry) => {
-          const entryDate = new Date(entry.date);
-          const memoryDate = new Date(memory.date);
-          const daysDiff = Math.round((entryDate.getTime() - memoryDate.getTime()) / (1000 * 60 * 60 * 24));
+          const entryTime = hasJournalOccurrence(entry.date) ? Date.parse(entry.date) : NaN;
+          const memoryTime = hasJournalOccurrence(memory.date) ? Date.parse(memory.date) : NaN;
+          const daysDiff = Number.isFinite(entryTime) && Number.isFinite(memoryTime)
+            ? Math.round((entryTime - memoryTime) / (1000 * 60 * 60 * 24))
+            : undefined;
 
           let linkType: LinkedMemory['linkType'] = 'temporal';
           let linkLabel = '';
 
-          if (daysDiff === 0) {
+          if (daysDiff == null) {
+            linkLabel = 'Date unknown';
+          } else if (daysDiff === 0) {
             linkLabel = 'Same day';
           } else if (daysDiff > 0) {
             linkLabel = `${daysDiff} day${daysDiff > 1 ? 's' : ''} after`;

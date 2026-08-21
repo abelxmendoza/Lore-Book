@@ -191,4 +191,70 @@ describe('subject timeline compiler', () => {
     expect(compilation.events.map((event) => event.source_id)).toEqual(['job']);
     expect(compilation.contextEvents).toHaveLength(0);
   });
+
+  it('labels organization subject inclusion from attributions, not name overlap', () => {
+    const intent = interpretSubjectTimelineQuery('Acme');
+    const compilation = compileSubjectTimeline({
+      query: intent.rawQuery,
+      intent,
+      subject: {
+        entityId: 'org-acme',
+        entityType: 'organization',
+        displayName: 'Acme',
+        aliases: [],
+        confidence: 1,
+      },
+      items: [
+        item({
+          id: 'event:work',
+          sourceId: 'evt-work',
+          title: 'Started the job',
+          body: 'First week in the lab.',
+          organizationAttributions: [{
+            organizationId: 'org-acme',
+            organizationName: 'Acme',
+            role: 'employer',
+            evidence: 'I started working at Acme',
+            evidenceKind: 'explicit_work_phrase',
+            confidence: 0.93,
+            accepted: true,
+            canonical: true,
+            acceptedForOrganizationTimeline: true,
+            direct: true,
+            whyIncluded: 'Explicit work/employer context',
+            protagonistRelation: true,
+            unresolved: false,
+          }],
+        }),
+        item({
+          id: 'event:thought',
+          sourceId: 'evt-thought',
+          title: 'Thinking about Acme',
+          body: 'I was thinking about Acme.',
+          organizationAttributions: [{
+            organizationId: 'org-acme',
+            organizationName: 'Acme',
+            role: 'referenced',
+            evidence: 'thinking about Acme',
+            evidenceKind: 'reference_phrase',
+            confidence: 0.82,
+            accepted: true,
+            canonical: true,
+            acceptedForOrganizationTimeline: false,
+            direct: true,
+            whyIncluded: 'Referenced only — not organization participation',
+            protagonistRelation: false,
+            unresolved: false,
+          }],
+        }),
+      ],
+    });
+
+    const work = [...compilation.events, ...compilation.contextEvents].find((row) => row.source_id === 'evt-work');
+    const thought = [...compilation.events, ...compilation.contextEvents].find((row) => row.source_id === 'evt-thought');
+    expect(work?.subjectRelation).toBe('DIRECT_EVENT');
+    expect(work?.whyIncluded).toBe('Explicit work/employer context');
+    expect(thought?.subjectRelation).toBe('INCIDENTAL_MENTION');
+    expect(thought?.whyIncluded).toMatch(/Referenced only/);
+  });
 });

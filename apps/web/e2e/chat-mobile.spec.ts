@@ -11,6 +11,7 @@ test.describe('Chat mobile layout', () => {
   test.beforeEach(async ({ context }) => {
     await context.addInitScript(() => {
       window.localStorage.setItem('dev-notice-dismissed', 'true');
+      window.localStorage.setItem('lorebook.whatsNew.seenId', '*');
     });
   });
 

@@ -12,6 +12,23 @@ import { knowledgeTypeEngineService } from '../knowledgeTypeEngineService';
 import { metaControlService } from '../metaControlService';
 import { omegaMemoryService } from '../omegaMemoryService';
 import { supabaseAdmin } from '../supabaseClient';
+import { recordLlmReason, recordSkippedOperation } from '../../lib/messageCostTracker';
+import { canonicalFieldsUnchanged } from '../ingestion/dirtyCheck';
+import {
+  EVENT_ASSEMBLY_DELTA_BUDGET,
+  EVENT_ASSEMBLY_OVERLAP_MS,
+  EVENT_ASSEMBLY_RECOVERY_BUDGET,
+} from '../ingestion/deltaJobBudget';
+import {
+  EVENT_ASSEMBLY_PROCESSING_VERSION,
+  advanceCursor,
+  loadWorkerCursor,
+  logDeltaReport,
+  overlapIso,
+  saveWorkerCursor,
+  type WorkerRunMode,
+} from '../ingestion/workerHighWaterMark';
+import { shouldAssembleDeterministically } from './eventAssemblyLlmGate';
 import { resolveAllTemporalAnchors, resolveAllTemporalAnchorsInTimezone, resolveChronoWindows } from '../../utils/temporalAnchorResolver';
 import {
   chooseTemporal,
@@ -31,6 +48,7 @@ import {
 } from '../events/lifeLogEligibilityPolicy';
 import { maintainLifeLogForUser } from '../events/lifeLogMaintenanceService';
 import { findBestDuplicate, MAX_MERGE_GAP_MS } from '../chronologyV2/eventCanonicalization';
+import { attributeOrganizationsForEventText } from '../organizations/organizationEventAttributionService';
 import { tokenizeTerms } from '../chronologyV2/narrativeCohesion';
 import { classifySentence, mayBecomeMoment } from '../narrative/sentenceClassifier';
 import { mayPromoteMomentToEvent } from '../narrative/eventSignificance';
@@ -64,6 +82,9 @@ import { assessAndPersistMilestone } from '../narrative/milestoneClassifier';
 
 interface EventAssemblyOptions {
   windowDays?: number;
+  /** Ordinary ingestion is delta. Explicit routes/recovery pass recovery|rebuild. */
+  mode?: WorkerRunMode;
+  maxRows?: number;
 }
 
 interface AssembledWhen {
@@ -110,49 +131,96 @@ function canonicalEventKey(title: string, reason: string, when: AssembledWhen | 
  * Assembles structured events from EXPERIENCE units
  */
 export class EventAssemblyService {
+  private runChains = new Map<string, Promise<EventAssemblyResult[]>>();
+
   /**
    * Assemble events from extracted units
    * Groups EXPERIENCE units by WHO/WHERE/WHEN
    */
   async assembleEvents(userId: string, threadId?: string, options: EventAssemblyOptions = {}): Promise<EventAssemblyResult[]> {
+    const prev = this.runChains.get(userId) ?? Promise.resolve([] as EventAssemblyResult[]);
+    const next = prev
+      .catch(() => [] as EventAssemblyResult[])
+      .then(() => this.assembleEventsUnlocked(userId, threadId, options));
+    this.runChains.set(userId, next);
     try {
-      // Load only recent EXPERIENCE units — units older than this window were already
-      // assembled in a prior run. Loading all history is O(n_lifetime) per message,
-      // which becomes catastrophic for long-term users.
-      const ASSEMBLY_WINDOW_DAYS = Math.min(Math.max(options.windowDays ?? 30, 1), 3650);
-      const windowStart = new Date(Date.now() - ASSEMBLY_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      return await next;
+    } finally {
+      if (this.runChains.get(userId) === next) this.runChains.delete(userId);
+    }
+  }
 
-      const { data: allUnits, error } = await supabaseAdmin
+  private async assembleEventsUnlocked(userId: string, threadId: string | undefined, options: EventAssemblyOptions): Promise<EventAssemblyResult[]> {
+    const mode: WorkerRunMode = options.mode ?? (options.windowDays != null ? 'recovery' : 'delta');
+
+    try {
+      const cursor = await loadWorkerCursor(userId, 'event_assembly', EVENT_ASSEMBLY_PROCESSING_VERSION);
+      const maxRows = Math.min(
+        options.maxRows ?? (mode === 'delta' ? EVENT_ASSEMBLY_DELTA_BUDGET.maxRows : EVENT_ASSEMBLY_RECOVERY_BUDGET.maxRows),
+        mode === 'delta' ? EVENT_ASSEMBLY_DELTA_BUDGET.maxRows : EVENT_ASSEMBLY_RECOVERY_BUDGET.maxRows,
+      );
+
+      let query = supabaseAdmin
         .from('extracted_units')
         .select('*')
         .eq('user_id', userId)
-        .eq('type', 'EXPERIENCE')
-        .gte('created_at', windowStart)
+        .eq('type', 'EXPERIENCE');
+
+      if (mode === 'delta') {
+        const since = overlapIso(cursor.lastProcessedAt, EVENT_ASSEMBLY_OVERLAP_MS);
+        if (since) query = query.gte('created_at', since);
+      } else {
+        const ASSEMBLY_WINDOW_DAYS = Math.min(Math.max(options.windowDays ?? 30, 1), 3650);
+        const windowStart = new Date(Date.now() - ASSEMBLY_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+        query = query.gte('created_at', windowStart);
+      }
+
+      const { data: allUnits, error } = await query
         .order('created_at', { ascending: true })
-        .limit(1000);
+        .limit(maxRows);
 
       if (error) {
         throw error;
       }
 
-      // Filter out deprecated and pruned units
-      // Also filter out AI interpretations (they shouldn't create events)
       const experienceUnits = (allUnits || []).filter(
         unit =>
           !unit.metadata?.deprecated &&
           !unit.metadata?.pruned &&
           !unit.superseded_at &&
           unit.metadata?.source !== 'ai_interpretation' &&
-          unit.confidence > 0.2 // Also filter very low confidence units
+          unit.confidence > 0.2
       );
 
-      if (error) {
-        throw error;
-      }
-
       if (!experienceUnits || experienceUnits.length === 0) {
+        logDeltaReport({
+          worker: 'event_assembly',
+          userId,
+          mode,
+          rowsScanned: allUnits?.length ?? 0,
+          rowsNew: 0,
+          rowsChanged: 0,
+          rowsSkippedAlreadyProcessed: 0,
+          llmCalls: 0,
+          embeddingCalls: 0,
+          writes: 0,
+          cursorBefore: cursor.lastProcessedAt,
+          cursorAfter: cursor.lastProcessedAt,
+          retryCount: cursor.failedIds.length,
+        });
         return [];
       }
+
+      const freshIds = new Set(
+        experienceUnits
+          .filter((unit) => {
+            if (cursor.failedIds.includes(unit.id)) return true;
+            if (!cursor.lastProcessedAt) return true;
+            const at = String(unit.updated_at ?? unit.created_at ?? '');
+            return at > cursor.lastProcessedAt;
+          })
+          .map((unit) => unit.id),
+      );
 
       // Group units by temporal and entity proximity
       const eventGroups = this.groupUnitsIntoEvents(experienceUnits);
@@ -162,7 +230,12 @@ export class EventAssemblyService {
       // Profile facts / states / opinions never become Moments.
       const results: EventAssemblyResult[] = [];
       const chapterSceneInputs: ChapterSceneInput[] = [];
+      let skippedAlready = 0;
       for (const group of eventGroups) {
+        if (mode === 'delta' && cursor.lastProcessedAt && !group.some((u) => freshIds.has(u.id))) {
+          skippedAlready += group.length;
+          continue;
+        }
         const clauseGroup = group.map(unit => ({
           ...unit,
           content: autobiographicalClause(unit.content) || unit.content,
@@ -466,6 +539,30 @@ export class EventAssemblyService {
         logger.warn({ error, userId }, 'Life Log maintenance failed (non-blocking)');
       });
 
+      const processedStamps = experienceUnits
+        .filter((u) => freshIds.has(u.id))
+        .map((u) => ({ id: u.id, at: String(u.updated_at ?? u.created_at ?? '') }))
+        .filter((row) => row.at);
+      const next = advanceCursor(cursor, processedStamps, [], EVENT_ASSEMBLY_PROCESSING_VERSION);
+      if (next.lastProcessedAt !== cursor.lastProcessedAt) {
+        await saveWorkerCursor(userId, 'event_assembly', next);
+      }
+      logDeltaReport({
+        worker: 'event_assembly',
+        userId,
+        mode,
+        rowsScanned: allUnits?.length ?? 0,
+        rowsNew: freshIds.size,
+        rowsChanged: 0,
+        rowsSkippedAlreadyProcessed: skippedAlready,
+        llmCalls: 0,
+        embeddingCalls: 0,
+        writes: results.length,
+        cursorBefore: cursor.lastProcessedAt,
+        cursorAfter: next.lastProcessedAt,
+        retryCount: cursor.failedIds.length,
+      });
+
       return results;
     } catch (error) {
       logger.error({ error, userId }, 'Failed to assemble events');
@@ -644,24 +741,31 @@ export class EventAssemblyService {
         .filter(unit => !unit.superseded_at && !unit.metadata?.deprecated && !unit.metadata?.pruned)
         .map(unit => unit.id as string);
       const allUnitIds = [...new Set([...activePriorUnits, ...unitGroup.map(unit => unit.id)])];
-      await supabaseAdmin.from('resolved_events').update({
+      const nextMetadata = {
+        ...priorMetadata,
+        assembled_from_units: allUnitIds,
+        life_log: {
+          publication_status: 'published',
+          eligibility_reason: eligibility.reason,
+          eligibility_confidence: eligibility.confidence,
+          policy_version: 'v2',
+        },
+      };
+      if (!canonicalFieldsUnchanged(canonicalMatch as Record<string, unknown>, {
         title,
         summary: what,
-        metadata: {
-          ...priorMetadata,
-          assembled_from_units: allUnitIds,
-          life_log: {
-            publication_status: 'published',
-            eligibility_reason: eligibility.reason,
-            eligibility_confidence: eligibility.confidence,
-            policy_version: 'v2',
-          },
-        },
-        updated_at: new Date().toISOString(),
-      }).eq('id', canonicalMatch.id).eq('user_id', userId);
-      for (const unit of unitGroup) {
+        metadata: nextMetadata,
+      }, ['title', 'summary', 'metadata'])) {
+        await supabaseAdmin.from('resolved_events').update({
+          title,
+          summary: what,
+          metadata: nextMetadata,
+          updated_at: new Date().toISOString(),
+        }).eq('id', canonicalMatch.id).eq('user_id', userId);
+      }
+      if (unitGroup.length > 0) {
         await supabaseAdmin.from('event_unit_links').upsert(
-          { event_id: canonicalMatch.id, unit_id: unit.id },
+          unitGroup.map((unit) => ({ event_id: canonicalMatch.id, unit_id: unit.id })),
           { onConflict: 'event_id,unit_id', ignoreDuplicates: true },
         );
       }
@@ -675,9 +779,6 @@ export class EventAssemblyService {
         source_unit_ids: allUnitIds,
       };
     }
-
-    // Ingest text to extract entities and create event
-    const ingestionResult = await omegaMemoryService.ingestText(userId, sourceText, 'AI');
 
     // Replay-safe fingerprint from knowledge unit ids (stable across re-assembly).
     const { buildAssemblyFingerprint, EVENT_EXTRACTOR_VERSION } = await import(
@@ -694,18 +795,11 @@ export class EventAssemblyService {
       .eq('source_fingerprint', sourceFingerprint)
       .maybeSingle();
     if (existingByFp?.id) {
+      recordSkippedOperation('event_assembly_already_fingerprinted');
       return existingByFp as typeof existingByFp;
     }
 
-    // People rows in omega_entities are typed PERSON at extraction time but
-    // legacy rows hold CHARACTER — resolution returns whichever the row has,
-    // so both count as participants.
-    const peopleIds = [...new Set(ingestionResult.entities
-      .filter(e => e.type === 'PERSON' || e.type === 'CHARACTER')
-      .map(e => e.id))];
-    const locationIds = [...new Set(ingestionResult.entities
-      .filter(e => e.type === 'LOCATION')
-      .map(e => e.id))];
+    const { peopleIds, locationIds } = await this.resolveAssemblyEntities(userId, sourceText, unitGroup);
 
     // Paraphrase-level canonicalization: the canonical_event_key match above
     // only catches replays that regenerate the same key. Re-extractions that
@@ -772,7 +866,10 @@ export class EventAssemblyService {
         confidence: 0.8,
         source_fingerprint: sourceFingerprint,
         extractor_version: EVENT_EXTRACTOR_VERSION,
-        metadata: {
+        metadata: await attributeOrganizationsForEventText({
+          userId,
+          text: `${title}. ${what}. ${sourceText}`,
+          existingMetadata: {
           assembled_from_units: unitGroup.map(u => u.id),
           canonical_event_key: eventKey,
           user_presence: userPresence,
@@ -801,7 +898,8 @@ export class EventAssemblyService {
                 source: when.source || null,
               }
             : null,
-        },
+          },
+        }),
       })
       .select('*')
       .single();
@@ -888,11 +986,11 @@ export class EventAssemblyService {
 
     // Link units to event. upsert with ignoreDuplicates is the supabase-js v2
     // form — .insert().onConflict().ignore() does not exist and throws.
-    for (const unit of unitGroup) {
+    if (unitGroup.length > 0) {
       await supabaseAdmin
         .from('event_unit_links')
         .upsert(
-          { event_id: event.id, unit_id: unit.id },
+          unitGroup.map((unit) => ({ event_id: event.id, unit_id: unit.id })),
           { onConflict: 'event_id,unit_id', ignoreDuplicates: true }
         );
     }
@@ -1100,10 +1198,67 @@ export class EventAssemblyService {
     const when = this.extractWhen(validUnits, timezone);
     const userPresence = inferUserPresence(validUnits);
 
-    // Re-ingest to get updated entities
+    // Re-ingest to get updated entities only when the scene is ambiguous.
     const sourceText = validUnits.map(u => u.content).join(' ');
     const eligibility = evaluateLifeLogEligibility({ text: sourceText, title });
-    const ingestionResult = await omegaMemoryService.ingestText(userId, sourceText, 'AI');
+    const { peopleIds, locationIds } = await this.resolveAssemblyEntities(userId, sourceText, validUnits);
+
+    const evidence = chooseTemporal(this.rowEvidence(existingEvent), this.whenToEvidence(when, timezone));
+    const nextMetadata = await attributeOrganizationsForEventText({
+      userId,
+      text: `${title}. ${what || existingEvent.summary || ''}. ${sourceText}`,
+      existingMetadata: {
+      ...(existingEvent.metadata || {}),
+      assembled_from_units: validUnits.map(u => u.id),
+      user_presence: userPresence,
+      life_log: {
+        publication_status: eligibility.eligible && isPublishableLifeLogTitle(title) ? 'published' : 'quarantined',
+        eligibility_reason: eligibility.reason,
+        eligibility_confidence: eligibility.confidence,
+        policy_version: 'v2',
+      },
+      last_refined_at: new Date().toISOString(),
+      temporal: when
+        ? {
+            label: when.label || null,
+            confidence: when.confidence ?? null,
+            precision: when.precision || null,
+            source: when.source || null,
+          }
+        : existingEvent.metadata?.temporal || null,
+      },
+    });
+
+    const nextRow = {
+      title,
+      summary: what || existingEvent.summary,
+      ...this.evidencePatch(evidence),
+      end_time: when?.end || existingEvent.end_time,
+      people: peopleIds,
+      locations: locationIds,
+      metadata: nextMetadata,
+    };
+
+    if (canonicalFieldsUnchanged(existingEvent as Record<string, unknown>, nextRow as Record<string, unknown>, [
+      'title', 'summary', 'start_time', 'end_time', 'people', 'locations', 'metadata',
+    ])) {
+      recordSkippedOperation('event_assembly_identical_update');
+      if (newUnits.length > 0) {
+        await supabaseAdmin.from('event_unit_links').upsert(
+          newUnits.map((unit) => ({ event_id: eventId, unit_id: unit.id })),
+          { onConflict: 'event_id,unit_id', ignoreDuplicates: true },
+        );
+      }
+      return {
+        event_id: eventId,
+        title: existingEvent.title,
+        who: existingEvent.people || [],
+        what: existingEvent.summary || '',
+        where: existingEvent.locations?.[0] || null,
+        when: existingEvent.start_time ? { start: existingEvent.start_time, end: existingEvent.end_time } : null,
+        source_unit_ids: validUnits.map(u => u.id),
+      };
+    }
 
     // Update event (merge with existing, but prefer new information if confidence is higher)
     const updatedConfidence = Math.min(
@@ -1124,41 +1279,9 @@ export class EventAssemblyService {
     const { data: updatedEvent, error: updateError } = await supabaseAdmin
       .from('resolved_events')
       .update({
-        title, // Update title
-        summary: what || existingEvent.summary, // Update summary if available
-        // Precedence-aware: new evidence only replaces a LOWER class.
-        ...this.evidencePatch(
-          chooseTemporal(this.rowEvidence(existingEvent), this.whenToEvidence(when, timezone)),
-        ),
-        end_time: when?.end || existingEvent.end_time,
-        people: ingestionResult.entities
-          .filter(e => e.type === 'PERSON')
-          .map(e => e.id),
-        locations: ingestionResult.entities
-          .filter(e => e.type === 'LOCATION')
-          .map(e => e.id),
+        ...nextRow,
         confidence: updatedConfidence,
         updated_at: new Date().toISOString(),
-        metadata: {
-          ...(existingEvent.metadata || {}),
-          assembled_from_units: validUnits.map(u => u.id),
-          user_presence: userPresence,
-          life_log: {
-            publication_status: eligibility.eligible && isPublishableLifeLogTitle(title) ? 'published' : 'quarantined',
-            eligibility_reason: eligibility.reason,
-            eligibility_confidence: eligibility.confidence,
-            policy_version: 'v2',
-          },
-          last_refined_at: new Date().toISOString(),
-          temporal: when
-            ? {
-                label: when.label || null,
-                confidence: when.confidence ?? null,
-                precision: when.precision || null,
-                source: when.source || null,
-              }
-            : existingEvent.metadata?.temporal || null,
-        },
       })
       .eq('id', eventId)
       .select('*')
@@ -1169,11 +1292,11 @@ export class EventAssemblyService {
     }
 
     // Link new units to event
-    for (const unit of newUnits) {
+    if (newUnits.length > 0) {
       await supabaseAdmin
         .from('event_unit_links')
         .upsert(
-          { event_id: eventId, unit_id: unit.id },
+          newUnits.map((unit) => ({ event_id: eventId, unit_id: unit.id })),
           { onConflict: 'event_id,unit_id', ignoreDuplicates: true }
         );
     }
@@ -1303,9 +1426,9 @@ export class EventAssemblyService {
         };
       }
 
-      // Re-ingest to get updated entities
+      // Re-ingest to get updated entities only when the scene is ambiguous.
       const sourceText = validUnits.map(u => u.content).join(' ');
-      const ingestionResult = await omegaMemoryService.ingestText(userId, sourceText, 'AI');
+      const { peopleIds, locationIds } = await this.resolveAssemblyEntities(userId, sourceText, validUnits);
 
       // Calculate new confidence
       const newConfidence = Math.min(event.confidence + 0.05, 0.95); // Slightly increase confidence
@@ -1333,12 +1456,8 @@ export class EventAssemblyService {
             ),
           ),
           end_time: updatedWhen?.end || event.end_time,
-          people: ingestionResult.entities
-            .filter(e => e.type === 'PERSON')
-            .map(e => e.id),
-          locations: ingestionResult.entities
-            .filter(e => e.type === 'LOCATION')
-            .map(e => e.id),
+          people: peopleIds,
+          locations: locationIds,
           confidence: newConfidence,
           updated_at: new Date().toISOString(),
           metadata: {
@@ -1535,6 +1654,52 @@ export class EventAssemblyService {
       .replace(/^(i|we)\s+(talked|spoke|chatted|were talking)\s+(about|with)\s+/i, '')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  /**
+   * Prefer unit-level entity IDs for simple scenes. Ambiguous scenes fail
+   * upward to omegaMemoryService.ingestText (1–3 LLM calls).
+   */
+  private async resolveAssemblyEntities(
+    userId: string,
+    sourceText: string,
+    unitGroup: ExtractedUnit[],
+  ): Promise<{ peopleIds: string[]; locationIds: string[] }> {
+    const gate = shouldAssembleDeterministically(sourceText, unitGroup);
+    if (gate.deterministic) {
+      recordSkippedOperation('event_assembly_ingest_text');
+      const ids = [...new Set(unitGroup.flatMap((u) => u.entity_ids ?? []))];
+      if (ids.length === 0) return { peopleIds: [], locationIds: [] };
+      const { data } = await supabaseAdmin
+        .from('omega_entities')
+        .select('id, type')
+        .eq('user_id', userId)
+        .in('id', ids);
+      const peopleIds = [...new Set(
+        (data ?? [])
+          .filter((e) => e.type === 'PERSON' || e.type === 'CHARACTER')
+          .map((e) => e.id as string),
+      )];
+      const locationIds = [...new Set(
+        (data ?? []).filter((e) => e.type === 'LOCATION').map((e) => e.id as string),
+      )];
+      return { peopleIds, locationIds };
+    }
+
+    recordLlmReason(`event_assembly_${gate.reason}`);
+    const ingestionResult = await omegaMemoryService.ingestText(userId, sourceText, 'AI', {
+      sourceId: unitGroup.map((u) => u.id).filter(Boolean).sort().join(','),
+    });
+    return {
+      peopleIds: [...new Set(
+        ingestionResult.entities
+          .filter((e) => e.type === 'PERSON' || e.type === 'CHARACTER')
+          .map((e) => e.id),
+      )],
+      locationIds: [...new Set(
+        ingestionResult.entities.filter((e) => e.type === 'LOCATION').map((e) => e.id),
+      )],
+    };
   }
 
   /**

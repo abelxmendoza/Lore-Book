@@ -66,7 +66,7 @@ Low family coverage with high kinship mention count → run kinship inference + 
 | Relationship source | `character_relationships.source_character_id` | `characters.id` |
 | Relationship target | `character_relationships.target_character_id` | `characters.id` |
 | Episode evidence | `character_memories.character_id` | `characters.id` |
-| Timeline event | `character_timeline_events.character_id` | `characters.id` |
+| Timeline event | `resolved_events.people[]` | `characters.id` |
 | Authority link | `character_authority_map.canonical_character_id` | `characters.id` |
 | Legacy discovery | `people_places.id` | mapped via authority map |
 

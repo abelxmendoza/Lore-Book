@@ -4,8 +4,8 @@ import { extractApiErrorCode, friendlyPostgresErrorMessage } from '../../src/lib
 
 describe('postgresError (web)', () => {
   it('maps API codes to user-facing storage messages', () => {
-    expect(friendlyPostgresErrorMessage({ code: 'DB_READ_ONLY' })).toMatch(/read-only/i);
-    expect(friendlyPostgresErrorMessage({ code: 'DB_STORAGE_FULL' })).toMatch(/storage is full/i);
+    expect(friendlyPostgresErrorMessage({ code: 'DB_READ_ONLY' })).toMatch(/spend cap/i);
+    expect(friendlyPostgresErrorMessage({ code: 'DB_STORAGE_FULL' })).toMatch(/disk is full/i);
   });
 
   it('detects storage failures from raw error strings', () => {

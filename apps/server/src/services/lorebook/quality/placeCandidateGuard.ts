@@ -17,6 +17,7 @@ import { normalizeNameKey } from '../../../utils/nameNormalization';
 import type { EntityQualityCandidate, EntityQualityVerdict } from './entityQualityGuardTypes';
 import { classifySpatialReference } from './spatialContextResolver';
 import { arbitrateCandidateDomain } from '../../lexical/domainArbitrationLayer';
+import { isThirdPartyInstitutionMention } from './institutionPlaceRole';
 
 /** Bare common nouns / abstractions that are never a useful place NAME. */
 const GENERIC_NON_PLACE = new Set([
@@ -172,6 +173,11 @@ export function guardPlaceCandidate(candidate: EntityQualityCandidate): EntityQu
   if (TEMPORAL_SPAN.test(name)) return reject(name, candidate.domain, 'temporal_phrase_not_place');
   if (ACTIVITY_SPAN.test(name)) return reject(name, candidate.domain, 'activity_narration_not_place');
   if (FRAGMENT_FILLER.test(name)) return reject(name, candidate.domain, 'sentence_fragment_span');
+  if (/\bbecause\s+i\b/i.test(name)) return reject(name, candidate.domain, 'because_clause_fragment');
+  if (/^(?:user mentioned|mentioned by user)$/i.test(name.trim())) {
+    return reject(name, candidate.domain, 'discourse_meta_not_place');
+  }
+  if (/\bdesk\s+neighbor\b/i.test(name)) return reject(name, candidate.domain, 'role_descriptor_not_place');
   if (isProseFragment(name)) return reject(name, candidate.domain, 'prose_fragment_not_place');
   if (RELATIVE_CLAUSE.test(name)) return reject(name, candidate.domain, 'descriptive_clause_fragment');
 
@@ -180,6 +186,11 @@ export function guardPlaceCandidate(candidate: EntityQualityCandidate): EntityQu
   // references / age are not Places, however many location cues they carry.
   const spatial = classifySpatialReference(name);
   if (!spatial.isPlace) return reject(name, candidate.domain, spatial.reason);
+
+  const context = candidate.contextText ?? candidate.evidence ?? '';
+  if (isThirdPartyInstitutionMention(name, context)) {
+    return reject(name, candidate.domain, 'third_party_institution_not_visit');
+  }
 
   return null;
 }

@@ -3,6 +3,7 @@ import { calendarMonthApi, type CalendarMonthResult } from '../api/calendarMonth
 import { useAuth } from '../lib/supabase';
 import { useMockData } from '../contexts/MockDataContext';
 import { buildMockCalendarMonth } from '../mocks/calendarMonthMock';
+import { subscribeTemporalRefresh } from '../lib/storyRefresh';
 
 export function useCalendarMonth(year: number, month: number, enabled = true) {
   const { user } = useAuth();
@@ -35,6 +36,8 @@ export function useCalendarMonth(year: number, month: number, enabled = true) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => subscribeTemporalRefresh(() => { void load(); }), [load]);
 
   const dayMap = new Map(data?.days.map((d) => [d.date, d]) ?? []);
 

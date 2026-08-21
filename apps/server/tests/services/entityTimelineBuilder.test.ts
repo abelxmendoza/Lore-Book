@@ -92,10 +92,24 @@ vi.mock('../../src/services/organizationService', () => ({
 vi.mock('../../src/services/events/userPostedEventService', () => ({
   listUserPostedEventsForOrganization: vi.fn(),
 }));
+vi.mock('../../src/services/organizations/organizationEntityTimelineService', () => ({
+  buildCanonicalOrganizationTimeline: vi.fn().mockResolvedValue({
+    sharedExperiences: [],
+    lore: [],
+    unresolved: [],
+    legacyOnly: [],
+    compatibilityReview: [],
+    summary: { lastEventAt: null, lastEventId: null },
+  }),
+}));
+vi.mock('../../src/services/locations/locationEntityTimelineService', () => ({
+  buildCanonicalLocationTimeline: vi.fn(),
+}));
 
 import { EntityTimelineBuilder, getOrganizationIdsForCharacters } from '../../src/services/conversationCentered/entityTimelineBuilder';
 import { organizationService } from '../../src/services/organizationService';
 import { listUserPostedEventsForOrganization } from '../../src/services/events/userPostedEventService';
+import { buildCanonicalOrganizationTimeline } from '../../src/services/organizations/organizationEntityTimelineService';
 
 const USER_ID = 'user-1';
 
@@ -110,6 +124,14 @@ beforeEach(() => {
   vi.mocked(organizationService.getGroupHierarchy).mockResolvedValue({ subgroups: [], related: [] });
   vi.mocked(organizationService.getMembers).mockResolvedValue([]);
   vi.mocked(listUserPostedEventsForOrganization).mockResolvedValue([]);
+  vi.mocked(buildCanonicalOrganizationTimeline).mockResolvedValue({
+    sharedExperiences: [],
+    lore: [],
+    unresolved: [],
+    legacyOnly: [],
+    compatibilityReview: [],
+    summary: { lastEventAt: null, lastEventId: null },
+  });
 });
 
 describe('EntityTimelineBuilder.buildTimelines', () => {
@@ -117,352 +139,77 @@ describe('EntityTimelineBuilder.buildTimelines', () => {
     state = { responses: {}, calls: [] };
   });
 
-  it('buckets rows into sharedExperiences vs lore by timeline_type', async () => {
-    state.responses['entity_timeline_events'] = [
-      {
-        data: [
-          {
-            id: 'row-1',
-            event_id: 'ev-1',
-            source_thread_id: null,
-            event_title: 'Board meeting',
-            event_date: '2026-01-01T00:00:00Z',
-            event_summary: 'Quarterly review',
-            event_type: 'meeting',
-            timeline_type: 'shared_experience',
-            entity_role: 'participant',
-            user_was_present: true,
-            confidence: 0.7,
-          },
-          {
-            id: 'row-2',
-            event_id: 'ev-2',
-            source_thread_id: null,
-            event_title: 'Company history',
-            event_date: '2025-06-01T00:00:00Z',
-            event_summary: 'Founding story',
-            event_type: 'lore',
-            timeline_type: 'lore',
-            entity_role: 'subject',
-            user_was_present: false,
-            confidence: 0.7,
-          },
-        ],
-        error: null,
-      },
-    ];
-
+  it('organization GET uses canonical chronology, not entity_timeline_events buckets', async () => {
     const builder = new EntityTimelineBuilder('organization');
-    const result = await builder.buildTimelines(USER_ID, 'org-1');
+    const result = await builder.buildTimelines(USER_ID, 'org-1', 'America/Los_Angeles');
 
-    expect(result.sharedExperiences).toHaveLength(1);
-    expect(result.sharedExperiences[0].id).toBe('row-1');
-    expect(result.lore).toHaveLength(1);
-    expect(result.lore[0].id).toBe('row-2');
+    expect(buildCanonicalOrganizationTimeline).toHaveBeenCalledWith(USER_ID, 'org-1', 'America/Los_Angeles');
+    expect(result.sharedExperiences).toEqual([]);
+    expect(state.calls.filter((c) => c.table === 'entity_timeline_events' && c.method === 'select')).toHaveLength(0);
   });
 });
 
-describe('EntityTimelineBuilder.rebuildTimelinesForEntity — location', () => {
+describe('EntityTimelineBuilder compatibility stop-write', () => {
   beforeEach(() => {
     state = { responses: {}, calls: [] };
   });
 
-  it('matches resolved_events via .contains(locations, [id]) and upserts a visited entry', async () => {
-    state.responses['resolved_events'] = [
-      {
-        data: [
-          {
-            id: 'ev-1',
-            title: 'Beach trip',
-            summary: 'A day at the pier',
-            type: 'outing',
-            start_time: '2026-02-01T00:00:00Z',
-            people: ['self-char-1'],
-          },
-        ],
-        error: null,
-      },
-    ];
-    state.responses['characters'] = [{ data: { id: 'self-char-1' }, error: null }];
-    state.responses['conversation_sessions'] = [{ data: [], error: null }];
-
+  it('does not write entity_timeline_events for a new location event', async () => {
     const builder = new EntityTimelineBuilder('location');
-    await builder.rebuildTimelinesForEntity(USER_ID, 'loc-1');
-
-    const containsCall = state.calls.find((c) => c.table === 'resolved_events' && c.method === 'contains');
-    expect(containsCall).toBeTruthy();
-    expect(containsCall!.args).toEqual(['locations', ['loc-1']]);
-
-    const upserts = upsertCallsFor('entity_timeline_events');
-    expect(upserts).toHaveLength(1);
-    const payload = upserts[0].args[0] as Record<string, unknown>;
-    expect(payload).toMatchObject({
-      entity_type: 'location',
-      entity_id: 'loc-1',
-      event_id: 'ev-1',
-      timeline_type: 'shared_experience',
-      entity_role: 'visited',
-      user_was_present: true,
+    await builder.processEventForEntity(USER_ID, 'loc-1', 'ev-1', {
+      title: 'Night at Northwind Depot',
+      summary: 'Worked a night shift.',
+      type: 'visit',
+      start_time: '2026-08-10T18:00:00Z',
+      people: ['self-char-1'],
     });
+    expect(upsertCallsFor('entity_timeline_events')).toHaveLength(0);
+    expect(state.calls.filter((c) => c.table === 'entity_timeline_events')).toHaveLength(0);
   });
 
-  it('classifies as lore when the self character is not present', async () => {
+  it('does not write entity_timeline_events for a new organization event', async () => {
+    const builder = new EntityTimelineBuilder('organization');
+    await builder.processEventForEntity(USER_ID, 'org-acme', 'ev-1', {
+      title: 'Started at Acme',
+      summary: 'First week onboarding.',
+      type: 'work',
+      start_time: '2026-08-10T18:00:00Z',
+      people: ['member-1'],
+    });
+    expect(upsertCallsFor('entity_timeline_events')).toHaveLength(0);
+    expect(state.calls.filter((c) => c.table === 'entity_timeline_events')).toHaveLength(0);
+  });
+
+  it('rebuild does not recreate location chronology from resolved_events or episodes', async () => {
     state.responses['resolved_events'] = [
       {
-        data: [
-          {
-            id: 'ev-1',
-            title: 'Someone else\'s visit',
-            summary: 'Heard about it later',
-            type: 'story',
-            start_time: '2026-02-01T00:00:00Z',
-            people: ['other-char'],
-          },
-        ],
+        data: [{
+          id: 'ev-1',
+          title: 'Beach trip',
+          start_time: '2026-02-01T00:00:00Z',
+          people: ['self-char-1'],
+          locations: ['loc-1'],
+        }],
         error: null,
       },
     ];
-    state.responses['characters'] = [{ data: { id: 'self-char-1' }, error: null }];
-    state.responses['conversation_sessions'] = [{ data: [], error: null }];
+    state.responses['episodes'] = [
+      { data: [{ id: 'episode-1', title: 'The Old Pier', start_at: '2026-04-01T00:00:00Z' }], error: null },
+    ];
 
     const builder = new EntityTimelineBuilder('location');
-    await builder.rebuildTimelinesForEntity(USER_ID, 'loc-1');
+    const result = await builder.rebuildTimelinesForEntity(USER_ID, 'loc-1');
 
-    const payload = upsertCallsFor('entity_timeline_events')[0].args[0] as Record<string, unknown>;
-    expect(payload).toMatchObject({ timeline_type: 'lore', user_was_present: false, entity_role: 'visited' });
-  });
-});
-
-describe('EntityTimelineBuilder.rebuildTimelinesForEntity — organization', () => {
-  beforeEach(() => {
-    state = { responses: {}, calls: [] };
+    expect(result).toMatchObject({ rebuilt: false, deprecated: true, writesEnabled: false });
+    expect(state.calls.some((c) => c.table === 'resolved_events')).toBe(false);
+    expect(state.calls.some((c) => c.table === 'episodes')).toBe(false);
+    expect(upsertCallsFor('entity_timeline_events')).toHaveLength(0);
   });
 
-  it('resolves active members then matches resolved_events via .overlaps(people, memberIds)', async () => {
+  it('rebuild does not recreate organization chronology from member overlap or posted events', async () => {
     state.responses['organization_members'] = [
       { data: [{ character_id: 'member-1' }, { character_id: 'member-2' }], error: null },
     ];
-    state.responses['resolved_events'] = [
-      {
-        data: [
-          {
-            id: 'ev-1',
-            title: 'Team offsite',
-            summary: 'Annual retreat',
-            type: 'event',
-            start_time: '2026-03-01T00:00:00Z',
-            people: ['member-1'],
-          },
-        ],
-        error: null,
-      },
-    ];
-    state.responses['characters'] = [{ data: { id: 'self-char-1' }, error: null }];
-    state.responses['conversation_sessions'] = [{ data: [], error: null }];
-
-    const builder = new EntityTimelineBuilder('organization');
-    await builder.rebuildTimelinesForEntity(USER_ID, 'org-1');
-
-    const overlapsCall = state.calls.find((c) => c.table === 'resolved_events' && c.method === 'overlaps');
-    expect(overlapsCall).toBeTruthy();
-    expect(overlapsCall!.args).toEqual(['people', ['member-1', 'member-2']]);
-
-    const payload = upsertCallsFor('entity_timeline_events')[0].args[0] as Record<string, unknown>;
-    expect(payload).toMatchObject({ entity_type: 'organization', entity_id: 'org-1', event_id: 'ev-1' });
-  });
-
-  it('skips the resolved_events query entirely when the org has no active members', async () => {
-    state.responses['organization_members'] = [{ data: [], error: null }];
-    state.responses['conversation_sessions'] = [{ data: [], error: null }];
-
-    const builder = new EntityTimelineBuilder('organization');
-    await builder.rebuildTimelinesForEntity(USER_ID, 'org-1');
-
-    expect(state.calls.some((c) => c.table === 'resolved_events')).toBe(false);
-    expect(upsertCallsFor('entity_timeline_events')).toHaveLength(0);
-  });
-});
-
-describe('EntityTimelineBuilder — thread-as-source-row folding', () => {
-  beforeEach(() => {
-    state = { responses: {}, calls: [] };
-  });
-
-  it('folds a primary-entity-linked thread into a lore entry with source_thread_id set and event_id null', async () => {
-    state.responses['organization_members'] = [{ data: [], error: null }];
-    // First conversation_sessions call: the primary-entity thread list.
-    // Second: the per-thread detail fetch inside processThreadForEntity.
-    state.responses['conversation_sessions'] = [
-      { data: [{ id: 'thread-1' }], error: null },
-      {
-        data: {
-          title: 'Chat about Acme Corp',
-          updated_at: '2026-04-01T00:00:00Z',
-          metadata: { threadMeta: { summary_short: 'Discussed Acme\'s new office' } },
-        },
-        error: null,
-      },
-    ];
-
-    const builder = new EntityTimelineBuilder('organization');
-    await builder.rebuildTimelinesForEntity(USER_ID, 'org-1');
-
-    const listCall = state.calls.find(
-      (c) => c.table === 'conversation_sessions' && c.method === 'eq' && c.args[0] === 'primary_entity_id'
-    );
-    expect(listCall).toBeTruthy();
-
-    const upserts = upsertCallsFor('entity_timeline_events');
-    expect(upserts).toHaveLength(1);
-    const payload = upserts[0].args[0] as Record<string, unknown>;
-    expect(payload).toMatchObject({
-      entity_type: 'organization',
-      entity_id: 'org-1',
-      event_id: null,
-      source_thread_id: 'thread-1',
-      timeline_type: 'lore',
-      entity_role: 'mentioned',
-      event_summary: "Discussed Acme's new office",
-    });
-  });
-
-  it('does not query conversation_sessions for locations — org path only', async () => {
-    state.responses['resolved_events'] = [{ data: [], error: null }];
-    state.responses['episodes'] = [{ data: [], error: null }];
-
-    const builder = new EntityTimelineBuilder('location');
-    await builder.rebuildTimelinesForEntity(USER_ID, 'loc-1');
-
-    expect(state.calls.some((c) => c.table === 'conversation_sessions')).toBe(false);
-  });
-});
-
-describe('EntityTimelineBuilder — episode-as-source-row folding (location only)', () => {
-  beforeEach(() => {
-    state = { responses: {}, calls: [] };
-  });
-
-  it('folds a primary-entity-linked episode into a lore entry with source_episode_id set and event_id null', async () => {
-    state.responses['resolved_events'] = [{ data: [], error: null }];
-    state.responses['episodes'] = [
-      {
-        data: [{ id: 'episode-1', title: 'The Old Pier', start_at: '2026-04-01T00:00:00Z' }],
-        error: null,
-      },
-    ];
-
-    const builder = new EntityTimelineBuilder('location');
-    await builder.rebuildTimelinesForEntity(USER_ID, 'loc-1');
-
-    const episodesCall = state.calls.find(
-      (c) => c.table === 'episodes' && c.method === 'eq' && c.args[0] === 'primary_entity_id'
-    );
-    expect(episodesCall).toBeTruthy();
-    expect(episodesCall!.args).toEqual(['primary_entity_id', 'loc-1']);
-
-    const upserts = upsertCallsFor('entity_timeline_events');
-    expect(upserts).toHaveLength(1);
-    const payload = upserts[0].args[0] as Record<string, unknown>;
-    expect(payload).toMatchObject({
-      entity_type: 'location',
-      entity_id: 'loc-1',
-      event_id: null,
-      source_thread_id: null,
-      source_episode_id: 'episode-1',
-      timeline_type: 'lore',
-      entity_role: 'referenced',
-      event_title: 'The Old Pier',
-    });
-  });
-
-  it('organizations do not fold episodes (no per-episode org data)', async () => {
-    state.responses['organization_members'] = [{ data: [], error: null }];
-    state.responses['conversation_sessions'] = [{ data: [], error: null }];
-
-    const builder = new EntityTimelineBuilder('organization');
-    await builder.rebuildTimelinesForEntity(USER_ID, 'org-1');
-
-    expect(state.calls.some((c) => c.table === 'episodes')).toBe(false);
-  });
-});
-
-describe('EntityTimelineBuilder.processEventForEntity — organization fields', () => {
-  beforeEach(() => {
-    state = { responses: {}, calls: [] };
-  });
-
-  it('resolves involved_names from the org roster and audience via organizationService.classifyGroupEventAudience', async () => {
-    state.responses['organization_members'] = [
-      {
-        data: [
-          { character_id: 'member-1', character_name: 'Alice' },
-          { character_id: 'member-2', character_name: 'Bob' },
-        ],
-        error: null,
-      },
-    ];
-    state.responses['characters'] = [{ data: { id: 'self-char-1' }, error: null }];
-    vi.mocked(organizationService.classifyGroupEventAudience).mockReturnValue('group_wide');
-    vi.mocked(organizationService.getGroupHierarchy).mockResolvedValue({
-      subgroups: [{ id: 'sg-1', name: 'Core Team' }],
-      related: [],
-    });
-    vi.mocked(organizationService.getMembers).mockResolvedValue([
-      { character_id: 'member-1', character_name: 'Alice' } as any,
-    ]);
-
-    const builder = new EntityTimelineBuilder('organization');
-    await builder.processEventForEntity(USER_ID, 'org-1', 'ev-1', {
-      title: 'Team offsite',
-      summary: 'Annual retreat',
-      type: 'event',
-      start_time: '2026-03-01T00:00:00Z',
-      people: ['member-1', 'member-2', 'stranger'],
-    });
-
-    expect(organizationService.classifyGroupEventAudience).toHaveBeenCalledWith(
-      expect.objectContaining({ involved: ['Alice', 'Bob'], title: 'Team offsite' })
-    );
-
-    const payload = upsertCallsFor('entity_timeline_events')[0].args[0] as Record<string, unknown>;
-    expect(payload).toMatchObject({
-      involved_names: ['Alice', 'Bob'],
-      audience: 'group_wide',
-      subgroup_names: ['Core Team'],
-      source: 'conversation',
-    });
-  });
-
-  it('leaves involved_names/audience/subgroup_names/source null for locations', async () => {
-    state.responses['characters'] = [{ data: { id: 'self-char-1' }, error: null }];
-
-    const builder = new EntityTimelineBuilder('location');
-    await builder.processEventForEntity(USER_ID, 'loc-1', 'ev-1', {
-      title: 'Beach trip',
-      type: 'outing',
-      start_time: '2026-02-01T00:00:00Z',
-      people: ['self-char-1'],
-    });
-
-    expect(organizationService.classifyGroupEventAudience).not.toHaveBeenCalled();
-    const payload = upsertCallsFor('entity_timeline_events')[0].args[0] as Record<string, unknown>;
-    expect(payload).toMatchObject({
-      involved_names: null,
-      audience: null,
-      subgroup_names: null,
-      source: null,
-    });
-  });
-});
-
-describe('EntityTimelineBuilder.rebuildTimelinesForEntity — posted-event folding (organizations only)', () => {
-  beforeEach(() => {
-    state = { responses: {}, calls: [] };
-  });
-
-  it('folds a user-posted event with source user_posted, with_user, shared_experience', async () => {
-    state.responses['organization_members'] = [{ data: [], error: null }];
-    state.responses['conversation_sessions'] = [{ data: [], error: null }];
     vi.mocked(listUserPostedEventsForOrganization).mockResolvedValue([
       {
         id: 'posted-1',
@@ -481,17 +228,23 @@ describe('EntityTimelineBuilder.rebuildTimelinesForEntity — posted-event foldi
     ]);
 
     const builder = new EntityTimelineBuilder('organization');
-    await builder.rebuildTimelinesForEntity(USER_ID, 'org-1');
+    const result = await builder.rebuildTimelinesForEntity(USER_ID, 'org-1');
 
-    const payload = upsertCallsFor('entity_timeline_events')[0].args[0] as Record<string, unknown>;
-    expect(payload).toMatchObject({
-      entity_id: 'org-1',
-      event_id: 'posted-1',
-      timeline_type: 'shared_experience',
-      user_was_present: true,
-      audience: 'with_user',
-      source: 'user_posted',
+    expect(result).toMatchObject({ rebuilt: false, deprecated: true, writesEnabled: false });
+    expect(listUserPostedEventsForOrganization).not.toHaveBeenCalled();
+    expect(state.calls.some((c) => c.table === 'resolved_events')).toBe(false);
+    expect(state.calls.some((c) => c.table === 'conversation_sessions')).toBe(false);
+    expect(upsertCallsFor('entity_timeline_events')).toHaveLength(0);
+  });
+
+  it('does not write an episode-sourced compatibility row', async () => {
+    const builder = new EntityTimelineBuilder('location');
+    await builder.processEpisodeForEntity(USER_ID, 'loc-1', {
+      id: 'episode-1',
+      title: 'The Old Pier',
+      start_at: '2026-04-01T00:00:00Z',
     });
+    expect(upsertCallsFor('entity_timeline_events')).toHaveLength(0);
   });
 });
 

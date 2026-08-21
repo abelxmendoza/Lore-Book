@@ -93,6 +93,8 @@ describe('buildDbHealthPayload', () => {
           quotaBytes: 524_288_000,
           utilizationRatio: 0.8,
           checkedAt: '2026-06-18T12:00:00.000Z',
+          writeBlocked: false,
+          writeBlockedReason: null,
         },
         upgrade: {
           status: 'ok',
@@ -143,5 +145,6 @@ describe('GET /api/health (router)', () => {
     expect(res.body).toHaveProperty('upgrade');
     expect(res.body).toHaveProperty('connection');
     expect(res.body.storage).toHaveProperty('quotaBytes');
+    expect(res.body.storage).toHaveProperty('writeBlocked');
   });
 });

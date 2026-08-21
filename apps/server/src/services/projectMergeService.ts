@@ -298,6 +298,15 @@ class ProjectMergeService {
       metadata: { reviewFlags: report.reviewFlags },
     });
 
+    void import('./lorebook/suggestions/suggestionDecisionStore').then(({ resolvePendingSuggestions }) =>
+      resolvePendingSuggestions({
+        userId,
+        domain: 'projects',
+        names: [source.name],
+        status: 'rejected',
+      }),
+    );
+
     logger.info({ userId, ...report }, '[ProjectMerge] merge complete');
     return report;
   }

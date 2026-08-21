@@ -62,4 +62,12 @@ describe('mentionClassifier', () => {
     expect(mayAppearOnCast(m)).toBe(false);
     expect(mayAppearAsTranscriptMention(m)).toBe(true);
   });
+
+  it('marks "her friend" as an unresolved reference, not a character', () => {
+    const m = classifyMention({ text: 'her friend' });
+    expect(m.status).toBe('UNRESOLVED');
+    expect(mayAppearOnCast(m)).toBe(false);
+    expect(mayPromoteMentionToCharacter(m)).toBe(false);
+    expect(mayAppearAsTranscriptMention(m)).toBe(true);
+  });
 });

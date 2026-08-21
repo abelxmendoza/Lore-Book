@@ -201,20 +201,6 @@ export const CharacterRelationshipTimeline: React.FC<CharacterRelationshipTimeli
     }
   };
 
-  const rebuildTimelines = async () => {
-    setLoading(true);
-    try {
-      await fetchJson(`/api/conversation/characters/${characterId}/rebuild-timelines`, {
-        method: 'POST',
-      });
-      await loadTimelines();
-    } catch (error) {
-      console.error('Failed to rebuild timelines:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const getImpactColor = (impactType?: string) => {
     switch (impactType) {
       case 'direct_participant':
@@ -330,8 +316,8 @@ export const CharacterRelationshipTimeline: React.FC<CharacterRelationshipTimeli
                 {sharedExperiences.length} shared experiences • {lore.length} stories (lore)
               </CardDescription>
             </div>
-            <Button onClick={rebuildTimelines} variant="outline" size="sm">
-              Rebuild
+            <Button onClick={loadTimelines} variant="outline" size="sm">
+              Refresh
             </Button>
           </div>
         </CardHeader>

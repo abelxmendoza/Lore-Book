@@ -85,6 +85,7 @@ router.post('/dismiss', requireAuth, asyncHandler(async (req: AuthenticatedReque
       sourceMessageId: source_message_id,
       sourceSuggestionId: suggestion_id,
       reason,
+      permanent: !thread_id || Boolean(reason),
     });
   }
 

@@ -1,4 +1,5 @@
 import { fetchLexicalPreview, type LexicalPreviewResponse } from '../api/lexicalPreview';
+import { composerIntelligenceMetrics } from './composerIntelligence';
 import { PreviewRateLimitGate } from './previewRateLimitGate';
 
 const cache = new Map<string, Promise<LexicalPreviewResponse>>();
@@ -34,6 +35,7 @@ export function fetchLexicalPreviewShared(
     .finally(() => {
       window.setTimeout(() => cache.delete(key), 4000);
     });
+  composerIntelligenceMetrics.noteRemoteLexicalPreview();
   cache.set(key, promise);
   return promise;
 }

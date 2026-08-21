@@ -46,6 +46,9 @@ describe('guardPlaceCandidate', () => {
     expect(loc('my project')?.rejectionReason).toBe('possessive_generic_non_place');
     expect(loc('home coding Lorebook all weekend')?.rejectionReason).toMatch(/activity|temporal/);
     expect(loc('Amazon as a Quality Assurance Technician')?.rejectionReason).toBe('dal_role');
+    expect(loc('Electrical Engineering')?.rejectionReason).toMatch(/dal_|skill|role/i);
+    expect(loc('User mentioned')?.rejectionReason).toBe('discourse_meta_not_place');
+    expect(loc('Catch One because I')?.rejectionReason).toBe('because_clause_fragment');
   });
 
   it('uses domain arbitration before place acceptance', () => {

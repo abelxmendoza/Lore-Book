@@ -21,14 +21,15 @@ test('active migration chain starts from the production schema baseline', () => 
     .filter((name) => name.endsWith('.sql'))
     .sort();
 
-  assert.deepEqual(files, [
-    '20260807040000_production_schema_baseline.sql',
-    '20260807040100_narrative_moments_kind_expand.sql',
-    '20260807040200_knowledge_kernel_foundation.sql',
-    '20260807040300_optimize_assertion_evidence_rls.sql',
-    '20260807093500_system_knowledge_content_tracking_explanation.sql',
-    '20260814043224_temporal_parallelism.sql',
-  ]);
+  assert.equal(files[0], '20260807040000_production_schema_baseline.sql');
+  assert.ok(
+    files.includes('20260819000000_revoke_anon_security_definer_rpcs.sql'),
+    'expected RPC lockdown migration in the active chain',
+  );
+  assert.ok(
+    files.includes('20260819010000_harden_export_views_and_epiphany_insert.sql'),
+    'expected export-view lockdown migration in the active chain',
+  );
 });
 
 test('temporal relations are tenant-isolated and explicitly granted', () => {

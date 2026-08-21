@@ -46,7 +46,7 @@ describe('memoryCoverageAudit', () => {
         error: null,
       },
       character_memories: { data: [{ character_id: 'char-covered' }], error: null },
-      character_timeline_events: { data: [{ character_id: 'char-covered' }], error: null },
+      resolved_events: { data: [{ people: ['char-covered'] }], error: null },
       character_relationships: {
         data: [{ source_character_id: 'char-covered', target_character_id: 'self' }],
         error: null,
@@ -87,5 +87,15 @@ describe('memoryCoverageAudit', () => {
 
     expect(omega?.relationships).toBeGreaterThan(0);
     expect(omega?.coverageScore).toBeGreaterThan(0);
+  });
+
+  it('does not treat character_timeline_events rows as canonical event coverage', async () => {
+    tableResults.resolved_events = { data: [], error: null };
+    tableResults.character_timeline_events = { data: [{ character_id: 'char-covered' }], error: null };
+
+    const report = await buildMemoryCoverageAudit('user-1');
+    const covered = report.entities.find((entity) => entity.id === 'char-covered');
+
+    expect(covered?.events).toBe(0);
   });
 });

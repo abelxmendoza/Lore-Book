@@ -1,8 +1,12 @@
-import { describe, it, expect, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { OrganizationTimelinePanel } from './OrganizationTimelinePanel';
 import type { Organization } from './OrganizationProfileCard';
 import type { OrgDerivedEvent } from '../../mocks/organizationTimeline';
+
+vi.mock('../../lib/api', () => ({
+  fetchJson: vi.fn(),
+}));
 
 vi.mock('../timeline/EventTimelineSwimlanes', () => ({
   EventTimelineSwimlanes: ({
@@ -21,6 +25,10 @@ vi.mock('../timeline/EventTimelineSwimlanes', () => ({
     </div>
   ),
 }));
+
+import { fetchJson } from '../../lib/api';
+
+const fetchJsonMock = vi.mocked(fetchJson);
 
 function makeOrg(partial: Partial<Organization>): Organization {
   return {
@@ -109,5 +117,31 @@ describe('OrganizationTimelinePanel', () => {
     expect(screen.getByTestId('org-timeline-stance-badge')).toHaveTextContent('Their world');
     expect(screen.getByTestId('lane-with')).toHaveTextContent('Crossed paths:1');
     expect(screen.getByTestId('lane-without')).toHaveTextContent('Their world:2');
+  });
+
+  it('loads GET timelines and never auto-rebuilds an empty canonical feed', async () => {
+    fetchJsonMock.mockResolvedValue({
+      success: true,
+      timelines: {
+        sharedExperiences: [],
+        lore: [],
+        unresolved: [],
+        compatibilityReview: [],
+      },
+    });
+
+    render(
+      <OrganizationTimelinePanel
+        organization={makeOrg({ user_relationship: 'member' })}
+        active
+      />,
+    );
+
+    await waitFor(() => {
+      expect(fetchJsonMock).toHaveBeenCalled();
+    });
+    const urls = fetchJsonMock.mock.calls.map((call) => String(call[0]));
+    expect(urls.some((url) => url.includes('/api/organizations/org-1/timelines'))).toBe(true);
+    expect(urls.some((url) => url.includes('rebuild-timelines'))).toBe(false);
   });
 });

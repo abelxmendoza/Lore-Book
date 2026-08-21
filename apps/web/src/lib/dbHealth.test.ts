@@ -26,6 +26,37 @@ describe('dbHealth', () => {
     expect(shouldShowOpsBanner(null)).toBe(false);
   });
 
+  it('shows a spend-cap banner to non-admins only when writes are blocked', () => {
+    const writeBlocked = {
+      status: 'critical' as const,
+      missingTables: [],
+      lastSchemaSync: null,
+      storage: {
+        status: 'critical' as const,
+        databaseBytes: 50_000_000,
+        walBytes: 0,
+        quotaBytes: 524_288_000,
+        utilizationRatio: 0.1,
+        checkedAt: new Date().toISOString(),
+        writeBlocked: true,
+        writeBlockedReason: 'read_only' as const,
+      },
+      upgrade: EMPTY_UPGRADE_SNAPSHOT,
+      connection: EMPTY_CONNECTION_HINTS,
+    };
+    expect(shouldShowOpsBanner(writeBlocked, { isAdmin: false })).toBe(true);
+    expect(
+      shouldShowOpsBanner(
+        {
+          ...writeBlocked,
+          storage: { ...writeBlocked.storage, status: 'warn', writeBlocked: false },
+          status: 'warn',
+        },
+        { isAdmin: false }
+      )
+    ).toBe(false);
+  });
+
   it('formats bytes and utilization', () => {
     expect(formatBytes(420_000_000)).toBe('400.5 MB');
     expect(formatUtilizationPercent(0.823)).toBe('82%');
@@ -90,5 +121,29 @@ describe('dbHealth', () => {
     });
     expect(msg).toMatch(/critical/i);
     expect(msg).toMatch(/92%/);
+  });
+
+  it('prefers spend-cap copy when writes are blocked', () => {
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://abc123.supabase.co');
+    const content = buildOpsBannerContent({
+      status: 'critical',
+      missingTables: [],
+      lastSchemaSync: null,
+      storage: {
+        status: 'ok',
+        databaseBytes: 50_000_000,
+        walBytes: 0,
+        quotaBytes: 524_288_000,
+        utilizationRatio: 0.1,
+        checkedAt: new Date().toISOString(),
+        writeBlocked: true,
+        writeBlockedReason: 'read_only',
+      },
+      upgrade: EMPTY_UPGRADE_SNAPSHOT,
+      connection: EMPTY_CONNECTION_HINTS,
+    });
+    expect(content.severity).toBe('critical');
+    expect(content.headline).toMatch(/spend cap/i);
+    expect(content.linkLabel).toMatch(/Spend Cap/i);
   });
 });

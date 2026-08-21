@@ -5,6 +5,7 @@ function makeChain(result: TableResult) {
   const chain: Record<string, unknown> = {
     select: () => chain,
     eq: () => chain,
+    contains: () => chain,
     or: () => chain,
     ilike: () => chain,
     limit: () => chain,

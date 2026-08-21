@@ -346,6 +346,14 @@ class OrganizationMergeService {
           metadata: { primaryId, mergedIds: report.merged_ids, reviewFlags: report.reviewFlags },
         });
       });
+      void import('./lorebook/suggestions/suggestionDecisionStore').then(({ resolvePendingSuggestions }) =>
+        resolvePendingSuggestions({
+          userId,
+          domain: 'organizations',
+          names: absorbedNames,
+          status: 'rejected',
+        }),
+      );
     }
 
     logger.info({ userId, ...report }, 'Merged organizations');

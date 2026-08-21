@@ -30,6 +30,11 @@ export type ContinuityCallback = NonNullable<ChatStreamDoneEvent['continuityCall
 export type ChatStreamResult = {
   actionCandidates?: ResponseActionCandidate[];
   continuityCallback?: ContinuityCallback;
+  /** Disciplined final text when the server rewrote the streamed draft. */
+  finalContent?: string;
+  rewritten?: boolean;
+  verified?: boolean;
+  verificationDegraded?: boolean;
 };
 
 /** Non-sensitive classifier fields carried by a failed server stream. */
@@ -433,6 +438,10 @@ export const useChatStream = () => {
             onComplete({
               actionCandidates: data.responseCompiler?.actionCandidates ?? [],
               continuityCallback: data.continuityCallback,
+              ...(data.rewritten && data.content ? { finalContent: data.content } : {}),
+              rewritten: data.rewritten,
+              verified: data.verified,
+              verificationDegraded: data.verificationDegraded,
             });
             setIsStreaming(false);
             if (onMemoryFeedback && capturedMessageId) {

@@ -67,4 +67,19 @@ describe('ChatSourcesBar', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('Sources supporting this answer')).toBeInTheDocument();
   });
+
+  it('skips the nested toggle when embedded in the composer tray', () => {
+    render(
+      <ChatSourcesBar
+        embedded
+        sources={[
+          { type: 'character', id: 'c1', title: 'Marcus', usage: 'supporting' },
+        ]}
+      />,
+    );
+
+    expect(screen.queryByTestId('chat-sources-toggle')).not.toBeInTheDocument();
+    expect(screen.getByText('Sources supporting this answer')).toBeInTheDocument();
+    expect(screen.getByText('Marcus')).toBeInTheDocument();
+  });
 });

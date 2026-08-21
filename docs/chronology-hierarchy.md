@@ -218,7 +218,7 @@ One model. Three strata. User-facing words in **bold**.
 | Stitched item | moment \| event kinds | Moment (unified kind) | **MERGE kinds → moment** |
 | Thread | conversation_sessions | Container | **KEEP — not a hierarchy level** |
 | Project | projects + tags | Entity + arc link | **KEEP as entity scope filter** |
-| Character timeline | character_timeline_events | Filtered Life Timeline | **MERGE → projection** |
+| Character timeline | `resolved_events.people[]` + CanonicalTemporalModel | Filtered Life Timeline | **KEEP as canonical projection** |
 | timelimes_v2 | broken table | — | **DELETE** |
 | ColorCodedTimeline (empty) | dummy/empty | — | **DELETE or wire to chapters** |
 

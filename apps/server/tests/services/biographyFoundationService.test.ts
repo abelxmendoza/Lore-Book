@@ -39,6 +39,40 @@ vi.mock('../../src/services/supabaseClient', () => ({
   },
 }));
 
+const { buildCanonicalCharacterTimeline, getStitchedTimeline } = vi.hoisted(() => ({
+  buildCanonicalCharacterTimeline: vi.fn().mockResolvedValue({
+    sharedExperiences: [],
+    lore: [],
+    unresolved: [],
+    legacyOnly: [],
+    compatibilityReview: [],
+    summary: {
+      lastInteractionAt: null,
+      lastInteractionId: null,
+      lastMentionedAt: null,
+      lastMentionedId: null,
+      firstKnownAppearanceAt: null,
+      firstKnownAppearanceId: null,
+    },
+  }),
+  getStitchedTimeline: vi.fn().mockResolvedValue({ items: [], unresolved_items: [] }),
+}));
+
+vi.mock('../../src/services/chronologyV2/stitchedTimelineService', () => ({
+  stitchedTimelineService: {
+    getStitchedTimeline: (...args: unknown[]) => getStitchedTimeline(...args),
+    getStitchedTimelineForEntity: vi.fn().mockResolvedValue({ items: [], unresolved_items: [] }),
+  },
+}));
+
+vi.mock('../../src/services/characters/characterEntityTimelineService', () => ({
+  buildCanonicalCharacterTimeline: (...args: unknown[]) => buildCanonicalCharacterTimeline(...args),
+}));
+
+vi.mock('../../src/services/relationships/characterRelationshipHistoryService', () => ({
+  listCurrentCharacterRelationships: vi.fn(async () => tableResults.character_relationships?.data ?? []),
+}));
+
 import { biographyFoundationService } from '../../src/services/biographyFoundationService';
 
 const USER_ID = 'user-1';
@@ -99,6 +133,22 @@ function baseTables(overrides: Partial<Record<string, TableResult>> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  buildCanonicalCharacterTimeline.mockResolvedValue({
+    sharedExperiences: [],
+    lore: [],
+    unresolved: [],
+    legacyOnly: [],
+    compatibilityReview: [],
+    summary: {
+      lastInteractionAt: null,
+      lastInteractionId: null,
+      lastMentionedAt: null,
+      lastMentionedId: null,
+      firstKnownAppearanceAt: null,
+      firstKnownAppearanceId: null,
+    },
+  });
+  getStitchedTimeline.mockResolvedValue({ items: [], unresolved_items: [] });
   baseTables();
 });
 
@@ -182,7 +232,7 @@ describe('extractBiographyFacts — authoritative fact hierarchy (Sprint O)', ()
 });
 
 describe('buildProvenance (via generateBiography output) — traceability (Sprint O)', () => {
-  it('marks relationship status as authoritative, sourced from character_relationships.status', async () => {
+  it('marks relationship status as authoritative, sourced from current relationship projection', async () => {
     // Reach the private buildProvenance through its only call site without
     // invoking the LLM: call extractBiographyFacts then build provenance the
     // same way generateBiography does, by exercising the documented contract.
@@ -191,7 +241,7 @@ describe('buildProvenance (via generateBiography output) — traceability (Sprin
 
     expect(provenance[`relationship.${SOL_ID}.status`]).toEqual({
       value: 'active',
-      source: 'character_relationships.status',
+      source: 'character_relationship_history (current projection)',
       confidence: 'authoritative',
     });
     expect(provenance[`relationship.${ABUELA_ID}.status`].confidence).toBe('authoritative');
@@ -204,5 +254,112 @@ describe('buildProvenance (via generateBiography output) — traceability (Sprin
     expect(provenance['identity.employment'].confidence).toBe('inferred');
     expect(provenance['identity.education'].confidence).toBe('inferred');
     expect(provenance['identity.location'].confidence).toBe('inferred');
+  });
+});
+
+describe('biography key events — canonical occurrence only', () => {
+  it('uses canonical occurredStart, never a hostile legacy event_date', async () => {
+    tableResults.character_timeline_events = {
+      data: [{
+        event_id: 'evt-dinner',
+        event_title: 'Dinner with Maya',
+        event_type: 'social',
+        event_date: '1999-01-01',
+        connection_character_id: null,
+        confidence: 0.9,
+        source_entry_ids: [],
+      }],
+      error: null,
+    };
+    buildCanonicalCharacterTimeline.mockResolvedValue({
+      sharedExperiences: [{
+        eventTitle: 'Dinner with Maya',
+        eventType: 'social',
+        timelineType: 'shared_experience',
+        occurredStart: '2026-07-12T19:30:00.000Z',
+        isUnresolved: false,
+        canonicalItemId: 'event:evt-dinner',
+        eventId: 'evt-dinner',
+        precision: 'minute',
+        connectionCharacter: 'Maya',
+        confidence: 0.9,
+        eventSummary: 'Dinner with Maya',
+      }],
+      lore: [],
+      unresolved: [],
+      legacyOnly: [],
+      compatibilityReview: [],
+      summary: {},
+    });
+
+    const facts = await biographyFoundationService.extractBiographyFacts(USER_ID);
+    expect(facts.keyEvents).toHaveLength(1);
+    expect(facts.keyEvents[0].date).toBe('2026-07-12T19:30:00.000Z');
+    expect(facts.keyEvents[0].canonicalItemId).toBe('event:evt-dinner');
+    expect(facts.keyEvents[0].date).not.toContain('1999');
+    const provenance = (biographyFoundationService as any).buildProvenance(facts);
+    expect(provenance['event.event:evt-dinner.occurredAt']).toEqual({
+      value: '2026-07-12T19:30:00.000Z',
+      source: 'canonical_temporal_model (event:evt-dinner)',
+      confidence: 'authoritative',
+    });
+  });
+
+  it('keeps unresolved occurrence as Date unknown instead of created_at or event_date', async () => {
+    tableResults.character_timeline_events = {
+      data: [{
+        event_id: 'evt-dinner',
+        event_title: 'Dinner with Maya',
+        event_type: 'social',
+        event_date: '1999-01-01',
+        connection_character_id: null,
+        confidence: 0.9,
+        source_entry_ids: [],
+      }],
+      error: null,
+    };
+    buildCanonicalCharacterTimeline.mockResolvedValue({
+      sharedExperiences: [],
+      lore: [],
+      unresolved: [{
+        eventTitle: 'Dinner with Maya',
+        eventType: 'social',
+        timelineType: 'shared_experience',
+        occurredStart: null,
+        isUnresolved: true,
+        canonicalItemId: 'event:evt-dinner',
+        eventId: 'evt-dinner',
+        precision: 'unresolved',
+        connectionCharacter: 'Maya',
+        confidence: 0.9,
+        eventSummary: 'Dinner with Maya',
+      }],
+      legacyOnly: [],
+      compatibilityReview: [],
+      summary: {},
+    });
+
+    const facts = await biographyFoundationService.extractBiographyFacts(USER_ID);
+    expect(facts.keyEvents[0].date).toBeNull();
+    expect(facts.keyEvents[0].unresolved).toBe(true);
+  });
+
+  it('does not promote episode-only compatibility rows into key events', async () => {
+    tableResults.character_timeline_events = {
+      data: [{
+        event_id: null,
+        event_title: 'Episode contamination',
+        event_type: 'social',
+        event_date: '2020-01-01',
+        source_episode_id: 'ep-1',
+        connection_character_id: null,
+        confidence: 0.4,
+        source_entry_ids: [],
+      }],
+      error: null,
+    };
+
+    const facts = await biographyFoundationService.extractBiographyFacts(USER_ID);
+    expect(facts.keyEvents).toEqual([]);
   });
 });

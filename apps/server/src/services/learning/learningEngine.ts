@@ -34,7 +34,7 @@ export class LearningEngine {
     userId: string,
     entryId: string,
     content: string,
-    entryDate: string
+    entryDate: string | null
   ): Promise<LearningRecord[]> {
     try {
       logger.debug({ userId, entryId }, 'Extracting learning from entry');

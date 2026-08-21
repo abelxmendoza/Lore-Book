@@ -39,20 +39,23 @@ export async function materializeStorySlices(input: MaterializeInput): Promise<S
     source,
     sourceEntryId,
     tags = [],
-    defaultDate = new Date().toISOString(),
+    defaultDate,
   } = input;
 
   const slices: StorySlice[] = [];
 
   for (const segment of segments) {
     const time = findTimeForSegment(segment.segment_id, resolvedTimes);
-    const when = (time?.start_date ? `${time.start_date}T12:00:00.000Z` : defaultDate).slice(0, 19) + 'Z';
+    const when = time?.start_date
+      ? (`${time.start_date}T12:00:00.000Z`).slice(0, 19) + 'Z'
+      : defaultDate;
 
     try {
       const entry = await memoryService.saveEntry({
         userId,
         content: segment.text,
         date: when,
+        temporalSource: when ? 'relative_expression' : 'recording_fallback',
         tags: [...tags, 'story_slice'],
         source,
         narrativeOrder: segment.narrative_order,
@@ -75,7 +78,7 @@ export async function materializeStorySlices(input: MaterializeInput): Promise<S
       slices.push({
         entry_id: entry.id,
         content: segment.text,
-        date: when,
+        date: when ?? null,
         narrative_order: segment.narrative_order,
         source,
         derived_from_entry_id: sourceEntryId,

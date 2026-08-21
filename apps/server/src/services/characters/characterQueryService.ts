@@ -76,7 +76,26 @@ export type CharacterQuery = {
     timelines?: {
       sharedExperiences: Array<Record<string, unknown>>;
       lore: Array<Record<string, unknown>>;
-      summary?: { sharedCount: number; loreCount: number; recent: Array<Record<string, unknown>> };
+      unresolved?: Array<Record<string, unknown>>;
+      legacyOnly?: Array<Record<string, unknown>>;
+      summary?: {
+        sharedCount: number;
+        loreCount: number;
+        recent: Array<Record<string, unknown>>;
+        lastInteractionAt?: string | null;
+        lastInteractionId?: string | null;
+        lastMentionedAt?: string | null;
+        lastMentionedId?: string | null;
+        firstKnownAppearanceAt?: string | null;
+        firstKnownAppearanceId?: string | null;
+        firstKnownOccurrenceAt?: string | null;
+        firstKnownOccurrenceId?: string | null;
+        lastKnownOccurrenceAt?: string | null;
+        lastKnownOccurrenceId?: string | null;
+        firstMentionedAt?: string | null;
+        firstMentionedId?: string | null;
+        unresolvedCount?: number;
+      };
     };
     media?: Array<Record<string, unknown>>;
     evidence?: Record<string, unknown>;
@@ -131,7 +150,8 @@ async function hydrateMemories(
       summary: ref.summary ?? (typeof entry.summary === 'string' ? entry.summary : undefined),
       tags: Array.isArray(entry.tags) ? entry.tags : [],
       source: typeof entry.source === 'string' ? entry.source : null,
-      date: entry.date ?? ref.date,
+      date: entry.date ?? null,
+      recordedAt: ref.recordedAt ?? null,
     };
   });
 }
@@ -346,18 +366,34 @@ export async function getCharacterQuery(
         const timelines = await softSection('timelines', partialErrors, async () => {
           const built = await characterTimelineBuilder.buildTimelines(userId, characterId);
           const recent = [...built.sharedExperiences, ...built.lore]
+            .filter((item) => item.occurredStart)
             .sort(
               (a, b) =>
-                new Date(b.eventDate).getTime() - new Date(a.eventDate).getTime(),
+                new Date(b.occurredStart ?? '').getTime() - new Date(a.occurredStart ?? '').getTime(),
             )
             .slice(0, 8);
           return {
             sharedExperiences: built.sharedExperiences as unknown as Array<Record<string, unknown>>,
             lore: built.lore as unknown as Array<Record<string, unknown>>,
+            unresolved: built.unresolved as unknown as Array<Record<string, unknown>>,
+            legacyOnly: [] as Array<Record<string, unknown>>,
             summary: {
               sharedCount: built.sharedExperiences.length,
               loreCount: built.lore.length,
               recent: recent as unknown as Array<Record<string, unknown>>,
+              lastInteractionAt: built.summary.lastInteractionAt,
+              lastInteractionId: built.summary.lastInteractionId,
+              lastMentionedAt: built.summary.lastMentionedAt,
+              lastMentionedId: built.summary.lastMentionedId,
+              firstKnownAppearanceAt: built.summary.firstKnownAppearanceAt,
+              firstKnownAppearanceId: built.summary.firstKnownAppearanceId,
+              firstKnownOccurrenceAt: built.summary.firstKnownOccurrenceAt,
+              firstKnownOccurrenceId: built.summary.firstKnownOccurrenceId,
+              lastKnownOccurrenceAt: built.summary.lastKnownOccurrenceAt,
+              lastKnownOccurrenceId: built.summary.lastKnownOccurrenceId,
+              firstMentionedAt: built.summary.firstMentionedAt,
+              firstMentionedId: built.summary.firstMentionedId,
+              unresolvedCount: built.unresolved.length,
             },
           };
         });

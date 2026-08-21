@@ -138,6 +138,7 @@ class GithubSyncManager {
         content: milestone.summary,
         summary: milestone.title,
         tags: ['github', 'development', repoName],
+        importedAt: new Date().toISOString(),
         metadata: { source: 'github_milestone', repo: repoName, ...milestone.metadata }
       });
     } catch (error) {

@@ -2,6 +2,7 @@ import { useRef, useEffect, useMemo } from 'react';
 import { useMockData } from '../../contexts/MockDataContext';
 import { BookOpenCheck, Sparkles, Layers, Clock, Star } from 'lucide-react';
 import type { TimelineNode, TimelineLayer, LAYER_COLORS } from '../../types/timeline';
+import { formatJournalOccurrenceLabel, hasJournalOccurrence, journalOccurrenceTime } from '../../lib/journalOccurrence';
 
 type Chapter = {
   id: string;
@@ -589,7 +590,7 @@ export const ColorCodedTimeline = ({
       return arcColorMap.get(item.arcId) || 'hsl(240, 70%, 50%)';
     } else if (item.type === 'chapter' && item.chapterId) {
       return chapterColorMap.get(item.chapterId) || 'hsl(270, 70%, 50%)';
-    } else if (item.type === 'section' && item.date) {
+    } else if (item.type === 'section' && hasJournalOccurrence(item.date)) {
       const eraKey = new Date(item.date).getFullYear().toString();
       return sectionEraColorMap.get(eraKey) || 'hsl(60, 70%, 50%)';
     } else if (item.type === 'entry' && item.chapterId) {
@@ -780,17 +781,18 @@ export const ColorCodedTimeline = ({
           const textColorLighter = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6)`;
           
           // Calculate position for overlapping (stack items that overlap in time)
-          const itemDate = new Date(item.date).getTime();
-          const overlappingItems = timelineItems.filter(other => {
+          const itemDate = journalOccurrenceTime(item.date);
+          const overlappingItems = itemDate == null ? [] : timelineItems.filter(other => {
             if (other.id === item.id) return false;
-            const otherDate = new Date(other.date).getTime();
+            const otherDate = journalOccurrenceTime(other.date);
+            if (otherDate == null) return false;
             const daysDiff = Math.abs(itemDate - otherDate) / (1000 * 60 * 60 * 24);
             return daysDiff < 30; // Items within 30 days overlap
           });
           
           const overlapIndex = overlappingItems.findIndex(other => {
-            const otherDate = new Date(other.date).getTime();
-            return otherDate < itemDate;
+            const otherDate = journalOccurrenceTime(other.date);
+            return otherDate != null && itemDate != null && otherDate < itemDate;
           });
           
           return (
@@ -885,7 +887,7 @@ export const ColorCodedTimeline = ({
                   color: isCurrent ? textColorLighter : `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.4)`
                 }}
               >
-                {new Date(item.date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                {formatJournalOccurrenceLabel(item.date)}
                 {item.endDate && ` - ${new Date(item.endDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`}
               </span>
             </div>

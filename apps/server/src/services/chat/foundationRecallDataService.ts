@@ -2,11 +2,14 @@
  * Foundation Recall Data Service — Sprint AF
  *
  * Reads structured lore from foundation tables (not raw journal snippets):
- *   characters → character_memories → character_relationships → character_timeline_events
- *   narrative_accounts (biography_snapshot)
+ *   characters → character_memories → character_relationships
+ *   stitched chronology for “when”
+ *   canonical resolved_events.people[] for timeline event counts
  */
 
 import { supabaseAdmin } from '../supabaseClient';
+import { stitchedTimelineService } from '../chronologyV2/stitchedTimelineService';
+import { listCurrentCharacterRelationships } from '../relationships/characterRelationshipHistoryService';
 import { normalizeNameKey } from '../../utils/nameNormalization';
 import { formatFactsAndMeaning } from './significanceRecall';
 
@@ -100,23 +103,28 @@ async function loadMemoryCounts(userId: string): Promise<Map<string, number>> {
 
 async function loadTimelineCounts(userId: string): Promise<Map<string, number>> {
   const { data } = await supabaseAdmin
-    .from('character_timeline_events')
-    .select('character_id')
+    .from('resolved_events')
+    .select('people')
     .eq('user_id', userId);
 
   const counts = new Map<string, number>();
   for (const row of data ?? []) {
-    counts.set(row.character_id, (counts.get(row.character_id) ?? 0) + 1);
+    for (const personId of (row.people as string[] | null) ?? []) {
+      counts.set(personId, (counts.get(personId) ?? 0) + 1);
+    }
   }
   return counts;
 }
 
 async function loadRelationships(userId: string): Promise<RelationshipRow[]> {
-  const { data } = await supabaseAdmin
-    .from('character_relationships')
-    .select('relationship_type, status, source_character_id, target_character_id, metadata')
-    .eq('user_id', userId);
-  return (data ?? []) as RelationshipRow[];
+  const rows = await listCurrentCharacterRelationships(userId);
+  return rows.map((rel) => ({
+    relationship_type: rel.relationship_type,
+    status: rel.status,
+    source_character_id: rel.source_character_id,
+    target_character_id: rel.target_character_id,
+    metadata: rel.metadata,
+  }));
 }
 
 function relationshipLabelForCharacter(
@@ -264,14 +272,7 @@ export async function fetchEntityProfile(userId: string, entityName: string): Pr
   ]);
   const self = findSelfCharacter(selfChars);
 
-  const [{ data: events }, { data: facts }, { data: romantic }] = await Promise.all([
-    supabaseAdmin
-      .from('character_timeline_events')
-      .select('event_title, event_type, event_date, event_summary')
-      .eq('user_id', userId)
-      .eq('character_id', char.id)
-      .order('event_date', { ascending: true })
-      .limit(8),
+  const [{ data: facts }, { data: romantic }, stitched] = await Promise.all([
     supabaseAdmin
       .from('entity_facts')
       .select('fact, confidence')
@@ -290,6 +291,10 @@ export async function fetchEntityProfile(userId: string, entityName: string): Pr
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
+    stitchedTimelineService.getStitchedTimeline(userId, {
+      character_id: char.id,
+      limit: 8,
+    }),
   ]);
 
   let romanticSummary: string | null = null;
@@ -308,12 +313,16 @@ export async function fetchEntityProfile(userId: string, entityName: string): Pr
     aliases: char.alias ?? [],
     relationshipToUser: relationshipLabelForCharacter(char.id, self?.id ?? null, rels),
     memoryCount: memoryCounts.get(char.id) ?? 0,
-    timelineEvents: (events ?? []).map((ev) => ({
-      title: ev.event_title,
-      type: ev.event_type,
-      date: ev.event_date,
-      summary: ev.event_summary,
-    })),
+    timelineEvents: (stitched.items ?? []).map((item) => {
+      const occurred = item.occurredAt ?? item.temporalProjection?.occurredStart ?? null;
+      const unresolved = item.occurrenceStatus === 'unresolved' || item.temporalProjection?.isUnresolved || !occurred;
+      return {
+        title: item.title,
+        type: item.canonicalEventType ?? item.sourceType,
+        date: unresolved ? null : occurred,
+        summary: item.body || null,
+      };
+    }),
     facts: (facts ?? []).map((f) => f.fact as string),
     romanticSummary,
   };

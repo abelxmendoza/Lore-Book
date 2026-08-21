@@ -4,10 +4,17 @@
 
 import { supabaseAdmin } from '../supabaseClient';
 import { logger } from '../../logger';
+import { buildCanonicalCharacterTimeline } from './characterEntityTimelineService';
 
 export type CharacterBiography = {
   roleInStory: string;
+  firstKnownOccurrence: string | null;
+  lastKnownOccurrence: string | null;
+  firstMentionedAt: string | null;
+  lastMentionedAt: string | null;
+  /** @deprecated occurrence clock. Use firstKnownOccurrence. */
   firstSeen: string | null;
+  /** @deprecated occurrence clock. Use lastKnownOccurrence. */
   lastSeen: string | null;
   majorMoments: string[];
   relationshipSummary: string | null;
@@ -63,14 +70,14 @@ export async function buildCharacterBiography(
 ): Promise<CharacterBiography | null> {
   const { data: character } = await supabaseAdmin
     .from('characters')
-    .select('name, summary, created_at, first_appearance, metadata')
+    .select('name, summary, metadata')
     .eq('id', characterId)
     .eq('user_id', userId)
     .single();
 
   if (!character) return null;
 
-  const [{ data: rels }, { data: memories }, { data: timeline }] = await Promise.all([
+  const [{ data: rels }, { data: memories }, canonical] = await Promise.all([
     supabaseAdmin
       .from('character_relationships')
       .select('relationship_type, summary')
@@ -82,31 +89,19 @@ export async function buildCharacterBiography(
       .eq('user_id', userId)
       .eq('character_id', characterId)
       .order('created_at', { ascending: true }),
-    supabaseAdmin
-      .from('character_timeline_events')
-      .select('event_title, event_date')
-      .eq('user_id', userId)
-      .eq('character_id', characterId)
-      .order('event_date', { ascending: true }),
+    buildCanonicalCharacterTimeline(userId, characterId),
   ]);
 
   const relTypes = (rels ?? []).map((r) => r.relationship_type as string);
   const roleInStory = inferRoleInStory(character.name, relTypes, character.summary);
 
-  const firstSeen =
-    timeline?.[0]?.event_date ??
-    memories?.[0]?.created_at ??
-    character.first_appearance ??
-    character.created_at ??
-    null;
-
-  const lastSeen =
-    timeline?.[timeline.length - 1]?.event_date ??
-    memories?.[memories.length - 1]?.created_at ??
-    null;
+  const firstKnownOccurrence = canonical.summary.firstKnownOccurrenceAt;
+  const lastKnownOccurrence = canonical.summary.lastKnownOccurrenceAt;
+  const firstMentionedAt = canonical.summary.firstMentionedAt;
+  const lastMentionedAt = canonical.summary.lastMentionedAt;
 
   const majorMoments = [
-    ...(timeline ?? []).slice(-5).map((t) => t.event_title as string),
+    ...canonical.sharedExperiences.slice(-5).map((t) => t.eventTitle),
     ...(memories ?? [])
       .filter((m) => m.summary)
       .slice(-3)
@@ -130,8 +125,12 @@ export async function buildCharacterBiography(
 
   return {
     roleInStory,
-    firstSeen: firstSeen ? new Date(firstSeen).toISOString() : null,
-    lastSeen: lastSeen ? new Date(lastSeen).toISOString() : null,
+    firstKnownOccurrence,
+    lastKnownOccurrence,
+    firstMentionedAt,
+    lastMentionedAt,
+    firstSeen: firstKnownOccurrence,
+    lastSeen: lastKnownOccurrence,
     majorMoments,
     relationshipSummary,
     narrativeSummary,
@@ -160,8 +159,12 @@ export async function persistCharacterBiography(
         ...metadata,
         al_biography: {
           role_in_story: biography.roleInStory,
-          first_seen: biography.firstSeen,
-          last_seen: biography.lastSeen,
+          first_known_occurrence: biography.firstKnownOccurrence,
+          last_known_occurrence: biography.lastKnownOccurrence,
+          first_mentioned_at: biography.firstMentionedAt,
+          last_mentioned_at: biography.lastMentionedAt,
+          first_seen: biography.firstKnownOccurrence,
+          last_seen: biography.lastKnownOccurrence,
           major_moments: biography.majorMoments,
           relationship_summary: biography.relationshipSummary,
           narrative_summary: biography.narrativeSummary,

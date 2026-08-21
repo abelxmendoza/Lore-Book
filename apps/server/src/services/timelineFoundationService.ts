@@ -1,24 +1,14 @@
 /**
  * Timeline Foundation Service — Sprint E
  *
- * Memory + Characters + Relationships → Timeline Events
+ * Memory + Characters → resolved_events (canonical).
+ * Production Character Timeline reads CanonicalTemporalModel via
+ * buildCanonicalCharacterTimeline.
  *
- * Pipeline (two-step write — FK constraint requires this order):
- *   journal_entry
- *   → resolved_events (one per unique meaningful entry)
- *   → character_timeline_events (one per character linked to that entry)
+ * Pipeline:
+ *   journal_entry → resolved_events (one per unique meaningful entry)
  *
- * Architecture:
- *   character_timeline_events.event_id FK → resolved_events.id
- *   character_timeline_events.character_id FK → characters.id
- *   character_timeline_events.connection_character_id FK → characters.id (optional)
- *
- * Rules:
- *   - One resolved_event per journal entry (keyed on source_entry_id)
- *   - One character_timeline_event per (character_id, event_id) pair
- *   - Bad entries are filtered (empty content, pure meta-questions)
- *   - Duplicate content entries (same contentHash) get one shared resolved_event
- *   - No LLM — classification is rule-based from content + tags
+ * Classification is rule-based from content + tags. No LLM.
  */
 
 import { v4 as uuid } from 'uuid';
@@ -27,6 +17,7 @@ import { ruleBasedTitleGenerationService } from './ruleBasedTitleGeneration';
 import { computeSourceInputVersion } from './projectionVersion';
 import { supabaseAdmin } from './supabaseClient';
 import { ingestResolvedEvent } from './narrativeSpine/narrativeSpineIngestion';
+import { buildCanonicalCharacterTimeline } from './characters/characterEntityTimelineService';
 
 // ── Event type classification ─────────────────────────────────────────────────
 
@@ -39,9 +30,9 @@ type EventType =
   | 'activity'
   | 'living_situation';
 
-// Allowed values from character_timeline_events_timeline_type_check constraint
+// Allowed values for classified timeline lanes
 type TimelineType = 'shared_experience' | 'lore' | 'mentioned_in';
-// Allowed values from character_timeline_events_emotional_impact_check constraint
+// Allowed emotional impact labels
 type EmotionalImpact = 'positive' | 'negative' | 'neutral' | 'mixed';
 
 type ClassifiedEvent = {
@@ -198,7 +189,7 @@ class TimelineFoundationService {
   /**
    * Main pipeline: generate timeline events for all characters of a user.
    * Runs over character_memories to find which entries each character is
-   * linked to, then creates resolved_events + character_timeline_events.
+   * linked to, then creates resolved_events.
    */
   async generateTimelines(userId: string): Promise<{
     resolvedEventsCreated: number;
@@ -235,14 +226,6 @@ class TimelineFoundationService {
       .in('id', entryIds)
       .order('date', { ascending: true });
 
-    // ── Load characters for connection_character_id resolution ──────────────
-    const { data: chars } = await supabaseAdmin
-      .from('characters')
-      .select('id, name')
-      .eq('user_id', userId);
-
-    const charByName = new Map((chars ?? []).map(c => [c.name.toLowerCase(), c.id]));
-
     // ── Track which resolved_events already exist (by source_entry_id) ──────
     // source_entry_id lives in metadata (resolved_events has no direct column for it)
     const { data: existingResolved } = await supabaseAdmin
@@ -255,16 +238,6 @@ class TimelineFoundationService {
       (existingResolved ?? [])
         .filter(r => (r.metadata as any)?.source_entry_id)
         .map(r => [(r.metadata as any).source_entry_id as string, r.id])
-    );
-
-    // ── Track which character_timeline_events already exist ─────────────────
-    const { data: existingCTE } = await supabaseAdmin
-      .from('character_timeline_events')
-      .select('character_id, event_id')
-      .eq('user_id', userId);
-
-    const cteExistsKey = new Set(
-      (existingCTE ?? []).map(e => `${e.character_id}::${e.event_id}`)
     );
 
     // ── Process each entry ───────────────────────────────────────────────────
@@ -337,72 +310,18 @@ class TimelineFoundationService {
       } else if (contentHash) {
         resolvedByHash.set(contentHash, resolvedEventId);
       }
-
-      // ── Step 2: Create character_timeline_events ─────────────────────────
-
-      // Find connection character (for relationship events: the "other" character)
-      let connectionCharId: string | null = null;
-      if (classified.timelineType === 'shared_experience' && characters.size >= 2) {
-        // The connection character is any character other than the first one
-        const charList = Array.from(characters);
-        connectionCharId = charList[1] ?? null;
-      } else if (classified.timelineType === 'shared_experience') {
-        // Single character entry — try to infer connection from content
-        if (/\bsol\b/i.test(entry.content)) {
-          connectionCharId = charByName.get('sol') ?? null;
-        } else if (/\babuela\b/i.test(entry.content)) {
-          connectionCharId = charByName.get('abuela') ?? null;
-        }
-      }
-
-      for (const characterId of characters) {
-        const cteKey = `${characterId}::${resolvedEventId}`;
-        if (cteExistsKey.has(cteKey)) continue;
-
-        const { error: cteErr } = await supabaseAdmin
-          .from('character_timeline_events')
-          .insert({
-            id: uuid(),
-            user_id: userId,
-            character_id: characterId,
-            event_id: resolvedEventId,
-            timeline_type: classified.timelineType,
-            user_was_present: true,
-            event_type: classified.eventType,
-            event_title: classified.title,
-            event_summary: classified.summary,
-            event_date: entry.date,
-            emotional_impact: classified.emotionalImpact,
-            confidence: classified.confidence,
-            connection_character_id:
-              connectionCharId && connectionCharId !== characterId
-                ? connectionCharId
-                : null,
-            source_entry_ids: [entry.id],
-            metadata: {
-              generated_by: 'timeline_foundation',
-              content_hash: contentHash,
-            },
-          });
-
-        if (cteErr) {
-          logger.error({ error: cteErr, characterId, eventId: resolvedEventId }, 'Failed to create character_timeline_event');
-        } else {
-          cteExistsKey.add(cteKey);
-          stats.timelineEventsCreated++;
-        }
-      }
     }
 
     return stats;
   }
 
   /**
-   * Return the timeline for a single character as a chronological event list.
+   * Canonical character chronology for scripts/diagnostics.
+   * Production Character Timeline uses the same buildCanonicalCharacterTimeline projector.
    */
   async getCharacterTimeline(userId: string, characterId: string): Promise<Array<{
     eventId: string;
-    date: string;
+    date: string | null;
     eventType: string;
     timelineType: string;
     title: string;
@@ -411,47 +330,23 @@ class TimelineFoundationService {
     confidence: number;
     connectionCharacter: string | null;
     sourceEntryIds: string[];
+    canonicalItemId: string;
+    unresolved: boolean;
   }>> {
-    const { data, error } = await supabaseAdmin
-      .from('character_timeline_events')
-      .select(`
-        id, event_id, event_date, event_type, timeline_type,
-        event_title, event_summary, emotional_impact, confidence,
-        connection_character_id, source_entry_ids
-      `)
-      .eq('user_id', userId)
-      .eq('character_id', characterId)
-      .order('event_date', { ascending: true });
-
-    if (error) {
-      logger.error({ error, characterId }, 'Failed to fetch character timeline');
-      return [];
-    }
-
-    // Resolve connection character names
-    const connectionIds = [...new Set(
-      (data ?? []).map(e => e.connection_character_id).filter(Boolean)
-    )];
-
-    const { data: connChars } = connectionIds.length
-      ? await supabaseAdmin.from('characters').select('id, name').in('id', connectionIds)
-      : { data: [] };
-
-    const nameMap = new Map((connChars ?? []).map(c => [c.id, c.name]));
-
-    return (data ?? []).map(e => ({
-      eventId: e.event_id,
-      date: e.event_date,
-      eventType: e.event_type,
-      timelineType: e.timeline_type,
-      title: e.event_title,
-      summary: e.event_summary,
-      emotionalImpact: e.emotional_impact,
-      confidence: e.confidence,
-      connectionCharacter: e.connection_character_id
-        ? (nameMap.get(e.connection_character_id) ?? null)
-        : null,
-      sourceEntryIds: e.source_entry_ids ?? [],
+    const modal = await buildCanonicalCharacterTimeline(userId, characterId);
+    return [...modal.sharedExperiences, ...modal.lore, ...modal.unresolved].map((item) => ({
+      eventId: item.eventId,
+      date: item.isUnresolved ? null : item.occurredStart ?? null,
+      eventType: item.eventType ?? item.timelineType,
+      timelineType: item.timelineType,
+      title: item.eventTitle,
+      summary: item.eventSummary ?? '',
+      emotionalImpact: item.emotionalImpact ?? null,
+      confidence: item.confidence,
+      connectionCharacter: item.connectionCharacter ?? null,
+      sourceEntryIds: [],
+      canonicalItemId: item.canonicalItemId,
+      unresolved: item.isUnresolved === true || !item.occurredStart,
     }));
   }
 
@@ -531,19 +426,6 @@ class TimelineFoundationService {
       logger.error({ error: updateErr, resolvedEventId }, 'Failed to refresh resolved_event');
       return false;
     }
-
-    await supabaseAdmin
-      .from('character_timeline_events')
-      .update({
-        event_title: classified.title,
-        event_summary: classified.summary,
-        event_type: classified.eventType,
-        event_date: entry.date,
-        emotional_impact: classified.emotionalImpact,
-        confidence: classified.confidence,
-      })
-      .eq('user_id', userId)
-      .eq('event_id', resolvedEventId);
 
     return true;
   }

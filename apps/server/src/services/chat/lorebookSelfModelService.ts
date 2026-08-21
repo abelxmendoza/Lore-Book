@@ -76,7 +76,7 @@ export const FALLBACK_SELF_MODEL: Record<SelfModelConcept, SelfModelFact> = {
   capabilities: {
     concept: 'capabilities',
     description:
-      'LoreBook can chat, remember, and organize your lore: characters, places, relationships, timeline events, groups, skills, and foundation recall from structured knowledge before raw journal search.',
+      'LoreBook can chat, remember, and organize your lore: people, places, relationships, a timeline that means when it happened, groups, skills, and foundation recall from structured knowledge before raw journal search.',
   },
   priority: {
     concept: 'priority',

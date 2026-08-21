@@ -153,6 +153,11 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
   const [theme, setTheme] = useState<ReadingTheme>('lore');
   const [activeBookId, setActiveBookId] = useState<string | null>(null);
   const [activeBookMeta, setActiveBookMeta] = useState<{ scope?: string; period?: string } | null>(null);
+  const isDemoRoute = location.pathname === '/demo' || location.pathname.startsWith('/demo/');
+  const runtimePath = useCallback(
+    (path: string) => isDemoRoute ? `/demo${path}` : path,
+    [isDemoRoute],
+  );
 
   const cycleFontSize = () => {
     const order: Array<typeof fontSize> = ['sm', 'base', 'lg', 'xl'];
@@ -460,9 +465,11 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     setIsCoverVisible(false);
     setActiveBookId(null);
     setActiveBookMeta(null);
-    urlBookHandledRef.current = null;
-    navigate('/lorebook', { replace: true });
-  }, [navigate]);
+    // Prevent the deep-link effect from reopening the old ?book= cover while
+    // React Router is committing the Library navigation.
+    urlBookHandledRef.current = '__leaving_for_library__';
+    navigate(runtimePath('/lorebook/library'), { replace: true });
+  }, [navigate, runtimePath]);
 
   const isOnLastPage = allPages.length > 0 && currentPageIndex >= allPages.length - 1;
 
@@ -616,8 +623,8 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     setShowLibrary(false);
     setIsCoverVisible(true);
     setGenerationError(null);
-    navigate(lorebookReadUrl(bookId), { replace: true });
-  }, [navigate]);
+    navigate(runtimePath(lorebookReadUrl(bookId)), { replace: true });
+  }, [navigate, runtimePath]);
 
   const openBiographyForReading = useCallback((biography: Biography) => {
     handleLoadBiography(biography);
@@ -627,12 +634,12 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     setAnimationDirection('none');
     setShowLibrary(false);
     setIsCoverVisible(true);
-    navigate(lorebookReadUrl(biography.id), { replace: true });
-  }, [navigate]);
+    navigate(runtimePath(lorebookReadUrl(biography.id)), { replace: true });
+  }, [navigate, runtimePath]);
 
   const goToEditActiveBook = useCallback(() => {
-    navigate(activeBookId ? lorebookEditUrl(activeBookId) : lorebookEditorUrlForCompiledBooks(compiledBooks));
-  }, [activeBookId, compiledBooks, navigate]);
+    navigate(runtimePath(activeBookId ? lorebookEditUrl(activeBookId) : lorebookEditorUrlForCompiledBooks(compiledBooks)));
+  }, [activeBookId, compiledBooks, navigate, runtimePath]);
 
   const handleSaveAsCore = async (biographyId: string, name: string) => {
     try {
@@ -864,6 +871,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
   useEffect(() => {
     const bookId = searchParams.get('book');
     if (!bookId || searchParams.get('focus')) return;
+    if (urlBookHandledRef.current === '__leaving_for_library__') return;
     if (urlBookHandledRef.current === bookId && !showLibrary) return;
 
     if (resolveDemoLorebookById(bookId) && (shouldUseMock || isSimulated)) {
@@ -1079,6 +1087,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
           theme={theme}
           onOpen={() => setIsCoverVisible(false)}
           onEdit={activeBookId ? goToEditActiveBook : undefined}
+          onBackToLibrary={goToLibrary}
         />
       </div>
     );

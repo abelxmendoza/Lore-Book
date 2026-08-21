@@ -13,6 +13,7 @@ vi.mock('../../lib/api', () => ({
 
 vi.mock('../../lib/storyRefresh', () => ({
   onStoryDataUpdated: () => () => {},
+  subscribeTemporalRefresh: () => () => {},
 }));
 
 vi.mock('../events/EventDetailModal', () => ({

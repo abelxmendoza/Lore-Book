@@ -763,8 +763,27 @@ export class GroupCandidateService {
       .eq('user_id', userId);
 
     if (error) throw error;
-    // New rejection must take effect immediately for re-detection suppression.
     this.invalidateRejectionCache(userId);
+    const { recordRejectedCandidate, resolvePendingSuggestions } = await import(
+      './lorebook/suggestions/suggestionDecisionStore'
+    );
+    const { data: row } = await supabaseAdmin
+      .from('group_candidates')
+      .select('proposed_name')
+      .eq('id', candidateId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    const name = String(row?.proposed_name ?? '').trim();
+    if (name) {
+      await recordRejectedCandidate({
+        userId,
+        domain: 'organizations',
+        name,
+        reason: 'group_candidate_rejected',
+        sourceSuggestionId: candidateId,
+      });
+      await resolvePendingSuggestions({ userId, domain: 'organizations', names: [name] });
+    }
   }
 
   /**

@@ -1,12 +1,13 @@
 /**
  * Classify Postgres / PostgREST / Supabase errors for cost-aware handling.
  *
- * Supabase enters read-only mode when database or disk quotas are exceeded
- * (Free: 500 MB database size; Pro: disk at 95% with exhausted resize quota).
- * Callers should surface actionable messages instead of generic 500s.
+ * Spend Cap (Pro) and disk/database quotas put the project in read-only or
+ * paused mode. Callers should surface notices instead of generic 500s.
+ * Compute size and preview branches are billed outside Spend Cap.
  */
 
-import { AppError } from '../middleware/errorHandler';
+import { AppError } from '../middleware/appError';
+import { noteDatabaseWriteBlocked } from '../services/databaseStorageProbe';
 
 export type PostgresErrorKind =
   | 'read_only'
@@ -44,6 +45,9 @@ const READ_ONLY_PATTERNS: readonly RegExp[] = [
   /cannot execute .+ in a read-only transaction/i,
   /default_transaction_read_only/i,
   /database is in read-only mode/i,
+  /spend cap/i,
+  /project (?:is )?paused/i,
+  /over the allocated disk size/i,
 ];
 
 const DISK_FULL_PATTERNS: readonly RegExp[] = [
@@ -53,6 +57,26 @@ const DISK_FULL_PATTERNS: readonly RegExp[] = [
   /storage quota/i,
   /exceeded.*(disk|storage|database).*?(limit|quota|size)/i,
 ];
+
+export const READ_ONLY_USER_MESSAGE =
+  'LoreBook cannot save right now because the database is in read-only mode. This usually means a Supabase spend cap or usage quota was reached. You can still read existing memories. New chats, journal entries, and uploads will fail until the next billing cycle or the cap is raised in Supabase.';
+
+export const DISK_FULL_USER_MESSAGE =
+  'LoreBook cannot save because database disk is full. If Spend Cap is on, writes stay blocked until the next billing cycle. Otherwise free space or expand disk in Supabase.';
+
+export type StorageBlockedNotice = {
+  code: string;
+  message: string;
+  writesAvailable: false;
+};
+
+export function storageBlockedNotice(classified: ClassifiedPostgresError): StorageBlockedNotice {
+  return {
+    code: postgresErrorCode(classified.kind),
+    message: classified.userMessage,
+    writesAvailable: false,
+  };
+}
 
 const TRANSIENT_PATTERNS: readonly RegExp[] = [
   /connection (?:terminated|reset|refused|timeout)/i,
@@ -72,6 +96,7 @@ const SCHEMA_PATTERNS: readonly RegExp[] = [
 type ErrorFields = {
   code?: string;
   message: string;
+  httpStatus?: number;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -85,7 +110,13 @@ export function extractPostgresErrorFields(err: unknown): ErrorFields {
     const code =
       (typeof rec?.code === 'string' ? rec.code : undefined) ??
       (typeof rec?.statusCode === 'string' ? rec.statusCode : undefined);
-    return { code, message: err.message || String(err) };
+    const httpStatus =
+      typeof rec?.status === 'number'
+        ? rec.status
+        : typeof rec?.statusCode === 'number'
+          ? rec.statusCode
+          : undefined;
+    return { code, message: err.message || String(err), ...(httpStatus != null ? { httpStatus } : {}) };
   }
 
   const rec = asRecord(err);
@@ -95,13 +126,20 @@ export function extractPostgresErrorFields(err: unknown): ErrorFields {
     (typeof rec.code === 'string' ? rec.code : undefined) ??
     (typeof rec.error_code === 'string' ? rec.error_code : undefined);
 
+  const httpStatus =
+    typeof rec.status === 'number'
+      ? rec.status
+      : typeof rec.statusCode === 'number'
+        ? rec.statusCode
+        : undefined;
+
   const message =
     (typeof rec.message === 'string' ? rec.message : undefined) ??
     (typeof rec.error === 'string' ? rec.error : undefined) ??
     (typeof rec.details === 'string' ? rec.details : undefined) ??
     String(err);
 
-  return { code, message };
+  return { code, message, ...(httpStatus != null ? { httpStatus } : {}) };
 }
 
 function matchesAny(message: string, patterns: readonly RegExp[]): boolean {
@@ -112,10 +150,11 @@ function matchesAny(message: string, patterns: readonly RegExp[]): boolean {
 }
 
 export function classifyPostgresError(err: unknown): ClassifiedPostgresError {
-  const { code, message } = extractPostgresErrorFields(err);
+  const { code, message, httpStatus } = extractPostgresErrorFields(err);
   const normalizedCode = code?.toUpperCase();
 
   if (
+    httpStatus === 507 ||
     (normalizedCode && READ_ONLY_SQLSTATE.has(normalizedCode)) ||
     matchesAny(message, READ_ONLY_PATTERNS)
   ) {
@@ -123,8 +162,7 @@ export function classifyPostgresError(err: unknown): ClassifiedPostgresError {
       kind: 'read_only',
       code: normalizedCode,
       message,
-      userMessage:
-        'LoreBook storage is full and the database is in read-only mode. Delete old data or upgrade your plan, then try again.',
+      userMessage: READ_ONLY_USER_MESSAGE,
       httpStatus: 507,
       retryable: false,
     };
@@ -138,8 +176,7 @@ export function classifyPostgresError(err: unknown): ClassifiedPostgresError {
       kind: 'disk_full',
       code: normalizedCode,
       message,
-      userMessage:
-        'LoreBook could not save because database storage is full. Free up space or expand disk in Supabase settings.',
+      userMessage: DISK_FULL_USER_MESSAGE,
       httpStatus: 507,
       retryable: false,
     };
@@ -215,12 +252,21 @@ export function postgresErrorCode(kind: PostgresErrorKind): string {
 export class StorageBlockedError extends AppError {
   readonly postgresKind: PostgresErrorKind;
   readonly apiCode: string;
+  readonly notice: StorageBlockedNotice;
 
   constructor(classified: ClassifiedPostgresError) {
     super(classified.httpStatus, classified.userMessage);
     this.postgresKind = classified.kind;
     this.apiCode = postgresErrorCode(classified.kind);
+    this.notice = storageBlockedNotice(classified);
+    if (classified.kind === 'read_only' || classified.kind === 'disk_full') {
+      noteDatabaseWriteBlocked(classified.kind);
+    }
   }
+}
+
+export function isStorageBlockedKind(kind: PostgresErrorKind): boolean {
+  return kind === 'read_only' || kind === 'disk_full';
 }
 
 /** Throw StorageBlockedError for quota/read-only failures; return classification otherwise. */

@@ -52,6 +52,13 @@ function domainResultLine(domain: SuggestionDomain, results: SuggestionRescanSum
       if (upserted > 0) return `Found ${upserted} project${upserted === 1 ? '' : 's'} in your chats.`;
       return 'Projects are up to date.';
     }
+    case 'organizations': {
+      const promoted = Number(row.omegaPromoted ?? 0);
+      const inferred = Number(row.inferenceUpserted ?? 0);
+      const total = promoted + inferred;
+      if (total > 0) return `Found ${total} group${total === 1 ? '' : 's'} in your chats.`;
+      return 'Groups are up to date.';
+    }
     case 'romantic': {
       const summary = row.summary as { relationshipsUpserted?: number } | undefined;
       const total = summary?.relationshipsUpserted ?? 0;

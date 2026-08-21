@@ -6,6 +6,7 @@ import { timeEngine } from '../../utils/timeEngine';
 import { TimeDisplay } from '../time/TimeDisplay';
 import { ContentTypeBadge } from '../content/ContentTypeBadge';
 import type { TimelineResponse } from '../../hooks/useLoreKeeper';
+import { formatJournalOccurrenceLabel, journalOccurrenceMonthKey } from '../../lib/journalOccurrence';
 
 type TimelineCardViewProps = {
   timeline: TimelineResponse;
@@ -93,7 +94,7 @@ export const TimelineCardView = ({ timeline, density, onEntryClick }: TimelineCa
       // Show only entries with summaries or first entry of each month
       const monthMap = new Map<string, typeof allEntries[0]>();
       allEntries.forEach(entry => {
-        const monthKey = new Date(entry.date).toISOString().slice(0, 7);
+        const monthKey = journalOccurrenceMonthKey(entry.date);
         if (!monthMap.has(monthKey) || entry.summary) {
           monthMap.set(monthKey, entry);
         }
@@ -211,7 +212,7 @@ export const TimelineCardView = ({ timeline, density, onEntryClick }: TimelineCa
           key={entry.id}
           role="button"
           tabIndex={0}
-          aria-label={`Entry from ${new Date(entry.date).toLocaleDateString()}: ${entry.summary || entry.content.substring(0, 50)}`}
+          aria-label={`Entry from ${formatJournalOccurrenceLabel(entry.date)}: ${entry.summary || entry.content.substring(0, 50)}`}
           className="bg-black/40 border-border/60 hover:border-primary/50 transition-all hover:shadow-lg cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
           onClick={() => onEntryClick?.(entry.id)}
           onKeyDown={(e) => {
@@ -227,12 +228,16 @@ export const TimelineCardView = ({ timeline, density, onEntryClick }: TimelineCa
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <Calendar className="h-4 w-4 text-primary flex-shrink-0" />
-                <TimeDisplay
-                  timestamp={entry.date}
-                  variant="compact"
-                  showIcon={false}
-                  className="text-xs text-white/50 truncate"
-                />
+                {entry.date ? (
+                  <TimeDisplay
+                    timestamp={entry.date}
+                    variant="compact"
+                    showIcon={false}
+                    className="text-xs text-white/50 truncate"
+                  />
+                ) : (
+                  <span className="text-xs text-white/50 truncate">Date unknown</span>
+                )}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 {(entry as any).content_type && (entry as any).content_type !== 'standard' && (

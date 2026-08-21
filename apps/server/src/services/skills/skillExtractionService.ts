@@ -17,6 +17,7 @@ import {
 import { skillService, type SkillCategory } from './skillService';
 import { skillDetailsExtractionService } from './skillDetailsExtractionService';
 import { skillSuggestionService } from './skillSuggestionService';
+import { applySuggestionCandidate } from '../lorebook/suggestions/applySuggestionCandidate';
 import { suggestionDismissalService } from '../suggestionDismissalService';
 
 export type ExtractedSkill = ExtractedSkillProfile;
@@ -225,24 +226,35 @@ class SkillExtractionService {
           skillDetailsExtractionService.extractSkillDetails(userId, existing.id)
             .catch((err) => logger.error({ err, userId, skillId: existing.id }, 'Failed to auto-extract skill details'));
         } else {
-          const newSkill = await skillService.createSkill(userId, {
-            skill_name: extracted.skill_name,
-            skill_category: this.normalizeCategory(String(extracted.skill_category ?? 'other')),
-            description: extracted.description,
-            auto_detected: true,
-            confidence_score: extracted.confidence,
-            metadata: { skill_profile: incomingProfile },
-          });
-          await skillService.recordUsageEvent(userId, newSkill.id, {
-            context: extracted.description,
-            source_message_id: entryId,
-            enjoyment: incomingProfile.enjoyment,
-          });
-          results.push({ skill: newSkill, created: true });
+          await applySuggestionCandidate({
+            userId,
+            domain: 'skills',
+            name: extracted.skill_name,
+            evidence: extracted.description,
+            sourceMessageId: entryId,
+            extractor: 'skill_extraction',
+            source: 'journal',
+            onCreate: async () => {
+              const newSkill = await skillService.createSkill(userId, {
+                skill_name: extracted.skill_name,
+                skill_category: this.normalizeCategory(String(extracted.skill_category ?? 'other')),
+                description: extracted.description,
+                auto_detected: true,
+                confidence_score: extracted.confidence,
+                metadata: { skill_profile: incomingProfile },
+              });
+              await skillService.recordUsageEvent(userId, newSkill.id, {
+                context: extracted.description,
+                source_message_id: entryId,
+                enjoyment: incomingProfile.enjoyment,
+              });
+              results.push({ skill: newSkill, created: true });
 
-          skillDetailsExtractionService.extractSkillDetails(userId, newSkill.id)
-            .then((details) => skillService.updateSkillDetails(userId, newSkill.id, details))
-            .catch((err) => logger.error({ err, userId, skillId: newSkill.id }, 'Failed to auto-extract skill details'));
+              skillDetailsExtractionService.extractSkillDetails(userId, newSkill.id)
+                .then((details) => skillService.updateSkillDetails(userId, newSkill.id, details))
+                .catch((err) => logger.error({ err, userId, skillId: newSkill.id }, 'Failed to auto-extract skill details'));
+            },
+          });
         }
       }
 
@@ -282,16 +294,27 @@ class SkillExtractionService {
           const r = await skillService.addXP(userId, existing.id, xp, 'achievement', questId, reason);
           results.push({ skill: r.skill, created: false, leveledUp: r.leveledUp });
         } else {
-          const newSkill = await skillService.createSkill(userId, {
-            skill_name: extracted.skill_name,
-            skill_category: this.normalizeCategory(String(extracted.skill_category ?? 'other')),
-            description: extracted.description,
-            auto_detected: true,
-            confidence_score: extracted.confidence,
-            metadata: { skill_profile: incomingProfile },
+          await applySuggestionCandidate({
+            userId,
+            domain: 'skills',
+            name: extracted.skill_name,
+            evidence: extracted.description ?? questText,
+            sourceMessageId: questId,
+            extractor: 'skill_extraction',
+            source: 'quest',
+            onCreate: async () => {
+              const newSkill = await skillService.createSkill(userId, {
+                skill_name: extracted.skill_name,
+                skill_category: this.normalizeCategory(String(extracted.skill_category ?? 'other')),
+                description: extracted.description,
+                auto_detected: true,
+                confidence_score: extracted.confidence,
+                metadata: { skill_profile: incomingProfile },
+              });
+              const r = await skillService.addXP(userId, newSkill.id, xp, 'achievement', questId, reason);
+              results.push({ skill: r.skill, created: true, leveledUp: r.leveledUp });
+            },
           });
-          const r = await skillService.addXP(userId, newSkill.id, xp, 'achievement', questId, reason);
-          results.push({ skill: r.skill, created: true, leveledUp: r.leveledUp });
         }
       }
 

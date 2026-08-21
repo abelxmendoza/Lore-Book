@@ -27,6 +27,15 @@ import {
   type IntentSource,
 } from './composerIntentFastPath';
 import { retrieveSemanticClaimCandidates } from './semanticClaimRetriever';
+import { listCurrentCharacterRelationships } from '../relationships/characterRelationshipHistoryService';
+import { classifyMessageComplexity, isSimpleWorkingMemoryTurn } from '../ingestion/messageComplexityGate';
+import {
+  getTurnWorkingMemory,
+  invalidateTurnWorkingMemory,
+  setTurnWorkingMemory,
+  workingMemoryTurnKey,
+} from './turnWorkingMemoryCache';
+import { recordDbQuery, recordSkippedOperation } from '../../lib/messageCostTracker';
 
 export type WorkingMemoryIntent =
   | 'PERSON_QUERY'
@@ -250,6 +259,7 @@ class WmaRequestScope {
         rowCount,
         cached: false,
       });
+      recordDbQuery(rowCount);
       if (error) return null;
       return data;
     });
@@ -340,6 +350,7 @@ type Candidate = Omit<WorkingMemoryItem, 'score' | 'reasons'> & {
 };
 
 const DEFAULT_BUDGET = 20;
+const SIMPLE_TURN_BUDGET = 12;
 
 const INTENT_RULES: Array<{ intent: WorkingMemoryIntent; pattern: RegExp }> = [
   { intent: 'DEBUG_QUERY', pattern: /\b(did you save|did you store|what did you save|debug|memory status|was that saved)\b/i },
@@ -350,7 +361,7 @@ const INTENT_RULES: Array<{ intent: WorkingMemoryIntent; pattern: RegExp }> = [
   { intent: 'ARC_QUERY', pattern: /\b(what stor(?:y|ies) am i living|life arcs?|major arcs?|what arcs?|dominant arcs?|narrative threads?|what story am i living|what is my story|tell me about my .* arc|my .* arc)\b/i },
   { intent: 'GOAL_QUERY', pattern: /\b(my goals?|what are my (?:current )?goals?|what.*\bgoals?\b|what.*(?:working toward|working towards)|what have i abandoned|abandoned goals?|what am i trying to do with my life|trying to do with my life|what is changing|aspirations?|what do i want to (?:achieve|accomplish|do)|my objectives?|what am i aiming (?:for|at)|my (?:dreams|ambitions)|am i (?:on track|making progress) (?:on|toward|with) my|current goals?|my priorities|what matters most|what should i focus on)\b/i },
   { intent: 'SKILL_QUERY', pattern: /\b(my skills?|what skills|what skills do i have|skills (?:define|describe) me|what (?:can i do|am i good at)|what am i (?:learning|practicing|building)|my abilities|how good am i at|am i (?:improving|getting better) at|am i leveling|my proficienc)\b/i },
-  { intent: 'CAREER_QUERY', pattern: /\b(my career|career timeline|career history|work history|jobs? (?:have i|did i|i have|i had)|employment history|professional journey|where have i worked|companies i (?:worked|work) (?:at|for)|my employers?)\b/i },
+  { intent: 'CAREER_QUERY', pattern: /\b(my career|career timeline|career history|work history|jobs? (?:have i|did i|i have|i had)|employment history|professional journey|where have i worked|companies i (?:worked|work) (?:at|for)|my employers?|when did i (?:start |leave |work|join)|where did i work|did i work (?:at|for)|how long did i work|my time (?:at|with)|work(?:ed)? at)\b/i },
   { intent: 'PROJECT_QUERY', pattern: /\b(projects? am i (?:working on|building)|what projects|my projects|how is .* progressing|progress on|status of|how's .* going|projects?\b|lorebook)\b/i },
   { intent: 'COMMUNITY_QUERY', pattern: /\b(my communities|communities am i|social circles?|groups am i part of|what communities|communities matter|my crew|my circles?|organizations i belong|clubs am i in|who are my .* people)\b/i },
   { intent: 'EVENT_QUERY', pattern: /\b(what happened at .*(graduation|party|wedding|funeral|birthday)|what happened during|what happened last|what did i do last|last summer|last year|last month|last week|tell me about .*graduation|what did i do with|event)\b/i },
@@ -362,6 +373,8 @@ const INTENT_RULES: Array<{ intent: WorkingMemoryIntent; pattern: RegExp }> = [
 ];
 
 const TARGET_PATTERNS = [
+  /\b(?:work(?:ed)?|working) (?:at|for)\s{1,40}(.{1,80}?)[?.!]?$/i,
+  /\b(?:start(?:ed)?|join(?:ed)?) (?:at|with)\s{1,40}(.{1,80}?)[?.!]?$/i,
   /\bI want to (?:talk|tell you) about\s{1,40}(.{1,120}?)(?:\.|,|;|Help me\b|$)/i,
   /\b(?:what did i do with|what have i done with)\s{1,40}(.{1,120}?)[?.!]?$/i,
   /\b(?:how am i related to)\s{1,40}(.{1,120}?)[?.!]?$/i,
@@ -550,9 +563,11 @@ function itemLine(item: WorkingMemoryItem): string {
     : item.date
       ? ` | date=${item.date}`
       : '';
+  const usage =
+    typeof item.metadata?.usage === 'string' ? ` | usage=${item.metadata.usage}` : '';
   const reason = item.reasons.length ? ` | reason=${item.reasons.slice(0, 3).join('; ')}` : '';
   const provenance = formatProvenanceCitation(item);
-  return `- ${item.title} [source=${item.source} | confidence=${item.confidence.toFixed(2)} | score=${item.score.toFixed(2)}${date}${provenance}${reason}]\n  ${item.content}`;
+  return `- ${item.title} [source=${item.source} | confidence=${item.confidence.toFixed(2)} | score=${item.score.toFixed(2)}${date}${usage}${provenance}${reason}]\n  ${item.content}`;
 }
 
 function section(title: string, items: WorkingMemoryItem[]): string {
@@ -574,15 +589,18 @@ export function buildWorkingMemoryPacket(assembly: WorkingMemoryAssembly): Worki
 
   const people = entityItems.filter((item) => /\bPERSON|character/i.test(item.content));
   const places = entityItems.filter((item) => /\bPLACE|LOCATION|HOUSEHOLD|place|location/i.test(item.content));
+  const listedIds = new Set([
+    ...assembly.events.map((item) => item.id),
+    ...assembly.episodes.map((item) => item.id),
+    ...assembly.timeline.map((item) => item.id),
+    ...assembly.claims.map((item) => item.id),
+  ]);
   const recentContext = [...assembly.episodes, ...assembly.timeline]
     .filter((item) => daysAgo(item.date) != null && (daysAgo(item.date) ?? 999) <= 30)
+    .filter((item) => !listedIds.has(item.id))
     .slice(0, 6);
   const relevantContext = [
-    ...assembly.episodes,
-    ...assembly.events,
-    ...assembly.timeline,
     ...assembly.preferences,
-    ...assembly.claims,
   ].sort((a, b) => b.score - a.score).slice(0, 8);
 
   const openLoops: WorkingMemoryPacket['openLoops'] = [];
@@ -673,7 +691,7 @@ async function resolveTargetEntities(
           .from('locations')
           .select('id, name, aliases, importance_score')
           .eq('user_id', userId)
-          .ilike('name', target)
+          .ilike('name', `%${target}%`)
     ),
     scope.traced(
       'organizations',
@@ -684,7 +702,7 @@ async function resolveTargetEntities(
           .from('organizations')
           .select('id, name, aliases, importance_score')
           .eq('user_id', userId)
-          .ilike('name', target)
+          .ilike('name', `%${target}%`)
     ),
     scope.traced(
       'projects',
@@ -695,7 +713,7 @@ async function resolveTargetEntities(
           .from('projects')
           .select('id, name, title, status, metadata')
           .eq('user_id', userId)
-          .ilike('name', target)
+          .ilike('name', `%${target}%`)
     ),
   ]);
 
@@ -748,13 +766,7 @@ async function loadProtagonistRelationshipCandidates(
       'character_relationships',
       'protagonist relationship edges',
       `relationships:protagonist:${protagonist.id}`,
-      () =>
-        supabaseAdmin
-          .from('character_relationships')
-          .select('id, relationship_type, status, metadata, source_character_id, target_character_id, updated_at')
-          .eq('user_id', userId)
-          .or(`source_character_id.eq.${protagonist.id},target_character_id.eq.${protagonist.id}`)
-          .limit(12)
+      () => listCurrentCharacterRelationships(userId, { characterId: protagonist.id }).then((data) => ({ data, error: null })),
     ),
     scope.traced(
       'entity_relationships',
@@ -969,7 +981,7 @@ async function loadPersonCandidates(
   const characterId = entity.source === 'characters' ? entity.id : null;
   if (!characterId) return [];
 
-  const [memories, events, relationships, facts, character] = await Promise.all([
+  const [memories, relationships, facts, character] = await Promise.all([
     scope.traced(
       'character_memories',
       'memories for target character',
@@ -983,29 +995,10 @@ async function loadPersonCandidates(
           .limit(8)
     ),
     scope.traced(
-      'character_timeline_events',
-      'events for target character',
-      `events:character:${characterId}`,
-      () =>
-        supabaseAdmin
-          .from('character_timeline_events')
-          .select('id, event_title, event_type, event_date, event_summary, confidence, metadata')
-          .eq('user_id', userId)
-          .eq('character_id', characterId)
-          .order('event_date', { ascending: false })
-          .limit(6)
-    ),
-    scope.traced(
       'character_relationships',
       'relationships for target character',
       `relationships:character:${characterId}`,
-      () =>
-        supabaseAdmin
-          .from('character_relationships')
-          .select('id, relationship_type, status, source_character_id, target_character_id, strength, metadata, updated_at')
-          .eq('user_id', userId)
-          .or(`source_character_id.eq.${characterId},target_character_id.eq.${characterId}`)
-          .limit(6)
+      () => listCurrentCharacterRelationships(userId, { characterId }).then((data) => ({ data, error: null })),
     ),
     scope.traced(
       'entity_facts',
@@ -1078,25 +1071,15 @@ async function loadPersonCandidates(
       importance: 0.65,
       significance: 0.6,
       relationshipDistance: 1,
-      reasons: [namesTarget ? 'names the target' : 'linked to target character'],
-      metadata: { journal_entry_id: memory.journal_entry_id },
-    });
-  }
-
-  for (const event of (events ?? []) as any[]) {
-    out.push({
-      id: `event:${event.id}`,
-      type: 'event',
-      title: event.event_title ?? event.event_type ?? `Event involving ${target}`,
-      content: String(event.event_summary ?? event.event_title ?? ''),
-      source: 'character_timeline_events',
-      date: event.event_date,
-      confidence: Number(event.confidence ?? 0.8),
-      relevance: 0.92,
-      importance: 0.75,
-      significance: Number((event.metadata as Record<string, unknown>)?.significance_score ?? 65) / 100,
-      relationshipDistance: 1,
-      reasons: ['timeline event for target character'],
+      reasons: [
+        namesTarget ? 'names the target' : 'linked to target character',
+        'memory link, not occurrence',
+      ],
+      metadata: {
+        journal_entry_id: memory.journal_entry_id,
+        usage: 'subject_reference',
+        temporalAuthority: 'not_occurrence',
+      },
     });
   }
 
@@ -1135,50 +1118,6 @@ async function loadPersonCandidates(
   }
 
   return out;
-}
-
-/**
- * Organization/location equivalent of loadPersonCandidates' timeline block —
- * entity_timeline_events (entityTimelineBuilder.ts) is the org/location
- * analog of character_timeline_events, but had no reader anywhere in the
- * response path until now.
- */
-async function loadEntityTimelineCandidates(
-  scope: WmaRequestScope,
-  userId: string,
-  entityType: 'organization' | 'location',
-  entityId: string,
-  target: string
-): Promise<Candidate[]> {
-  const events = await scope.traced(
-    'entity_timeline_events',
-    `timeline events for target ${entityType}`,
-    `events:${entityType}:${entityId}`,
-    () =>
-      supabaseAdmin
-        .from('entity_timeline_events')
-        .select('id, event_title, event_type, event_date, event_summary, confidence, metadata')
-        .eq('user_id', userId)
-        .eq('entity_type', entityType)
-        .eq('entity_id', entityId)
-        .order('event_date', { ascending: false })
-        .limit(6)
-  );
-
-  return ((events ?? []) as any[]).map((event) => ({
-    id: `entity_event:${event.id}`,
-    type: 'event',
-    title: event.event_title ?? event.event_type ?? `Event involving ${target}`,
-    content: String(event.event_summary ?? event.event_title ?? ''),
-    source: 'entity_timeline_events',
-    date: event.event_date,
-    confidence: Number(event.confidence ?? 0.7),
-    relevance: 0.9,
-    importance: 0.7,
-    significance: Number((event.metadata as Record<string, unknown>)?.significance_score ?? 60) / 100,
-    relationshipDistance: 1,
-    reasons: [`timeline event for target ${entityType}`],
-  }));
 }
 
 type PersistedEpisodeRow = {
@@ -1400,7 +1339,10 @@ async function loadTextualCandidates(
   intent: WorkingMemoryIntent,
   threadId?: string,
   temporalWindow?: TemporalWindow | null,
-  characterId?: string | null
+  characterId?: string | null,
+  locationId?: string | null,
+  organizationId?: string | null,
+  compact = false,
 ): Promise<Candidate[]> {
   const like = `%${target ?? ''}%`;
   const wantsTarget = Boolean(target);
@@ -1423,12 +1365,16 @@ async function loadTextualCandidates(
       () => {
         let q = supabaseAdmin
           .from('journal_entries')
-          .select('id, content, summary, date, tags, source, metadata')
+          .select('id, content, summary, date, tags, source, metadata, created_at')
           .eq('user_id', userId);
         q = applyDateRange(q, 'date');
-        return q.order('date', { ascending: false }).limit(
-          temporal ? 12 : intent === 'CAREER_QUERY' ? 20 : intent === 'LIFE_REVIEW' ? 8 : 6,
-        );
+        return temporal
+          ? q.order('date', { ascending: false, nullsFirst: false }).limit(
+              temporal ? 12 : intent === 'CAREER_QUERY' ? 20 : intent === 'LIFE_REVIEW' ? 8 : 6,
+            )
+          : q.order('created_at', { ascending: false }).limit(
+              intent === 'CAREER_QUERY' ? 20 : intent === 'LIFE_REVIEW' ? 8 : 6,
+            );
       }
     ),
     threadId
@@ -1459,7 +1405,7 @@ async function loadTextualCandidates(
               .order('created_at', { ascending: false })
               .limit(6)
         ),
-    fetchProjectsForTextual(scope, userId),
+    compact ? Promise.resolve([] as ProjectRow[]) : fetchProjectsForTextual(scope, userId),
     temporal
       ? Promise.resolve([] as any[])
       : scope.traced(
@@ -1474,22 +1420,30 @@ async function loadTextualCandidates(
           .order('recorded_at', { ascending: false })
           .limit(intent === 'IDENTITY_QUERY' || intent === 'LIFE_REVIEW' ? 4 : 2)
     ),
-    // Canonical timeline projector: same dedup (clusterDuplicateEvents) and
-    // eligibility gating (evaluateTimelineEligibility) the Timeline/Swimlanes
-    // UI page relies on, instead of chat running its own separate ad-hoc
-    // character_timeline_events + resolved_events queries with a flat
-    // id/text dedup and no eligibility gating.
+    // Canonical timeline: same stitched projector as Omni/Calendar/entity
+    // modals. Org/location/person IDs scope by canonical association, not
+    // entity_timeline_events dates or name overlap.
     scope.traced(
       'stitched_timeline',
       temporal ? 'stitched timeline in window' : 'recent stitched timeline',
-      `stitched_timeline:${intent}:${characterId ?? normalizeNameKey(target ?? '')}`,
+      `stitched_timeline:${intent}:${organizationId ?? locationId ?? characterId ?? normalizeNameKey(target ?? '')}`,
       () =>
         stitchedTimelineService
           .getStitchedTimeline(userId, {
             start_time: isoRange?.gte,
             end_time: isoRange?.lte,
-            character_id: characterId ?? undefined,
-            limit: temporal || intent === 'CAREER_QUERY' || intent === 'LIFE_REVIEW' || intent === 'EVENT_QUERY' || intent === 'RELATIONSHIP_QUERY' ? 20 : 6,
+            ...(organizationId
+              ? { organization_id: organizationId }
+              : locationId
+                ? { location_id: locationId }
+                : characterId
+                  ? { character_id: characterId }
+                  : target
+                    ? { text_query: target }
+                    : {}),
+            limit: organizationId || locationId || characterId
+              ? 12
+              : temporal || intent === 'CAREER_QUERY' || intent === 'LIFE_REVIEW' || intent === 'EVENT_QUERY' || intent === 'RELATIONSHIP_QUERY' || intent === 'PLACE_QUERY' || intent === 'COMMUNITY_QUERY' ? 20 : 6,
           })
           .then((data) => ({ data, error: undefined }))
     ),
@@ -1528,11 +1482,17 @@ async function loadTextualCandidates(
       importance: 0.5,
       significance: Array.isArray(entry.tags) && entry.tags.length > 0 ? 0.6 : 0.45,
       relationshipDistance: 0.5,
-      reasons: matchesTarget ? ['text matches target'] : ['recent episode'],
+      reasons: [
+        matchesTarget ? 'text matches target' : 'recent episode',
+        ...(organizationId || locationId ? ['subject mention, not occurrence'] : []),
+      ],
       metadata: {
         ...(entry.metadata ?? {}),
         knowledge_type: (entry.metadata as Record<string, unknown> | undefined)?.knowledge_type ?? 'EXPERIENCE',
         truth_state: (entry.metadata as Record<string, unknown> | undefined)?.truth_state ?? 'PENDING_VERIFICATION',
+        ...(organizationId || locationId
+          ? { usage: 'subject_reference', temporalAuthority: 'not_occurrence' }
+          : {}),
       },
     });
   }
@@ -1553,7 +1513,10 @@ async function loadTextualCandidates(
       importance: 0.45,
       significance: 0.4,
       relationshipDistance: threadId ? 0.8 : 0.45,
-      reasons: [threadId ? 'same thread' : 'chat text matches target'],
+      reasons: [
+        threadId ? 'same thread' : 'chat text matches target',
+        ...(organizationId || locationId ? ['subject mention, not occurrence'] : []),
+      ],
       sourceMessageIds: [String(chat.id)],
       sourceThreadId: chat.session_id ?? null,
       metadata: {
@@ -1561,44 +1524,106 @@ async function loadTextualCandidates(
         role: chat.role,
         source_message_ids: [String(chat.id)],
         source_thread_id: chat.session_id,
+        ...(organizationId || locationId
+          ? { usage: 'subject_reference', temporalAuthority: 'not_occurrence' }
+          : {}),
       },
     });
   }
 
-  // Single canonical source for character_timeline_events + resolved_events
-  // (see stitched_timeline query above) — already deduped and eligibility-gated
-  // by projectCanonicalTimeline, so no separate seenIds/occurredInWindow pass
-  // is needed here the way the old two-table merge required.
-  for (const item of stitchedTimeline?.items ?? []) {
+  // Canonical occurrence only. sortTime / created_at / legacy entity_timeline
+  // dates are not occurrence. Unresolved items stay undated.
+  const stitchedRows = [
+    ...(stitchedTimeline?.items ?? []),
+    ...(stitchedTimeline?.unresolved_items ?? []),
+  ];
+  const seenStitched = new Set<string>();
+  const entityScoped = Boolean(organizationId || locationId || characterId);
+  for (const item of stitchedRows) {
+    if (seenStitched.has(item.id)) continue;
+    seenStitched.add(item.id);
     const text = `${item.title ?? ''} ${item.body ?? ''}`;
     const matchesTarget = includeByIntent(text);
-    // Scoped retrieval (character_id/date range) already narrowed this set;
-    // only fall back to a text-match penalty when neither scope applied.
-    const isScoped = Boolean(characterId) || Boolean(temporalWindow);
+    const isScoped = entityScoped || Boolean(temporalWindow);
     if (!isScoped && wantsTarget && !matchesTarget && !['LIFE_REVIEW', 'EVENT_QUERY'].includes(intent)) continue;
+    const occurredStart =
+      item.occurredAt
+      ?? item.temporalProjection?.occurredStart
+      ?? item.temporal?.occurred.start
+      ?? null;
+    const unresolved =
+      item.occurrenceStatus === 'unresolved'
+      || item.temporalProjection?.isUnresolved === true
+      || !occurredStart;
+    const attribution = organizationId
+      ? (item.organizationAttributions ?? []).find((row) => row.organizationId === organizationId)
+      : undefined;
     out.push({
       id: `stitched_timeline:${item.id}`,
       type: intent === 'PERSON_QUERY' || intent === 'RELATIONSHIP_QUERY' ? 'timeline' : 'event',
       title: item.title || 'Timeline event',
       content: item.body || item.title || '',
       source: 'stitched_timeline',
-      date: item.sortTime,
+      date: unresolved ? null : occurredStart,
+      dateLabel: unresolved ? 'Date unresolved' : undefined,
       confidence: Number(item.confidence ?? 0.75),
       relevance: isScoped ? 0.9 : matchesTarget ? (intent === 'EVENT_QUERY' ? 0.97 : 0.8) : 0.55,
       importance: 0.65,
       significance: 0.6,
       relationshipDistance: 0.5,
-      reasons: isScoped
-        ? ['scoped canonical timeline match']
-        : matchesTarget
-        ? ['timeline text matches target']
-        : ['recent canonical timeline'],
+      reasons: unresolved
+        ? ['unresolved canonical occurrence', ...(isScoped ? ['scoped canonical timeline match'] : [])]
+        : isScoped
+          ? ['scoped canonical timeline match']
+          : matchesTarget
+            ? ['timeline text matches target']
+            : ['recent canonical timeline'],
       metadata: {
         sourceKind: item.sourceKind,
         sourceIds: item.sourceIds,
+        canonicalItemId: item.id,
+        occurredStart: unresolved ? null : occurredStart,
+        occurredEnd: item.occurredEnd ?? item.temporalProjection?.occurredEnd ?? null,
+        precision: item.timePrecision ?? item.temporalProjection?.precision,
+        temporalState: item.temporalProjection?.temporalState,
+        entityId: organizationId || locationId || characterId || undefined,
+        entityRole: attribution?.role,
+        attributionDirect: attribution?.direct,
+        whyIncluded: attribution?.whyIncluded,
+        usage: unresolved ? 'unresolved_occurrence' : 'canonical_occurrence',
         tags: item.tags,
         mergedCount: item.mergedCount,
         mergedTitles: item.mergedTitles,
+      },
+    });
+  }
+
+  if ((organizationId || locationId || characterId) && stitchedRows.length === 0) {
+    const focusedId = organizationId || locationId || characterId || 'unknown';
+    out.push({
+      id: `stitched_timeline:empty:${focusedId}`,
+      type: 'event',
+      title: 'No verified timeline events',
+      content: organizationId
+        ? 'No verified timeline events are currently linked to this organization.'
+        : locationId
+          ? 'No verified timeline events are currently linked to this location.'
+          : 'No verified timeline events are currently linked to this character.',
+      source: 'stitched_timeline',
+      date: null,
+      dateLabel: 'Date unresolved',
+      confidence: 0.9,
+      relevance: 0.92,
+      importance: 0.7,
+      significance: 0.5,
+      relationshipDistance: 1,
+      reasons: ['empty canonical chronology', 'scoped canonical timeline match'],
+      metadata: {
+        canonicalItemId: null,
+        occurredStart: null,
+        occurredEnd: null,
+        entityId: focusedId,
+        usage: 'empty_canonical_chronology',
       },
     });
   }
@@ -1817,7 +1842,7 @@ async function loadGoalCandidates(
           .select('id, summary, content, date, tags, metadata')
           .eq('user_id', userId)
           .or('summary.ilike.%goal%,content.ilike.%goal%,summary.ilike.%want to%,content.ilike.%working toward%,summary.ilike.%aspir%,tags.cs.{goal}')
-          .order('date', { ascending: false })
+          .order('date', { ascending: false, nullsFirst: false })
           .limit(8)
     );
     for (const entry of (journalGoals ?? []) as any[]) {
@@ -2014,7 +2039,7 @@ async function loadProjectCandidates(
             .select('id, summary, content, date, tags, metadata')
             .eq('user_id', userId)
             .or('summary.ilike.%lorebook%,content.ilike.%lorebook%,summary.ilike.%lifeledger%,content.ilike.%project%,summary.ilike.%building%')
-            .order('date', { ascending: false })
+            .order('date', { ascending: false, nullsFirst: false })
             .limit(6)
       ),
     ]);
@@ -2308,8 +2333,38 @@ export async function assembleWorkingMemory(
   },
   options: AssembleOptions = {}
 ): Promise<WorkingMemoryAssembly> {
+  const cacheKey = workingMemoryTurnKey({
+    userId: input.userId,
+    question: input.question,
+    threadId: input.threadId,
+    focusId: input.focus?.id ?? null,
+  });
+  const cached = getTurnWorkingMemory(cacheKey);
+  if (cached) {
+    recordSkippedOperation('working_memory_turn_cache');
+    return cached;
+  }
+
+  const pending = assembleWorkingMemoryUncached(input, options).finally(() => {
+    invalidateTurnWorkingMemory(cacheKey);
+  });
+  setTurnWorkingMemory(cacheKey, pending);
+  return pending;
+}
+
+async function assembleWorkingMemoryUncached(
+  input: {
+    question: string;
+    userId: string;
+    threadId?: string | null;
+    focus?: WorkingMemoryFocus | null;
+  },
+  options: AssembleOptions = {}
+): Promise<WorkingMemoryAssembly> {
   const totalStarted = Date.now();
-  const maxItems = options.maxItems ?? DEFAULT_BUDGET;
+  const complexity = classifyMessageComplexity(input.question);
+  const simpleTurn = isSimpleWorkingMemoryTurn(complexity);
+  const maxItems = options.maxItems ?? (simpleTurn ? SIMPLE_TURN_BUDGET : DEFAULT_BUDGET);
   const scope = new WmaRequestScope();
 
   const entityStarted = Date.now();
@@ -2369,10 +2424,15 @@ export async function assembleWorkingMemory(
   const entityResolutionMs = Date.now() - entityStarted;
 
   const primaryEntity =
-    entities.find((entity) => entity.source === 'characters') ??
-    entities.find((entity) => entity.id) ??
-    entities[0] ??
-    null;
+    intent === 'CAREER_QUERY'
+      ? (entities.find((entity) => entity.type === 'ORGANIZATION' && entity.id)
+        ?? entities.find((entity) => entity.id)
+        ?? entities[0]
+        ?? null)
+      : (entities.find((entity) => entity.source === 'characters')
+        ?? entities.find((entity) => entity.id)
+        ?? entities[0]
+        ?? null);
 
   let characterRow: CharacterRow | null = null;
   if (primaryEntity?.source === 'characters' && primaryEntity.id && target) {
@@ -2395,26 +2455,36 @@ export async function assembleWorkingMemory(
   const wantsProtagonistRels =
     wantsHousehold ||
     intent === 'RELATIONSHIP_QUERY' ||
-    intent === 'LIFE_REVIEW' ||
-    intent === 'IDENTITY_QUERY' ||
-    intent === 'COMMUNITY_QUERY' ||
-    (intent === 'PERSON_QUERY' && !isPersonish);
+    (!simpleTurn &&
+      (intent === 'LIFE_REVIEW' || intent === 'IDENTITY_QUERY' || intent === 'COMMUNITY_QUERY')) ||
+    (intent === 'PERSON_QUERY' && !isPersonish && !simpleTurn);
+
+  const skipBroad =
+    simpleTurn &&
+    intent !== 'GOAL_QUERY' &&
+    intent !== 'SKILL_QUERY' &&
+    intent !== 'COMMUNITY_QUERY' &&
+    intent !== 'PROJECT_QUERY' &&
+    intent !== 'LIFE_REVIEW' &&
+    intent !== 'IDENTITY_QUERY';
+  if (skipBroad) {
+    recordSkippedOperation('wma_broad_roster');
+  }
 
   const placeEntity =
     entities.find((entity) => entity.source === 'locations' && entity.id) ?? null;
   const personEntityId =
     primaryEntity?.source === 'characters' && primaryEntity.id ? primaryEntity.id : null;
-  // Org/location equivalent of isPersonish: entity_timeline_events is the
-  // org/location analog of character_timeline_events, and focus already
-  // sets primaryEntity.type to 'ORGANIZATION'/'PLACE' — see focusEntity above.
   const timelineEntityFocus: { entityType: 'organization' | 'location'; entityId: string } | null =
     primaryEntity?.type === 'ORGANIZATION' && primaryEntity.id
       ? { entityType: 'organization', entityId: primaryEntity.id }
       : primaryEntity?.type === 'PLACE' && primaryEntity.id
         ? { entityType: 'location', entityId: primaryEntity.id }
-        : null;
+        : intent === 'PLACE_QUERY' && placeEntity?.id && primaryEntity?.source !== 'characters'
+          ? { entityType: 'location', entityId: placeEntity.id }
+          : null;
 
-  const [personCandidates, relationshipCandidates, threadRelationshipCandidates, goalCandidates, skillCandidates, communityCandidates, projectCandidates, episodeCandidates, textualCandidates, anchorCandidates, semanticClaimCandidates, characterQueryCandidates, entityTimelineCandidates] =
+  const [personCandidates, relationshipCandidates, threadRelationshipCandidates, goalCandidates, skillCandidates, communityCandidates, projectCandidates, episodeCandidates, textualCandidates, anchorCandidates, semanticClaimCandidates, characterQueryCandidates] =
     await Promise.all([
       !temporalQuery && isPersonish
         ? loadPersonCandidates(scope, input.userId, primaryEntity!, target ?? primaryEntity!.name, characterRow)
@@ -2425,10 +2495,10 @@ export async function assembleWorkingMemory(
       !temporalQuery && input.threadId
         ? loadThreadRelationshipGroupCandidates(scope, input.userId, input.threadId)
         : Promise.resolve([] as Candidate[]),
-      !temporalQuery ? loadGoalCandidates(scope, input.userId, target, intent, input.question) : Promise.resolve([] as Candidate[]),
-      !temporalQuery ? loadSkillCandidates(scope, input.userId, target, intent) : Promise.resolve([] as Candidate[]),
-      !temporalQuery ? loadCommunityCandidates(scope, input.userId, intent) : Promise.resolve([] as Candidate[]),
-      !temporalQuery ? loadProjectCandidates(scope, input.userId, target, intent) : Promise.resolve([] as Candidate[]),
+      !temporalQuery && !skipBroad ? loadGoalCandidates(scope, input.userId, target, intent, input.question) : Promise.resolve([] as Candidate[]),
+      !temporalQuery && !skipBroad ? loadSkillCandidates(scope, input.userId, target, intent) : Promise.resolve([] as Candidate[]),
+      !temporalQuery && !skipBroad ? loadCommunityCandidates(scope, input.userId, intent) : Promise.resolve([] as Candidate[]),
+      !temporalQuery && !skipBroad ? loadProjectCandidates(scope, input.userId, target, intent) : Promise.resolve([] as Candidate[]),
       // Real public.episodes rows (segmented scenes with source_message_ids).
       loadPersistedEpisodeCandidates(
         scope,
@@ -2438,24 +2508,26 @@ export async function assembleWorkingMemory(
         intent,
         temporalResolved.window
       ),
-      loadTextualCandidates(scope, input.userId, target, intent, input.threadId ?? undefined, temporalResolved.window, personEntityId),
-      !temporalQuery
+      loadTextualCandidates(
+        scope,
+        input.userId,
+        target,
+        intent,
+        input.threadId ?? undefined,
+        temporalResolved.window,
+        personEntityId,
+        timelineEntityFocus?.entityType === 'location' ? timelineEntityFocus.entityId : null,
+        timelineEntityFocus?.entityType === 'organization' ? timelineEntityFocus.entityId : null,
+        skipBroad,
+      ),
+      !temporalQuery && !skipBroad
         ? loadNarrativeAnchorCandidates(scope, input.userId, primaryEntity, intent)
         : Promise.resolve([] as Candidate[]),
-      !temporalQuery
+      !temporalQuery && !simpleTurn
         ? loadSemanticClaimCandidates(scope, input.userId, input.question, intent)
         : Promise.resolve([] as Candidate[]),
-      !temporalQuery
+      !temporalQuery && (!simpleTurn || intent === 'PERSON_QUERY' || intent === 'RELATIONSHIP_QUERY')
         ? loadCharacterQueryCandidates(scope, input.userId, personEntityId, intent)
-        : Promise.resolve([] as Candidate[]),
-      !temporalQuery && timelineEntityFocus
-        ? loadEntityTimelineCandidates(
-            scope,
-            input.userId,
-            timelineEntityFocus.entityType,
-            timelineEntityFocus.entityId,
-            target ?? primaryEntity!.name
-          )
         : Promise.resolve([] as Candidate[]),
     ]);
   const candidateGenerationMs = Date.now() - candidateStarted;
@@ -2463,7 +2535,6 @@ export async function assembleWorkingMemory(
   const rankingStarted = Date.now();
   const merged = [
     ...characterQueryCandidates,
-    ...entityTimelineCandidates,
     ...episodeCandidates,
     ...personCandidates,
     ...relationshipCandidates,

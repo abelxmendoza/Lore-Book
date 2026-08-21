@@ -33,7 +33,7 @@ export class WisdomEngine {
     userId: string,
     entryId: string,
     content: string,
-    entryDate: string
+    entryDate: string | null
   ): Promise<WisdomStatement[]> {
     try {
       logger.debug({ userId, entryId }, 'Extracting wisdom from entry');

@@ -6,7 +6,8 @@ export type SuggestionDomain =
   | 'skills'
   | 'projects'
   | 'locations'
-  | 'romantic';
+  | 'romantic'
+  | 'organizations';
 
 export type SuggestionRescanSummary = {
   domains: SuggestionDomain[];
@@ -29,7 +30,11 @@ export const suggestionRescanApi = {
       '/api/conversation/suggestion-rescan',
       {
         method: 'POST',
-        body: JSON.stringify({ domains, ...opts }),
+        body: JSON.stringify({
+          domains,
+          incremental: opts?.fullRescan ? false : opts?.incremental !== false,
+          ...opts,
+        }),
       }
     ),
 };

@@ -51,7 +51,7 @@ export type LifeAnchors = {
 export type StorySlice = {
   entry_id: string;
   content: string;
-  date: string; // ISO — "when it happened"
+  date: string | null; // ISO occurrence, or null when unresolved
   narrative_order: number;
   source: 'chat' | 'journal';
   derived_from_entry_id?: string;

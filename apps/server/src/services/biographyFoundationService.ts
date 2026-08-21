@@ -26,6 +26,10 @@ import {
   computeSourceInputVersion,
   isProjectionStale,
 } from './projectionVersion';
+import { buildCanonicalCharacterTimeline } from './characters/characterEntityTimelineService';
+import { stitchedTimelineService } from './chronologyV2/stitchedTimelineService';
+import { applySummaryDiscipline } from './chat/summaryDiscipline';
+import { listCurrentCharacterRelationships } from './relationships/characterRelationshipHistoryService';
 
 // ── Fact types ────────────────────────────────────────────────────────────────
 
@@ -48,7 +52,12 @@ export type BiographyFacts = {
   keyEvents: Array<{
     title: string;
     eventType: string;
-    date: string;
+    date: string | null;
+    canonicalItemId?: string;
+    precision?: string;
+    unresolved?: boolean;
+    mentionedAt?: string | null;
+    recordedAt?: string | null;
     connection: string | null;
     confidence: number;
     sourceEntryIds: string[];
@@ -226,26 +235,15 @@ class BiographyFoundationService {
       employment = 'employed';
     }
 
-    // ── Relationships ────────────────────────────────────────────────────────
-    const { data: rels } = await supabaseAdmin
-      .from('character_relationships')
-      .select('id, source_character_id, target_character_id, relationship_type, status, metadata')
-      .eq('user_id', userId);
+    // ── Relationships (current projection — corrections retract stale state) ─
+    const rels = await listCurrentCharacterRelationships(userId);
 
     const charNameMap = new Map((chars ?? []).map(c => [c.id, c.name]));
-    const relationships: BiographyFacts['relationships'] = (rels ?? []).map(r => {
+    const relationships: BiographyFacts['relationships'] = rels.map(r => {
       const other = r.source_character_id === protagonist?.id
         ? r.target_character_id
         : r.source_character_id;
 
-      // Trust recovery (Sprint O): `character_relationships.status` is the
-      // authoritative record — Biography is a narrator over it, not an editor.
-      // A previous keyword-matching heuristic here re-derived status from raw
-      // journal text and overwrote the structured value (e.g. turning an
-      // 'active' family relationship into 'ended' because *another*
-      // relationship's breakup language appeared in a co-mentioned entry).
-      // Derived layers may summarize and rank — they may not contradict
-      // structured truth. Use the DB value as-is.
       const status = r.status ?? 'active';
       const memIds: string[] = (r.metadata as any)?.source_memory_ids ?? [];
 
@@ -259,22 +257,28 @@ class BiographyFoundationService {
       };
     });
 
-    // ── Key events from timeline ─────────────────────────────────────────────
-    const { data: cteRows } = await supabaseAdmin
-      .from('character_timeline_events')
-      .select('event_id, event_title, event_type, event_date, connection_character_id, confidence, source_entry_ids')
-      .eq('user_id', userId)
-      .eq('character_id', protagonist?.id ?? '')
-      .order('event_date', { ascending: true });
-
-    const keyEvents: BiographyFacts['keyEvents'] = (cteRows ?? []).map(e => ({
-      title: e.event_title,
-      eventType: e.event_type,
-      date: e.event_date,
-      connection: e.connection_character_id ? (charNameMap.get(e.connection_character_id) ?? null) : null,
-      confidence: e.confidence,
-      sourceEntryIds: e.source_entry_ids ?? [],
-    }));
+    // ── Key events from canonical character chronology ───────────────────────
+    const keyEvents: BiographyFacts['keyEvents'] = [];
+    if (protagonist?.id) {
+      const modal = await buildCanonicalCharacterTimeline(userId, protagonist.id);
+      for (const item of [...modal.sharedExperiences, ...modal.lore, ...modal.unresolved]) {
+        if (item.legacyOnly) continue;
+        const unresolved = item.isUnresolved === true || !item.occurredStart;
+        keyEvents.push({
+          title: item.eventTitle,
+          eventType: item.eventType ?? item.timelineType,
+          date: unresolved ? null : item.occurredStart ?? null,
+          canonicalItemId: item.canonicalItemId,
+          precision: item.precision,
+          unresolved,
+          mentionedAt: item.mentionedAt ?? null,
+          recordedAt: item.recordedAt ?? null,
+          connection: item.connectionCharacter ?? null,
+          confidence: item.confidence,
+          sourceEntryIds: [],
+        });
+      }
+    }
 
     // ── Living situation ─────────────────────────────────────────────────────
     const livingSituationEntry = allEntries.find(e =>
@@ -287,8 +291,7 @@ class BiographyFoundationService {
 
     // ── Current focus (live structured sources — never hardcoded company names)
     // Active quests and future-dated timeline events stay current as the user moves on.
-    const todayIso = new Date().toISOString().slice(0, 10);
-    const [{ data: activeQuests }, { data: futureEvents }] = await Promise.all([
+    const [{ data: activeQuests }, stitched] = await Promise.all([
       supabaseAdmin
         .from('quests')
         .select('title, updated_at')
@@ -296,13 +299,7 @@ class BiographyFoundationService {
         .eq('status', 'active')
         .order('updated_at', { ascending: false })
         .limit(5),
-      supabaseAdmin
-        .from('character_timeline_events')
-        .select('event_title, event_date')
-        .eq('user_id', userId)
-        .gte('event_date', todayIso)
-        .order('event_date', { ascending: true })
-        .limit(5),
+      stitchedTimelineService.getStitchedTimeline(userId, { limit: 40 }),
     ]);
 
     const upcomingEvents: string[] = [];
@@ -317,7 +314,10 @@ class BiographyFoundationService {
     };
 
     for (const quest of activeQuests ?? []) pushFocus(quest.title);
-    for (const event of futureEvents ?? []) pushFocus(event.event_title);
+    for (const item of stitched.items ?? []) {
+      if (!stitchedIsFuture(item)) continue;
+      pushFocus(item.title);
+    }
 
     return {
       identity: {
@@ -348,7 +348,7 @@ class BiographyFoundationService {
     for (const rel of facts.relationships) {
       provenance[`relationship.${rel.characterId}.status`] = {
         value: rel.status,
-        source: 'character_relationships.status',
+        source: 'character_relationship_history (current projection)',
         confidence: 'authoritative',
       };
     }
@@ -370,6 +370,17 @@ class BiographyFoundationService {
       source: 'people_places (ranked by total_mentions)',
       confidence: 'inferred',
     };
+
+    for (const ev of facts.keyEvents) {
+      const key = `event.${ev.canonicalItemId ?? ev.title}.occurredAt`;
+      provenance[key] = {
+        value: ev.unresolved || !ev.date ? null : ev.date,
+        source: ev.canonicalItemId
+          ? `canonical_temporal_model (${ev.canonicalItemId})`
+          : 'canonical_character_timeline',
+        confidence: 'authoritative',
+      };
+    }
 
     return provenance;
   }
@@ -430,25 +441,24 @@ class BiographyFoundationService {
   }
 
   /**
-   * Identify life periods from the chronological spread of timeline events.
+   * Identify life periods from canonical occurrence months.
+   * Unresolved events are ignored.
    */
   async identifyLifePeriods(userId: string): Promise<LifePeriod[]> {
-    const { data: events } = await supabaseAdmin
-      .from('character_timeline_events')
-      .select('event_date, event_type, event_title')
-      .eq('user_id', userId)
-      .order('event_date', { ascending: true });
+    const stitched = await stitchedTimelineService.getStitchedTimeline(userId);
+    const dated = (stitched.items ?? [])
+      .map((item) => ({ item, occurred: stitchedOccurredStart(item) }))
+      .filter((row): row is { item: (typeof stitched.items)[number]; occurred: string } => Boolean(row.occurred));
 
-    if (!events?.length) return [];
+    if (!dated.length) return [];
 
-    // Group by month/year
-    const buckets = new Map<string, { events: typeof events; types: string[] }>();
-    for (const ev of events) {
-      const d = new Date(ev.event_date);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const buckets = new Map<string, { events: typeof dated; types: string[] }>();
+    for (const row of dated) {
+      const d = new Date(row.occurred);
+      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
       if (!buckets.has(key)) buckets.set(key, { events: [], types: [] });
-      buckets.get(key)!.events.push(ev);
-      buckets.get(key)!.types.push(ev.event_type);
+      buckets.get(key)!.events.push(row);
+      buckets.get(key)!.types.push(row.item.canonicalEventType ?? row.item.sourceType);
     }
 
     // Build named periods
@@ -513,7 +523,7 @@ class BiographyFoundationService {
         : null,
       facts.keyEvents.length
         ? `Key events:\n${facts.keyEvents.map(e =>
-            `  - ${e.title}${e.connection ? ` (with ${e.connection})` : ''}`
+            `  - ${e.title}${e.connection ? ` (with ${e.connection})` : ''}${e.unresolved || !e.date ? ' (Date unknown — do not invent a date)' : ` (occurred ${e.date}${e.precision ? `, precision ${e.precision}` : ''})`}${e.mentionedAt ? `; first mentioned ${e.mentionedAt}` : ''}`
           ).join('\n')}`
         : null,
       themes.length
@@ -533,6 +543,10 @@ RULES:
 - Stick strictly to the provided facts — do not invent, infer beyond evidence, or add psychology
 - Be specific: use real names, locations, dollar amounts, timeframes when given
 - Preserve nuance: "upcoming interview (position TBD)" not "has a job"
+- Occurrence dates come only from "occurred …" in the facts. Never treat mention time, recording time, or import time as when something happened.
+- If an event is marked Date unknown, say it is unknown. Do not place it on today or on the day it was recorded.
+- Mention time and occurrence may differ: "first mentioned in June" is not "first met in June".
+- Preserve sequence without inventing causality ("A happened before B" is allowed; "A caused B" is not unless stated).
 - End with a "Themes:" line listing the recurring themes
 - Tone: neutral, factual, biographical — not memoir prose, not clinical
 
@@ -554,7 +568,10 @@ Format:
           { role: 'user', content: userPrompt },
         ],
       });
-      return completion.choices[0]?.message?.content?.trim() ?? 'Biography unavailable.';
+      return applySummaryDiscipline(
+        completion.choices[0]?.message?.content?.trim() ?? 'Biography unavailable.',
+        factsBlock,
+      ).text;
     } catch (err) {
       logger.error({ err, userId }, 'LLM biography generation failed — using fact summary');
       return factsBlock;

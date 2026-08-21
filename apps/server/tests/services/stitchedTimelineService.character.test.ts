@@ -14,8 +14,8 @@ vi.mock('../../src/logger', () => ({
 }));
 
 const RESOLVED_EVENTS = [
-  { id: 'evt-1', title: 'Camping trip', summary: 'Went camping', start_time: '2024-06-01T00:00:00.000Z', confidence: 0.9, metadata: {}, people: ['char-jerry'], locations: [], activities: [], tags: [] },
-  { id: 'evt-2', title: 'Work meeting', summary: 'Quarterly review', start_time: '2024-07-01T00:00:00.000Z', confidence: 0.9, metadata: {}, people: ['char-someone-else'], locations: [], activities: [], tags: [] },
+  { id: 'evt-1', title: 'Camping trip', summary: 'Went camping', start_time: '2024-06-01T00:00:00.000Z', confidence: 0.9, metadata: { organizationAttributions: [{ organizationId: 'org-acme', role: 'employer', accepted: true, acceptedForOrganizationTimeline: true, rejected: false, unresolved: false }] }, people: ['char-jerry'], locations: ['loc-northwind'], activities: [], tags: [] },
+  { id: 'evt-2', title: 'Work meeting', summary: 'Quarterly review', start_time: '2024-07-01T00:00:00.000Z', confidence: 0.9, metadata: { organizationAttributions: [{ organizationId: 'org-other', role: 'referenced', accepted: true, acceptedForOrganizationTimeline: false, rejected: false, unresolved: false }] }, people: ['char-someone-else'], locations: ['loc-other'], activities: [], tags: [] },
 ];
 
 const TIMELINE_EVENTS = [
@@ -33,7 +33,11 @@ function makeChain(data: unknown) {
     eq: () => chain,
     gte: () => chain,
     lte: () => chain,
+    or: () => chain,
     in: () => chain,
+    contains: () => chain,
+    ilike: () => chain,
+    filter: () => chain,
     order: () => result,
   };
   return chain;
@@ -63,6 +67,13 @@ describe('stitchedTimelineService — character_id scoping', () => {
     expect(sourceIds).toContain('te-1');
   });
 
+  it('with a character filter, does not fetch the unbounded journal moment stream', async () => {
+    await stitchedTimelineService.getStitchedTimeline('user-1', {
+      character_id: 'char-jerry',
+    });
+    expect(chronologyService.getChronologicalOrder).not.toHaveBeenCalled();
+  });
+
   it('with a character filter, only includes resolved_events where that character is in people[]', async () => {
     const result = await stitchedTimelineService.getStitchedTimeline('user-1', {
       character_id: 'char-jerry',
@@ -80,6 +91,70 @@ describe('stitchedTimelineService — character_id scoping', () => {
       character_id: 'char-nobody',
     });
 
+    expect(result.items).toEqual([]);
+  });
+
+  it('getStitchedTimelineForEntity is a character-scoped canonical feed, not a second timeline store', async () => {
+    const result = await stitchedTimelineService.getStitchedTimelineForEntity('user-1', 'char-jerry');
+    expect(result.items.map((item) => item.sourceId)).toEqual(['evt-1']);
+  });
+});
+
+describe('stitchedTimelineService — location_id scoping', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(chronologyService.getChronologicalOrder).mockResolvedValue([
+      { id: 'moment-1', journal_entry_id: 'je-1', content: 'A private journal note', start_time: '2024-05-01T00:00:00.000Z', source_type: 'manual', tags: [], time_confidence: 0.8 },
+    ] as any);
+    (supabaseAdmin as any).from = vi.fn((table: string) => {
+      if (table === 'timeline_events') return makeChain(TIMELINE_EVENTS);
+      if (table === 'resolved_events') return makeChain(RESOLVED_EVENTS);
+      if (table === 'user_chronology_order') return makeChain([]);
+      return makeChain([]);
+    });
+  });
+
+  it('with a location filter, only includes resolved_events where that location is in locations[]', async () => {
+    const result = await stitchedTimelineService.getStitchedTimeline('user-1', {
+      location_id: 'loc-northwind',
+    });
+
+    const sourceIds = result.items.map((i) => i.sourceId);
+    expect(sourceIds).toEqual(['evt-1']);
+    expect(sourceIds).not.toContain('evt-2');
+    expect(sourceIds).not.toContain('je-1');
+    expect(sourceIds).not.toContain('te-1');
+  });
+
+  it('getStitchedTimelineForLocation is a location-scoped canonical feed, not entity_timeline_events', async () => {
+    const result = await stitchedTimelineService.getStitchedTimelineForLocation('user-1', 'loc-northwind');
+    expect(result.items.map((item) => item.sourceId)).toEqual(['evt-1']);
+  });
+});
+
+describe('stitchedTimelineService — organization_id scoping', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(chronologyService.getChronologicalOrder).mockResolvedValue([
+      { id: 'moment-1', journal_entry_id: 'je-1', content: 'A private journal note', start_time: '2024-05-01T00:00:00.000Z', source_type: 'manual', tags: [], time_confidence: 0.8 },
+    ] as any);
+    (supabaseAdmin as any).from = vi.fn((table: string) => {
+      if (table === 'timeline_events') return makeChain(TIMELINE_EVENTS);
+      if (table === 'resolved_events') return makeChain(RESOLVED_EVENTS);
+      if (table === 'user_chronology_order') return makeChain([]);
+      return makeChain([]);
+    });
+  });
+
+  it('only includes resolved_events with accepted organization attributions', async () => {
+    const result = await stitchedTimelineService.getStitchedTimeline('user-1', {
+      organization_id: 'org-acme',
+    });
+    expect(result.items.map((i) => i.sourceId)).toEqual(['evt-1']);
+  });
+
+  it('excludes reference-only organization mentions', async () => {
+    const result = await stitchedTimelineService.getStitchedTimelineForOrganization('user-1', 'org-other');
     expect(result.items).toEqual([]);
   });
 });

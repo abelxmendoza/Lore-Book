@@ -26,6 +26,7 @@ import {
   getProjectDetailProfile,
 } from '../../mocks/projectModalDemoData';
 import { projectHasEnoughTimelineForLorebook } from '../../lib/projectTimelineClipboard';
+import { hasJournalOccurrence } from '../../lib/journalOccurrence';
 import {
   evaluateProjectTierOffer,
   type LorebookForm,
@@ -108,7 +109,7 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
     if (!tierOffer.canCreateAny && !projectHasEnoughTimelineForLorebook(profile)) return;
     const selected = form ?? tierOffer.highestUnlocked ?? 'vignette';
     const times = profile.milestones
-      .map((m) => new Date(m.date).getTime())
+      .map((m) => (hasJournalOccurrence(m.date) ? Date.parse(m.date) : NaN))
       .filter((t) => Number.isFinite(t));
     const themes = [local.name, local.type, ...(local.tags ?? []), ...aliases]
       .filter(Boolean)
