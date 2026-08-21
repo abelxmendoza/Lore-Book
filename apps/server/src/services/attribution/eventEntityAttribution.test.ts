@@ -6,10 +6,17 @@ import {
   classifyOrganizationAttribution,
   classifyPersonAttribution,
   classifyPlaceAttribution,
+  mergeEntityAttributions,
+  participantArraysForEventWrite,
   selectCanonicalLocations,
   selectCanonicalPeople,
+  type EntityAttribution,
 } from './eventEntityAttribution';
-import { characterBelongsOnCanonicalEvent, locationBelongsOnCanonicalEvent } from './eventAttributionProjection';
+import {
+  characterBelongsOnCanonicalEvent,
+  locationBelongsOnCanonicalEvent,
+  peopleIdsForChronology,
+} from './eventAttributionProjection';
 
 const MAYA = { id: 'char-maya', type: 'PERSON', primary_name: 'Maya' };
 const PRIYA = { id: 'char-priya', type: 'PERSON', primary_name: 'Priya' };
@@ -221,6 +228,21 @@ describe('event entity attribution contract', () => {
     expect(result.eventId).toBe('evt-party');
   });
 
+  it('26b. replace_person on a legacy multi-person event keeps co-participants', () => {
+    const result = applyAttributionCorrection(
+      {
+        id: 'evt-party',
+        people: ['char-maya', 'char-priya', 'char-jordan'],
+        locations: [CATCH_ONE.id],
+        metadata: {},
+      },
+      { action: 'replace_person', entityId: 'char-maya', replacementEntityId: 'char-marcus', replacementName: 'Marcus' },
+    );
+    expect(result.people).toEqual(['char-marcus', 'char-priya', 'char-jordan']);
+    expect(result.locations).toEqual([CATCH_ONE.id]);
+    expect(result.duplicateCreated).toBe(false);
+  });
+
   it('27. Correction changes mistaken place', () => {
     const result = applyAttributionCorrection(
       { id: 'evt-night', people: ['char-maya'], locations: ['loc-catch-one'], metadata: {} },
@@ -233,6 +255,25 @@ describe('event entity attribution contract', () => {
     );
     expect(result.locations).toEqual([NORTHWIND_HALL.id]);
     expect(result.eventId).toBe('evt-night');
+  });
+
+  it('27b. replace_place on a legacy multi-location event keeps other places', () => {
+    const result = applyAttributionCorrection(
+      {
+        id: 'evt-night',
+        people: ['char-maya'],
+        locations: [CATCH_ONE.id, NORTHWIND_HALL.id],
+        metadata: {},
+      },
+      {
+        action: 'replace_place',
+        entityId: CATCH_ONE.id,
+        replacementEntityId: DISNEYLAND.id,
+        replacementName: 'Disneyland',
+      },
+    );
+    expect(result.people).toEqual(['char-maya']);
+    expect(result.locations).toEqual([DISNEYLAND.id, NORTHWIND_HALL.id]);
   });
 
   it('28. Null primary entity is allowed when nothing is grounded', () => {
@@ -325,5 +366,135 @@ describe('event entity attribution contract', () => {
     expect(maya.evidenceSource).toBe('explicit_with_phrase');
     expect(priya.accepted).toBe(false);
     expect(priya.rejectedInferenceReason).toBe('thought_about');
+  });
+});
+
+function participantRow(id: string, name: string): EntityAttribution {
+  return {
+    entityId: id,
+    entityType: 'character',
+    name,
+    role: 'participant',
+    evidence: 'explicit',
+    confidence: 0.95,
+    reason: 'explicit_with_phrase',
+    accepted: true,
+    canonical: true,
+  };
+}
+
+function referencedRow(id: string, name: string): EntityAttribution {
+  return {
+    entityId: id,
+    entityType: 'character',
+    name,
+    role: 'referenced',
+    evidence: 'inferred',
+    confidence: 0.9,
+    reason: 'thought_about',
+    accepted: false,
+    canonical: false,
+  };
+}
+
+function locationRow(id: string, name: string, canonical = true): EntityAttribution {
+  return {
+    entityId: id,
+    entityType: 'location',
+    name,
+    role: canonical ? 'location' : 'referenced',
+    evidence: 'explicit',
+    confidence: 0.9,
+    reason: canonical ? 'destination' : 'discussed_not_visited',
+    accepted: canonical,
+    canonical,
+  };
+}
+
+describe('event write-path people/locations stay in sync with attributions', () => {
+  it('absorb keeps grounded legacy people when incoming attributions do not cover them', () => {
+    const { people, locations } = participantArraysForEventWrite({
+      people: ['char-maya', 'char-priya'],
+      locations: [CATCH_ONE.id, NORTHWIND_HALL.id],
+      attributions: [participantRow('char-maya', 'Maya'), locationRow(CATCH_ONE.id, 'Catch One')],
+    });
+    expect(people).toEqual(['char-maya', 'char-priya']);
+    expect(locations).toEqual([CATCH_ONE.id, NORTHWIND_HALL.id]);
+  });
+
+  it('absorb does not fall back to incoming ids only and wipe existing people', () => {
+    const { people } = participantArraysForEventWrite({
+      people: ['char-maya', 'char-priya', 'char-jordan'],
+      locations: [],
+      attributions: [participantRow('char-jordan', 'Jordan')],
+    });
+    expect(people).toEqual(['char-jordan', 'char-maya', 'char-priya']);
+  });
+
+  it('drops a compatibility id once attributions reject it', () => {
+    const { people } = participantArraysForEventWrite({
+      people: ['char-maya', 'char-priya'],
+      locations: [],
+      attributions: [participantRow('char-maya', 'Maya'), referencedRow('char-priya', 'Priya')],
+    });
+    expect(people).toEqual(['char-maya']);
+  });
+
+  it('refine writes people from merged prior+incoming attributions, not the new ingest only', () => {
+    const merged = mergeEntityAttributions(
+      [participantRow('char-maya', 'Maya')],
+      [participantRow('char-priya', 'Priya')],
+    );
+    const { people } = participantArraysForEventWrite({
+      people: ['char-priya'],
+      locations: [],
+      attributions: merged,
+    });
+    expect(people).toEqual(['char-maya', 'char-priya']);
+  });
+
+  it('refine keeps a prior location that the new ingest did not restate', () => {
+    const merged = mergeEntityAttributions(
+      [locationRow(CATCH_ONE.id, 'Catch One')],
+      [locationRow(NORTHWIND_HALL.id, 'Northwind Hall')],
+    );
+    const { locations } = participantArraysForEventWrite({
+      people: [],
+      locations: [NORTHWIND_HALL.id],
+      attributions: merged,
+    });
+    expect(locations).toEqual([CATCH_ONE.id, NORTHWIND_HALL.id]);
+  });
+
+  it('chronology people ids keep unattributed legacy members once any attributions exist', () => {
+    expect(
+      peopleIdsForChronology({
+        people: ['char-maya', 'char-priya'],
+        metadata: { entityAttributions: [participantRow('char-maya', 'Maya')] },
+      }),
+    ).toEqual(['char-maya', 'char-priya']);
+  });
+
+  it('replace_person still drops the replaced id when co-participants are fully attributed', () => {
+    const result = applyAttributionCorrection(
+      {
+        id: 'evt-attributed',
+        people: ['char-maya', 'char-priya'],
+        locations: [],
+        metadata: {
+          entityAttributions: [participantRow('char-maya', 'Maya'), participantRow('char-priya', 'Priya')],
+        },
+      },
+      { action: 'replace_person', entityId: 'char-maya', replacementEntityId: 'char-jordan', replacementName: 'Jordan' },
+    );
+    expect(result.people).toEqual(['char-jordan', 'char-priya']);
+  });
+
+  it('absorb and refine persist people via participantArraysForEventWrite', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('src/services/conversationCentered/eventAssemblyService.ts', 'utf8');
+    expect(src).toMatch(/participantArraysForEventWrite/);
+    expect(src).not.toMatch(/people: attributed\.peopleIds/);
+    expect(src).not.toMatch(/canonicalPeopleFromAttributions\(mergedAttributions\)\.length/);
   });
 });

@@ -1,7 +1,7 @@
 import {
-  canonicalLocationsFromAttributions,
-  canonicalPeopleFromAttributions,
+  locationIdsForEventWrite,
   mergeEntityAttributions,
+  peopleIdsForEventWrite,
   readStoredAttributions,
   type EntityAttribution,
 } from './eventEntityAttribution';
@@ -110,9 +110,7 @@ export function applyAttributionCorrection(
     ];
     return {
       eventId: event.id,
-      people: canonicalPeopleFromAttributions(nextAttributions).length
-        ? canonicalPeopleFromAttributions(nextAttributions)
-        : nextPeople,
+      people: peopleIdsForEventWrite(nextPeople, nextAttributions),
       locations,
       metadata,
       duplicateCreated: false,
@@ -148,10 +146,11 @@ export function applyAttributionCorrection(
         replacementEntityId: input.replacementEntityId,
       },
     ];
+    const nextLocations = [...new Set(locations.filter((id) => id !== input.entityId).concat(input.replacementEntityId))];
     return {
       eventId: event.id,
       people,
-      locations: canonicalLocationsFromAttributions(nextAttributions),
+      locations: locationIdsForEventWrite(nextLocations, nextAttributions),
       metadata,
       duplicateCreated: false,
     };
