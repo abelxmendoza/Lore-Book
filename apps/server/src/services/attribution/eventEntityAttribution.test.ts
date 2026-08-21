@@ -487,7 +487,7 @@ describe('event write-path people/locations stay in sync with attributions', () 
       },
       { action: 'replace_person', entityId: 'char-maya', replacementEntityId: 'char-jordan', replacementName: 'Jordan' },
     );
-    expect(result.people).toEqual(['char-jordan', 'char-priya']);
+    expect(result.people).toEqual(['char-priya', 'char-jordan']);
   });
 
   it('absorb and refine persist people via participantArraysForEventWrite', async () => {
