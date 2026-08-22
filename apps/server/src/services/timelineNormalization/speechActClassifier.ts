@@ -102,8 +102,8 @@ export function classifySourceSpeechAct(text: string): SpeechActResult {
     return { act: 'life_event', rejectFromTimeline: false };
   }
 
-  if (/\b(i feel|i felt|thinking about|reflecting)\b/i.test(trimmed)) {
-    return { act: 'reflection', rejectFromTimeline: false };
+  if (/\b(i feel|i felt|thinking about|reflecting|looking back|in hindsight|on reflection|i should have|i shouldn['’]?t have|i wish|i regret|i now realize)\b/i.test(trimmed)) {
+    return { act: 'reflection', rejectFromTimeline: true, reason: 'reflection_not_occurrence' };
   }
 
   if (/\b(i (want|plan|hope|will|gonna))\b/i.test(trimmed)) {

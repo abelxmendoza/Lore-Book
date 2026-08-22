@@ -58,6 +58,12 @@ describe('characterRegistry', () => {
     });
   });
 
+  it('rejects bare pronouns and sentence-fragment junk words as names', () => {
+    expect(characterRegistry.gateName('His')).toMatchObject({ ok: false, reason: 'junk_word' });
+    expect(characterRegistry.gateName('Thats')).toMatchObject({ ok: false, reason: 'junk_word' });
+    expect(characterRegistry.gateName('Help')).toMatchObject({ ok: false, reason: 'junk_word' });
+  });
+
   it('allows single-letter possessive anchors only when allowShortAnchor is set', () => {
     expect(characterRegistry.gateName('V')).toMatchObject({ ok: false, reason: 'too_short' });
     expect(characterRegistry.gateName('V', { allowShortAnchor: true })).toMatchObject({

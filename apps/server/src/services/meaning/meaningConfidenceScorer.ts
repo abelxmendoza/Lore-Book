@@ -64,8 +64,9 @@ export function allowsMemoryWrite(result: MeaningResolutionResult): boolean {
   if (result.factuality === 'hypothetical' || result.factuality === 'desire' || result.factuality === 'question') {
     return false;
   }
-  if (result.identityCollisions.length > 0) return false;
-  if (result.contradictions.length > 0) return false;
+  // Collisions and contradictions change *how* candidates are governed; they
+  // must not suppress unrelated facts from the whole turn. Candidate builders
+  // already mark those individual items for confirmation/review.
   return result.factuality === 'fact' || result.factuality === 'opinion' || result.factuality === 'uncertain';
 }
 

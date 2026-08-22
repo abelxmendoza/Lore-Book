@@ -19,7 +19,7 @@ export function useFamilyTreeEditing(opts: { enabled: boolean; onChanged?: () =>
   const { success, error: toastError, ToastContainer } = useToast();
 
   const refresh = useCallback(() => {
-    dispatchStoryDataUpdated({ scopes: ['family'] });
+    dispatchStoryDataUpdated({ scopes: ['family', 'characters'] });
     onChanged?.();
   }, [onChanged]);
 

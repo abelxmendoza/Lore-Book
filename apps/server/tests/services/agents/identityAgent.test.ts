@@ -100,4 +100,30 @@ describe('IdentityAgent', () => {
     expect(result.proposedActions.some((a) => a.type === 'propose_entity_merge')).toBe(true);
     expect(result.proposedActions.every((a) => a.routeTo === 'entity_authority')).toBe(true);
   });
+
+  it('preserves both entity names from an explicit correction for review routing', async () => {
+    const meaning = makeMeaning({
+      ontologyActionCandidates: [{
+        kind: 'resolve_duplicate',
+        label: 'Review same entity',
+        confidence: 0.98,
+        requiresConfirmation: true,
+        payload: {
+          sourceName: 'Marcus Vale',
+          targetName: 'Vanguard Productions',
+          explicitUserCorrection: true,
+        },
+      }],
+    });
+    const result = await identityAgent.run(makeInput(meaning));
+    expect(result.proposedActions).toContainEqual(expect.objectContaining({
+      type: 'propose_entity_merge',
+      requiresConfirmation: true,
+      routeTo: 'entity_authority',
+      payload: expect.objectContaining({
+        sourceName: 'Marcus Vale',
+        targetName: 'Vanguard Productions',
+      }),
+    }));
+  });
 });

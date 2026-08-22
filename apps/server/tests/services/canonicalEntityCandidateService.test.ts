@@ -45,4 +45,31 @@ describe('canonical entity candidate precedence', () => {
     );
     expect(merged).toEqual([{ name: 'Johnny Esparza', type: 'PERSON', bornConfirmed: true }]);
   });
+
+  it('uses the active Character Book focus as the canonical identity and rejects UI-word noise', () => {
+    const focus = {
+      id: 'character-marcus',
+      name: 'Marcus Vale',
+      type: 'character' as const,
+      aliases: ['M. Vale'],
+    };
+    const merged = mergeCanonicalEntityCandidates(
+      [
+        { name: 'M. Vale', type: 'PERSON' },
+        { name: 'Help', type: 'PERSON' },
+        { name: 'His', type: 'PERSON' },
+        { name: "That's", type: 'PERSON' },
+      ],
+      [{
+        id: focus.id,
+        name: focus.name,
+        type: focus.type,
+        confidence: 1,
+        provenance: 'character_book',
+      }],
+      { authoritativeFocus: focus },
+    );
+
+    expect(merged).toEqual([{ name: 'Marcus Vale', type: 'PERSON', bornConfirmed: true }]);
+  });
 });

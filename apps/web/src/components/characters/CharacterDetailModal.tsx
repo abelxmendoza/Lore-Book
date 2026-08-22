@@ -5,9 +5,11 @@ import { EntityModalBottomNav } from '../common/EntityModalBottomNav';
 import { dedupeRelationshipsByPerson } from '../../lib/dedupeCharacterRelationships';
 import { isKinshipConnection } from '../../lib/characterKinshipGroups';
 import { isPetCharacter } from '../../lib/isPetCharacter';
+import { relationshipToYouLabel, resolveRelationshipToYou } from '../../lib/relationshipToYou';
+import { composeRomanticRelationshipBadgeLabel } from '../../lib/romanticRelationshipLabel';
 import { CharacterKinshipLists } from './CharacterKinshipLists';
 import { CharacterPerceptionsTab } from '../perceptions/CharacterPerceptionsTab';
-import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2, RefreshCw, Loader2, ImageIcon, Shield, ChevronDown, MapPin, Plus, BookOpen, Pin } from 'lucide-react';
+import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Link2, Eye, Building2, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2, RefreshCw, Loader2, ImageIcon, Shield, ChevronDown, MapPin, Plus, BookOpen, Pin } from 'lucide-react';
 import { XProvenanceBadge } from '../integrations/XProvenanceBadge';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -32,7 +34,6 @@ import { invalidateCache } from '../../lib/requestCache';
 import { invalidateOrganizationMembershipCaches } from '../../lib/invalidateOrganizationMembershipCaches';
 import { OrganizationMemberRoleSelect } from '../ui/OrganizationMemberRoleSelect';
 import { CreateGroupFromCharacterPanel } from './CreateGroupFromCharacterPanel';
-import { fetchCharacterList } from '../../api/characterList';
 import { fetchCharacterLoreProfile, type CharacterLoreProfile } from '../../api/characterLoreProfile';
 import { formatEpistemicPercent } from '../../lib/epistemicLabels';
 import { onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
@@ -41,6 +42,7 @@ import { InsufficientData } from '../ui/InsufficientData';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import type { Character } from './CharacterProfileCard';
 import { CharacterInfoPanel } from './CharacterInfoPanel';
+import { CharacterLoreProfileSection } from './CharacterLoreProfileSection';
 import { EditableEntityName } from '../common/EditableEntityName';
 import { CharacterAvatar } from './CharacterAvatar';
 import { ConnectionSectionHeader } from './ConnectionSectionHeader';
@@ -58,6 +60,7 @@ import {
 } from '../../mocks/characterIntelligence';
 import { getMockRomanticRelationshipForCharacter } from '../../mocks/romanticLifeImpact';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import { openDatingRomanceCharacterChat } from '../../lib/datingRomanceChatFocus';
 import { openDatingRomanceModal } from '../../lib/openDatingRomanceModal';
 import { openChatThreadAtMessage } from '../../lib/chatThreadJump';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
@@ -89,7 +92,10 @@ import { CharacterTitleSection } from './CharacterTitleSection';
 import { characterTitleApi, type CharacterDisplayTitle } from '../../api/characterTitle';
 import { useCharacterQuery } from '../../hooks/useCharacterQuery';
 import type { CharacterChatMention } from '../../hooks/useCharacterProfileBundleTypes';
-import { useUpdateCharacterMutation, useReclassifyEntityMutation } from '../../store/api/entitiesApi';
+import { useUpdateCharacterMutation, useReclassifyEntityMutation, useAddCharacterToDatingBookMutation } from '../../store/api/entitiesApi';
+import { useAccountAuthority } from '../../hooks/useAccountAuthority';
+import { canManuallyAddDatingRomanceCharacters } from '../../lib/datingRomanceManualAdd';
+import { isDemoRuntimeActive } from '../../lib/demoRuntime';
 
 type SocialMedia = {
   instagram?: string;
@@ -355,7 +361,15 @@ export const CharacterDetailModal = ({
 }: CharacterDetailModalProps) => {
   const navigate = useNavigate();
   const { useMockData: isMockDataEnabled } = useMockData();
+  const { authority } = useAccountAuthority();
+  const canAddToDatingBook = canManuallyAddDatingRomanceCharacters(authority, {
+    demoMode: isMockDataEnabled || isDemoRuntimeActive(),
+  });
   const [updateCharacter] = useUpdateCharacterMutation();
+  const [addCharacterToDatingBook] = useAddCharacterToDatingBookMutation();
+  const [addingToDatingBook, setAddingToDatingBook] = useState(false);
+  const [datingAddError, setDatingAddError] = useState<string | null>(null);
+  const [manualDatingRelationship, setManualDatingRelationship] = useState<RomanticRelationship | null>(null);
   const [editingImportance, setEditingImportance] = useState(false);
   const [importanceSaving, setImportanceSaving] = useState(false);
   const [lorebookFormsExpanded, setLorebookFormsExpanded] = useState(true);
@@ -1435,23 +1449,16 @@ export const CharacterDetailModal = ({
     const trimmed = prompt.trim();
     const romantic =
       relationship ??
+      manualDatingRelationship ??
       (isMockDataEnabled
         ? getMockRomanticRelationshipForCharacter(editedCharacter.id, editedCharacter.name)
         : undefined);
     if (romantic) {
-      openChatWithFocus({
+      openDatingRomanceCharacterChat({
         entityId: editedCharacter.id,
         entityName: getCharacterDisplayTitle(editedCharacter),
-        entityType: 'character',
         relationshipId: romantic.id,
-        relationshipName: getCharacterDisplayTitle(editedCharacter),
-        // The relationship context still travels with the handoff, but the
-        // visible source remains the Character Book the user opened it from.
-        sourceSurface: 'characters',
-        sourceLabel: CHAT_FOCUS_SOURCE_LABELS.characters,
-        knowledgeScope: 'romantic relationship from character profile',
-        ...(trimmed ? { initialPrompt: trimmed } : {}),
-        arrivedAt: Date.now(),
+        initialPrompt: trimmed,
         baseline: {
           affectionScore: Math.round((romantic.affection_score ?? 0.5) * 100),
           healthScore: Math.round((romantic.relationship_health ?? 0.5) * 100),
@@ -1767,7 +1774,11 @@ export const CharacterDetailModal = ({
       real_name?: string | null;
       context_hooks?: string[];
     };
-    setEditedCharacter(detail);
+    setEditedCharacter((prev) => ({
+      ...detail,
+      primary_organization:
+        (detail as Character).primary_organization ?? prev.primary_organization ?? character.primary_organization,
+    }));
     setProfileWittyTagline(detail.witty_tagline ?? getCharacterWittyTagline(detail));
     setProfileContextHooks(
       Array.isArray(detail.context_hooks) ? detail.context_hooks : getCharacterContextHooks(detail),
@@ -1929,7 +1940,11 @@ export const CharacterDetailModal = ({
 
         if (cancelled) return;
 
-        setEditedCharacter(response);
+        setEditedCharacter((prev) => ({
+          ...response,
+          primary_organization:
+            response.primary_organization ?? prev.primary_organization ?? character.primary_organization,
+        }));
         setProfileWittyTagline(response.witty_tagline ?? getCharacterWittyTagline(response));
         setProfileContextHooks(response.context_hooks ?? getCharacterContextHooks(response));
         setProfileRealName(response.real_name ?? getCharacterRealName(response));
@@ -2125,20 +2140,32 @@ export const CharacterDetailModal = ({
   // Keep Info-tab group chips aligned with Connections memberships (same durable links).
   useEffect(() => {
     if (isMockDataEnabled) return;
+    const affiliation = editedCharacter.primary_organization;
     setLoreProfile((prev) => {
       if (!prev) return prev;
+      const fromOrgs = characterOrganizations.map((o) => ({
+        organizationId: o.id,
+        name: o.name,
+        type: o.group_type ?? o.type,
+        role: o.character_role,
+        userRelationship: o.user_relationship,
+      }));
+      if (fromOrgs.length > 0 || !affiliation?.id) {
+        return { ...prev, groups: fromOrgs };
+      }
       return {
         ...prev,
-        groups: characterOrganizations.map((o) => ({
-          organizationId: o.id,
-          name: o.name,
-          type: o.group_type ?? o.type,
-          role: o.character_role,
-          userRelationship: o.user_relationship,
-        })),
+        groups: [
+          {
+            organizationId: affiliation.id,
+            name: affiliation.name,
+            type: affiliation.group_type,
+            role: affiliation.role ?? undefined,
+          },
+        ],
       };
     });
-  }, [characterOrganizations, isMockDataEnabled]);
+  }, [characterOrganizations, isMockDataEnabled, editedCharacter.primary_organization]);
 
   // Load insights when Insights tab is active and ensure analytics exist
   useEffect(() => {
@@ -2451,15 +2478,7 @@ export const CharacterDetailModal = ({
     };
   }, [character.id, character.name, isMockDataEnabled, orgsReloadToken, profileBundle?.organizations]);
 
-  // ── Manual editing: connections (Character Book) + memberships (Groups & Orgs book) ──
-  const [connectionAddOpen, setConnectionAddOpen] = useState(false);
-  const [connectionOptions, setConnectionOptions] = useState<Character[]>([]);
-  const [connectionOptionsLoading, setConnectionOptionsLoading] = useState(false);
-  const [connectionTargetId, setConnectionTargetId] = useState('');
-  const [connectionType, setConnectionType] = useState('friend');
-  const [connectionSaving, setConnectionSaving] = useState(false);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
-
+  // ── Manual editing: memberships (Groups & Orgs book) ──
   const [orgAddOpen, setOrgAddOpen] = useState(false);
   const [orgOptions, setOrgOptions] = useState<Organization[]>([]);
   const [orgOptionsLoading, setOrgOptionsLoading] = useState(false);
@@ -2469,78 +2488,6 @@ export const CharacterDetailModal = ({
   const [orgMemberError, setOrgMemberError] = useState<string | null>(null);
   const [roleSavingOrgId, setRoleSavingOrgId] = useState<string | null>(null);
 
-  const toggleConnectionAdd = async () => {
-    const next = !connectionAddOpen;
-    setConnectionAddOpen(next);
-    setConnectionError(null);
-    if (next && connectionOptions.length === 0 && !connectionOptionsLoading) {
-      setConnectionOptionsLoading(true);
-      try {
-        const list = await fetchCharacterList<Character>();
-        setConnectionOptions(list.filter((c) => c.status !== 'archived'));
-      } catch {
-        setConnectionError('Could not load your Character Book.');
-      } finally {
-        setConnectionOptionsLoading(false);
-      }
-    }
-  };
-
-  const addConnection = async () => {
-    if (!connectionTargetId || connectionSaving) return;
-    setConnectionSaving(true);
-    setConnectionError(null);
-    try {
-      const res = await fetchJson<{
-        success: boolean;
-        relationship: NonNullable<Character['relationships']>[number];
-      }>('/api/relationships/character-links', {
-        method: 'POST',
-        body: JSON.stringify({
-          source_character_id: editedCharacter.id,
-          target_character_id: connectionTargetId,
-          relationship_type: connectionType.trim() || 'friend',
-        }),
-      });
-      const rel = res.relationship;
-      setEditedCharacter((prev) => ({
-        ...prev,
-        relationships: [
-          ...(prev.relationships ?? []).filter((r) => r.character_id !== rel.character_id),
-          rel,
-        ],
-      }));
-      setConnectionTargetId('');
-      setConnectionType('friend');
-      setConnectionAddOpen(false);
-      invalidateRelationshipViews(rel.character_id);
-      dispatchStoryDataUpdated({ scopes: ['characters'], characterIds: [character.id, rel.character_id] });
-    } catch (error) {
-      setConnectionError(error instanceof Error ? error.message : 'Could not add connection.');
-    } finally {
-      setConnectionSaving(false);
-    }
-  };
-
-  const removeConnection = async (rel: { id?: string; character_id?: string; character_name?: string }) => {
-    if (!rel.id) return;
-    const who = rel.character_name ?? 'this person';
-    if (!window.confirm(`Remove the connection with ${who}? Their character card stays in your book.`)) return;
-    try {
-      await fetchJson(`/api/relationships/character-links/${rel.id}`, { method: 'DELETE' });
-      setEditedCharacter((prev) => ({
-        ...prev,
-        relationships: (prev.relationships ?? []).filter((r) => r.id !== rel.id),
-      }));
-      invalidateRelationshipViews(rel.character_id);
-      dispatchStoryDataUpdated({
-        scopes: ['characters'],
-        characterIds: rel.character_id ? [character.id, rel.character_id] : [character.id],
-      });
-    } catch (error) {
-      setConnectionError(error instanceof Error ? error.message : 'Could not remove connection.');
-    }
-  };
 
   const toggleOrgAdd = async () => {
     const next = !orgAddOpen;
@@ -2897,13 +2844,6 @@ export const CharacterDetailModal = ({
     }
   };
 
-  const strongestConnections = dedupeRelationshipsByPerson(
-    (editedCharacter.relationships ?? []).filter(
-      (rel) => rel.character_name && rel.character_name !== 'You',
-    ),
-  )
-    .sort((left, right) => (right.closeness_score ?? 0) - (left.closeness_score ?? 0))
-    .slice(0, 5);
   const allConnections = dedupeRelationshipsByPerson(
     (editedCharacter.relationships ?? []).filter(
       (rel) => rel.character_name && rel.character_name !== 'You',
@@ -2914,16 +2854,60 @@ export const CharacterDetailModal = ({
   // family, so a dog's card would show somebody's grandparents.
   const isPet = isPetCharacter(editedCharacter);
   const kinshipConnections = allConnections.filter(isKinshipConnection);
-  // Parents / children / pets get their own labelled lists, so keep them out of
-  // the flat list instead of listing every person twice.
-  const uniqueConnections = allConnections.filter((rel) => !isKinshipConnection(rel));
   const storyGroups = (isMockDataEnabled ? getMockOrganizations() : characterOrganizations);
 
   const resolvedRomanticRelationship = useMemo(() => {
     if (relationship) return relationship;
+    if (manualDatingRelationship) return manualDatingRelationship;
     if (!isMockDataEnabled) return undefined;
     return getMockRomanticRelationshipForCharacter(editedCharacter.id, editedCharacter.name);
-  }, [relationship, isMockDataEnabled, editedCharacter.id, editedCharacter.name]);
+  }, [relationship, manualDatingRelationship, isMockDataEnabled, editedCharacter.id, editedCharacter.name]);
+
+  const handleAddToDatingBook = async () => {
+    if (!canAddToDatingBook || isMainCharacter) return;
+    setAddingToDatingBook(true);
+    setDatingAddError(null);
+    try {
+      const result = await addCharacterToDatingBook({
+        character_id: editedCharacter.id ?? character.id,
+        relationship_type: 'crush',
+        status: 'unrequited',
+      }).unwrap();
+      const added = result.relationship as Partial<RomanticRelationship>;
+      if (added?.id) {
+        setManualDatingRelationship({
+          id: added.id,
+          person_id: String(added.person_id ?? editedCharacter.id ?? character.id),
+          person_type: 'character',
+          person_name: editedCharacter.name,
+          relationship_type: String(added.relationship_type ?? 'crush'),
+          status: String(added.status ?? 'unrequited'),
+          is_current: added.is_current ?? true,
+          affection_score: added.affection_score ?? 0,
+          emotional_intensity: added.emotional_intensity ?? 0,
+          compatibility_score: added.compatibility_score ?? 0,
+          relationship_health: added.relationship_health ?? 0,
+          is_situationship: added.is_situationship ?? false,
+          strengths: added.strengths ?? [],
+          weaknesses: added.weaknesses ?? [],
+          pros: added.pros ?? [],
+          cons: added.cons ?? [],
+          red_flags: added.red_flags ?? [],
+          green_flags: added.green_flags ?? [],
+          created_at: added.created_at ?? new Date().toISOString(),
+        });
+      }
+      invalidateCache();
+      onUpdate();
+      window.dispatchEvent(new CustomEvent('lk:romantic-relationships-updated'));
+    } catch (error) {
+      setDatingAddError(
+        error instanceof Error ? error.message : 'Could not add this person to Dating & Romance.',
+      );
+    } finally {
+      setAddingToDatingBook(false);
+    }
+  };
 
   const handleOpenDatingArc = () => {
     const relationshipId = resolvedRomanticRelationship?.id;
@@ -3050,6 +3034,13 @@ export const CharacterDetailModal = ({
                   <p className="text-[11px] text-white/50 break-words">{editedCharacter.role}</p>
                 ) : editedCharacter.archetype ? (
                   <p className="text-[11px] text-white/50 break-words">{editedCharacter.archetype}</p>
+                ) : null}
+                {editedCharacter.primary_organization?.name ? (
+                  <p className="text-[10px] text-cyan-200/80 truncate" title={editedCharacter.primary_organization.name}>
+                    {editedCharacter.primary_organization.role
+                      ? `${editedCharacter.primary_organization.name} · ${editedCharacter.primary_organization.role}`
+                      : editedCharacter.primary_organization.name}
+                  </p>
                 ) : null}
               </div>
             </div>
@@ -3182,6 +3173,26 @@ export const CharacterDetailModal = ({
                     {wittyTagline}
                   </p>
                 )}
+
+                {editedCharacter.primary_organization?.name ? (
+                  <Badge
+                    variant="outline"
+                    className="bg-cyan-500/15 text-cyan-200 border-cyan-400/40 text-[10px] px-1.5 py-0 font-medium inline-flex items-center gap-1 max-w-full"
+                    title={
+                      editedCharacter.primary_organization.role
+                        ? `${editedCharacter.primary_organization.name} · ${editedCharacter.primary_organization.role}`
+                        : editedCharacter.primary_organization.name
+                    }
+                  >
+                    <Users className="h-2.5 w-2.5 flex-shrink-0" />
+                    <span className="truncate">{editedCharacter.primary_organization.name}</span>
+                    {editedCharacter.primary_organization.role ? (
+                      <span className="truncate text-cyan-100/70">
+                        · {editedCharacter.primary_organization.role}
+                      </span>
+                    ) : null}
+                  </Badge>
+                ) : null}
 
                 {/* Identity meta chips */}
                 <div className="flex flex-wrap items-center gap-1">
@@ -3574,6 +3585,14 @@ export const CharacterDetailModal = ({
                 </Button>
               </div>
             )}
+            {!loadingDetails && (activeTab === 'info' || activeTab === 'relationships') && datingAddError && (
+              <p
+                role="alert"
+                className="mb-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200"
+              >
+                {datingAddError}
+              </p>
+            )}
             {!loadingDetails && activeTab === 'info' && (
               <CharacterInfoPanel
                 editedCharacter={editedCharacter}
@@ -3584,8 +3603,6 @@ export const CharacterDetailModal = ({
                 dynamics={dynamics}
                 askInChat={askInChat}
                 relationshipStatus={relationshipStatus}
-                romanticConnections={romanticConnections}
-                strongestConnections={strongestConnections}
                 lifeMap={lifeMap}
                 occupations={occupations}
                 workplaces={workplaces}
@@ -3596,7 +3613,6 @@ export const CharacterDetailModal = ({
                 loadingAttributes={loadingAttributes}
                 provenance={provenance}
                 isMockDataEnabled={isMockDataEnabled}
-                openCharacterByRelationship={openCharacterByRelationship}
                 loreProfile={loreProfile}
                 loreProfileLoading={loreProfileLoading}
                 onOpenCharacterById={openCharacterById}
@@ -3606,11 +3622,6 @@ export const CharacterDetailModal = ({
                 focusField={initialFocusField}
                 onFocusFieldHandled={onInitialFocusFieldHandled}
                 isSelfCharacter={isMainCharacter}
-                onOpenDatingArc={
-                  !isMainCharacter && resolvedRomanticRelationship
-                    ? handleOpenDatingArc
-                    : undefined
-                }
               />
             )}
 
@@ -3726,60 +3737,123 @@ export const CharacterDetailModal = ({
 
             {!loadingDetails && activeTab === 'relationships' && (
               <div className="space-y-8">
-                {/* Relationship to You */}
+                {/* With you — read-only recap; edit lives on Info */}
                 <div>
-                  <ConnectionSectionHeader icon={Users} title="Relationship to You" />
+                  <ConnectionSectionHeader icon={Users} title="With you" />
                   <Card className="bg-gradient-to-br from-primary/10 to-purple-900/20 border-primary/30">
                     <CardContent className="p-4">
                       <div className="space-y-3">
-                        {(editedCharacter.role || editedCharacter.archetype) && (
-                          <div className="grid grid-cols-2 gap-4">
-                            {editedCharacter.role && (
-                              <div>
-                                <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">Role</span>
-                                <p className="text-white font-medium mt-0.5">{editedCharacter.role}</p>
-                              </div>
-                            )}
-                            {editedCharacter.archetype && (
-                              <div>
-                                <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">Archetype</span>
-                                <p className="text-white font-medium mt-0.5">{editedCharacter.archetype}</p>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {editedCharacter.summary && (
-                          <div>
-                            <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">Summary</span>
-                            <p className="text-white/80 text-sm mt-1">{editedCharacter.summary}</p>
-                          </div>
-                        )}
-                        {editedCharacter.relationships && editedCharacter.relationships.length > 0 && (
-                          <div>
-                            <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">Closeness</span>
-                            {editedCharacter.relationships.find(r => r.character_name === 'You' || !r.character_name) && (
-                              <div className="mt-1.5">
-                                <div className="flex items-center gap-2">
-                                  <div className="flex-1 bg-black/40 rounded-full h-2">
-                                    <div
-                                      className="bg-primary h-2 rounded-full"
-                                      style={{
-                                        width: `${((editedCharacter.relationships.find(r => r.character_name === 'You' || !r.character_name)?.closeness_score || 0) / 10) * 100}%`
-                                      }}
-                                    />
+                        {(() => {
+                          const toYou = resolveRelationshipToYou({
+                            metadata: (editedCharacter.metadata ?? {}) as Record<string, unknown>,
+                            relationships: editedCharacter.relationships,
+                            romanticType: resolvedRomanticRelationship?.relationship_type,
+                          }).value;
+                          const youLink = editedCharacter.relationships?.find(
+                            (r) => r.character_name === 'You' || !r.character_name,
+                          );
+                          return (
+                            <>
+                              <p className="text-sm text-white">
+                                {toYou ? relationshipToYouLabel(toYou) : 'Not set yet'}
+                              </p>
+                              {youLink?.closeness_score != null && (
+                                <div>
+                                  <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">Closeness</span>
+                                  <div className="mt-1.5 flex items-center gap-2">
+                                    <div className="flex-1 bg-black/40 rounded-full h-2">
+                                      <div
+                                        className="bg-primary h-2 rounded-full"
+                                        style={{ width: `${(youLink.closeness_score / 10) * 100}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-sm text-white/70">{youLink.closeness_score}/10</span>
                                   </div>
-                                  <span className="text-sm text-white/70">
-                                    {editedCharacter.relationships.find(r => r.character_name === 'You' || !r.character_name)?.closeness_score || 0}/10
-                                  </span>
                                 </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
+                              )}
+                              <p className="text-[11px] text-white/40">
+                                Change this on Info. Family links update both cards automatically.
+                              </p>
+                            </>
+                          );
+                        })()}
                       </div>
                     </CardContent>
                   </Card>
                 </div>
+
+                {!isMainCharacter && !resolvedRomanticRelationship && canAddToDatingBook && (
+                  <section
+                    className="rounded-2xl border border-rose-500/25 bg-rose-950/20 p-4"
+                    data-testid="add-to-dating-romance-section"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Heart className="h-4 w-4 text-rose-400 shrink-0" />
+                          <h3 className="text-sm font-bold text-white">Dating &amp; Romance</h3>
+                        </div>
+                        <p className="text-xs text-white/55">
+                          Add this person to your Dating &amp; Romance book as a crush. Nothing is assumed about their feelings.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void handleAddToDatingBook()}
+                        disabled={addingToDatingBook}
+                        data-testid="add-to-dating-romance"
+                        className="w-full sm:w-auto shrink-0 border-pink-500/30 text-pink-200 hover:bg-pink-500/10 hover:text-pink-100"
+                      >
+                        {addingToDatingBook ? 'Adding…' : 'Add to Dating & Romance'}
+                      </Button>
+                    </div>
+                  </section>
+                )}
+                {!isMainCharacter && resolvedRomanticRelationship && (
+                  <section
+                    className="rounded-2xl border border-rose-500/25 bg-rose-950/20 p-4"
+                    data-testid="your-relationship-section"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Heart className="h-4 w-4 text-rose-400 shrink-0" />
+                          <h3 className="text-sm font-bold text-white">Dating &amp; Romance</h3>
+                        </div>
+                        <p className="text-sm text-white">
+                          {composeRomanticRelationshipBadgeLabel(resolvedRomanticRelationship)}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleOpenDatingArc}
+                        data-testid="open-dating-romance-overview"
+                        className="w-full sm:w-auto shrink-0 border-pink-500/30 text-pink-200 hover:bg-pink-500/10 hover:text-pink-100"
+                      >
+                        <Link2 className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                        Overview
+                      </Button>
+                    </div>
+                  </section>
+                )}
+
+                <CharacterLoreProfileSection
+                  profile={loreProfile ?? null}
+                  loading={loreProfileLoading}
+                  currentCharacterId={editedCharacter.id ?? character.id}
+                  characterFirstName={shortDisplayName(editedCharacter.name)}
+                  relationships={editedCharacter.relationships}
+                  onAskInChat={askInChat}
+                  onOpenCharacter={openCharacterById}
+                  onAddPerson={addWorldPerson}
+                  onUpdatePerson={updateWorldPerson}
+                  onDeletePerson={deleteWorldPerson}
+                  sections={['groups', 'people']}
+                />
 
                 {/* Family Tree — people only */}
                 {!isPet && (
@@ -3851,155 +3925,6 @@ export const CharacterDetailModal = ({
                   />
                 )}
 
-                {/* Friends & Other Connections */}
-                {(
-                  <div className="pt-8 border-t border-white/[0.06]">
-                    <ConnectionSectionHeader
-                      icon={UserCircle}
-                      title="Friends & Other Connections"
-                      action={
-                        !isMockDataEnabled && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs text-white/55"
-                            onClick={() => void toggleConnectionAdd()}
-                            data-testid="add-connection-toggle"
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                            <span className="ml-1">{connectionAddOpen ? 'Close' : 'Add'}</span>
-                          </Button>
-                        )
-                      }
-                    />
-                    {connectionAddOpen && !isMockDataEnabled && (
-                      <Card className="bg-black/40 border-border/50 mb-3">
-                        <CardContent className="p-3">
-                          <p className="text-[10px] text-white/35 mb-2">
-                            Link a person who already exists in your Character Book.
-                          </p>
-                          <div className="grid gap-2 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto]">
-                            <select
-                              value={connectionTargetId}
-                              onChange={(e) => setConnectionTargetId(e.target.value)}
-                              disabled={connectionOptionsLoading}
-                              aria-label="Existing character"
-                              className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-primary/60 focus:outline-none"
-                            >
-                              <option value="">
-                                {connectionOptionsLoading ? 'Loading…' : 'Choose a person…'}
-                              </option>
-                              {connectionOptions
-                                .filter(
-                                  (c) =>
-                                    c.id !== editedCharacter.id &&
-                                    !(editedCharacter.relationships ?? []).some(
-                                      (r) => r.character_id === c.id,
-                                    ),
-                                )
-                                .map((c) => (
-                                  <option key={c.id} value={c.id}>
-                                    {c.name}
-                                  </option>
-                                ))}
-                            </select>
-                            <input
-                              list="connection-type-options"
-                              value={connectionType}
-                              onChange={(e) => setConnectionType(e.target.value)}
-                              placeholder="Relationship (e.g. friend)"
-                              aria-label="Relationship type"
-                              className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-primary/60 focus:outline-none"
-                            />
-                            <datalist id="connection-type-options">
-                              {['friend', 'best friend', 'close friend', 'acquaintance', 'coworker', 'bandmate', 'classmate', 'roommate', 'neighbor', 'mentor', 'rival', 'ex'].map((t) => (
-                                <option key={t} value={t} />
-                              ))}
-                            </datalist>
-                            <Button
-                              size="sm"
-                              className="h-8 text-xs"
-                              disabled={!connectionTargetId || connectionSaving}
-                              onClick={() => void addConnection()}
-                              data-testid="add-connection-submit"
-                            >
-                              {connectionSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Add'}
-                            </Button>
-                          </div>
-                          {connectionError && (
-                            <p className="text-xs text-red-400 mt-2">{connectionError}</p>
-                          )}
-                        </CardContent>
-                      </Card>
-                    )}
-                    {!connectionAddOpen && connectionError && (
-                      <p className="text-xs text-red-400 mb-2">{connectionError}</p>
-                    )}
-                    <div className="space-y-2">
-                      {uniqueConnections.map((rel) => (
-                          <Card 
-                            key={rel.character_id ?? rel.id} 
-                            className="bg-black/40 border-border/50 cursor-pointer hover:border-primary/50 hover:bg-black/60 transition-all"
-                            onClick={() => void openCharacterByRelationship(rel)}
-                          >
-                            <CardContent className="p-4">
-                              <div className="flex items-center justify-between">
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <p className="font-medium text-white">{rel.character_name}</p>
-                                    <Tooltip content={`Relationship Type: "${rel.relationship_type}" describes how ${rel.character_name} relates to ${editedCharacter.name}. This is automatically detected from your conversations when you describe their connection.`}>
-                                      <span className="text-xs text-primary/70 px-2 py-0.5 rounded bg-primary/10 border border-primary/20 cursor-help">
-                                      {rel.relationship_type}
-                                    </span>
-                                    </Tooltip>
-                                  </div>
-                                  {rel.summary && <p className="text-sm text-white/60 mt-1">{rel.summary}</p>}
-                                </div>
-                                {rel.closeness_score !== undefined && (
-                                  <div className="text-right ml-4">
-                                    <span className="text-xs text-white/50 block">Closeness</span>
-                                    <span className="text-sm font-medium text-primary">{rel.closeness_score}/10</span>
-                                  </div>
-                                )}
-                                {!isMockDataEnabled && rel.id && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="ml-2 h-7 w-7 p-0 text-white/30 hover:text-red-400"
-                                    aria-label={`Remove connection with ${rel.character_name}`}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      void removeConnection(rel);
-                                    }}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                )}
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      {uniqueConnections.length === 0 && (
-                        <div className="text-center py-8 text-white/40">
-                          <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                          <p>No connections tracked yet</p>
-                          {!isMockDataEnabled && !connectionAddOpen && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="mt-3 h-8 text-xs"
-                              onClick={() => void toggleConnectionAdd()}
-                              data-testid="empty-add-connection"
-                            >
-                              <Plus className="h-3.5 w-3.5 mr-1" />
-                              Add a connection manually
-                            </Button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
 
                 {/* Wider network (inferred periphery — formerly its own tab) */}
                 {editedCharacter.id && (
@@ -4017,7 +3942,22 @@ export const CharacterDetailModal = ({
 
                 {/* Groups & Organizations */}
                 {(() => {
-                  const orgs = isMockDataEnabled ? getMockOrganizations() : characterOrganizations;
+                  const fetchedOrgs = isMockDataEnabled ? getMockOrganizations() : characterOrganizations;
+                  const affiliation = editedCharacter.primary_organization;
+                  const orgs =
+                    fetchedOrgs.length > 0 || !affiliation?.id
+                      ? fetchedOrgs
+                      : [
+                          {
+                            id: affiliation.id,
+                            name: affiliation.name,
+                            group_type: affiliation.group_type,
+                            type: affiliation.group_type,
+                            character_role: affiliation.role,
+                            user_relationship: 'aware_of',
+                            members: [],
+                          },
+                        ];
                   const shared = orgs.filter((o: any) => o.user_is_member);
                   const theirs = orgs.filter((o: any) => !o.user_is_member);
                   const OrgCard = ({ org, isShared }: { org: any; isShared: boolean }) => (

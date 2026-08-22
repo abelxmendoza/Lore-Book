@@ -133,6 +133,12 @@ type RomanticRelationshipsResponse = {
   relationships: Array<Record<string, unknown>>;
 };
 
+type AddCharacterToDatingBookInput = {
+  character_id: string;
+  relationship_type?: string;
+  status?: string;
+};
+
 type OrganizationUpdateInput = {
   id: string;
   values: Record<string, unknown>;
@@ -261,6 +267,23 @@ export const entitiesApi = baseApi.injectEndpoints({
       providesTags: ['RomanticRelationship'],
     }),
 
+    addCharacterToDatingBook: build.mutation<
+      { success: boolean; created: boolean; relationship: Record<string, unknown> },
+      AddCharacterToDatingBookInput
+    >({
+      query: (body) => ({
+        url: '/api/conversation/romantic-relationships',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['RomanticRelationship', 'Character'],
+      async onQueryStarted(_, { queryFulfilled }) {
+        await queryFulfilled;
+        invalidateCache('/api/conversation/romantic-relationships');
+        invalidateCache('/api/characters');
+      },
+    }),
+
     assembleEventsFromChats: build.mutation<
       { success: boolean; windowDays: number; events: unknown[] },
       { windowDays?: number } | void
@@ -345,6 +368,7 @@ export const entitiesApi = baseApi.injectEndpoints({
         url: '/api/characters/merge',
         method: 'POST',
         body,
+        timeoutMs: 120_000,
       }),
       invalidatesTags: ['Character', 'Organization', 'Event'],
       async onQueryStarted(_, { queryFulfilled }) {
@@ -571,6 +595,7 @@ export const {
   useGetGroupCandidatesQuery,
   useGetEventsQuery,
   useGetRomanticRelationshipsQuery,
+  useAddCharacterToDatingBookMutation,
   useAssembleEventsFromChatsMutation,
   useRescanRomanticRelationshipsMutation,
   useCalculateRomanticAffectionMutation,

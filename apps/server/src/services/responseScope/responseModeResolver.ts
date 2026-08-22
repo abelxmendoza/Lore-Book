@@ -54,6 +54,7 @@ export function isFollowUpShaped(message: string): boolean {
   if (CORRECTION_RE.test(text)) return true;
   if (FOLLOW_UP_OPENER_RE.test(text)) return true;
   if (isRetryRequest(text)) return true;
+  if (/\bwho\s+(?:is|was|are|were)\s+(he|she|they|him|her|them)\b/i.test(text)) return true;
   return text.length <= SHORT_QUESTION_MAX_CHARS && text.endsWith('?') && ANAPHORA_RE.test(text);
 }
 

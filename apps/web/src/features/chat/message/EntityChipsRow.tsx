@@ -13,6 +13,7 @@ import {
   resolveMentionLifecycleStatus,
   type MentionLifecycleStatus,
 } from '../utils/mentionLifecycle';
+import { dedupeCastDisplayEntries } from '../utils/threadSurfaceScrub';
 
 export interface EntityChip {
   id: string;
@@ -88,7 +89,9 @@ export const EntityChipsRow = ({
 
   if (!entities || entities.length === 0) return null;
 
-  const filtered = entities.filter((e) => isTranscriptMentionWorthy(e.name, e.lifecycleStatus));
+  const filtered = dedupeCastDisplayEntries(
+    entities.filter((e) => isTranscriptMentionWorthy(e.name, e.lifecycleStatus)),
+  );
   if (filtered.length === 0) return null;
 
   const visible = filtered.slice(0, max);

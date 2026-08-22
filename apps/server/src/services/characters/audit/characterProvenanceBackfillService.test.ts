@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   boundaryRegex,
   extractSnippet,
+  fullSourceText,
   hasProvenance,
   recentlyAttemptedEmpty,
 } from './characterProvenanceBackfillService';
@@ -44,6 +45,17 @@ describe('extractSnippet', () => {
   it('falls back to a leading slice when no term matches', () => {
     const snippet = extractSnippet('no mention here at all', ['Sol']);
     expect(snippet).toBe('no mention here at all');
+  });
+});
+
+describe('fullSourceText', () => {
+  it('keeps the whole source message for card provenance', () => {
+    const content =
+      'A'.repeat(300) +
+      ' I was seeing this girl Sol a couple times and then she left me on read ' +
+      'B'.repeat(300);
+    expect(fullSourceText(content)).toBe(content.replace(/\s+/g, ' ').trim());
+    expect(fullSourceText(content).startsWith('…')).toBe(false);
   });
 });
 

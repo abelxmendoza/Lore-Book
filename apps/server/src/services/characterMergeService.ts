@@ -108,27 +108,43 @@ function isCompositeDisplayName(name: string): boolean {
   return name.includes(' / ');
 }
 
-function fullNameFromFields(character: CharRow): string | null {
+function fullNameFromFields(character: MergeDisplayNameInput): string | null {
   const firstName = cleanName(character.first_name ?? '');
   const lastName = cleanName(character.last_name ?? '');
   if (!firstName || !lastName) return null;
   return `${firstName} ${lastName}`;
 }
 
-function singleNameFromFields(character: CharRow): string | null {
+function singleNameFromFields(character: MergeDisplayNameInput): string | null {
   const firstName = cleanName(character.first_name ?? '');
   if (!firstName || character.last_name) return null;
   return firstName;
 }
 
-function avoidSourceNameConflict(source: CharRow, target: CharRow, chosen: string): string {
+function avoidSourceNameConflict(source: MergeDisplayNameInput, target: MergeDisplayNameInput, chosen: string): string {
   if (normalizeNameKey(chosen) === normalizeNameKey(source.name) && normalizeNameKey(source.name) !== normalizeNameKey(target.name)) {
     return `${chosen} / ${target.name}`;
   }
   return chosen;
 }
 
-function bestDisplayName(source: CharRow, target: CharRow, aliases: string[]): string {
+/** True when writing `displayName` onto the survivor would collide with the source row. */
+export function survivorNameCollidesWithSource(displayName: string, sourceName: string): boolean {
+  return normalizeNameKey(displayName) === normalizeNameKey(sourceName);
+}
+
+export type MergeDisplayNameInput = {
+  name: string;
+  alias?: string[] | null;
+  first_name?: string | null;
+  last_name?: string | null;
+};
+
+export function bestDisplayName(
+  source: MergeDisplayNameInput,
+  target: MergeDisplayNameInput,
+  aliases: string[]
+): string {
   const candidates = [target.name, source.name, ...(target.alias ?? []), ...(source.alias ?? [])]
     .map(cleanName)
     .filter(Boolean);
@@ -318,6 +334,8 @@ class CharacterMergeService {
     await this.mergeEventImpacts(userId, sourceId, targetId);
     await this.mergeArrayReferences(userId, sourceId, targetId);
     await this.mergeEntityMentions(userId, sourceId, targetId);
+    await this.mergeRomanticLinks(userId, sourceId, targetId);
+    await this.mergeOrganizationMemberships(userId, sourceId, targetId);
     const omega = await this.mergeOmega(userId, source, target);
     report.omegaMerged = omega.merged;
     const cardUpdate = await this.mergeCardData(userId, source, target, omega.adoptOmegaId, {
@@ -540,6 +558,62 @@ class CharacterMergeService {
       .eq('connection_character_id', sourceId);
   }
 
+  /** Dating & Romance rows key on person_id — move them or drop collisions. */
+  private async mergeRomanticLinks(userId: string, sourceId: string, targetId: string) {
+    const { data: sourceRows } = await supabaseAdmin
+      .from('romantic_relationships')
+      .select('id, relationship_type, status')
+      .eq('user_id', userId)
+      .eq('person_type', 'character')
+      .eq('person_id', sourceId);
+    for (const row of (sourceRows ?? []) as Array<{ id: string; relationship_type: string; status: string }>) {
+      const { data: collision } = await supabaseAdmin
+        .from('romantic_relationships')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('person_type', 'character')
+        .eq('person_id', targetId)
+        .eq('relationship_type', row.relationship_type)
+        .eq('status', row.status)
+        .limit(1);
+      if (collision?.length) {
+        await supabaseAdmin.from('romantic_relationships').delete().eq('id', row.id);
+      } else {
+        const { error } = await supabaseAdmin
+          .from('romantic_relationships')
+          .update({ person_id: targetId })
+          .eq('id', row.id);
+        if (error) await supabaseAdmin.from('romantic_relationships').delete().eq('id', row.id);
+      }
+    }
+  }
+
+  /** Org roster rows are unique per (organization_id, character_id). */
+  private async mergeOrganizationMemberships(userId: string, sourceId: string, targetId: string) {
+    const { data: sourceRows } = await supabaseAdmin
+      .from('organization_members')
+      .select('id, organization_id')
+      .eq('user_id', userId)
+      .eq('character_id', sourceId);
+    for (const row of (sourceRows ?? []) as Array<{ id: string; organization_id: string }>) {
+      const { data: collision } = await supabaseAdmin
+        .from('organization_members')
+        .select('id')
+        .eq('organization_id', row.organization_id)
+        .eq('character_id', targetId)
+        .limit(1);
+      if (collision?.length) {
+        await supabaseAdmin.from('organization_members').delete().eq('id', row.id);
+      } else {
+        const { error } = await supabaseAdmin
+          .from('organization_members')
+          .update({ character_id: targetId })
+          .eq('id', row.id);
+        if (error) await supabaseAdmin.from('organization_members').delete().eq('id', row.id);
+      }
+    }
+  }
+
   private async mergeArrayReferences(userId: string, sourceId: string, targetId: string) {
     const { data: rows } = await supabaseAdmin
       .from('characters')
@@ -589,6 +663,21 @@ class CharacterMergeService {
     const displayName = preserveTargetIdentity
       ? cleanName(target.name)
       : bestDisplayName(source, target, aliases);
+    // UNIQUE (user_id, name) — if the survivor should take the absorbed card's
+    // name (Keep "V" → "Jamie", or a strength-weighted swap), free that name first.
+    if (survivorNameCollidesWithSource(displayName, source.name)) {
+      const parkedName = `__merged__${source.id}`;
+      const { error: parkErr } = await supabaseAdmin
+        .from('characters')
+        .update({ name: parkedName, updated_at: new Date().toISOString() })
+        .eq('id', source.id)
+        .eq('user_id', userId);
+      if (parkErr) {
+        throw new Error(
+          `Could not free the name "${source.name}" for the surviving card. ${parkErr.message}`
+        );
+      }
+    }
     const displayNameKey = normalizeNameKey(displayName);
     const finalAliases = aliases.filter(alias => normalizeNameKey(alias) !== displayNameKey);
     const nameParts = splitDisplayName(displayName);
@@ -656,7 +745,14 @@ class CharacterMergeService {
       update.first_appearance = source.first_appearance;
     }
 
-    await supabaseAdmin.from('characters').update(update).eq('id', target.id).eq('user_id', userId);
+    const { error: updateErr } = await supabaseAdmin
+      .from('characters')
+      .update(update)
+      .eq('id', target.id)
+      .eq('user_id', userId);
+    if (updateErr) {
+      throw new Error(`Could not update the surviving card: ${updateErr.message}`);
+    }
     return { name: displayName, aliases: finalAliases, reviewFlags };
   }
 

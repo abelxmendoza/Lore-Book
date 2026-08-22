@@ -32,6 +32,8 @@ import {
   type LlmClassificationCard,
 } from './characterDomainAutoClassifier';
 import {
+  applySourceMessageProvenance,
+  collectSourceMessageIds,
   extractProvenanceText,
   summarizeProvenance,
 } from './characterProvenanceAuditService';
@@ -58,6 +60,7 @@ function emptySummary(): Record<CharacterAuditStatus, number> {
     wrong_domain_role: 0,
     wrong_domain_event: 0,
     wrong_domain_process: 0,
+    wrong_domain_organization: 0,
     sentence_bleed: 0,
     pronoun_fragment: 0,
     broken_span: 0,
@@ -96,6 +99,7 @@ const DOMAIN_ROUTING: Record<
   process: { status: 'wrong_domain_process', action: 'move_to_book', target: 'process' },
   skill: { status: 'wrong_domain', action: 'move_to_book', target: 'skill' },
   place: { status: 'wrong_domain', action: 'move_to_book', target: 'place' },
+  organization: { status: 'wrong_domain_organization', action: 'move_to_group', target: 'organization' },
 };
 
 function arbitrationResult(
@@ -240,12 +244,17 @@ function auditSingleCharacter(
   );
   if (possessive.isBroken) {
     const mergeCandidates = findMergeCandidatesForCharacter(input, roster, provenanceById);
+    // No existing clean card to merge into — rename this one in place instead
+    // of leaving the possessive marker stuck on the name forever.
+    const hasMergeTarget = Boolean(mergeCandidates[0]);
     return {
       characterId: input.id,
       currentTitle: input.name,
       status: 'broken_span',
-      reason: 'Broken possessive span — should be alias on base identity',
-      recommendedAction: 'merge',
+      reason: hasMergeTarget
+        ? 'Broken possessive span — should be alias on base identity'
+        : 'Broken possessive span — no existing base card, renaming in place',
+      recommendedAction: hasMergeTarget ? 'merge' : 'rename_with_context',
       suggestedTitle: possessive.baseName,
       aliasToAdd: possessive.aliasToAdd,
       mergeCandidates,
@@ -520,6 +529,29 @@ class CharacterCardAuditService {
     return roster.map((row) => auditSingleCharacter(row, roster, provenanceById));
   }
 
+  /** Replace windowed card snippets with the full source messages when ids exist. */
+  private async hydrateSourceMessages(
+    userId: string,
+    roster: CharacterCardAuditInput[],
+  ): Promise<CharacterCardAuditInput[]> {
+    const ids = collectSourceMessageIds(roster);
+    if (ids.length === 0) return roster;
+    try {
+      const { characterProvenanceBackfillService } = await import(
+        './characterProvenanceBackfillService'
+      );
+      const messagesById = await characterProvenanceBackfillService.fetchMessageContentsByIds(
+        userId,
+        ids,
+      );
+      if (messagesById.size === 0) return roster;
+      return roster.map((row) => applySourceMessageProvenance(row, messagesById));
+    } catch (hydrateError) {
+      logger.warn({ error: hydrateError, userId }, 'character provenance hydrate skipped');
+      return roster;
+    }
+  }
+
   async audit(userId: string): Promise<CharacterCardAuditReport> {
     // Self-heal missing provenance before auditing: cards from recovery/un-merge
     // land without any captured story context, but the conversations that named
@@ -554,11 +586,13 @@ class CharacterCardAuditService {
       contextOfMention: row.context_of_mention as string | null | undefined,
     }));
 
-    let results = this.auditRoster(roster).filter((result) => {
-      const meta = roster.find((row) => row.id === result.characterId)?.metadata ?? {};
+    const hydratedRoster = await this.hydrateSourceMessages(userId, roster);
+
+    let results = this.auditRoster(hydratedRoster).filter((result) => {
+      const meta = hydratedRoster.find((row) => row.id === result.characterId)?.metadata ?? {};
       return !isCharacterCardUserReviewed(meta);
     });
-    results = await this.applyAutoDomainPass(roster, results);
+    results = await this.applyAutoDomainPass(hydratedRoster, results);
     const summary = emptySummary();
     for (const r of results) {
       summary[r.status] += 1;

@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  X, Clock, MapPin, Users, MessageSquare, Send, Sparkles,
+  X, Clock, MapPin, Users, MessageSquare,
   Calendar, ArrowRight, ArrowLeft, Eye, Heart, Link2, FileText,
   Lightbulb, GitBranch, CheckCircle2, Quote, UserCircle2, Trash2,
   Compass, ImagePlus, Loader2, BookOpen, Plus,
@@ -20,7 +20,6 @@ import { EventConfidenceHistory } from './EventConfidenceHistory';
 import { EventActionsMenu } from './EventActionsMenu';
 import { EventMetaTags } from './EventMetaTags';
 import { getDisplayTitle } from '../../utils/displayTitle';
-import { TextWithEntityPills } from '../entity/TextWithEntityPills';
 import {
   epistemicBadgeColorClass,
   epistemicHistoryTitle,
@@ -169,7 +168,7 @@ function makeEventStub(e: LinkedEventStub): Event {
   };
 }
 
-type TabKey = 'overview' | 'meaning' | 'connections' | 'evidence';
+type TabKey = 'overview' | 'chat' | 'meaning' | 'connections' | 'evidence';
 
 // ─── Demo mode enrichment ─────────────────────────────────────────────────────
 // When an event has no real data (demo/mock mode), inject rich example content
@@ -319,23 +318,16 @@ const formatDate = (dateString: string, full = false) => {
   }
 };
 
-const formatNames = (names: string[], maxShown = 3): string => {
-  if (names.length === 0) return '';
-  const shown = names.slice(0, maxShown);
-  const extra = names.length - maxShown;
-  return extra > 0 ? `${shown.join(', ')} +${extra} more` : shown.join(', ');
-};
-
 const getOneSentence = (ev: Event): string | null => {
   if (ev.causal_links?.effects?.length) return `This event led to "${ev.causal_links.effects[0].effectEvent.title}."`;
   if (ev.causal_links?.causes?.length) return `This followed from "${ev.causal_links.causes[0].causeEvent.title}."`;
   if (ev.linked_insights?.length) {
     const t = ev.linked_insights[0].text;
-    return `This moment crystallized into an insight: "${t.length > 85 ? t.slice(0, 82) + '…' : t}"`;
+    return `This moment crystallized into an insight: "${t}"`;
   }
   if (ev.linked_decisions?.length) return `This event influenced the decision: "${ev.linked_decisions[0].title}."`;
-  if (ev.continuity_notes?.length) { const n = ev.continuity_notes[0]; return n.length > 140 ? n.slice(0, 137) + '…' : n; }
-  if (ev.impact?.impactDescription) { const d = ev.impact.impactDescription; return d.length > 140 ? d.slice(0, 137) + '…' : d; }
+  if (ev.continuity_notes?.length) return ev.continuity_notes[0];
+  if (ev.impact?.impactDescription) return ev.impact.impactDescription;
   const map: Record<string, string> = {
     direct_participant: 'You were there — this moment is part of your story.',
     indirect_affected: 'This event touched your life, even without you being present.',
@@ -364,7 +356,7 @@ const getWhySignals = (ev: Event): WhySignal[] => {
   }));
   ev.linked_insights?.slice(0, 2).forEach(i => s.push({
     label: `Insight · ${i.category}`,
-    text: i.text.length > 100 ? i.text.slice(0, 97) + '…' : i.text,
+    text: i.text,
     border: 'border-purple-500/50', bg: 'bg-purple-500/12', labelColor: 'text-purple-400/70',
   }));
   ev.linked_decisions?.slice(0, 1).forEach(d => s.push({
@@ -379,7 +371,7 @@ const getWhySignals = (ev: Event): WhySignal[] => {
   });
   ev.continuity_notes?.slice(0, 1).forEach(n => s.push({
     label: 'Part of a bigger pattern',
-    text: n.length > 120 ? n.slice(0, 117) + '…' : n,
+    text: n,
     border: 'border-teal-500/50', bg: 'bg-teal-500/12', labelColor: 'text-teal-400/70',
   }));
   return s;
@@ -471,9 +463,8 @@ function getLearnedItems(ev: Event): LearnedItem[] {
   });
 
   ev.linked_insights?.forEach(insight => {
-    const short = insight.text.length > 90 ? insight.text.slice(0, 87) + '…' : insight.text;
     items.push({
-      text: `An insight about your ${insight.category} emerged: "${short}"`,
+      text: `An insight about your ${insight.category} emerged: "${insight.text}"`,
       source: 'insight',
     });
   });
@@ -570,87 +561,6 @@ function getStoryPosition(ev: Event): StoryPositionResult | null {
   return null;
 }
 
-// ─── Chat types & helpers ─────────────────────────────────────────────────────
-
-type ChatMessage = {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  timestamp?: Date;
-  meta?: {
-    uncertainty_level?: string;
-    confidence_level?: string;
-    why?: string;
-    confidence_humanized?: string;
-  };
-};
-
-/** Lorekeeper's first message — synthesised from whatever is known about the event. */
-function generateOpeningMessage(ev: Event): string {
-  const parts: string[] = [];
-  const sources = ev.source_count || 0;
-  const pct = Math.round(ev.confidence * 100);
-
-  if (sources > 0) {
-    parts.push(`I've seen this event come up in ${sources} conversation${sources === 1 ? '' : 's'}.`);
-  }
-
-  if (pct >= 75) {
-    parts.push(`With ${formatEpistemicPercent(ev.confidence)}, this is a well-documented memory.`);
-  } else if (pct >= 50) {
-    parts.push(`${epistemicLabel(ev.confidence)} — there's room to add more detail (${formatEpistemicPercent(ev.confidence)}).`);
-  } else {
-    parts.push(`Still uncertain (${formatEpistemicPercent(ev.confidence)}) — anything you share helps clarify it.`);
-  }
-
-  if (ev.causal_links?.effects?.length) {
-    parts.push(`It looks like this led to "${ev.causal_links.effects[0].effectEvent.title}".`);
-  } else if (ev.causal_links?.causes?.length) {
-    parts.push(`This seems to have followed from "${ev.causal_links.causes[0].causeEvent.title}".`);
-  }
-
-  if (ev.linked_insights?.length) {
-    parts.push(`One insight about your ${ev.linked_insights[0].category} came from this.`);
-  }
-
-  if (ev.people.length > 0) {
-    const names = ev.people.slice(0, 2).join(' and ');
-    const extra = ev.people.length > 2 ? ` and ${ev.people.length - 2} others` : '';
-    parts.push(`${names}${extra} ${ev.people.length === 1 ? 'was' : 'were'} there.`);
-  }
-
-  parts.push('What would you like to explore or add?');
-  return parts.join(' ');
-}
-
-type ChatEntity = { name: string; kind: 'person' | 'location' | 'event' };
-
-function buildEntityList(ev: Event): ChatEntity[] {
-  const entities: ChatEntity[] = [];
-  ev.people.forEach(p => { if (p.length >= 3) entities.push({ name: p, kind: 'person' }); });
-  ev.locations.forEach(l => { if (l.length >= 4) entities.push({ name: l, kind: 'location' }); });
-  ev.causal_links?.causes?.forEach(c => entities.push({ name: c.causeEvent.title, kind: 'event' }));
-  ev.causal_links?.effects?.forEach(e => entities.push({ name: e.effectEvent.title, kind: 'event' }));
-  return entities.sort((a, b) => b.name.length - a.name.length); // longest first to avoid partial matches
-}
-
-function renderWithChips(text: string, entities: ChatEntity[]): React.ReactNode {
-  if (!entities.length) return <span>{text}</span>;
-
-  const mentions = entities.map((entity, index) => ({
-    id: `${entity.kind}-${index}-${entity.name}`,
-    name: entity.name,
-    type:
-      entity.kind === 'location'
-        ? ('location' as const)
-        : entity.kind === 'event'
-          ? ('event' as const)
-          : ('character' as const),
-    status: 'confirmed' as const,
-  }));
-
-  return <TextWithEntityPills text={text} entities={mentions} />;
-}
-
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, breadcrumb, onDeleted, onUpdated }) => {
@@ -681,7 +591,6 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
     }
   };
   const [eventData, setEventData] = useState<Event>(() => enrichForDemo(event));
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [linkedEvent, setLinkedEvent] = useState<LinkedEventStub | null>(null);
   const [expandedPerson, setExpandedPerson] = useState<string | null>(null);
   // Attendance derived from the source conversation's cast when the event
@@ -689,15 +598,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
   const [derivedAttendees, setDerivedAttendees] = useState<
     Array<{ entityId: string | null; name: string; role: string; firstSeenRef?: string | null }>
   >([]);
-  const [chatInput, setChatInput] = useState('');
-  const [sending, setSending] = useState(false);
-  const [chatLoading, setChatLoading] = useState(false);
-  // Prevent chat history being fetched more than once per modal open
-  const chatLoadedRef = useRef(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => { loadEvent(); }, [event.id]);
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
 
   useEffect(() => {
     if (!event.id || eventData.people.length > 0) {
@@ -721,45 +622,6 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
     };
   }, [event.id, eventData.people.length]);
 
-  const primeChat = (ev: Event) => {
-    setChatMessages(prev =>
-      prev.length === 0
-        ? [{ role: 'assistant', content: generateOpeningMessage(ev), timestamp: new Date() }]
-        : prev
-    );
-  };
-
-  const loadChatHistory = async (ev: Event) => {
-    if (chatLoadedRef.current) return;
-    chatLoadedRef.current = true;
-    setChatLoading(true);
-    try {
-      const result = await fetchJson<{
-        success: boolean;
-        messages: Array<{ id: string; role: string; content: string; created_at: string }>;
-        thread_id: string | null;
-      }>(`/api/conversation/events/${event.id}/chat-history`);
-
-      if (result.success && result.messages.length > 0) {
-        setChatMessages(
-          result.messages.map(m => ({
-            role: (m.role === 'user' ? 'user' : 'assistant') as ChatMessage['role'],
-            content: m.content,
-            timestamp: new Date(m.created_at),
-          }))
-        );
-      } else {
-        // No prior conversation — insert the opening primer
-        primeChat(ev);
-      }
-    } catch {
-      // Chat history is optional — fall back to primer
-      primeChat(ev);
-    } finally {
-      setChatLoading(false);
-    }
-  };
-
   const loadEvent = async () => {
     if (event.id.startsWith('event-') || event.id.startsWith('demo-posted-event-')) {
       if (event.id.startsWith('demo-posted-event-')) {
@@ -769,21 +631,16 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
           if (live) {
             const next = { ...enrichForDemo(event), ...live, metadata: live.metadata };
             setEventData(next);
-            primeChat(next);
             return;
           }
         } catch { /* fall through */ }
       }
       const enriched = enrichForDemo(event);
       setEventData(enriched);
-      primeChat(enriched);
       return;
     }
     try {
-      const [eventResult] = await Promise.all([
-        fetchJson<{ success: boolean; event: Event }>(`/api/conversation/events/${event.id}`),
-        loadChatHistory(event as Event),
-      ]);
+      const eventResult = await fetchJson<{ success: boolean; event: Event }>(`/api/conversation/events/${event.id}`);
       if (eventResult.success) setEventData(eventResult.event);
 
       try {
@@ -795,7 +652,6 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
     } catch {
       const fallback = enrichForDemo(event);
       setEventData(fallback);
-      primeChat(fallback);
     }
   };
 
@@ -876,45 +732,12 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
     }
   };
 
-  const handleChatMessage = async () => {
-    if (!chatInput.trim() || sending) return;
-    const msg = chatInput.trim();
-    setChatInput('');
-    setSending(true);
-    setChatMessages(prev => [...prev, { role: 'user', content: msg, timestamp: new Date() }]);
-    try {
-      const result = await fetchJson<{ success: boolean; response: string; meta?: any }>(
-        `/api/conversation/events/${event.id}/chat`,
-        { method: 'POST', body: JSON.stringify({ message: msg }) }
-      );
-      if (result.success && result.response) {
-        const newMsgs: ChatMessage[] = [
-          { role: 'assistant', content: result.response, timestamp: new Date(), meta: result.meta },
-        ];
-        // Emit a system row when memory was updated
-        if (result.meta?.confidence_humanized) {
-          newMsgs.push({
-            role: 'system',
-            content: `Memory updated · ${result.meta.confidence_humanized}`,
-            timestamp: new Date(),
-          });
-        }
-        setChatMessages(prev => [...prev, ...newMsgs]);
-        setTimeout(() => loadEvent(), 1000);
-      }
-    } catch {
-      setChatMessages(prev => prev.slice(0, -1));
-    } finally {
-      setSending(false);
-    }
-  };
-
   const oneSentence = getOneSentence(eventData);
   const storyPosition = getStoryPosition(eventData);
   const whySignals = getWhySignals(eventData);
   const tone = eventData.impact?.emotionalImpact ? toneConfig[eventData.impact.emotionalImpact] : null;
-  const peopleDisplay = formatNames(eventData.people, 4);
-  const locationsDisplay = formatNames(eventData.locations, 3);
+  const peopleDisplay = eventData.people.join(', ');
+  const locationsDisplay = eventData.locations.join(', ');
   const displayTitle = getDisplayTitle({
     title: eventData.title,
     summary: eventData.summary,
@@ -989,22 +812,22 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-2 sm:p-4">
-      <div className="relative w-full max-w-4xl max-h-[92vh] rounded-xl shadow-2xl shadow-primary/15 flex flex-col overflow-hidden border border-white/10 bg-[linear-gradient(160deg,#0d0d1f_0%,#080812_40%,#07070e_100%)]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-1.5 sm:p-4">
+      <div className="relative w-full max-w-4xl max-h-[96dvh] sm:max-h-[92vh] rounded-xl shadow-2xl shadow-primary/15 flex flex-col overflow-hidden border border-white/10 bg-[linear-gradient(160deg,#0d0d1f_0%,#080812_40%,#07070e_100%)]">
 
         {/* Breadcrumb — shown when navigated here from another event */}
         {breadcrumb && (
-          <div className="flex items-center gap-2 px-5 py-2 bg-white/4 border-b border-white/8 text-[11px] text-white/40 flex-shrink-0">
+          <div className="flex flex-shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-white/8 bg-white/4 px-3 py-2 text-[11px] text-white/40 sm:px-5">
             <button
               type="button"
               onClick={onClose}
-              className="flex items-center gap-1 hover:text-primary/80 transition-colors"
+              className="flex min-w-0 max-w-full items-start gap-1 text-left transition-colors hover:text-primary/80"
             >
               <ArrowLeft className="w-3 h-3" />
-              <span className="truncate max-w-[160px]">{breadcrumb}</span>
+              <span className="min-w-0 break-words">{breadcrumb}</span>
             </button>
             <span className="text-white/20">›</span>
-            <span className="text-white/60 truncate max-w-[200px]">{displayTitle}</span>
+            <span className="min-w-0 basis-full break-words pl-4 text-white/60 sm:basis-auto sm:pl-0">{displayTitle}</span>
           </div>
         )}
 
@@ -1017,30 +840,20 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
         }`} />
 
         {/* ── Header ── */}
-        <div className={`flex-shrink-0 bg-gradient-to-b ${headerGradient} p-5 sm:p-6 border-b border-white/8`}>
-          <div className="flex items-start justify-between gap-4 mb-3">
-            <div className="flex-1 min-w-0">
+        <div
+          data-testid="event-detail-header"
+          className={`relative flex-shrink-0 bg-gradient-to-b ${headerGradient} p-3 sm:p-6 border-b border-white/8`}
+        >
+          <div className="flex flex-col items-start justify-between gap-2 mb-2 sm:flex-row sm:gap-4 sm:mb-3">
+            <div className="w-full min-w-0 flex-1 pr-9 sm:w-auto sm:pr-0">
               {eventData.type && (
-                <p className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-1">
+                <p className="mb-0.5 text-[9px] font-medium uppercase tracking-widest text-white/40 sm:mb-1 sm:text-[11px]">
                   {eventData.type}
                 </p>
               )}
-              <h2 className="text-xl sm:text-2xl font-bold leading-tight text-white">{displayTitle}</h2>
+              <h2 className="text-lg sm:text-2xl font-bold leading-tight text-white">{displayTitle}</h2>
             </div>
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={openInMainChat}
-                aria-label="Let's chat about this event"
-                title="Start a focused chat about this moment"
-                data-testid="event-open-main-chat"
-                className="text-white/55 hover:text-violet-200 hover:bg-violet-500/10"
-              >
-                <MessageSquare className="h-4 w-4" />
-                <span className="ml-1.5 hidden sm:inline text-xs">Let’s chat</span>
-              </Button>
+            <div className="flex w-full flex-shrink-0 items-center gap-1 overflow-x-auto pb-0.5 pr-9 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:w-auto sm:gap-1.5 sm:overflow-visible sm:pb-0 sm:pr-0">
               <EntityLorebookCompileControl
                 subjectLabel={displayTitle}
                 signals={{
@@ -1054,6 +867,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
                 focus={{ themes: displayTitle }}
                 autoFetchSignals={false}
                 testId="event-modal-lorebook-compile"
+                className="shrink-0 max-sm:gap-1 max-sm:rounded-md max-sm:px-1.5 max-sm:py-0.5"
               />
               <Button
                 type="button"
@@ -1073,7 +887,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
                   }
                   navigate(`/timeline?${params.toString()}`);
                 }}
-                className="text-white/45 hover:text-primary hover:bg-primary/10"
+                className="h-8 w-8 shrink-0 p-0 text-white/45 hover:text-primary hover:bg-primary/10 sm:h-9 sm:w-auto sm:px-3"
               >
                 <Calendar className="h-4 w-4" />
                 <span className="ml-1.5 hidden sm:inline text-xs">Chronology</span>
@@ -1088,7 +902,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
                   onClose();
                   navigate('/narrative-anchors');
                 }}
-                className="text-white/45 hover:text-cyan-200 hover:bg-cyan-500/10"
+                className="h-8 w-8 shrink-0 p-0 text-white/45 hover:text-cyan-200 hover:bg-cyan-500/10 sm:h-9 sm:w-auto sm:px-3"
               >
                 <Compass className="h-4 w-4" />
                 <span className="ml-1.5 hidden sm:inline text-xs">Anchors</span>
@@ -1102,14 +916,14 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
                   size="sm"
                   aria-label="Delete event"
                   title="Delete event"
-                  className="text-white/45 hover:text-red-300 hover:bg-red-500/10"
+                  className="h-8 w-8 shrink-0 p-0 text-white/45 hover:text-red-300 hover:bg-red-500/10 sm:h-9 sm:w-auto sm:px-3"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
               )}
               <EventActionsMenu eventId={eventData.id} onOverrideApplied={loadEvent} />
               <Button type="button" onClick={onClose} variant="ghost" size="sm" aria-label="Close"
-                className="text-white/50 hover:text-white hover:bg-white/10">
+                className="absolute right-2 top-2 h-8 w-8 shrink-0 p-0 text-white/50 hover:text-white hover:bg-white/10 sm:static sm:h-9 sm:w-auto sm:px-3">
                 <X className="w-5 h-5" />
               </Button>
             </div>
@@ -1117,8 +931,8 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
 
           {/* In One Sentence — the most prominent header element */}
           {oneSentence && (
-            <div className="bg-white/5 border border-white/12 rounded-lg px-4 py-3 mb-2">
-              <p className="text-sm text-white/85 italic leading-relaxed">
+            <div className="mb-1.5 rounded-lg border border-white/12 bg-white/5 px-3 py-2 sm:mb-2 sm:px-4 sm:py-3">
+              <p className="text-xs italic leading-snug text-white/85 sm:text-sm sm:leading-relaxed">
                 {oneSentence}
               </p>
             </div>
@@ -1126,21 +940,21 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
 
           {/* Story position — where this sits in the larger narrative */}
           {storyPosition && (
-            <div className="mb-3 pl-1">
+            <div className="mb-2 pl-0.5 sm:mb-3 sm:pl-1">
               {storyPosition.fromArc ? (
                 /* Arc/chapter data: use a more prominent two-line display */
                 <div className="flex flex-col gap-0.5">
-                  <p className="text-xs font-semibold text-primary/70 flex items-center gap-1.5">
+                  <p className="flex items-center gap-1.5 text-[11px] font-semibold text-primary/70 sm:text-xs">
                     <span>◈</span>
                     {storyPosition.primary}
                   </p>
                   {storyPosition.secondary && (
-                    <p className="text-[11px] text-white/40 pl-4">{storyPosition.secondary}</p>
+                    <p className="pl-4 text-[10px] text-white/40 sm:text-[11px]">{storyPosition.secondary}</p>
                   )}
                 </div>
               ) : (
                 /* Causal synthesis fallback: single muted line */
-                <p className="text-xs text-white/40 flex items-center gap-1.5">
+                <p className="flex items-start gap-1.5 text-[11px] leading-snug text-white/40 sm:items-center sm:text-xs">
                   <span className="text-primary/35">◈</span>
                   {storyPosition.primary}
                 </p>
@@ -1149,8 +963,8 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
           )}
 
           {/* Metadata row */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-white/45">
-            <div className="flex items-center gap-1.5">
+          <div className="grid grid-cols-2 items-center gap-x-3 gap-y-1 text-[11px] text-white/45 sm:flex sm:flex-wrap sm:gap-x-4 sm:gap-y-1.5 sm:text-xs">
+            <div className="col-span-2 flex items-center gap-1.5 sm:col-auto">
               <Clock className="w-3.5 h-3.5 text-white/30" />
               <span>{formatEventTime(eventData)}</span>
               {eventAge && (
@@ -1161,19 +975,19 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
               )}
             </div>
             {peopleDisplay && (
-              <div className="flex items-center gap-1.5">
+              <div className="col-span-2 flex min-w-0 items-center gap-1.5 sm:col-auto">
                 <Users className="w-3.5 h-3.5 text-blue-400/50" />
-                <span className="text-blue-300/70">{peopleDisplay}</span>
+                <span className="min-w-0 break-words text-blue-300/70">{peopleDisplay}</span>
               </div>
             )}
             {locationsDisplay && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex min-w-0 items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5 text-emerald-400/50" />
-                <span className="text-emerald-300/70">{locationsDisplay}</span>
+                <span className="min-w-0 break-words text-emerald-300/70">{locationsDisplay}</span>
               </div>
             )}
             {tone && (
-              <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-xs ${tone.bg} ${tone.color}`}>
+              <div className={`flex w-fit items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] sm:text-xs ${tone.bg} ${tone.color}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${tone.dot}`} />
                 {tone.label}
               </div>
@@ -1181,7 +995,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
           </div>
 
           {/* Memory strength bar */}
-          <div className="flex items-center gap-3 mt-3">
+          <div className="mt-2 flex items-center gap-2 sm:mt-3 sm:gap-3">
             <span className="text-[10px] text-white/35 uppercase tracking-wider shrink-0">Memory</span>
             <div className="flex-1 h-1 rounded-full bg-white/8 overflow-hidden">
               <div
@@ -1206,6 +1020,10 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
               <TabsTrigger value="overview"
                 className="flex items-center gap-1.5 text-xs data-[state=active]:bg-white/8 data-[state=active]:text-white data-[state=inactive]:text-white/40">
                 <Eye className="w-3.5 h-3.5" /> Overview
+              </TabsTrigger>
+              <TabsTrigger value="chat"
+                className="flex items-center gap-1.5 text-xs data-[state=active]:bg-violet-500/12 data-[state=active]:text-violet-200 data-[state=inactive]:text-white/40">
+                <MessageSquare className="w-3.5 h-3.5" /> Chat
               </TabsTrigger>
               <TabsTrigger value="meaning"
                 className="flex items-center gap-1.5 text-xs data-[state=active]:bg-white/8 data-[state=active]:text-white data-[state=inactive]:text-white/40">
@@ -1521,7 +1339,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
                           >
                             {initials}
                           </button>
-                          <span className={`text-[10px] text-center leading-tight max-w-[56px] truncate transition-colors ${isExpanded ? 'text-primary/80' : 'text-white/65'}`}>
+                          <span className={`max-w-[8rem] break-words text-center text-[10px] leading-tight transition-colors ${isExpanded ? 'text-primary/80' : 'text-white/65'}`}>
                             {person}
                           </span>
                           {isConnection && !isExpanded && (
@@ -1575,7 +1393,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
                                   )}
                                   {isConnection && eventData.impact?.impactDescription && (
                                     <p className="text-xs text-white/55 italic border-l-2 border-orange-500/30 pl-2">
-                                      "{eventData.impact.impactDescription.slice(0, 100)}{eventData.impact.impactDescription.length > 100 ? '…' : ''}"
+                                      "{eventData.impact.impactDescription}"
                                     </p>
                                   )}
                                 </div>
@@ -1648,169 +1466,42 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
                 </section>
               )}
 
-              {/* ── Talk About This Moment ── */}
-              <section className="border-t border-white/8 pt-5">
-                {/* Section header with entity context */}
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-                  <h3 className="text-xs font-bold text-white/65 uppercase tracking-widest flex items-center gap-1.5">
-                    <MessageSquare className="w-3.5 h-3.5 text-primary/60" />
-                    Talk About This Moment
-                  </h3>
-                  {/* Context chips — what Lorekeeper sees */}
-                  <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                    {eventData.people.length > 0 && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300/70 border border-blue-500/20">
-                        {eventData.people.length} {eventData.people.length === 1 ? 'person' : 'people'}
-                      </span>
-                    )}
-                    {eventData.locations.length > 0 && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300/70 border border-emerald-500/20">
-                        {eventData.locations[0]}
-                      </span>
-                    )}
-                    {(eventData.causal_links?.causes?.length || eventData.causal_links?.effects?.length) && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300/70 border border-indigo-500/20">
-                        causal links
-                      </span>
-                    )}
+            </TabsContent>
+
+            {/* ══ CHAT ══ */}
+            <TabsContent value="chat" className="mt-0 p-4 sm:p-6">
+              <section className="mx-auto max-w-xl rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-500/15 via-violet-500/[0.06] to-transparent p-4 sm:p-6">
+                <div className="mb-4 flex items-start gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/20 text-violet-200">
+                    <MessageSquare className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <h3 className="font-semibold text-white">Start a focused chat</h3>
+                    <p className="mt-1 text-xs leading-relaxed text-white/60 sm:text-sm">
+                      Continue in main chat with this event focused. LoreBook responds first with a grounded view of the moment, its participants, meaning, and connected evidence.
+                    </p>
                   </div>
                 </div>
 
-                {/* History loading skeleton */}
-                {chatLoading && (
-                  <div className="flex items-end gap-2.5 mb-4">
-                    <div className="w-7 h-7 rounded-full bg-primary/15 animate-pulse flex-shrink-0" />
-                    <div className="space-y-2">
-                      <div className="h-3 w-48 bg-white/8 rounded-full animate-pulse" />
-                      <div className="h-3 w-32 bg-white/6 rounded-full animate-pulse" />
-                    </div>
-                  </div>
-                )}
-
-                {/* Message thread */}
-                <div className="space-y-1 mb-4 max-h-80 overflow-y-auto pr-1 scroll-smooth">
-                  {chatMessages.map((msg, idx) => {
-                    // ── System row ──────────────────────────────────────────
-                    if (msg.role === 'system') {
-                      return (
-                        <div key={idx} className="flex items-center gap-3 py-2">
-                          <div className="flex-1 h-px bg-white/8" />
-                          <span className="text-[10px] text-white/35 font-medium shrink-0 italic">{msg.content}</span>
-                          <div className="flex-1 h-px bg-white/8" />
-                        </div>
-                      );
-                    }
-
-                    // ── User message ─────────────────────────────────────────
-                    if (msg.role === 'user') {
-                      return (
-                        <div key={idx} className="flex justify-end pt-1.5">
-                          <div className="max-w-[78%] flex flex-col items-end gap-1">
-                            <div className="bg-primary/25 border border-primary/35 rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm text-white/90 leading-relaxed">
-                              <p className="whitespace-pre-wrap">{msg.content}</p>
-                            </div>
-                            {msg.timestamp && (
-                              <span className="text-[9px] text-white/25 pr-1">
-                                {format(msg.timestamp, 'h:mm a')}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    // ── Lorekeeper message ────────────────────────────────────
-                    const entities = buildEntityList(eventData);
-                    return (
-                      <div key={idx} className="flex items-end gap-2.5 pt-1.5">
-                        {/* Avatar */}
-                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary/30 to-purple-500/30 border border-primary/30 flex items-center justify-center flex-shrink-0 mb-1">
-                          <Sparkles className="w-3.5 h-3.5 text-primary/80" />
-                        </div>
-                        <div className="max-w-[78%] flex flex-col gap-1">
-                          <p className="text-[9px] text-white/30 font-medium uppercase tracking-wider pl-0.5">Lorekeeper</p>
-                          <div className="bg-white/7 border border-white/10 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm text-white/85 leading-relaxed">
-                            <p className="whitespace-pre-wrap">
-                              {renderWithChips(msg.content, entities)}
-                            </p>
-                          </div>
-                          {msg.meta?.why && (
-                            <p className="text-[9px] text-white/30 italic pl-1">{msg.meta.why}</p>
-                          )}
-                          {msg.timestamp && (
-                            <span className="text-[9px] text-white/25 pl-1">
-                              {format(msg.timestamp, 'h:mm a')}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {/* Typing indicator */}
-                  {sending && (
-                    <div className="flex items-end gap-2.5 pt-1.5">
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary/30 to-purple-500/30 border border-primary/30 flex items-center justify-center flex-shrink-0 mb-1">
-                        <Sparkles className="w-3.5 h-3.5 text-primary/80" />
-                      </div>
-                      <div className="bg-white/7 border border-white/10 rounded-2xl rounded-tl-sm px-4 py-3">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce [animation-delay:0ms]" />
-                          <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce [animation-delay:150ms]" />
-                          <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce [animation-delay:300ms]" />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div ref={chatEndRef} />
+                <div className="mb-4 grid grid-cols-1 gap-2 rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-white/60 sm:grid-cols-2">
+                  <p className="sm:col-span-2"><span className="text-white/40">Focused event:</span> {displayTitle}</p>
+                  <p><span className="text-white/40">When:</span> {formatEventTime(eventData)}</p>
+                  <p><span className="text-white/40">Memory:</span> {memoryStrengthLabel}</p>
+                  {peopleDisplay && <p className="sm:col-span-2"><span className="text-white/40">People:</span> {peopleDisplay}</p>}
                 </div>
 
-                {/* Suggested prompts — shown while no user message sent yet */}
-                {!chatMessages.some(m => m.role === 'user') && (
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {[
-                      'What led up to this?',
-                      'How did this make you feel?',
-                      'What happened after?',
-                      'Who else was involved?',
-                    ].map(q => (
-                      <button
-                        key={q}
-                        type="button"
-                        onClick={() => setChatInput(q)}
-                        className="text-xs px-3 py-1.5 rounded-full border border-primary/20 bg-primary/8 text-primary/70 hover:bg-primary/18 hover:border-primary/40 hover:text-primary transition-all"
-                      >
-                        {q}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* Input bar */}
-                <div className="flex gap-2 items-end">
-                  <div className="flex-1 relative">
-                    <Input
-                      value={chatInput}
-                      onChange={e => setChatInput(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleChatMessage(); }
-                      }}
-                      placeholder="Add context, correct a detail, or ask a question…"
-                      className="w-full text-sm bg-white/5 border-white/15 focus:border-primary/50 placeholder:text-white/25 rounded-xl"
-                      disabled={sending}
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    onClick={handleChatMessage}
-                    disabled={!chatInput.trim() || sending}
-                    size="sm"
-                    className="h-9 px-3 bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary rounded-xl flex-shrink-0"
-                  >
-                    <Send className="w-4 h-4" />
-                  </Button>
-                </div>
+                <Button
+                  type="button"
+                  onClick={openInMainChat}
+                  data-testid="event-open-main-chat"
+                  className="group min-h-11 w-full bg-violet-500 text-white hover:bg-violet-400"
+                >
+                  Open focused chat
+                  <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                </Button>
+                <p className="mt-3 text-center text-[11px] text-white/40">
+                  Opens a fresh focused thread. LoreBook will not invent missing details.
+                </p>
               </section>
             </TabsContent>
 

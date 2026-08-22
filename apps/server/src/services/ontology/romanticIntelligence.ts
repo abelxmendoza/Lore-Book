@@ -141,7 +141,9 @@ function extractPartnerNames(text: string): string[] {
   while ((match = properNoun.exec(text)) !== null) {
     const idx = match.index;
     const window = lower.slice(Math.max(0, idx - romanticWindow), idx + romanticWindow);
-    if (romanticAnchors.some((a) => window.includes(a))) add(match[1]);
+    if (romanticAnchors.some((a) => new RegExp(`\\b${a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(window))) {
+      add(match[1]);
+    }
   }
 
   return [...names];

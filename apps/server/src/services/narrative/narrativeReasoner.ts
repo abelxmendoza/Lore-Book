@@ -290,12 +290,17 @@ export async function buildCognitionContext(userId: string): Promise<NarrativeCo
 
   const recencyByEntity = new Map<string, string>();
   const firstSeenByEntity = new Map<string, string>();
+  const activityByEntity: NonNullable<NarrativeCognitionContext['activityByEntity']> = new Map();
   try {
     const { supabaseAdmin } = await import('../supabaseClient');
     const { data: links } = await supabaseAdmin
       .from('entity_conversation_links')
-      .select('entity_id, first_linked_at, last_linked_at')
-      .eq('user_id', userId);
+      .select('entity_id, entity_type, session_id, mention_count, first_linked_at, last_linked_at')
+      .eq('user_id', userId)
+      .eq('entity_type', 'character');
+    const nowMs = Date.now();
+    const recentWindowDays = 30;
+    const priorWindowDays = 120;
     for (const link of links ?? []) {
       const id = link.entity_id as string;
       const last = link.last_linked_at as string | null;
@@ -306,6 +311,29 @@ export async function buildCognitionContext(userId: string): Promise<NarrativeCo
       if (first && (!firstSeenByEntity.has(id) || first < firstSeenByEntity.get(id)!)) {
         firstSeenByEntity.set(id, first);
       }
+      const lastMs = last ? Date.parse(last) : Number.NaN;
+      if (!Number.isFinite(lastMs)) continue;
+      const ageDays = Math.max(0, (nowMs - lastMs) / 86_400_000);
+      const activity = activityByEntity.get(id) ?? {
+        recentMentions: 0,
+        priorMentions: 0,
+        recentThreadIds: [],
+        priorThreadIds: [],
+        recentWindowDays,
+        priorWindowDays,
+      };
+      const count = Math.max(1, Number(link.mention_count) || 1);
+      const sessionId = String(link.session_id ?? '');
+      if (ageDays <= recentWindowDays) {
+        activity.recentMentions += count;
+        if (sessionId && !activity.recentThreadIds.includes(sessionId)) activity.recentThreadIds.push(sessionId);
+        if (!activity.recentLastSeen || last! > activity.recentLastSeen) activity.recentLastSeen = last!;
+      } else if (ageDays <= recentWindowDays + priorWindowDays) {
+        activity.priorMentions += count;
+        if (sessionId && !activity.priorThreadIds.includes(sessionId)) activity.priorThreadIds.push(sessionId);
+        if (!activity.priorLastSeen || last! > activity.priorLastSeen) activity.priorLastSeen = last!;
+      }
+      activityByEntity.set(id, activity);
     }
   } catch (err) {
     logger.debug({ err, userId }, 'narrativeCognition: recency load failed, continuing');
@@ -353,7 +381,16 @@ export async function buildCognitionContext(userId: string): Promise<NarrativeCo
     logger.debug({ err, userId }, 'narrativeCognition: goal/value context unavailable, continuing');
   }
 
-  return { graph, work, recencyByEntity, firstSeenByEntity, now: new Date().toISOString(), goals, priorityShifts };
+  return {
+    graph,
+    work,
+    recencyByEntity,
+    firstSeenByEntity,
+    activityByEntity,
+    now: new Date().toISOString(),
+    goals,
+    priorityShifts,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -368,7 +405,7 @@ type ResolvedCognition = {
 };
 
 function resolveAll(cctx: NarrativeCognitionContext): ResolvedCognition {
-  const inputs = buildSalienceInputs(cctx.graph, cctx.recencyByEntity, cctx.now);
+  const inputs = buildSalienceInputs(cctx.graph, cctx.recencyByEntity, cctx.now, cctx.activityByEntity);
   const salience = computePersonSalience(inputs, cctx.now);
   const arcs = resolveActiveArcs(cctx.graph, { work: cctx.work, salience });
   const era = resolveCurrentEra(cctx.graph, {
@@ -424,17 +461,48 @@ function composeRisingPeople(resolved: ResolvedCognition): CognitionAnswer | nul
     return {
       kind: 'rising_people',
       content:
-        'No one new is clearly rising in importance right now — the people around you have been steady presences.',
-      confidence: 0.5,
-      reasoning: ['no rising-trend people in salience'],
+        "I don't have enough grounded history in both a recent and an earlier period to say that anyone has become more relevant.",
+      confidence: 0.9,
+      reasoning: ['no person had both historical evidence and a measurable recent increase'],
+      sources: [],
+      grounded: false,
     };
   }
-  const lines = rising.map((p) => `- **${p.name}** — ${p.reasonBreakdown.slice(0, 2).join('; ')}`);
+  const lines = rising.map((p) => {
+    const comparison = p.reasonBreakdown.find((reason) => /recent mentions vs/i.test(reason));
+    return `- **${p.name}** — ${comparison ?? p.reasonBreakdown.slice(0, 2).join('; ')}`;
+  });
   return {
     kind: 'rising_people',
     content: capitalize(`${hedge(0.6)}these people seem to be growing more important:\n\n${lines.join('\n')}`),
     confidence: 0.6,
     reasoning: rising.map((p) => `${p.name}: rising, score ${p.score}`),
+    grounded: true,
+    sources: rising.flatMap((person) => {
+      const evidence = person.trendEvidence;
+      if (!evidence) return [];
+      const recent = evidence.recentThreadIds.map((threadId) => ({
+        type: 'knowledge' as const,
+        id: `conversation:${threadId}`,
+        title: `${person.name} — recent conversation evidence`,
+        snippet: `${evidence.recentMentions} mentions in the last ${evidence.recentWindowDays} days`,
+        date: evidence.recentLastSeen,
+        relevanceScore: 95,
+        relevanceReasons: ['recent person activity', 'supports the rising comparison'],
+        usage: 'supporting' as const,
+      }));
+      const prior = evidence.priorThreadIds.map((threadId) => ({
+        type: 'knowledge' as const,
+        id: `conversation:${threadId}`,
+        title: `${person.name} — earlier comparison evidence`,
+        snippet: `${evidence.priorMentions} mentions in the earlier ${evidence.priorWindowDays}-day period`,
+        date: evidence.priorLastSeen,
+        relevanceScore: 90,
+        relevanceReasons: ['historical person activity', 'provides the comparison baseline'],
+        usage: 'supporting' as const,
+      }));
+      return [...recent, ...prior];
+    }),
   };
 }
 

@@ -84,6 +84,16 @@ describe('HomeScreen', () => {
     });
   });
 
+  it('leaves vertical scrolling to the app shell', async () => {
+    const { fetchJson } = await import('../lib/api');
+    vi.mocked(fetchJson).mockResolvedValue({ characters: [] });
+
+    const { container } = wrap(<HomeScreen />);
+    const homeContent = container.firstElementChild;
+
+    expect(homeContent).not.toHaveClass('overflow-y-auto');
+  });
+
   it('shows a time-appropriate greeting', async () => {
     const { fetchJson } = await import('../lib/api');
     vi.mocked(fetchJson).mockResolvedValue({ characters: [] });

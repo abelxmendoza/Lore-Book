@@ -142,6 +142,9 @@ function formatIdentityFacts(snapshot: BiographySnapshotRow | null): string {
   push('Education', identity?.education);
   push('Career', identity?.career ?? identity?.employment);
   push('Languages', identity?.languages);
+  push('Gender', identity?.gender ?? identity?.gender_identity);
+  push('Orientation', identity?.orientation ?? identity?.sexual_orientation);
+  push('Dating preference', identity?.dating_preference ?? identity?.datingPreference);
 
   return lines.length ? ['## CORE IDENTITY', ...lines].join('\n') : '';
 }
