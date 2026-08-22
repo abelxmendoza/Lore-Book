@@ -232,17 +232,20 @@ export const useChatThreads = () => {
       const data = await fetchThreadsPage({ limit: DEFAULT_THREAD_PAGE_LIMIT });
       const loaded = dedupeThreads((data.threads || []).map(dbRowToThread));
       const cached = userId ? readAuthThreadCache(userId) : null;
-      let mergedThreads: ChatThread[] = [];
-      setThreads((prev) => {
-        // Prefer live in-memory rows over disk cache so in-flight bumps survive merge.
-        const base = prev.length > 0 ? prev : cached?.threads.length ? cached.threads : prev;
-        const merged = sortThreadsByActivity(
-          mergeLoadedThreadsWithHydrated(loaded, base, DEFAULT_THREAD_PAGE_LIMIT)
-        );
-        mergedThreads = merged;
-        threadsRef.current = merged;
-        return merged;
-      });
+      // Compute hydration synchronously from the canonical ref. React may defer
+      // functional state updaters, so values needed below (cache + selection)
+      // must not be assigned from inside setThreads.
+      const liveThreads = threadsRef.current;
+      const base = liveThreads.length > 0
+        ? liveThreads
+        : cached?.threads.length
+          ? cached.threads
+          : liveThreads;
+      const mergedThreads = sortThreadsByActivity(
+        mergeLoadedThreadsWithHydrated(loaded, base, DEFAULT_THREAD_PAGE_LIMIT)
+      );
+      threadsRef.current = mergedThreads;
+      setThreads(mergedThreads);
       if (userId) persistAuthThreadCache(userId, mergedThreads, currentThreadIdRef.current);
       threadsNextCursorRef.current = data.nextCursor ?? null;
       setThreadsHasMore(data.hasMore ?? false);

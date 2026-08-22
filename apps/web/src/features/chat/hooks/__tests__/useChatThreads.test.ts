@@ -35,6 +35,7 @@ import { useAuth } from '../../../../lib/supabase';
 import { fetchJson } from '../../../../lib/api';
 import { selectCurrentThreadId, selectThreadError } from '../../../../store/selectors';
 import { runtimeDiagnostics } from '../../services/runtimeDiagnostics';
+import { authThreadCacheKey } from '../../utils/threadLocalCache';
 import { renderUseChatThreads } from './chatTestUtils';
 
 const mockUseAuth = vi.mocked(useAuth);
@@ -178,6 +179,40 @@ describe('useChatThreads', () => {
       'backend_load',
       expect.objectContaining({ meta: { threadCount: 2, quiet: false } })
     );
+  });
+
+  it('hydrates cached messages and restores the cached active thread during backend load', async () => {
+    mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
+    const cachedTimestamp = '2026-06-01T12:00:00.000Z';
+    localStorage.setItem(
+      authThreadCacheKey('user-1'),
+      JSON.stringify({
+        threads: [
+          {
+            id: 'thread-a',
+            title: 'Cached title',
+            messages: [makeMessage('cached-message', 'still here')],
+            updatedAt: cachedTimestamp,
+          },
+        ],
+        lastThreadId: 'thread-a',
+      })
+    );
+    mockBackendThreadLoad([
+      makeDbThread('thread-a', 'Server title', [], cachedTimestamp),
+    ]);
+
+    const { result } = renderUseChatThreads();
+
+    await waitFor(() => expect(result.current.threadsReady).toBe(true));
+
+    expect(result.current.currentThreadId).toBe('thread-a');
+    expect(result.current.threads).toHaveLength(1);
+    expect(result.current.threads[0].messages).toHaveLength(1);
+    expect(result.current.threads[0].messages[0]).toMatchObject({
+      id: 'cached-message',
+      content: 'still here',
+    });
   });
 
   it('falls back to localStorage when backend load fails', async () => {
