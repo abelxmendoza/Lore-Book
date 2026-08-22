@@ -2043,7 +2043,7 @@ export class ConversationIngestionPipeline {
         batchIndexes.push(i);
         batchTexts.push(processed.normalized.normalized_text);
       }
-      if (batchTexts.length > 0) {
+      if (batchTexts.length > 0 && typeof hybridExtractor.extractBatch === 'function') {
         const batched = await hybridExtractor.extractBatch(
           batchTexts,
           conversationHistory,
@@ -2416,10 +2416,11 @@ export class ConversationIngestionPipeline {
       }
 
       // Step 12: Trigger event assembly (async, non-blocking).
-      // Delta mode: new/changed EXPERIENCE units + 24h overlap for grouping.
+      // The default event-assembly mode is delta: new/changed EXPERIENCE units
+      // plus a 24h overlap for grouping.
       if (unitIds.length > 0) {
         eventAssemblyService
-          .assembleEvents(userId, threadId, { mode: 'delta' })
+          .assembleEvents(userId, threadId)
           .then(async (assembledEvents) => {
             // Step 12.5: Link assembled events to previous context (Phase-Safe)
             // Step 12.6: Detect event impacts (how events affect the user)

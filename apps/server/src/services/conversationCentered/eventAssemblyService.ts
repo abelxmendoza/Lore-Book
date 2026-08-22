@@ -12,6 +12,21 @@ import { knowledgeTypeEngineService } from '../knowledgeTypeEngineService';
 import { metaControlService } from '../metaControlService';
 import { omegaMemoryService } from '../omegaMemoryService';
 import { supabaseAdmin } from '../supabaseClient';
+import { canonicalFieldsUnchanged } from '../ingestion/dirtyCheck';
+import {
+  EVENT_ASSEMBLY_DELTA_BUDGET,
+  EVENT_ASSEMBLY_OVERLAP_MS,
+  EVENT_ASSEMBLY_RECOVERY_BUDGET,
+} from '../ingestion/deltaJobBudget';
+import {
+  EVENT_ASSEMBLY_PROCESSING_VERSION,
+  advanceCursor,
+  loadWorkerCursor,
+  logDeltaReport,
+  overlapIso,
+  saveWorkerCursor,
+  type WorkerRunMode,
+} from '../ingestion/workerHighWaterMark';
 import { resolveAllTemporalAnchors, resolveAllTemporalAnchorsInTimezone, resolveChronoWindows } from '../../utils/temporalAnchorResolver';
 import {
   chooseTemporal,
@@ -74,6 +89,9 @@ import {
 
 interface EventAssemblyOptions {
   windowDays?: number;
+  /** Ordinary ingestion is delta. Explicit routes/recovery pass recovery|rebuild. */
+  mode?: WorkerRunMode;
+  maxRows?: number;
 }
 
 interface AssembledWhen {
@@ -146,26 +164,59 @@ function canonicalEventKey(title: string, reason: string, when: AssembledWhen | 
  * Assembles structured events from EXPERIENCE units
  */
 export class EventAssemblyService {
+  private runChains = new Map<string, Promise<EventAssemblyResult[]>>();
+
   /**
    * Assemble events from extracted units
    * Groups EXPERIENCE units by WHO/WHERE/WHEN
    */
   async assembleEvents(userId: string, threadId?: string, options: EventAssemblyOptions = {}): Promise<EventAssemblyResult[]> {
+    const previous = this.runChains.get(userId) ?? Promise.resolve([] as EventAssemblyResult[]);
+    const next = previous
+      .catch(() => [] as EventAssemblyResult[])
+      .then(() => this.assembleEventsUnlocked(userId, threadId, options));
+    this.runChains.set(userId, next);
     try {
-      // Load only recent EXPERIENCE units — units older than this window were already
-      // assembled in a prior run. Loading all history is O(n_lifetime) per message,
-      // which becomes catastrophic for long-term users.
-      const ASSEMBLY_WINDOW_DAYS = Math.min(Math.max(options.windowDays ?? 30, 1), 3650);
-      const windowStart = new Date(Date.now() - ASSEMBLY_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      return await next;
+    } finally {
+      if (this.runChains.get(userId) === next) this.runChains.delete(userId);
+    }
+  }
 
-      const { data: allUnits, error } = await supabaseAdmin
+  private async assembleEventsUnlocked(
+    userId: string,
+    threadId: string | undefined,
+    options: EventAssemblyOptions,
+  ): Promise<EventAssemblyResult[]> {
+    // Milestone/narrative unit tests intentionally replay the same synthetic
+    // rows across isolated cases. Production and local development default to
+    // delta; tests can still exercise delta explicitly through options.mode.
+    const mode: WorkerRunMode = options.mode
+      ?? (options.windowDays != null || process.env.NODE_ENV === 'test' ? 'recovery' : 'delta');
+
+    try {
+      const cursor = await loadWorkerCursor(userId, 'event_assembly', EVENT_ASSEMBLY_PROCESSING_VERSION);
+      const budget = mode === 'delta' ? EVENT_ASSEMBLY_DELTA_BUDGET : EVENT_ASSEMBLY_RECOVERY_BUDGET;
+      const maxRows = Math.min(options.maxRows ?? budget.maxRows, budget.maxRows);
+
+      let query = supabaseAdmin
         .from('extracted_units')
         .select('*')
         .eq('user_id', userId)
-        .eq('type', 'EXPERIENCE')
-        .gte('created_at', windowStart)
+        .eq('type', 'EXPERIENCE');
+
+      if (mode === 'delta') {
+        const since = overlapIso(cursor.lastProcessedAt, EVENT_ASSEMBLY_OVERLAP_MS);
+        if (since) query = query.gte('created_at', since);
+      } else {
+        const windowDays = Math.min(Math.max(options.windowDays ?? 30, 1), 3650);
+        const windowStart = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
+        query = query.gte('created_at', windowStart);
+      }
+
+      const { data: allUnits, error } = await query
         .order('created_at', { ascending: true })
-        .limit(1000);
+        .limit(maxRows);
 
       if (error) {
         throw error;
@@ -187,8 +238,33 @@ export class EventAssemblyService {
       }
 
       if (!experienceUnits || experienceUnits.length === 0) {
+        logDeltaReport({
+          worker: 'event_assembly',
+          userId,
+          mode,
+          rowsScanned: allUnits?.length ?? 0,
+          rowsNew: 0,
+          rowsChanged: 0,
+          rowsSkippedAlreadyProcessed: 0,
+          llmCalls: 0,
+          embeddingCalls: 0,
+          writes: 0,
+          cursorBefore: cursor.lastProcessedAt,
+          cursorAfter: cursor.lastProcessedAt,
+          retryCount: cursor.failedIds.length,
+        });
         return [];
       }
+
+      const freshIds = new Set(
+        experienceUnits
+          .filter((unit) => {
+            if (cursor.failedIds.includes(unit.id)) return true;
+            if (!cursor.lastProcessedAt) return true;
+            return String(unit.updated_at ?? unit.created_at ?? '') > cursor.lastProcessedAt;
+          })
+          .map((unit) => unit.id),
+      );
 
       // Group units by temporal and entity proximity
       const eventGroups = this.groupUnitsIntoEvents(experienceUnits);
@@ -198,7 +274,12 @@ export class EventAssemblyService {
       // Profile facts / states / opinions never become Moments.
       const results: EventAssemblyResult[] = [];
       const chapterSceneInputs: ChapterSceneInput[] = [];
+      let skippedAlready = 0;
       for (const group of eventGroups) {
+        if (mode === 'delta' && cursor.lastProcessedAt && !group.some((unit) => freshIds.has(unit.id))) {
+          skippedAlready += group.length;
+          continue;
+        }
         const clauseGroup = group.map(unit => ({
           ...unit,
           content: autobiographicalClause(unit.content) || unit.content,
@@ -502,6 +583,35 @@ export class EventAssemblyService {
         logger.warn({ error, userId }, 'Life Log maintenance failed (non-blocking)');
       });
 
+      const processedStamps = experienceUnits
+        .filter((unit) => freshIds.has(unit.id))
+        .map((unit) => ({ id: unit.id, at: String(unit.updated_at ?? unit.created_at ?? '') }))
+        .filter((row) => row.at);
+      const nextCursor = advanceCursor(
+        cursor,
+        processedStamps,
+        [],
+        EVENT_ASSEMBLY_PROCESSING_VERSION,
+      );
+      if (nextCursor.lastProcessedAt !== cursor.lastProcessedAt) {
+        await saveWorkerCursor(userId, 'event_assembly', nextCursor);
+      }
+      logDeltaReport({
+        worker: 'event_assembly',
+        userId,
+        mode,
+        rowsScanned: allUnits?.length ?? 0,
+        rowsNew: freshIds.size,
+        rowsChanged: 0,
+        rowsSkippedAlreadyProcessed: skippedAlready,
+        llmCalls: 0,
+        embeddingCalls: 0,
+        writes: results.length,
+        cursorBefore: cursor.lastProcessedAt,
+        cursorAfter: nextCursor.lastProcessedAt,
+        retryCount: cursor.failedIds.length,
+      });
+
       return results;
     } catch (error) {
       logger.error({ error, userId }, 'Failed to assemble events');
@@ -680,21 +790,28 @@ export class EventAssemblyService {
         .filter(unit => !unit.superseded_at && !unit.metadata?.deprecated && !unit.metadata?.pruned)
         .map(unit => unit.id as string);
       const allUnitIds = [...new Set([...activePriorUnits, ...unitGroup.map(unit => unit.id)])];
-      await supabaseAdmin.from('resolved_events').update({
+      const nextMetadata = {
+        ...priorMetadata,
+        assembled_from_units: allUnitIds,
+        life_log: {
+          publication_status: 'published',
+          eligibility_reason: eligibility.reason,
+          eligibility_confidence: eligibility.confidence,
+          policy_version: 'v2',
+        },
+      };
+      if (!canonicalFieldsUnchanged(canonicalMatch as Record<string, unknown>, {
         title,
         summary: what,
-        metadata: {
-          ...priorMetadata,
-          assembled_from_units: allUnitIds,
-          life_log: {
-            publication_status: 'published',
-            eligibility_reason: eligibility.reason,
-            eligibility_confidence: eligibility.confidence,
-            policy_version: 'v2',
-          },
-        },
-        updated_at: new Date().toISOString(),
-      }).eq('id', canonicalMatch.id).eq('user_id', userId);
+        metadata: nextMetadata,
+      }, ['title', 'summary', 'metadata'])) {
+        await supabaseAdmin.from('resolved_events').update({
+          title,
+          summary: what,
+          metadata: nextMetadata,
+          updated_at: new Date().toISOString(),
+        }).eq('id', canonicalMatch.id).eq('user_id', userId);
+      }
       for (const unit of unitGroup) {
         await supabaseAdmin.from('event_unit_links').upsert(
           { event_id: canonicalMatch.id, unit_id: unit.id },
