@@ -713,7 +713,9 @@ export class EventAssemblyService {
     }
 
     // Ingest text to extract entities and create event
-    const ingestionResult = await omegaMemoryService.ingestText(userId, sourceText, 'AI');
+    const ingestionResult = await omegaMemoryService.ingestText(userId, sourceText, 'AI', {
+      sourceId: unitGroup.map((unit) => unit.id).filter(Boolean).sort().join(','),
+    });
 
     // Replay-safe fingerprint from knowledge unit ids (stable across re-assembly).
     const { buildAssemblyFingerprint, EVENT_EXTRACTOR_VERSION } = await import(
@@ -1155,7 +1157,9 @@ export class EventAssemblyService {
     // Re-ingest to get updated entities
     const sourceText = validUnits.map(u => u.content).join(' ');
     const eligibility = evaluateLifeLogEligibility({ text: sourceText, title });
-    const ingestionResult = await omegaMemoryService.ingestText(userId, sourceText, 'AI');
+    const ingestionResult = await omegaMemoryService.ingestText(userId, sourceText, 'AI', {
+      sourceId: validUnits.map((unit) => unit.id).filter(Boolean).sort().join(','),
+    });
 
     // Update event (merge with existing, but prefer new information if confidence is higher)
     const updatedConfidence = Math.min(
@@ -1360,7 +1364,9 @@ export class EventAssemblyService {
 
       // Re-ingest to get updated entities
       const sourceText = validUnits.map(u => u.content).join(' ');
-      const ingestionResult = await omegaMemoryService.ingestText(userId, sourceText, 'AI');
+      const ingestionResult = await omegaMemoryService.ingestText(userId, sourceText, 'AI', {
+        sourceId: validUnits.map((unit) => unit.id).filter(Boolean).sort().join(','),
+      });
 
       // Calculate new confidence
       const newConfidence = Math.min(event.confidence + 0.05, 0.95); // Slightly increase confidence
