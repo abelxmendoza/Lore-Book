@@ -71,3 +71,14 @@ export function onStoryDataUpdated(
   window.addEventListener(STORY_DATA_UPDATED, listener);
   return () => window.removeEventListener(STORY_DATA_UPDATED, listener);
 }
+
+/** After a canonical date mutation, refresh Omni + Calendar without a full reload. */
+export function dispatchTemporalViewsUpdated() {
+  dispatchStoryDataUpdated({ scopes: ['timeline'] });
+}
+
+export function subscribeTemporalRefresh(reload: () => void): () => void {
+  return onStoryDataUpdated(() => {
+    reload();
+  }, 'timeline');
+}
