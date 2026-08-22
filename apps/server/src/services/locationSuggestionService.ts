@@ -37,6 +37,7 @@ import {
 import type { AlternativeCategory } from './suggestionCrossBookService';
 import { suggestionDismissalService } from './suggestionDismissalService';
 import { entityLearningService } from './entityLearningService';
+import { applySuggestionCandidate } from './lorebook/suggestions/applySuggestionCandidate';
 import { supabaseAdmin } from './supabaseClient';
 import {
   placeCognitionEngine,
@@ -226,12 +227,12 @@ class LocationSuggestionService {
       ...[...bookExact],
     ];
 
+    const pendingAdds: Promise<void>[] = [];
     const add = (s: Omit<LocationSuggestion, 'id' | 'match_status' | 'matched_book_id' | 'matched_book_name'>) => {
+      pendingAdds.push((async () => {
       if (s.status === 'rejected') return;
       const cognized = this.applyPlaceCognition(s, knownPlaceNameList);
       if (!cognized) return;
-      // Canonical already in book → absorb as alias, do not resurface.
-      if (cognized.cognition?.decision === 'MERGE_EXISTING') return;
 
       const evidence = cognized.context ?? cognized.description ?? '';
       const gated = gateSuggestionCandidate(cognized.name, 'locations', evidence, {
@@ -245,7 +246,6 @@ class LocationSuggestionService {
       if (!key || key.length < 2 || seen.has(key)) return;
       if (learning.suppressedByDomain.has(`locations:${key}`)) return;
       const match = resolveBookNameMatch(safeName, bookExact, bookEntries);
-      if (match.status === 'existing') return;
       seen.add(key);
 
       const { cognition: _cognition, ...cognizedSuggestion } = cognized;
@@ -255,19 +255,34 @@ class LocationSuggestionService {
         cognizedSuggestion.status === 'needs_review' ||
         cognizedSuggestion.privacySensitive;
 
-      suggestions.push({
-        ...cognizedSuggestion,
+      const pushSuggestion = async () => {
+        suggestions.push({
+          ...cognizedSuggestion,
+          name: safeName,
+          id: locationSuggestionId({ ...cognizedSuggestion, name: safeName }),
+          match_status: match.status,
+          matched_book_id: match.matchedId ?? null,
+          matched_book_name: match.matchedName ?? null,
+          status: needsReview ? 'needs_review' : cognizedSuggestion.status,
+          privacySensitive:
+            cognizedSuggestion.privacySensitive ||
+            gated.verdict.rejectionReason === 'private_residence' ||
+            gated.verdict.rejectionReason === 'exact_street_address',
+        });
+      };
+
+      await applySuggestionCandidate({
+        userId,
+        domain: 'locations',
         name: safeName,
-        id: locationSuggestionId({ ...cognizedSuggestion, name: safeName }),
-        match_status: match.status,
-        matched_book_id: match.matchedId ?? null,
-        matched_book_name: match.matchedName ?? null,
-        status: needsReview ? 'needs_review' : cognizedSuggestion.status,
-        privacySensitive:
-          cognizedSuggestion.privacySensitive ||
-          gated.verdict.rejectionReason === 'private_residence' ||
-          gated.verdict.rejectionReason === 'exact_street_address',
+        evidence,
+        incomingType: String(cognized.type ?? ''),
+        extractor: 'location_suggestion',
+        source: cognized.source,
+        onCreate: pushSuggestion,
+        onReview: pushSuggestion,
       });
+      })());
     };
 
     try {
@@ -399,6 +414,8 @@ class LocationSuggestionService {
     } catch (err) {
       logger.warn({ err, userId }, 'Location suggestions failed');
     }
+
+    await Promise.all(pendingAdds);
 
     const filtered = await suggestionDismissalService.filterNames(
       userId,
@@ -596,8 +613,14 @@ class LocationSuggestionService {
   }
 
   /** Force a full corpus rescan with lexical intelligence + place pipeline. */
-  async rescanFromCorpus(userId: string): Promise<LocationSuggestion[]> {
-    return this.getSuggestions(userId, { rescan: true, skipAi: isOpenAiCircuitOpen() });
+  async rescanFromCorpus(
+    userId: string,
+    options?: { skipAi?: boolean },
+  ): Promise<LocationSuggestion[]> {
+    return this.getSuggestions(userId, {
+      rescan: true,
+      skipAi: options?.skipAi !== false || isOpenAiCircuitOpen(),
+    });
   }
 
   async acceptSuggestion(

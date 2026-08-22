@@ -17,6 +17,7 @@ import {
 } from './conversationCentered/romanticRelationshipDetector';
 import { extractAndLogInteraction } from './conversationCentered/romanticInteractionExtractor';
 import { assessRomanticPartnerEligibility } from './conversationCentered/romanticEligibility';
+import { applySuggestionCandidate } from './lorebook/suggestions/applySuggestionCandidate';
 import { organizationService } from './organizationService';
 import { omegaMemoryService } from './omegaMemoryService';
 import { supabaseAdmin } from './supabaseClient';
@@ -69,29 +70,45 @@ export async function resolveRomanticPartner(
     }
   }
 
-  const resolved = await omegaMemoryService.resolveEntities(userId, [
-    { name, type: 'PERSON' as EntityType },
-  ]);
-  const entity = resolved[0];
-  if (!entity?.id) return null;
+  let spawned: ResolvedRomanticPartner | null = null;
+  const write = await applySuggestionCandidate({
+    userId,
+    domain: 'characters',
+    name,
+    extractor: 'romantic_lexical',
+    source: 'romance',
+    onCreate: async () => {
+      const resolvedEntities = await omegaMemoryService.resolveEntities(userId, [
+        { name, type: 'PERSON' as EntityType },
+      ]);
+      const entity = resolvedEntities[0];
+      if (!entity?.id) return;
 
-  const { data: linkedCharacter } = await supabaseAdmin
-    .from('characters')
-    .select('id, name')
-    .eq('user_id', userId)
-    .eq('omega_entity_id', entity.id)
-    .neq('status', 'archived')
-    .maybeSingle();
+      const { data: linkedCharacter } = await supabaseAdmin
+        .from('characters')
+        .select('id, name')
+        .eq('user_id', userId)
+        .eq('omega_entity_id', entity.id)
+        .neq('status', 'archived')
+        .maybeSingle();
 
-  if (linkedCharacter?.id) {
-    return { personId: linkedCharacter.id, personType: 'character', name: linkedCharacter.name };
+      if (linkedCharacter?.id) {
+        spawned = { personId: linkedCharacter.id, personType: 'character', name: linkedCharacter.name };
+        return;
+      }
+
+      spawned = {
+        personId: entity.id,
+        personType: 'omega_entity',
+        name: entity.primary_name ?? name,
+      };
+    },
+  });
+  if (write.outcome === 'ATTACHED' && write.canonical) {
+    return { personId: write.canonical.id, personType: 'omega_entity', name: write.canonical.name };
   }
-
-  return {
-    personId: entity.id,
-    personType: 'omega_entity',
-    name: entity.primary_name ?? name,
-  };
+  if (write.outcome === 'CREATED') return spawned;
+  return null;
 }
 
 function matchMentionedPartner(
