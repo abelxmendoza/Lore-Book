@@ -92,10 +92,24 @@ vi.mock('../../src/services/organizationService', () => ({
 vi.mock('../../src/services/events/userPostedEventService', () => ({
   listUserPostedEventsForOrganization: vi.fn(),
 }));
+vi.mock('../../src/services/organizations/organizationEntityTimelineService', () => ({
+  buildCanonicalOrganizationTimeline: vi.fn().mockResolvedValue({
+    sharedExperiences: [],
+    lore: [],
+    unresolved: [],
+    legacyOnly: [],
+    compatibilityReview: [],
+    summary: { lastEventAt: null, lastEventId: null },
+  }),
+}));
+vi.mock('../../src/services/locations/locationEntityTimelineService', () => ({
+  buildCanonicalLocationTimeline: vi.fn(),
+}));
 
 import { EntityTimelineBuilder, getOrganizationIdsForCharacters } from '../../src/services/conversationCentered/entityTimelineBuilder';
 import { organizationService } from '../../src/services/organizationService';
 import { listUserPostedEventsForOrganization } from '../../src/services/events/userPostedEventService';
+import { buildCanonicalOrganizationTimeline } from '../../src/services/organizations/organizationEntityTimelineService';
 
 const USER_ID = 'user-1';
 
@@ -110,6 +124,14 @@ beforeEach(() => {
   vi.mocked(organizationService.getGroupHierarchy).mockResolvedValue({ subgroups: [], related: [] });
   vi.mocked(organizationService.getMembers).mockResolvedValue([]);
   vi.mocked(listUserPostedEventsForOrganization).mockResolvedValue([]);
+  vi.mocked(buildCanonicalOrganizationTimeline).mockResolvedValue({
+    sharedExperiences: [],
+    lore: [],
+    unresolved: [],
+    legacyOnly: [],
+    compatibilityReview: [],
+    summary: { lastEventAt: null, lastEventId: null },
+  });
 });
 
 describe('EntityTimelineBuilder.buildTimelines', () => {
@@ -117,48 +139,13 @@ describe('EntityTimelineBuilder.buildTimelines', () => {
     state = { responses: {}, calls: [] };
   });
 
-  it('buckets rows into sharedExperiences vs lore by timeline_type', async () => {
-    state.responses['entity_timeline_events'] = [
-      {
-        data: [
-          {
-            id: 'row-1',
-            event_id: 'ev-1',
-            source_thread_id: null,
-            event_title: 'Board meeting',
-            event_date: '2026-01-01T00:00:00Z',
-            event_summary: 'Quarterly review',
-            event_type: 'meeting',
-            timeline_type: 'shared_experience',
-            entity_role: 'participant',
-            user_was_present: true,
-            confidence: 0.7,
-          },
-          {
-            id: 'row-2',
-            event_id: 'ev-2',
-            source_thread_id: null,
-            event_title: 'Company history',
-            event_date: '2025-06-01T00:00:00Z',
-            event_summary: 'Founding story',
-            event_type: 'lore',
-            timeline_type: 'lore',
-            entity_role: 'subject',
-            user_was_present: false,
-            confidence: 0.7,
-          },
-        ],
-        error: null,
-      },
-    ];
-
+  it('organization GET uses canonical chronology, not entity_timeline_events buckets', async () => {
     const builder = new EntityTimelineBuilder('organization');
-    const result = await builder.buildTimelines(USER_ID, 'org-1');
+    const result = await builder.buildTimelines(USER_ID, 'org-1', 'America/Los_Angeles');
 
-    expect(result.sharedExperiences).toHaveLength(1);
-    expect(result.sharedExperiences[0].id).toBe('row-1');
-    expect(result.lore).toHaveLength(1);
-    expect(result.lore[0].id).toBe('row-2');
+    expect(buildCanonicalOrganizationTimeline).toHaveBeenCalledWith(USER_ID, 'org-1', 'America/Los_Angeles');
+    expect(result.sharedExperiences).toEqual([]);
+    expect(state.calls.filter((c) => c.table === 'entity_timeline_events' && c.method === 'select')).toHaveLength(0);
   });
 });
 

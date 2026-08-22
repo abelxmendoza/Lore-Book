@@ -22,6 +22,7 @@ import {
 import { groupAnalyticsService, type GroupAnalytics } from './groupAnalyticsService';
 import { BOOK_QUERY_SOURCE_ROW_CAP } from './query/bookQuerySourceCaps';
 import { supabaseAdmin } from './supabaseClient';
+import { stitchedTimelineService } from './chronologyV2/stitchedTimelineService';
 
 // ── Canonical group type enum ─────────────────────────────────────────
 export type GroupType =
@@ -191,10 +192,11 @@ export interface OrganizationLocation {
 }
 
 // ── Conversation-derived context ──────────────────────────────────────
-// Events & locations inferred from a group's MEMBERS appearing in the
-// user's chat threads / journal entries (resolved_events.people[] +
-// locations.associated_character_ids). Read-only; recomputed on demand so
-// they always reflect the latest conversations without manual entry.
+// Events come from canonical organization attribution
+// (resolved_events.metadata.organizationAttributions → stitched org scope).
+// Member roster only annotates who among the group was in people[].
+// Membership + a person's other life events must not manufacture org chronology.
+// Locations still overlay from locations.associated_character_ids (presence, not when).
 export interface DerivedGroupEvent {
   id: string;
   title: string;
@@ -1522,13 +1524,11 @@ export class OrganizationService {
       }
 
       const characterIds = [...idToName.keys()];
-      if (characterIds.length === 0) {
-        return { events: [], locations: [], hierarchy };
-      }
-
       const [rawEvents, locations] = await Promise.all([
-        this.deriveEvents(userId, characterIds, idToName),
-        this.deriveLocations(userId, characterIds, idToName),
+        this.deriveEvents(userId, organizationId, idToName),
+        characterIds.length > 0
+          ? this.deriveLocations(userId, characterIds, idToName)
+          : Promise.resolve([]),
       ]);
 
       const events = rawEvents.map(ev => {
@@ -1631,48 +1631,52 @@ export class OrganizationService {
     return 'without_user';
   }
 
-  /** Events members took part in, from resolved_events.people[]. */
+  /**
+   * Canonical organization events. Not member-overlap chronology.
+   * A member attending an unrelated concert does not become an org event.
+   */
   private async deriveEvents(
     userId: string,
-    characterIds: string[],
+    organizationId: string,
     idToName: Map<string, string>
   ): Promise<DerivedGroupEvent[]> {
-    if (characterIds.length === 0) return [];
-    const { data, error } = await supabaseAdmin
-      .from('resolved_events')
-      .select('id, title, start_time, summary, type, people')
-      .eq('user_id', userId)
-      .overlaps('people', characterIds)
-      .order('start_time', { ascending: false })
-      .limit(400);
-    if (error || !data) return [];
+    const stitched = await stitchedTimelineService.getStitchedTimelineForOrganization(userId, organizationId);
+    const rows = [...(stitched.items ?? []), ...(stitched.unresolved_items ?? [])];
+    if (rows.length === 0) return [];
 
-    const byEvent = new Map<string, DerivedGroupEvent>();
-    for (const row of data as Array<{
-      id: string;
-      title: string | null;
-      start_time: string | null;
-      summary: string | null;
-      type: string | null;
-      people: string[] | null;
-    }>) {
-      const title = (row.title ?? '').trim();
-      if (!title) continue;
-      const involved = (row.people ?? [])
+    const eventIds = [...new Set(rows.map((item) => item.sourceId).filter(Boolean))];
+    const { data: peopleRows } = eventIds.length
+      ? await supabaseAdmin
+          .from('resolved_events')
+          .select('id, people')
+          .eq('user_id', userId)
+          .in('id', eventIds)
+      : { data: [] };
+    const peopleByEvent = new Map(
+      (peopleRows ?? []).map((row) => [row.id as string, (row.people as string[] | null) ?? []]),
+    );
+
+    const events: DerivedGroupEvent[] = [];
+    for (const item of rows) {
+      const occurred =
+        item.occurrenceStatus === 'unresolved' ? null : item.occurredAt ?? item.temporal?.occurred.start ?? null;
+      const peopleIds = peopleByEvent.get(item.sourceId) ?? [];
+      const involved = peopleIds
         .map((id) => idToName.get(id))
         .filter((name): name is string => Boolean(name));
-      byEvent.set(row.id, {
-        id: row.id,
-        title,
-        date: row.start_time ?? null,
-        type: row.type ?? 'other',
-        summary: row.summary ?? undefined,
+      events.push({
+        id: item.id,
+        title: item.title,
+        date: occurred,
+        type: item.canonicalEventType ?? item.sourceType ?? 'other',
+        summary: item.body || undefined,
         involved,
+        user_was_present: item.userPresence === 'attended',
         source: 'conversation',
       });
     }
 
-    return [...byEvent.values()]
+    return events
       .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
       .slice(0, 50);
   }
