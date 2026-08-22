@@ -134,6 +134,19 @@ export async function applyCharacterChatKnowledgeUpdate(
   const aliases = Array.isArray(character.alias) ? [...character.alias] : [];
   let kinshipUpdated = false;
 
+  try {
+    const { learnCharacterPronouns } = await import('../identity/learnCharacterPronouns');
+    const learned = await learnCharacterPronouns(userId, characterId, message, {
+      focused: true,
+      characterName: displayName,
+    });
+    if (learned.applied && learned.pronouns) {
+      fieldUpdates.push('pronouns');
+    }
+  } catch (err) {
+    logger.warn({ err, characterId }, 'Character pronoun learn failed');
+  }
+
   const kinshipClaim = parseFocusedKinshipAssertion(message);
   if (kinshipClaim) {
     const relation = kinshipStringToTreeRelation(kinshipClaim.kinship);
@@ -174,7 +187,7 @@ export async function applyCharacterChatKnowledgeUpdate(
     }
 
     const pronouns = parsePronounsCorrection(message);
-    if (pronouns) {
+    if (pronouns && !fieldUpdates.includes('pronouns')) {
       patch.pronouns = pronouns;
       fieldUpdates.push('pronouns');
     }

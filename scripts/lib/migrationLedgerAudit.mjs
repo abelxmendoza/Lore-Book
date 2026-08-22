@@ -10,6 +10,8 @@ const CANONICAL_VERSION = /^\d{14}$/;
  */
 export const PRODUCTION_LEDGER_CANON = {
   drop_character_timeline_events: '20260821194550',
+  revoke_anon_security_definer_rpcs: '20260820003718',
+  harden_export_views_and_epiphany_insert: '20260820015515',
 };
 
 export function parseLocalMigrationFilename(filename) {

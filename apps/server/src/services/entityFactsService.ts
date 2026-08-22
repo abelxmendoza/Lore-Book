@@ -187,6 +187,17 @@ class EntityFactsService {
   ): Promise<void> {
     if (!conversationText.trim()) return;
 
+    if (entityType === 'character') {
+      try {
+        const { learnCharacterPronouns } = await import('./identity/learnCharacterPronouns');
+        await learnCharacterPronouns(userId, entityId, conversationText, {
+          characterName: entityName,
+        });
+      } catch (err) {
+        logger.warn({ err, entityId }, 'Character pronoun learn failed (non-blocking)');
+      }
+    }
+
     let extracted: ExtractedFact[] = [];
     try {
       extracted = await this.extractFacts(entityType, entityName, conversationText);

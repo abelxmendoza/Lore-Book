@@ -38,7 +38,9 @@ test('active migration chain starts from the production schema baseline', () => 
     '20260817020000_character_timeline_events_thread_source.sql',
     '20260817030000_entity_timeline_events_episode_source.sql',
     '20260817060000_organization_relationship_history_rls.sql',
+    '20260820003718_revoke_anon_security_definer_rpcs.sql',
     '20260820010000_character_relationship_history.sql',
+    '20260820015515_harden_export_views_and_epiphany_insert.sql',
     '20260821120000_journal_occurrence_nullable.sql',
     '20260821194550_drop_character_timeline_events.sql',
   ]);

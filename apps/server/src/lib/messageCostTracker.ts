@@ -37,8 +37,21 @@ export type MessageCostAccumulator = {
   outputTokens: number;
   usd: number;
   byModel: Record<string, ModelBreakdown>;
+  dbQueries: number;
+  retrievedRows: number;
+  skippedOperations: string[];
+  llmReasons: string[];
+  complexityClass?: string;
+  retrievalBytes: number;
+  retrievalSections: Record<string, { rows: number; bytes: number }>;
+  promptChars: number;
+  promptTokensEst: number;
+  broadFallbackReason?: string;
   startedAt: number;
 };
+
+/** Lightweight per-turn compute budget — alias of the live accumulator. */
+export type TurnComputeBudget = MessageCostAccumulator;
 
 export type MessageCostSummary = Omit<MessageCostAccumulator, 'startedAt'> & {
   durationMs: number;
@@ -58,6 +71,14 @@ function newAccumulator(meta: { label: string; userId?: string; messageId?: stri
     outputTokens: 0,
     usd: 0,
     byModel: {},
+    dbQueries: 0,
+    retrievedRows: 0,
+    skippedOperations: [],
+    llmReasons: [],
+    retrievalBytes: 0,
+    retrievalSections: {},
+    promptChars: 0,
+    promptTokensEst: 0,
     startedAt: Date.now(),
   };
 }
@@ -129,6 +150,64 @@ export function recordLlmUsage(model: string, inputTokens: number, outputTokens:
   m.inputTokens += inputTokens;
   m.outputTokens += outputTokens;
   m.usd += usd;
+}
+
+export function recordDbQuery(rowCount = 0): void {
+  const acc = storage.getStore();
+  if (!acc) return;
+  acc.dbQueries += 1;
+  acc.retrievedRows += Math.max(0, rowCount);
+}
+
+export function recordSkippedOperation(name: string): void {
+  const acc = storage.getStore();
+  if (!acc) return;
+  acc.skippedOperations.push(name);
+}
+
+export function recordLlmReason(reason: string): void {
+  const acc = storage.getStore();
+  if (!acc) return;
+  acc.llmReasons.push(reason);
+}
+
+export function setTurnComplexityClass(complexityClass: string): void {
+  const acc = storage.getStore();
+  if (!acc) return;
+  acc.complexityClass = complexityClass;
+}
+
+export function recordRetrievalSection(section: string, rows: unknown, extraBytes = 0): void {
+  const acc = storage.getStore();
+  if (!acc) return;
+  const list = Array.isArray(rows) ? rows : rows == null ? [] : [rows];
+  let bytes = extraBytes;
+  try {
+    bytes += JSON.stringify(list).length;
+  } catch {
+    bytes += extraBytes;
+  }
+  const prior = acc.retrievalSections[section] ?? { rows: 0, bytes: 0 };
+  acc.retrievalSections[section] = {
+    rows: prior.rows + list.length,
+    bytes: prior.bytes + bytes,
+  };
+  acc.retrievedRows += list.length;
+  acc.retrievalBytes += bytes;
+}
+
+export function recordPromptPayload(text: string): void {
+  const acc = storage.getStore();
+  if (!acc) return;
+  acc.promptChars = text.length;
+  acc.promptTokensEst = Math.ceil(text.length / 4);
+}
+
+export function recordBroadFallback(reason: string): void {
+  const acc = storage.getStore();
+  if (!acc) return;
+  acc.broadFallbackReason = reason;
+  acc.skippedOperations.push(`broad_fallback:${reason}`);
 }
 
 /** Record one embedding lookup. cacheHit=true means no API call was made. */

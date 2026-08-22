@@ -1,6 +1,7 @@
 import { logger } from '../../logger';
 import type { ResolvedMemoryEntry } from '../../types';
 import type { CurrentContext } from '../../types/currentContext';
+import { formatSelfRomanticIdentityLines } from '../identity/selfRomanticIdentity';
 import { chapterService } from '../chapterService';
 import { hqiService } from '../hqiService';
 import { loadPromptClaims } from '../knowledgeCrystallization';

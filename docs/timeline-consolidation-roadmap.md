@@ -117,7 +117,7 @@ Architecture must **shrink**. Every phase deletes or merges more than it adds.
 | P2-4 | **Thread moments rail** in chat + thread filter on timeline | M | High |
 | P2-5 | **Fact → moment provenance** — every fact links to parent moment in API | M | High |
 | P2-6 | **Consolidate search** — `/api/search/universal` returns Search V2 groups (people, moments, patterns, threads) | L | High |
-| P2-7 | **Merge character_timeline_events read path** → filtered stitched query | M | Medium |
+| P2-7 | **Merge character_timeline_events read path** → filtered stitched query | **Done 2026-08-21** | Character Timeline reads stitched `resolved_events.people[]` |
 | P2-8 | **Track reassignment API** — user override for life_arcs.track | S | Medium |
 
 **Exit criteria:**
@@ -136,7 +136,7 @@ Architecture must **shrink**. Every phase deletes or merges more than it adds.
 | P3-1 | Stand up `nodes`, `edges`, `episodes` + dual-write | L | High |
 | P3-2 | Backfill episodes from journal + chat history | L | High |
 | P3-3 | Cut Life Timeline reads to graph (flagged) | L | High |
-| P3-4 | DELETE `character_timeline_events`, `timelines_v2` | M | Medium |
+| P3-4 | DELETE `character_timeline_events` (**done 2026-08-21**), remaining: `timelines_v2` | M | Medium |
 | P3-5 | MERGE 9-layer hierarchy into life_arcs/chapters | L | Medium |
 | P3-6 | DELETE duplicate recall/timeline routers | M | High |
 | P3-7 | Chronology V1 → consolidation worker (not browse) | M | Medium |
@@ -175,7 +175,7 @@ Prerequisites: P0–P2 complete.
 | `components/timeline-v2/TimelineSearch.tsx` | P1 |
 | Standalone SagaScreen route (merged to Story mode) | P1 |
 | Python chronology discarded output path | P0 or P3 |
-| `character_timeline_events` table | P3 |
+| `character_timeline_events` table | **Dropped 2026-08-21** |
 | 4 Sprint AM reconstruction services (separate track) | P3 |
 | `ChronologyView` (unwired) | P1 |
 
@@ -189,7 +189,7 @@ Prerequisites: P0–P2 complete.
 | Universal Search surface | **⌘K overlay** |
 | LifeArcPanel | Thread intelligence + recent moments |
 | ColorCodedTimeline (memoir) | Chapter view inside MemoirEditor only |
-| character_timeline_events reads | Filtered stitched API |
+| character_timeline_events reads | **Done** — filtered stitched API / `people[]` |
 | event_candidates UI | **Patterns** mode in Life Timeline |
 
 ### KEEP (canonical)

@@ -293,7 +293,8 @@ export function XConnectionPanel() {
     try {
       const result = await fetchJson<XSyncResult>('/api/integrations/x/sync', {
         method: 'POST',
-        body: JSON.stringify({ maxPosts: 8 }), // latest only to avoid lore overwhelm
+        // First sync pulls a solid recent window; later syncs use since_id for everything new.
+        body: JSON.stringify({ maxPosts: 50 }),
       });
       const imported = result.imported ?? result.count;
       const skipped = result.skipped ?? 0;
@@ -345,16 +346,20 @@ export function XConnectionPanel() {
   };
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-sky-950/20 via-white/[0.02] to-transparent p-5 shadow-sm">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-        <div className="hidden sm:flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-500/10 ring-1 ring-sky-500/25">
-          <Twitter className="h-5 w-5 text-sky-400" />
+    <div className="relative overflow-hidden rounded-2xl border border-sky-500/25 bg-gradient-to-br from-sky-950/50 via-[#0a1520]/80 to-cyan-950/30 p-5 shadow-[0_0_40px_-20px_rgba(56,189,248,0.35)]">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-8 -top-10 h-40 w-40 rounded-full bg-sky-500/10 blur-3xl"
+      />
+      <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start">
+        <div className="hidden sm:flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-400/20 to-cyan-500/10 ring-1 ring-sky-400/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+          <Twitter className="h-5 w-5 text-sky-300" />
         </div>
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <Twitter className="h-4 w-4 text-sky-400 sm:hidden" />
-            <h3 className="text-base font-semibold text-white">X (Twitter)</h3>
+            <h3 className="text-base font-semibold text-white tracking-tight">X → LoreBook</h3>
             {status?.connected ? (
               <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-300">
                 <CheckCircle2 className="h-3 w-3" />
@@ -368,9 +373,9 @@ export function XConnectionPanel() {
           </div>
 
           <p className="mt-1.5 text-sm leading-relaxed text-white/55">
-            Your posts are part of your story. Bring them in and they're saved word-for-word in
-            your journal — and when a post mentions someone or somewhere you know, it links
-            straight to them, with a trail back to the original post.
+            Your posts are chapters waiting to be filed. Sync pulls originals, quotes, and replies
+            into your journal word-for-word — people and places link themselves, with a trail
+            back to the post on X. LoreBook never posts for you.
           </p>
 
           {/* Guidance for OAuth setup — hidden in demo/mock mode */}
@@ -548,16 +553,16 @@ export function XConnectionPanel() {
                 type="button"
                 onClick={sync}
                 disabled={working}
-                className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3.5 py-2.5 sm:py-2 text-sm font-medium text-primary transition hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl border border-sky-400/40 bg-gradient-to-r from-sky-500/20 to-cyan-500/15 px-3.5 py-2.5 sm:py-2 text-sm font-medium text-sky-100 transition hover:from-sky-500/30 hover:to-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-60 shadow-[0_0_20px_-8px_rgba(56,189,248,0.5)]"
               >
                 {working ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                {working ? 'Bringing in your posts…' : 'Sync my posts'}
+                {working ? 'Bringing in your posts…' : 'Sync latest posts'}
               </button>
               <button
                 type="button"
                 onClick={disconnect}
                 disabled={working}
-                className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/[0.02] px-3.5 py-2.5 sm:py-2 text-sm font-medium text-white/70 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[0.02] px-3.5 py-2.5 sm:py-2 text-sm font-medium text-white/70 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Unlink className="h-4 w-4" />
                 Disconnect
@@ -568,7 +573,7 @@ export function XConnectionPanel() {
               type="button"
               onClick={connect}
               disabled={working}
-              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2.5 sm:py-2 text-sm font-medium text-primary transition hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl border border-sky-400/40 bg-gradient-to-r from-sky-500/20 to-cyan-500/15 px-4 py-2.5 sm:py-2 text-sm font-medium text-sky-100 transition hover:from-sky-500/30 hover:to-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-60 shadow-[0_0_20px_-8px_rgba(56,189,248,0.5)]"
             >
               {working ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
               {working ? 'Connecting…' : (isMock ? 'Connect X (demo)' : 'Connect X')}

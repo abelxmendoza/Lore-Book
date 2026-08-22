@@ -6,6 +6,7 @@ import { config } from '../config';
 import { logger } from '../logger';
 import { openai } from '../lib/openai';
 import { hasTemporalSignal } from './chat/temporalSignal';
+import { isDatingRomanceChatFocus } from './chat/datingBookChatFocus';
 import { StageTimer } from '../lib/stageTimer';
 import type { MemoryEntry, ResolvedMemoryEntry } from '../types';
 import type { CurrentContext, SoulProfileContext } from '../types/currentContext';

@@ -128,6 +128,12 @@ type RomanticRelationshipDeleteInput = {
   reason_note?: string;
 };
 
+type AddCharacterToDatingBookInput = {
+  character_id: string;
+  relationship_type?: string;
+  status?: string;
+};
+
 type RomanticRelationshipsResponse = {
   success: boolean;
   relationships: Array<Record<string, unknown>>;

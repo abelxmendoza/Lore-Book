@@ -2,7 +2,7 @@
  * Event Recovery Service — mines chat, entity_facts, and thread metadata for
  * benchmark life events missing from resolved_events.
  *
- * Writes canonical resolved_events with people[]. No character_timeline_events.
+ * Writes canonical resolved_events with people[].
  */
 
 import { v4 as uuid } from 'uuid';
