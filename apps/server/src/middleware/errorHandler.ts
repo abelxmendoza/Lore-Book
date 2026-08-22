@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 
 import { logger } from '../logger';
+import { errorTracking } from '../lib/monitoring';
 
 export class AppError extends Error {
   constructor(
@@ -64,6 +65,7 @@ export const errorHandler = (
     logger.warn({ err, path: req.path, method: req.method }, 'Operational error');
   } else {
     logger.error({ err, path: req.path, method: req.method }, 'Unexpected error');
+    errorTracking.captureException(err, { path: req.path, method: req.method, requestId: req.requestId });
   }
 
   // Handle Zod validation errors

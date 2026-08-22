@@ -9,6 +9,7 @@ import { swaggerSpec } from './config/swagger';
 import { memoryExtractionWorker } from './jobs/memoryExtractionWorker';
 import { registerSyncJob } from './jobs/syncJob';
 import { logger } from './logger';
+import { errorTracking } from './lib/monitoring';
 import { auditLogger } from './middleware/auditLogger';
 import { authMiddleware } from './middleware/auth';
 import { csrfTokenMiddleware, csrfProtection } from './middleware/csrf';
@@ -48,10 +49,14 @@ process.on('uncaughtException', (err: NodeJS.ErrnoException) => {
     return;
   }
   logger.fatal({ err }, 'Uncaught exception — exiting');
-  process.exit(1);
+  errorTracking.captureException(err, { stage: 'uncaughtException' });
+  // Give Sentry's async transport a chance to flush the event before the
+  // process dies — process.exit() would otherwise likely race it out.
+  errorTracking.flush(2000).finally(() => process.exit(1));
 });
 process.on('unhandledRejection', (reason) => {
   logger.error({ err: reason }, 'Unhandled promise rejection — continuing');
+  errorTracking.captureException(reason, { stage: 'unhandledRejection' });
 });
 
 // SECURITY: Detect environment before any logic that uses it
