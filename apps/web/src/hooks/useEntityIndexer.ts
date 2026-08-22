@@ -16,6 +16,11 @@ import { buildDemoCertifiedIndex } from '../lib/demoCertifiedIndex';
 import { detectDraftEntitiesInText } from '../lib/draftEntityDetect';
 import { fetchLexicalPreviewShared, abortLexicalPreviewShared } from '../lib/lexicalPreviewCache';
 import { lexicalPreviewSpansToDraftMatches } from '../lib/lexicalPreviewToDraftMatches';
+import {
+  composerIntelligenceMetrics,
+  composerPhaseAllowsRemoteCanon,
+  type ComposerIntelligencePhase,
+} from '../lib/composerIntelligence';
 import { fetchLoreBookParseShared, abortLoreBookParseShared } from '../lib/loreBookParseCache';
 import { loreBookParseToComposerMatches } from '../lib/loreBookParseToComposerMatches';
 import {
@@ -235,6 +240,7 @@ export const useEntityIndexer = () => {
       const usablePreviewSpans = (previewSpans ?? []).filter(
         (span) => !rangeInsideInstructionalExample(span.start, span.end, exampleRanges),
       );
+      composerIntelligenceMetrics.noteEntityScan();
       const indexMatches = matchText.trim()
         ? matchCertifiedEntitiesWithIndex(matchText, matchIndex)
         : [];
@@ -338,19 +344,9 @@ export const useEntityIndexer = () => {
     lastThreadIdRef.current = threadId;
   }, []);
 
-  const analyze = useCallback(
-    (text: string, threadId?: string) => {
-      lastTextRef.current = text;
-      lastThreadIdRef.current = threadId;
-      abortInFlightPreview();
-      if (!text.trim()) {
-        dispatch(setComposerMatches([]));
-        return;
-      }
-      if (!sharedState.ready) return;
-      applyMatches(text, sharedState.matchIndex, sharedState.entities);
-
-      previewTimerRef.current = window.setTimeout(() => {
+  const runAuthoritativePreview = useCallback(
+    (text: string, threadId?: string, debounceMs = 0) => {
+      const start = () => {
         const reqId = ++previewReqRef.current;
         const controller = new AbortController();
         previewAbortRef.current = controller;
@@ -372,9 +368,42 @@ export const useEntityIndexer = () => {
             loreBookParse
           );
         });
-      }, LEXICAL_PREVIEW_DEBOUNCE_MS);
+      };
+      if (debounceMs <= 0) {
+        start();
+        return;
+      }
+      previewTimerRef.current = window.setTimeout(start, debounceMs);
     },
-    [abortInFlightPreview, applyMatches, dispatch, sharedState.matchIndex, sharedState.ready, sharedState.entities]
+    [applyMatches, sharedState.matchIndex, sharedState.entities],
+  );
+
+  const analyze = useCallback(
+    (text: string, threadId?: string, phase?: ComposerIntelligencePhase) => {
+      lastTextRef.current = text;
+      lastThreadIdRef.current = threadId;
+      abortInFlightPreview();
+      if (!text.trim()) {
+        dispatch(setComposerMatches([]));
+        return;
+      }
+      if (phase === 'keystroke') return;
+      if (!sharedState.ready) return;
+      applyMatches(text, sharedState.matchIndex, sharedState.entities);
+
+      // Omitted phase keeps the landed idle+remote path for existing callers.
+      // Explicit lightweight (composer idle) stays local. Authoritative (blur/send)
+      // fetches immediately — the caller already delayed.
+      if (phase === 'lightweight' || (phase && !composerPhaseAllowsRemoteCanon(phase))) {
+        return;
+      }
+      runAuthoritativePreview(
+        text,
+        threadId,
+        phase === 'authoritative' ? 0 : LEXICAL_PREVIEW_DEBOUNCE_MS,
+      );
+    },
+    [abortInFlightPreview, applyMatches, dispatch, runAuthoritativePreview, sharedState.matchIndex, sharedState.ready, sharedState.entities]
   );
 
   const retryLoad = useCallback(() => {
@@ -418,6 +447,8 @@ export const useEntityIndexer = () => {
     skillMatches,
     eventMatches,
     analyze,
+    requestAuthoritativePreview: (text: string, threadId?: string) =>
+      analyze(text, threadId, 'authoritative'),
     linkedCharacters: characterMatches.map((m) => m.name),
     toggleLink: () => {},
   };

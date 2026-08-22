@@ -4,6 +4,7 @@ import { groupMessagesByDate } from '../utils/messageGrouping';
 import { scrollToMessage } from '../utils/scrollToMessage';
 import type { EntityMentionRef } from '../../../lib/entityMentions';
 import { entityMentionsFromMessage } from '../../../lib/entityMentions';
+import { composerIntelligenceMetrics } from '../../../lib/composerIntelligence';
 
 function buildThreadMentionContext(messages: Message[]): Map<string, EntityMentionRef[]> {
   const known = new Map<string, EntityMentionRef>();
@@ -69,6 +70,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   onDismissDeliveryNotice,
   retryingKeys,
 }: ChatMessageListProps) {
+  composerIntelligenceMetrics.noteTranscriptRender();
   const containerRef = useRef<HTMLDivElement>(null);
   const previousLastMessageIdRef = useRef<string | null>(null);
   const previousCountRef = useRef(0);

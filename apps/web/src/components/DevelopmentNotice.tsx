@@ -1,148 +1,140 @@
 /**
- * Development Notice Component
- * 
- * Shows a prominent notice when the app is in development or using mock data.
- * This informs users that the app is still being built and some features may use demo data.
+ * First-open LoreBook window: alpha disclaimer plus welcome for new visitors,
+ * "what's new" for returning ones. Reappears whenever a newer product update
+ * id ships — including this alpha warning so it is not easy to miss.
  */
+import { useState } from 'react';
+import { Sparkles, X } from 'lucide-react';
 
-import { useState, useEffect } from 'react';
-import { X, Info, Code, Database, Rocket } from 'lucide-react';
 import { config } from '../config/env';
+import {
+  formatWhatsNewDate,
+  hasSeenPreviousWhatsNew,
+  isWhatsNewSuppressed,
+  markWhatsNewSeen,
+  unseenWhatsNew,
+  WHATS_NEW,
+  WHATS_NEW_SEEN_KEY,
+} from '../data/whatsNew';
 import { Button } from './ui/button';
+import './DevelopmentNotice.css';
+
+type NoticeState = {
+  open: boolean;
+  returning: boolean;
+  unseenIds: Set<string>;
+};
+
+function readNoticeState(): NoticeState {
+  if (!config.dev.showDevNotice || typeof localStorage === 'undefined') {
+    return { open: false, returning: false, unseenIds: new Set() };
+  }
+  return {
+    open: !isWhatsNewSuppressed(localStorage),
+    returning: hasSeenPreviousWhatsNew(localStorage),
+    unseenIds: new Set(unseenWhatsNew(localStorage.getItem(WHATS_NEW_SEEN_KEY)).map((entry) => entry.id)),
+  };
+}
 
 export function DevelopmentNotice() {
-  const [isVisible, setIsVisible] = useState(false);
-  const [isDismissed, setIsDismissed] = useState(false);
-
-  useEffect(() => {
-    // Only show if enabled in config
-    if (!config.dev.showDevNotice) {
-      return;
-    }
-
-    // Check if user has dismissed it before
-    const dismissed = localStorage.getItem('dev-notice-dismissed');
-    if (dismissed === 'true') {
-      setIsDismissed(true);
-      return;
-    }
-
-    // Show immediately on first visit — this is the first thing users should see
-    setIsVisible(true);
-  }, []);
+  const [{ open, returning, unseenIds }, setState] = useState(readNoticeState);
 
   const handleDismiss = () => {
-    setIsVisible(false);
-    setIsDismissed(true);
-    localStorage.setItem('dev-notice-dismissed', 'true');
+    markWhatsNewSeen(localStorage);
+    setState((current) => ({ ...current, open: false }));
   };
 
-  if (!config.dev.showDevNotice || isDismissed) {
-    return null;
-  }
+  if (!config.dev.showDevNotice || !open) return null;
 
-  if (!isVisible) {
-    return null;
-  }
+  const latestDate = formatWhatsNewDate(WHATS_NEW[0]?.date ?? '');
+  const title = returning ? 'LoreBook has grown' : 'Welcome to LoreBook';
+  const lede = returning
+    ? 'Since you were last here, the life record got sharper — time, people, and conversation now stay on the story you actually lived. It is still alpha: expect breakage and visual change.'
+    : 'LoreBook is still in active development. It is not ready for beta testers yet. Chat is the front door, but layouts, styling, and features are changing constantly — and things will break.';
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 sm:p-4"
+      className="whats-new-overlay"
       role="dialog"
       aria-modal="true"
       aria-labelledby="dev-notice-title"
       aria-describedby="dev-notice-description"
     >
-      <div className="relative w-full max-w-2xl bg-gradient-to-br from-purple-900/95 via-black/95 to-purple-950/95 border border-primary/50 rounded-lg sm:rounded-2xl shadow-2xl p-4 sm:p-6 md:p-8 space-y-4 sm:space-y-6 animate-in fade-in zoom-in duration-300 max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
-        {/* Close Button */}
+      <div className="whats-new-panel">
         <button
+          type="button"
+          className="whats-new-close"
           onClick={handleDismiss}
-          className="absolute top-2 right-2 sm:top-4 sm:right-4 text-white/60 hover:text-white transition-colors p-2 rounded-lg hover:bg-white/10 z-10"
           aria-label="Dismiss development notice"
         >
-          <X className="h-4 w-4 sm:h-5 sm:w-5" />
+          <X className="h-4 w-4" />
         </button>
 
-        {/* Header */}
-        <div className="flex items-start gap-3 sm:gap-4 pr-8 sm:pr-0">
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
-            <Rocket className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="mb-2 inline-flex items-center rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest text-amber-200">
-              Early Access · Alpha
-            </div>
-            <h2
-              id="dev-notice-title"
-              className="text-xl sm:text-2xl font-bold text-white mb-1 sm:mb-2"
-            >
-              Welcome to Lore Book
-            </h2>
-            <p id="dev-notice-description" className="text-white/70 text-sm sm:text-base">
-              Lore Book is live for early testing. Chat is the front door — every conversation
-              feeds a growing record of people, places, and moments in your life.
-            </p>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="space-y-3 sm:space-y-4 text-white/70">
-          <div className="grid gap-3">
-            <div className="flex items-start gap-2 sm:gap-3">
-              <Rocket className="h-4 w-4 sm:h-5 sm:w-5 text-green-400 mt-0.5 flex-shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold text-white mb-1 text-sm sm:text-base">What's live</p>
-                <p className="text-xs sm:text-sm">
-                  Chat, journaling, and memory extraction are ready. Characters, locations, events,
-                  relationships, and lorebooks can start forming from what you share — and improve as
-                  your story grows.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-2 sm:gap-3">
-              <Database className="h-4 w-4 sm:h-5 sm:w-5 text-primary mt-0.5 flex-shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold text-white mb-1 text-sm sm:text-base">Still maturing</p>
-                <p className="text-xs sm:text-sm">
-                  Discovery views — mood, goals, perceptions, and similar — may show sample or partial
-                  data until your record has enough real signal.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-2 sm:gap-3">
-              <Code className="h-4 w-4 sm:h-5 sm:w-5 text-primary mt-0.5 flex-shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold text-white mb-1 text-sm sm:text-base">Moving fast</p>
-                <p className="text-xs sm:text-sm">
-                  Features ship weekly. Layouts, labels, and flows may shift, improve, or briefly break
-                  — that's expected during early access.
-                </p>
-              </div>
-            </div>
+        <div className="whats-new-body">
+          <div className={`whats-new-kicker${returning ? ' whats-new-kicker--pulse' : ' whats-new-kicker--alpha'}`}>
+            <Sparkles className="h-3 w-3" aria-hidden="true" />
+            {returning ? `Still alpha · ${latestDate}` : 'Alpha · Not ready for beta'}
           </div>
 
-          <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 sm:p-4 flex items-start gap-2 sm:gap-3">
-            <Info className="h-4 w-4 sm:h-5 sm:w-5 text-primary mt-0.5 flex-shrink-0" />
-            <p className="text-xs sm:text-sm text-primary/90">
-              <strong>Start in Chat.</strong> Tell Lore Book about your day, someone in your life,
-              or a moment worth remembering — the rest builds from there over time.
-            </p>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 pt-3 sm:pt-4 border-t border-white/10">
-          <p className="text-xs sm:text-sm text-white/40 text-center sm:text-left">
-            Won't show again after dismissing
+          <h2 id="dev-notice-title" className="whats-new-title">
+            {title}
+          </h2>
+          <p id="dev-notice-description" className="whats-new-lede">
+            {lede}
           </p>
-          <Button
-            onClick={handleDismiss}
-            className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 w-full sm:w-auto whitespace-nowrap"
-            aria-label="Got it, continue to app"
-          >
-            <span className="text-sm sm:text-base">Got it, let's go</span>
+
+          <div className="whats-new-alpha" role="note">
+            <strong>Alpha, not beta.</strong>
+            {' '}
+            This app is still being built. Expect it to break. Styling, layout, labels, and
+            features will keep changing — sometimes overnight. If you need something stable
+            enough to share with beta testers, it is not there yet.
+          </div>
+
+          {!returning && (
+            <div className="whats-new-chips">
+              <div className="whats-new-chip">
+                <strong>Still in development</strong>
+                <span>Chat and memory work, but this is an unfinished product — not a beta.</span>
+              </div>
+              <div className="whats-new-chip">
+                <strong>Looks will change</strong>
+                <span>Styling, layout, and labels get rewritten as we learn. Nothing visual is final.</span>
+              </div>
+              <div className="whats-new-chip">
+                <strong>Expect breakage</strong>
+                <span>Flows can fail, reset, or disappear without warning. That is alpha.</span>
+              </div>
+            </div>
+          )}
+
+          <p className="whats-new-section-label">
+            {returning ? 'New since your last visit' : 'Latest in LoreBook'}
+          </p>
+          <ul className="whats-new-list">
+            {WHATS_NEW.map((entry) => {
+              const fresh = unseenIds.has(entry.id);
+              return (
+                <li
+                  key={entry.id}
+                  className={fresh ? 'whats-new-card whats-new-card--fresh' : 'whats-new-card'}
+                >
+                  <div className="whats-new-card-top">
+                    <span className="whats-new-date">{formatWhatsNewDate(entry.date)}</span>
+                    {fresh && returning ? <span className="whats-new-badge">NEW</span> : null}
+                  </div>
+                  <h3>{entry.title}</h3>
+                  <p>{entry.summary}</p>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
+        <div className="whats-new-footer">
+          <p>Not a beta. Dismissing only hides this window until the next update.</p>
+          <Button onClick={handleDismiss} aria-label="Got it, continue to app">
+            {returning ? 'Catch me up' : "Got it, let's go"}
           </Button>
         </div>
       </div>
