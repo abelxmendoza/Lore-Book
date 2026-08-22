@@ -45,7 +45,7 @@ describe('xAdapter', () => {
     });
   });
 
-  it('keeps original quote posts but skips retweets and replies', () => {
+  it('keeps quotes and replies but skips retweets', () => {
     const events = xAdapter({
       data: [
         {
@@ -63,15 +63,19 @@ describe('xAdapter', () => {
         {
           id: '3',
           created_at: '2025-01-03T00:00:00.000Z',
-          text: '@friend yep',
+          text: '@friend yep — met up after the show',
           referenced_tweets: [{ type: 'replied_to', id: '97' }],
         },
       ],
     });
 
-    expect(events).toHaveLength(1);
-    expect(events[0].sourceId).toBe('1');
+    expect(events).toHaveLength(2);
+    expect(events.map((e) => e.sourceId)).toEqual(['1', '3']);
+    expect(events[0].type).toBe('quote');
     expect(events[0].metadata?.quoted_post_id).toBe('99');
+    expect(events[1].type).toBe('reply');
+    expect(events[1].tags).toContain('reply');
+    expect(events[1].metadata?.replied_to_id).toBe('97');
   });
 
   it('still supports the legacy mocked posts payload shape', () => {

@@ -1484,8 +1484,16 @@ export const LocationDetailModal = ({
                             {ref.at ? ` • ${fmt(ref.at)}` : ''}
                           </p>
                         </div>
-                        {ref.source === 'x_post' && (ref.url || ref.entryId) && (
-                          <XProvenanceBadge source={{ url: ref.url, postedAt: ref.at, excerpt: ref.excerpt }} compact />
+                        {ref.source === 'x_post' && (ref.url || (ref as { sourceId?: string }).sourceId) && (
+                          <XProvenanceBadge
+                            source={{
+                              sourceId: (ref as { sourceId?: string }).sourceId,
+                              url: ref.url,
+                              postedAt: ref.at,
+                              excerpt: ref.excerpt,
+                            }}
+                            compact
+                          />
                         )}
                       </div>
                     ))}

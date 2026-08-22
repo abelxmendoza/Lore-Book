@@ -8,7 +8,6 @@ import { isPetCharacter } from '../../lib/isPetCharacter';
 import { CharacterKinshipLists } from './CharacterKinshipLists';
 import { CharacterPerceptionsTab } from '../perceptions/CharacterPerceptionsTab';
 import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2, RefreshCw, Loader2, ImageIcon, Shield, ChevronDown, MapPin, Plus, BookOpen, Pin } from 'lucide-react';
-import { XProvenanceBadge } from '../integrations/XProvenanceBadge';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -3300,7 +3299,9 @@ export const CharacterDetailModal = ({
                     postedAt?: string;
                     excerpt?: string;
                   }>;
-                  const xSources = sources.filter((s) => s.provider === 'x' && s.url);
+                  const xSources = sources.filter(
+                    (s) => s.provider === 'x' && (s.sourceId || s.url)
+                  );
                   if (xSources.length === 0) return null;
                   return (
                     <div className="flex flex-wrap gap-1">
