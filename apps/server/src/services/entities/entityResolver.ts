@@ -65,14 +65,36 @@ export class EntityResolver {
             mentionedEntities.push({ entityId: m.match.id, memoryId: m.extracted.memoryId, userId: m.extracted.userId });
           }
         } else {
-          // New entity - create it
-          const normalized = this.normalizer.normalize(m.extracted.raw);
-          const created = await this.storage.createEntity(ctx.user.id, {
-            canonical_name: m.extracted.raw,
-            aliases: [],
-            type: m.extracted.type,
-            confidence: 1.0,
+          // New entity — shared write authority decides whether to persist.
+          const domain =
+            m.extracted.type === 'person' || m.extracted.type === 'character'
+              ? 'characters'
+              : m.extracted.type === 'location' || m.extracted.type === 'place'
+                ? 'locations'
+                : m.extracted.type === 'organization' || m.extracted.type === 'org'
+                  ? 'organizations'
+                  : null;
+          if (!domain) {
+            continue;
+          }
+          let created: ResolvedEntity | null = null;
+          const write = await (await import('../lorebook/suggestions/applySuggestionCandidate')).applySuggestionCandidate({
+            userId: ctx.user.id,
+            domain,
+            name: m.extracted.raw,
+            extractor: 'legacy_entity_resolver',
+            source: 'entity_resolver',
+            writePolicy: 'inference',
+            onCreate: async () => {
+              created = await this.storage.createEntity(ctx.user.id, {
+                canonical_name: m.extracted.raw,
+                aliases: [],
+                type: m.extracted.type,
+                confidence: 1.0,
+              });
+            },
           });
+          if (write.outcome !== 'CREATED' || !created) continue;
 
           await this.storage.linkEntity(created.id, m.extracted);
           resolved.push(created);

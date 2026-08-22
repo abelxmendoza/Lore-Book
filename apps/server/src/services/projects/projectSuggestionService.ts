@@ -12,6 +12,7 @@ import {
 } from '../lexical/projects';
 import { suggestionDismissalService } from '../suggestionDismissalService';
 import { evaluateEntityQuality, passesEntityQualityGate, resolveDisplayName } from '../lorebook/quality/entityQualityGateService';
+import { applySuggestionCandidate } from '../lorebook/suggestions/applySuggestionCandidate';
 
 export type ProjectSuggestionRow = {
   id: string;
@@ -184,13 +185,32 @@ class ProjectSuggestionService {
     const payload = await this.toSuggestionPayload(userId, extracted, index, opts, filterOptions);
     if (!payload) return;
 
-    const { error } = await supabaseAdmin
-      .from('project_suggestions')
-      .upsert(payload, { onConflict: 'user_id,normalized_name' });
+    const persist = async () => {
+      const { error } = await supabaseAdmin
+        .from('project_suggestions')
+        .upsert(payload, { onConflict: 'user_id,normalized_name' });
 
-    if (error && !isTableMissing(error)) {
-      logger.warn({ error, userId, name: payload.name }, 'Failed to upsert project suggestion');
-    }
+      if (error && !isTableMissing(error)) {
+        logger.warn({ error, userId, name: payload.name }, 'Failed to upsert project suggestion');
+      }
+    };
+
+    const evidenceText =
+      Array.isArray(payload.evidence) && payload.evidence[0] && typeof payload.evidence[0] === 'object'
+        ? String((payload.evidence[0] as { text?: string }).text ?? payload.name)
+        : payload.name;
+
+    await applySuggestionCandidate({
+      userId,
+      domain: 'projects',
+      name: payload.name,
+      evidence: evidenceText,
+      sourceMessageId: opts.sourceMessageId,
+      extractor: 'project_suggestion',
+      source: opts.source,
+      onCreate: persist,
+      onReview: persist,
+    });
   }
 
   async upsertManyFromExtraction(
@@ -215,15 +235,35 @@ class ProjectSuggestionService {
     ).filter((payload): payload is NonNullable<typeof payload> => payload !== null);
     if (payloads.length === 0) return 0;
 
-    const { error } = await supabaseAdmin
-      .from('project_suggestions')
-      .upsert(payloads, { onConflict: 'user_id,normalized_name' });
+    const persistOne = async (payload: NonNullable<Awaited<ReturnType<typeof this.toSuggestionPayload>>>) => {
+      const evidenceText =
+        Array.isArray(payload.evidence) && payload.evidence[0] && typeof payload.evidence[0] === 'object'
+          ? String((payload.evidence[0] as { text?: string }).text ?? payload.name)
+          : payload.name;
+      const persist = async () => {
+        const { error } = await supabaseAdmin
+          .from('project_suggestions')
+          .upsert(payload, { onConflict: 'user_id,normalized_name' });
+        if (error && !isTableMissing(error)) {
+          logger.warn({ error, userId, name: payload.name }, 'Failed to batch upsert project suggestion');
+        }
+      };
+      const write = await applySuggestionCandidate({
+        userId,
+        domain: 'projects',
+        name: payload.name,
+        evidence: evidenceText,
+        sourceMessageId: opts.sourceMessageId,
+        extractor: 'project_suggestion',
+        source: opts.source,
+        onCreate: persist,
+        onReview: persist,
+      });
+      return write.outcome === 'CREATED' || write.outcome === 'REVIEW' ? 1 : 0;
+    };
 
-    if (error && !isTableMissing(error)) {
-      logger.warn({ error, userId, count: payloads.length }, 'Failed to batch upsert project suggestions');
-      return 0;
-    }
-    return payloads.length;
+    const counts = await Promise.all(payloads.map((payload) => persistOne(payload)));
+    return counts.reduce((sum, n) => sum + n, 0);
   }
 
   async getPendingSuggestions(userId: string): Promise<ProjectSuggestionRow[]> {
@@ -327,6 +367,7 @@ class ProjectSuggestionService {
       sourceSuggestionId: suggestionId,
       threadId: opts?.threadId,
       reason: opts?.reason,
+      permanent: true,
     });
 
     if (result.isPermanent) {
@@ -368,6 +409,7 @@ class ProjectSuggestionService {
       sourceSuggestionId: opts?.suggestionId ?? existing?.id,
       threadId: opts?.threadId,
       reason: opts?.reason,
+      permanent: true,
     });
 
     if (result.isPermanent) {

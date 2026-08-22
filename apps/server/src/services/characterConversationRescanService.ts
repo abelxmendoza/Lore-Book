@@ -23,7 +23,13 @@ import { omegaMemoryService } from './omegaMemoryService';
 import { supabaseAdmin } from './supabaseClient';
 import { characterRescanStateService } from './characters/audit/characterRescanStateService';
 import { characterCardRescanAuditService } from './characters/audit/characterCardRescanAuditService';
-import { isUserRejectedEntityCard } from './entityRejectionRegistry';
+import { guardCharacterCandidate } from './lorebook/quality/characterCandidateGuard';
+import { applySuggestionCandidate } from './lorebook/suggestions/applySuggestionCandidate';
+import {
+  getSuggestionWriteContext,
+  withSuggestionWriteContext,
+} from './lorebook/suggestions/suggestionWriteContext';
+import { isCharacterRejectedInIndex } from './lorebook/suggestions/suggestionDecisionIndex';
 import type { EntityType } from '../types/omegaMemory';
 
 export type CharacterRescanSummary = {
@@ -63,16 +69,18 @@ type EpisodeRow = { source: 'journal' | 'chat'; id: string; text: string; at: st
 
 const JUNK = new Set(['me', 'myself', 'you', 'i', 'we', 'they', 'someone', 'somebody', 'the', 'a', 'an']);
 
-function collectPersonMentions(text: string, userId?: string): string[] {
+export function collectPersonMentions(text: string, userId?: string): string[] {
   const names = new Set<string>();
   const add = (raw: string) => {
     const name = raw.trim().replace(/\s+/g, ' ');
     const key = normalizeNameKey(name);
     if (!name || key.length < 2 || JUNK.has(key)) return;
     if (!isIndividualPersonName(name)) return;
-    if (classifyMentionKind(name).kind !== 'person') return;
-    const classification = classifyEntity(name, text);
+    const mentionKind = classifyMentionKind(name, text).kind;
+    if (mentionKind !== 'person' && mentionKind !== 'unknown') return;
+    const classification = classifyEntity(name);
     if (!isCharacterEligible(classification.type) && !isUnknownEntity(classification.type)) return;
+    if (guardCharacterCandidate({ name, domain: 'characters', evidence: text })) return;
     names.add(name);
   };
 
@@ -218,10 +226,21 @@ class CharacterConversationRescanService {
     charactersSkipped: number;
     promotedNames: string[];
   }> {
+    const existing = getSuggestionWriteContext();
+    if (!existing || existing.userId !== userId) {
+      return withSuggestionWriteContext(userId, () =>
+        this.promotePersonsFromEpisodes(userId, episodes, knownPersonKeys),
+      );
+    }
+
     const mentionCounts = new Map<string, number>();
     const displayNameByKey = new Map<string, string>();
 
     const inferenceByKey = new Map<string, { displayName: string; mentionCount: number; promotable: boolean }>();
+
+    const decisions = getSuggestionWriteContext()?.decisions;
+    const skippedByDecision = (name: string, evidence?: string) =>
+      Boolean(decisions && isCharacterRejectedInIndex(decisions, name, evidence));
 
     for (const episode of episodes) {
       const inference = characterInferenceService.inferFromMessage({
@@ -232,7 +251,7 @@ class CharacterConversationRescanService {
       for (const candidate of inference.accepted) {
         const key = normalizeNameKey(candidate.displayName);
         if (knownPersonKeys.has(key)) continue;
-        if (await isUserRejectedEntityCard(userId, candidate.displayName)) continue;
+        if (skippedByDecision(candidate.displayName, episode.text)) continue;
 
         const prev = inferenceByKey.get(key);
         const mentionCount = (prev?.mentionCount ?? 0) + 1;
@@ -251,7 +270,7 @@ class CharacterConversationRescanService {
         const key = normalizeNameKey(name);
         if (knownPersonKeys.has(key)) continue;
         if (inferenceByKey.has(key)) continue;
-        if (await isUserRejectedEntityCard(userId, name)) continue;
+        if (skippedByDecision(name, episode.text)) continue;
         mentionCounts.set(key, (mentionCounts.get(key) ?? 0) + 1);
         if (!displayNameByKey.has(key)) displayNameByKey.set(key, name);
       }
@@ -267,11 +286,27 @@ class CharacterConversationRescanService {
       })
       .map(([key]) => displayNameByKey.get(key) ?? key);
 
-    const candidates = ranked.map((name) => ({ name, type: 'PERSON' as EntityType }));
+    const createNames: string[] = [];
+    let charactersSkipped = 0;
+    for (const name of ranked) {
+      const write = await applySuggestionCandidate({
+        userId,
+        domain: 'characters',
+        name,
+        extractor: 'character_rescan',
+        onCreate: async () => {
+          createNames.push(name);
+        },
+      });
+      if (write.outcome !== 'CREATED' && write.outcome !== 'ATTACHED') {
+        charactersSkipped += 1;
+      }
+    }
+
+    const candidates = createNames.map((name) => ({ name, type: 'PERSON' as EntityType }));
 
     let omegaResolved = 0;
     let charactersPromoted = 0;
-    let charactersSkipped = 0;
     const promotedNames: string[] = [];
 
     if (candidates.length > 0) {
@@ -280,7 +315,7 @@ class CharacterConversationRescanService {
 
       for (const entity of resolved) {
         if (entity.type !== 'PERSON' && entity.type !== 'CHARACTER') continue;
-        if (await isUserRejectedEntityCard(userId, entity.primary_name)) {
+        if (skippedByDecision(entity.primary_name)) {
           charactersSkipped += 1;
           continue;
         }

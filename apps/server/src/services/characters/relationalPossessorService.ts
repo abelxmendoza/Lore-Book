@@ -44,33 +44,47 @@ async function createPossessorCharacter(
   const avatarUrl = await assignCharacterAvatar(characterId);
   const now = new Date().toISOString();
 
-  const { error } = await supabaseAdmin.from('characters').insert({
-    id: characterId,
-    user_id: userId,
+  let createdId: string | null = null;
+  const { applySuggestionCandidate } = await import('../lorebook/suggestions/applySuggestionCandidate');
+  const write = await applySuggestionCandidate({
+    userId,
+    domain: 'characters',
     name: cleanName,
-    first_name: parts.firstName || null,
-    last_name: parts.lastName || null,
-    alias: null,
-    status: 'active',
-    tags: [],
-    importance_level: 'minor',
-    relationship_depth: 'mentioned_only',
-    avatar_url: avatarUrl,
-    metadata: {
-      generated_by: 'relational_possessor',
-      generated_at: now,
-      from_placeholder_character_id: placeholderCharacterId,
-      relational_role_to_placeholder: relation,
-      identity_note: `Named as the anchor of a possessive/relational label ("…'s ${relation}" / "${relation} of …").`,
+    extractor: 'relational_possessor',
+    source: 'relational_possessor',
+    writePolicy: 'inference',
+    onCreate: async () => {
+      const { error } = await supabaseAdmin.from('characters').insert({
+        id: characterId,
+        user_id: userId,
+        name: cleanName,
+        first_name: parts.firstName || null,
+        last_name: parts.lastName || null,
+        alias: null,
+        status: 'active',
+        tags: [],
+        importance_level: 'minor',
+        relationship_depth: 'mentioned_only',
+        avatar_url: avatarUrl,
+        metadata: {
+          generated_by: 'relational_possessor',
+          generated_at: now,
+          from_placeholder_character_id: placeholderCharacterId,
+          relational_role_to_placeholder: relation,
+          identity_note: `Named as the anchor of a possessive/relational label ("…'s ${relation}" / "${relation} of …").`,
+        },
+        created_at: now,
+        updated_at: now,
+      });
+      if (error) {
+        logger.warn({ error, cleanName, userId }, 'Failed to create relational possessor character');
+        return;
+      }
+      createdId = characterId;
     },
-    created_at: now,
-    updated_at: now,
   });
-
-  if (error) {
-    logger.warn({ error, cleanName, userId }, 'Failed to create relational possessor character');
-    return null;
-  }
+  if (write.outcome === 'ATTACHED' && write.canonical?.id) return write.canonical.id;
+  if (!createdId) return null;
 
   // 'minor' above is just a seed — the canonical scorer supersedes it promptly.
   import('./characterImportanceService').then(({ scoreAndPersistCharacter }) =>
