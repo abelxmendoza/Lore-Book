@@ -1,6 +1,14 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
-import { characterBelongsOnCanonicalEvent } from '../attribution/eventAttributionProjection';
+import {
+  characterBelongsOnCanonicalEvent,
+  locationBelongsOnCanonicalEvent,
+} from '../attribution/eventAttributionProjection';
+import {
+  eventAcceptedForOrganization,
+  readOrganizationAttributions,
+  type OrganizationAttribution,
+} from '../organizations/organizationEventAttribution';
 
 import { chronologyService } from './chronologyService';
 import {
@@ -28,6 +36,23 @@ export type StitchedItemKind = 'moment' | 'event';
 export type ChronologyScopeType = 'global' | 'life_arc';
 
 export const GLOBAL_SCOPE_ID = '00000000-0000-0000-0000-000000000000';
+
+function resolvedEventBelongsToOrganization(
+  row: { metadata?: unknown },
+  organizationId: string,
+): boolean {
+  const metadata = (row.metadata ?? {}) as Record<string, unknown>;
+  const attributions = readOrganizationAttributions(metadata);
+  if (attributions.length > 0) {
+    return eventAcceptedForOrganization(attributions, organizationId);
+  }
+  const ids = Array.isArray(metadata.organization_ids) ? metadata.organization_ids : [];
+  return ids.some((id) => String(id) === organizationId);
+}
+
+function attributionsFromResolvedRow(row: { metadata?: unknown }): OrganizationAttribution[] {
+  return readOrganizationAttributions((row.metadata ?? {}) as Record<string, unknown>);
+}
 
 export type StitchedTimelineItem = {
   id: string;
@@ -71,6 +96,8 @@ export type StitchedTimelineItem = {
   validUntil?: string | null;
   /** Independent temporal coordinates; sortTime remains a compatibility field. */
   temporal?: CanonicalTemporalModel;
+  /** Event→organization roles. Presence is not membership. */
+  organizationAttributions?: OrganizationAttribution[];
   /** Shared Omni/Calendar projection. Occurrence meaning is fixed here. */
   temporalProjection?: TemporalSurfaceProjection;
 };
@@ -638,6 +665,17 @@ export class StitchedTimelineService {
        */
       character_id?: string;
       /**
+       * Restrict the global scope to events at this location (matched against
+       * resolved_events.locations / canonical place attribution).
+       */
+      location_id?: string;
+      /**
+       * Restrict the global scope to events attributed to this organization
+       * (canonical IDs in metadata.organizationAttributions). Not name search
+       * or member overlap.
+       */
+      organization_id?: string;
+      /**
        * Cap the final item count after sorting/clustering (applied last, so a
        * cap never discards dedup accuracy). Undefined = unbounded, matching
        * every existing caller's behavior; callers issuing this per request
@@ -902,8 +940,11 @@ export class StitchedTimelineService {
     } else {
       const candidatesByKey = new Map<string, CohesionCandidate>();
       const characterId = opts.character_id;
+      const locationId = opts.location_id;
+      const organizationId = opts.organization_id;
+      const entityScoped = Boolean(characterId || locationId || organizationId);
 
-      for (const m of characterId ? [] : moments) {
+      for (const m of entityScoped ? [] : moments) {
         const sourceId = m.journal_entry_id || m.id;
         const key = `moment:${sourceId}`;
         items.push({
@@ -949,21 +990,25 @@ export class StitchedTimelineService {
           .maybeSingle();
         characterName = (characterRow?.name as string | undefined) ?? undefined;
       }
+      const associationView = (e: Record<string, unknown>) => ({
+        id: e.id as string,
+        title: (e.title as string | null) ?? null,
+        summary: (e.summary as string | null) ?? null,
+        people: (e.people as string[] | null) ?? [],
+        locations: (e.locations as string[] | null) ?? [],
+        metadata: (e.metadata as Record<string, unknown> | null) ?? {},
+      });
       const scopedResolvedRows = characterId
         ? (resolvedRows ?? []).filter((e) =>
-            characterBelongsOnCanonicalEvent(
-              {
-                id: e.id as string,
-                title: (e.title as string | null) ?? null,
-                summary: (e.summary as string | null) ?? null,
-                people: (e.people as string[] | null) ?? [],
-                locations: (e.locations as string[] | null) ?? [],
-                metadata: (e.metadata as Record<string, unknown> | null) ?? {},
-              },
-              { id: characterId, name: characterName },
-            ).associated,
+            characterBelongsOnCanonicalEvent(associationView(e), { id: characterId, name: characterName }).associated,
           )
-        : (resolvedRows ?? []);
+        : locationId
+          ? (resolvedRows ?? []).filter((e) =>
+              locationBelongsOnCanonicalEvent(associationView(e), { id: locationId }).associated,
+            )
+          : organizationId
+            ? (resolvedRows ?? []).filter((e) => resolvedEventBelongsToOrganization(e, organizationId))
+            : (resolvedRows ?? []);
       const datedResolved = scopedResolvedRows.filter((e) => resolvedOccurrenceStart(e) != null);
       const undatedResolved = scopedResolvedRows.filter((e) => resolvedOccurrenceStart(e) == null);
       // Undated / unanchored events go straight into items with a sentinel sort
@@ -992,6 +1037,7 @@ export class StitchedTimelineService {
           knownFrom: (e.created_at as string | null) ?? null,
           occurrenceStatus: 'unresolved',
           projectionRole: 'unresolved',
+          organizationAttributions: attributionsFromResolvedRow(e),
         });
         seenEventIds.add(e.id as string);
       }
@@ -1062,6 +1108,9 @@ export class StitchedTimelineService {
           validFrom: (temporalMeta.valid_from as string | undefined) ?? null,
           validUntil: (temporalMeta.valid_until as string | undefined) ?? null,
           userPresence: (meta.user_presence as StitchedTimelineItem['userPresence']) ?? 'unknown',
+          organizationAttributions: cluster.members.flatMap((member) =>
+            attributionsFromResolvedRow(member.row as { metadata?: unknown }),
+          ),
           ...(cluster.members.length > 1
             ? { mergedCount: cluster.members.length, mergedTitles: cluster.mergedTitles }
             : {}),
@@ -1228,6 +1277,38 @@ export class StitchedTimelineService {
     }
 
     return { saved: rows.length };
+  }
+
+  /**
+   * Location-modal seam. Filters the canonical stitched feed by location association.
+   */
+  async getStitchedTimelineForLocation(
+    userId: string,
+    locationId: string,
+    range?: { start_time?: string; end_time?: string; timezone?: string },
+  ): Promise<StitchedTimelineResult> {
+    return this.getStitchedTimeline(userId, {
+      scope_type: 'global',
+      location_id: locationId,
+      start_time: range?.start_time,
+      end_time: range?.end_time,
+    });
+  }
+
+  /**
+   * Organization-modal seam. Filters by canonical organization attributions.
+   */
+  async getStitchedTimelineForOrganization(
+    userId: string,
+    organizationId: string,
+    range?: { start_time?: string; end_time?: string; timezone?: string },
+  ): Promise<StitchedTimelineResult> {
+    return this.getStitchedTimeline(userId, {
+      scope_type: 'global',
+      organization_id: organizationId,
+      start_time: range?.start_time,
+      end_time: range?.end_time,
+    });
   }
 }
 

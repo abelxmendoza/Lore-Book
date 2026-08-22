@@ -11,6 +11,14 @@ import { supabaseAdmin } from '../supabaseClient';
 import { locationBelongsOnCanonicalEvent } from '../attribution/eventAttributionProjection';
 import { organizationService, type GroupEventAudience } from '../organizationService';
 import { listUserPostedEventsForOrganization, type UserPostedEventRow } from '../events/userPostedEventService';
+import {
+  buildCanonicalLocationTimeline,
+  type LocationEntityTimelineResult,
+} from '../locations/locationEntityTimelineService';
+import {
+  buildCanonicalOrganizationTimeline,
+  type OrganizationEntityTimelineResult,
+} from '../organizations/organizationEntityTimelineService';
 
 export type EntityKind = 'organization' | 'location';
 export type TimelineType = 'shared_experience' | 'lore' | 'mentioned_in';
@@ -71,56 +79,49 @@ export class EntityTimelineBuilder {
 
   async buildTimelines(
     userId: string,
-    entityId: string
-  ): Promise<{ sharedExperiences: EntityTimelineEvent[]; lore: EntityTimelineEvent[] }> {
-    try {
-      const { data: rows, error } = await supabaseAdmin
-        .from('entity_timeline_events')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('entity_type', this.kind)
-        .eq('entity_id', entityId)
-        .order('event_date', { ascending: true });
-
-      if (error) throw error;
-
-      const sharedExperiences: EntityTimelineEvent[] = [];
-      const lore: EntityTimelineEvent[] = [];
-
-      for (const row of rows || []) {
-        const entry: EntityTimelineEvent = {
-          id: row.id,
-          eventId: row.event_id ?? undefined,
-          sourceThreadId: row.source_thread_id ?? undefined,
-          sourceEpisodeId: row.source_episode_id ?? undefined,
-          eventTitle: row.event_title || 'Untitled',
-          eventDate: row.event_date || '',
-          recordedAt: row.created_at ?? null,
-          occurrenceStatus: row.event_date ? 'confirmed' : 'unresolved',
-          eventSummary: row.event_summary,
-          eventType: row.event_type,
-          timelineType: row.timeline_type as TimelineType,
-          entityRole: row.entity_role,
-          userWasPresent: row.user_was_present,
-          confidence: row.confidence,
-          involvedNames: row.involved_names ?? undefined,
-          audience: row.audience ?? undefined,
-          source: row.source ?? undefined,
-          subgroupNames: row.subgroup_names ?? undefined,
+    entityId: string,
+    timezone?: string,
+  ): Promise<
+    | LocationEntityTimelineResult
+    | OrganizationEntityTimelineResult
+    | { sharedExperiences: EntityTimelineEvent[]; lore: EntityTimelineEvent[] }
+  > {
+    if (this.kind === 'location') {
+      try {
+        return await buildCanonicalLocationTimeline(userId, entityId, timezone);
+      } catch (error) {
+        logger.error({ error, userId, entityId }, 'Failed to build canonical location timelines');
+        return {
+          sharedExperiences: [],
+          lore: [],
+          unresolved: [],
+          legacyOnly: [],
+          compatibilityReview: [],
+          summary: {
+            lastVisitAt: null,
+            lastVisitId: null,
+            firstKnownVisitAt: null,
+            firstKnownVisitId: null,
+          },
         };
-
-        if (row.timeline_type === 'shared_experience') {
-          sharedExperiences.push(entry);
-        } else {
-          lore.push(entry);
-        }
       }
-
-      return { sharedExperiences, lore };
-    } catch (error) {
-      logger.error({ error, userId, entityId, kind: this.kind }, 'Failed to build entity timelines');
-      return { sharedExperiences: [], lore: [] };
     }
+    if (this.kind === 'organization') {
+      try {
+        return await buildCanonicalOrganizationTimeline(userId, entityId, timezone);
+      } catch (error) {
+        logger.error({ error, userId, entityId }, 'Failed to build canonical organization timelines');
+        return {
+          sharedExperiences: [],
+          lore: [],
+          unresolved: [],
+          legacyOnly: [],
+          compatibilityReview: [],
+          summary: { lastEventAt: null, lastEventId: null },
+        };
+      }
+    }
+    return { sharedExperiences: [], lore: [] };
   }
 
   /** Resolve organization membership → the org's member character id→name map. */
