@@ -31,9 +31,6 @@ const filesToScan = [
   'apps/web/src/lib/demoAgentTrace.ts',
   'apps/web/src/lib/demoCertifiedIndex.ts',
   'apps/web/src/lib/demoLorebookFocusReadiness.ts',
-  'apps/web/src/lib/projectQueryDemo.ts',
-  'apps/web/src/lib/romanceQueryDemo.ts',
-  'apps/web/src/lib/skillQueryDemo.ts',
   'apps/web/src/lib/storyForge/demoLorebookWorkflow.ts',
   'apps/web/src/lib/storyForge/demoCoreLorebookStore.ts',
 ];

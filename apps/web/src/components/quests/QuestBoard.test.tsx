@@ -11,11 +11,6 @@ vi.mock('../../hooks/useQuests', () => ({
   useStartQuest: () => ({ mutateAsync: vi.fn() }),
   useCompleteQuest: () => ({ mutateAsync: vi.fn() }),
   usePauseQuest: () => ({ mutateAsync: vi.fn() }),
-  useQueryQuestsMutation: () => [vi.fn(), { isLoading: false }],
-}));
-
-vi.mock('../../hooks/useShouldUseMockData', () => ({
-  useShouldUseMockData: () => false,
 }));
 
 vi.mock('../../store/hooks/useEntityBooks', () => ({
@@ -188,6 +183,7 @@ describe('QuestBoard layout and error handling', () => {
     expect(screen.getByText('Ship the first version of the product')).not.toHaveClass('line-clamp-2', 'truncate');
     expect(screen.getByText('Learn guitar basics')).toBeInTheDocument();
     expect(screen.getByTestId('quest-board-detail-pane')).toHaveTextContent('q1');
+    expect(screen.queryByRole('textbox', { name: /ask your quest log/i })).not.toBeInTheDocument();
   });
 
   it('shows inline error banner when stale data exists but refresh failed', () => {
