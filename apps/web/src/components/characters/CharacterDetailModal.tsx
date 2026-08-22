@@ -34,7 +34,6 @@ import { invalidateCache } from '../../lib/requestCache';
 import { invalidateOrganizationMembershipCaches } from '../../lib/invalidateOrganizationMembershipCaches';
 import { OrganizationMemberRoleSelect } from '../ui/OrganizationMemberRoleSelect';
 import { CreateGroupFromCharacterPanel } from './CreateGroupFromCharacterPanel';
-import { fetchCharacterList } from '../../api/characterList';
 import { fetchCharacterLoreProfile, type CharacterLoreProfile } from '../../api/characterLoreProfile';
 import { formatEpistemicPercent } from '../../lib/epistemicLabels';
 import { onStoryDataUpdated, dispatchStoryDataUpdated, RELATIONSHIP_STORY_SCOPES } from '../../lib/storyRefresh';
@@ -2492,12 +2491,6 @@ export const CharacterDetailModal = ({
   }, [character.id, character.name, isMockDataEnabled, orgsReloadToken, profileBundle?.organizations]);
 
   // ── Manual editing: connections (Character Book) + memberships (Groups & Orgs book) ──
-  const [connectionAddOpen, setConnectionAddOpen] = useState(false);
-  const [connectionOptions, setConnectionOptions] = useState<Character[]>([]);
-  const [connectionOptionsLoading, setConnectionOptionsLoading] = useState(false);
-  const [connectionTargetId, setConnectionTargetId] = useState('');
-  const [connectionType, setConnectionType] = useState('friend');
-  const [connectionSaving, setConnectionSaving] = useState(false);
   const [connectionBusyId, setConnectionBusyId] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
@@ -2509,52 +2502,6 @@ export const CharacterDetailModal = ({
   const [orgSaving, setOrgSaving] = useState(false);
   const [orgMemberError, setOrgMemberError] = useState<string | null>(null);
   const [roleSavingOrgId, setRoleSavingOrgId] = useState<string | null>(null);
-
-  const toggleConnectionAdd = async () => {
-    const next = !connectionAddOpen;
-    setConnectionAddOpen(next);
-    setConnectionError(null);
-    if (next && connectionOptions.length === 0 && !connectionOptionsLoading) {
-      setConnectionOptionsLoading(true);
-      try {
-        const list = await fetchCharacterList<Character>();
-        setConnectionOptions(list.filter((c) => c.status !== 'archived'));
-      } catch {
-        setConnectionError('Could not load your Character Book.');
-      } finally {
-        setConnectionOptionsLoading(false);
-      }
-    }
-  };
-
-  const addConnection = async () => {
-    if (!connectionTargetId || connectionSaving) return;
-    setConnectionSaving(true);
-    setConnectionError(null);
-    try {
-      const res = await fetchJson<{
-        success: boolean;
-        relationship: NonNullable<Character['relationships']>[number];
-      }>('/api/relationships/character-links', {
-        method: 'POST',
-        body: JSON.stringify({
-          source_character_id: editedCharacter.id,
-          target_character_id: connectionTargetId,
-          relationship_type: connectionType.trim() || 'friend',
-        }),
-      });
-      const rel = res.relationship;
-      upsertLocalRelationship(rel);
-      setConnectionTargetId('');
-      setConnectionType('friend');
-      setConnectionAddOpen(false);
-      await refreshCanonicalRelationships(rel.character_id);
-    } catch (error) {
-      setConnectionError(error instanceof Error ? error.message : 'Could not add connection.');
-    } finally {
-      setConnectionSaving(false);
-    }
-  };
 
   const changeConnection = async (
     rel: { id?: string; character_id?: string; character_name?: string },
@@ -4134,85 +4081,8 @@ export const CharacterDetailModal = ({
                 {/* Friends & Other Connections */}
                 {(
                   <div className="pt-8 border-t border-white/[0.06]">
-                    <ConnectionSectionHeader
-                      icon={UserCircle}
-                      title="Friends & Other Connections"
-                      action={
-                        !isMockDataEnabled && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs text-white/55"
-                            onClick={() => void toggleConnectionAdd()}
-                            data-testid="add-connection-toggle"
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                            <span className="ml-1">{connectionAddOpen ? 'Close' : 'Add'}</span>
-                          </Button>
-                        )
-                      }
-                    />
-                    {connectionAddOpen && !isMockDataEnabled && (
-                      <Card className="bg-black/40 border-border/50 mb-3">
-                        <CardContent className="p-3">
-                          <p className="text-[10px] text-white/35 mb-2">
-                            Link a person who already exists in your Character Book.
-                          </p>
-                          <div className="grid gap-2 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto]">
-                            <select
-                              value={connectionTargetId}
-                              onChange={(e) => setConnectionTargetId(e.target.value)}
-                              disabled={connectionOptionsLoading}
-                              aria-label="Existing character"
-                              className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-primary/60 focus:outline-none"
-                            >
-                              <option value="">
-                                {connectionOptionsLoading ? 'Loading…' : 'Choose a person…'}
-                              </option>
-                              {connectionOptions
-                                .filter(
-                                  (c) =>
-                                    c.id !== editedCharacter.id &&
-                                    !(editedCharacter.relationships ?? []).some(
-                                      (r) => r.character_id === c.id,
-                                    ),
-                                )
-                                .map((c) => (
-                                  <option key={c.id} value={c.id}>
-                                    {c.name}
-                                  </option>
-                                ))}
-                            </select>
-                            <input
-                              list="connection-type-options"
-                              value={connectionType}
-                              onChange={(e) => setConnectionType(e.target.value)}
-                              placeholder="Relationship (e.g. friend)"
-                              aria-label="Relationship type"
-                              className="rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-primary/60 focus:outline-none"
-                            />
-                            <datalist id="connection-type-options">
-                              {['friend', 'best friend', 'close friend', 'acquaintance', 'coworker', 'bandmate', 'classmate', 'roommate', 'neighbor', 'mentor', 'rival', 'ex'].map((t) => (
-                                <option key={t} value={t} />
-                              ))}
-                            </datalist>
-                            <Button
-                              size="sm"
-                              className="h-8 text-xs"
-                              disabled={!connectionTargetId || connectionSaving}
-                              onClick={() => void addConnection()}
-                              data-testid="add-connection-submit"
-                            >
-                              {connectionSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Add'}
-                            </Button>
-                          </div>
-                          {connectionError && (
-                            <p className="text-xs text-red-400 mt-2">{connectionError}</p>
-                          )}
-                        </CardContent>
-                      </Card>
-                    )}
-                    {!connectionAddOpen && connectionError && (
+                    <ConnectionSectionHeader icon={UserCircle} title="Friends & Other Connections" />
+                    {connectionError && (
                       <p className="text-xs text-red-400 mb-2">{connectionError}</p>
                     )}
                     <div className="space-y-2">
@@ -4240,18 +4110,6 @@ export const CharacterDetailModal = ({
                         <div className="text-center py-8 text-white/40">
                           <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
                           <p>No connections tracked yet</p>
-                          {!isMockDataEnabled && !connectionAddOpen && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="mt-3 h-8 text-xs"
-                              onClick={() => void toggleConnectionAdd()}
-                              data-testid="empty-add-connection"
-                            >
-                              <Plus className="h-3.5 w-3.5 mr-1" />
-                              Add a connection manually
-                            </Button>
-                          )}
                         </div>
                       )}
                     </div>
