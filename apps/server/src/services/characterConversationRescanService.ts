@@ -23,13 +23,12 @@ import { omegaMemoryService } from './omegaMemoryService';
 import { supabaseAdmin } from './supabaseClient';
 import { characterRescanStateService } from './characters/audit/characterRescanStateService';
 import { characterCardRescanAuditService } from './characters/audit/characterCardRescanAuditService';
-import { guardCharacterCandidate } from './lorebook/quality/characterCandidateGuard';
+import { isUserRejectedEntityCard } from './entityRejectionRegistry';
 import { applySuggestionCandidate } from './lorebook/suggestions/applySuggestionCandidate';
 import {
   getSuggestionWriteContext,
   withSuggestionWriteContext,
 } from './lorebook/suggestions/suggestionWriteContext';
-import { isCharacterRejectedInIndex } from './lorebook/suggestions/suggestionDecisionIndex';
 import type { EntityType } from '../types/omegaMemory';
 
 export type CharacterRescanSummary = {
@@ -69,18 +68,16 @@ type EpisodeRow = { source: 'journal' | 'chat'; id: string; text: string; at: st
 
 const JUNK = new Set(['me', 'myself', 'you', 'i', 'we', 'they', 'someone', 'somebody', 'the', 'a', 'an']);
 
-export function collectPersonMentions(text: string, userId?: string): string[] {
+function collectPersonMentions(text: string, userId?: string): string[] {
   const names = new Set<string>();
   const add = (raw: string) => {
     const name = raw.trim().replace(/\s+/g, ' ');
     const key = normalizeNameKey(name);
     if (!name || key.length < 2 || JUNK.has(key)) return;
     if (!isIndividualPersonName(name)) return;
-    const mentionKind = classifyMentionKind(name, text).kind;
-    if (mentionKind !== 'person' && mentionKind !== 'unknown') return;
-    const classification = classifyEntity(name);
+    if (classifyMentionKind(name).kind !== 'person') return;
+    const classification = classifyEntity(name, text);
     if (!isCharacterEligible(classification.type) && !isUnknownEntity(classification.type)) return;
-    if (guardCharacterCandidate({ name, domain: 'characters', evidence: text })) return;
     names.add(name);
   };
 
@@ -238,10 +235,6 @@ class CharacterConversationRescanService {
 
     const inferenceByKey = new Map<string, { displayName: string; mentionCount: number; promotable: boolean }>();
 
-    const decisions = getSuggestionWriteContext()?.decisions;
-    const skippedByDecision = (name: string, evidence?: string) =>
-      Boolean(decisions && isCharacterRejectedInIndex(decisions, name, evidence));
-
     for (const episode of episodes) {
       const inference = characterInferenceService.inferFromMessage({
         text: episode.text,
@@ -251,7 +244,7 @@ class CharacterConversationRescanService {
       for (const candidate of inference.accepted) {
         const key = normalizeNameKey(candidate.displayName);
         if (knownPersonKeys.has(key)) continue;
-        if (skippedByDecision(candidate.displayName, episode.text)) continue;
+        if (await isUserRejectedEntityCard(userId, candidate.displayName)) continue;
 
         const prev = inferenceByKey.get(key);
         const mentionCount = (prev?.mentionCount ?? 0) + 1;
@@ -270,7 +263,7 @@ class CharacterConversationRescanService {
         const key = normalizeNameKey(name);
         if (knownPersonKeys.has(key)) continue;
         if (inferenceByKey.has(key)) continue;
-        if (skippedByDecision(name, episode.text)) continue;
+        if (await isUserRejectedEntityCard(userId, name)) continue;
         mentionCounts.set(key, (mentionCounts.get(key) ?? 0) + 1);
         if (!displayNameByKey.has(key)) displayNameByKey.set(key, name);
       }
@@ -294,6 +287,7 @@ class CharacterConversationRescanService {
         domain: 'characters',
         name,
         extractor: 'character_rescan',
+        source: 'character_rescan',
         onCreate: async () => {
           createNames.push(name);
         },
@@ -315,7 +309,7 @@ class CharacterConversationRescanService {
 
       for (const entity of resolved) {
         if (entity.type !== 'PERSON' && entity.type !== 'CHARACTER') continue;
-        if (skippedByDecision(entity.primary_name)) {
+        if (await isUserRejectedEntityCard(userId, entity.primary_name)) {
           charactersSkipped += 1;
           continue;
         }
