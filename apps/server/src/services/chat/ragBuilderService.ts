@@ -10,7 +10,6 @@ import { memoryGraphService } from '../memoryGraphService';
 import type { ChatSource } from '../omegaChatService';
 import { orchestratorService } from '../orchestratorService';
 import { ragPacketCacheService } from '../ragPacketCacheService';
-import { formatSelfRomanticIdentityLines } from '../identity/selfRomanticIdentity';
 import { supabaseAdmin } from '../supabaseClient';
 
 import {
