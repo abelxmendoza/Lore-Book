@@ -21,6 +21,7 @@ import {
   isConversationalPersonIntro,
   stripConversationalPersonIntro,
 } from '../identity/personIntroDecomposition';
+import { selfRomanticIdentitySignalRe } from '../identity/selfRomanticIdentity';
 
 const norm = (s: string) => (s ?? '').toLowerCase().replace(/[‘’ʼ]/g, "'");
 
@@ -70,7 +71,8 @@ export const hasSkillSignal = (text: string): boolean => SKILL_RE.test(norm(text
 export const hasProjectSignal = (text: string): boolean => PROJECT_RE.test(norm(text));
 export const hasInterestSignal = (text: string): boolean => INTEREST_RE.test(norm(text));
 export const hasLifeChangeSignal = (text: string): boolean => LIFE_CHANGE_RE.test(norm(text));
-export const hasSelfAttributeSignal = (text: string): boolean => SELF_ATTRIBUTE_RE.test(norm(text));
+export const hasSelfAttributeSignal = (text: string): boolean =>
+  SELF_ATTRIBUTE_RE.test(norm(text)) || selfRomanticIdentitySignalRe().test(norm(text));
 export const hasWorkoutSignal = (text: string): boolean => WORKOUT_RE.test(norm(text));
 export const hasBiometricSignal = (text: string): boolean => BIOMETRIC_RE.test(norm(text));
 
