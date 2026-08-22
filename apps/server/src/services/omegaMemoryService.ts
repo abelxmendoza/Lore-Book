@@ -9,8 +9,6 @@ import { createHash } from 'node:crypto';
 import { config } from '../config';
 import { AI_THRESHOLDS } from '../config/aiThresholds';
 import { logger } from '../logger';
-import { recordSkippedOperation } from '../lib/messageCostTracker';
-import { getSemanticIr, hashIrContent, semanticIrKey, setSemanticIr } from './ingestion/semanticIrCache';
 import { assertOmegaEntityOwned, TenantAccessError } from '../lib/tenantOwnership';
 import {
   PRIORS, updateBelief, beliefStats, fromFloat, serializeBelief, deserializeBelief,
@@ -167,21 +165,7 @@ export class OmegaMemoryService {
   /**
    * Ingest text and extract entities, claims, and relationships
    */
-  async ingestText(
-    userId: string,
-    inputText: string,
-    source: ClaimSource = 'USER',
-    opts?: { sourceId?: string },
-  ): Promise<IngestionResult> {
-    const sourceId = opts?.sourceId ?? 'adhoc';
-    const contentHash = hashIrContent(inputText);
-    const irKey = semanticIrKey({ userId, sourceId, contentHash });
-    const cached = getSemanticIr<IngestionResult>(irKey);
-    if (cached) {
-      recordSkippedOperation('semantic_ir_reuse');
-      return cached;
-    }
-
+  async ingestText(userId: string, inputText: string, source: ClaimSource = 'USER'): Promise<IngestionResult> {
     try {
       // Step 1: Extract entities
       const candidateEntities = await this.extractEntities(inputText);
@@ -256,15 +240,13 @@ export class OmegaMemoryService {
         claim.confidence < 0.5 || claim.metadata?.flagged === true
       ).length;
       
-      const result = {
+      return {
         entities: resolvedEntities,
         claims: committedClaims.length > 0 ? committedClaims : claims,
         relationships,
         conflicts_detected: conflictsDetected,
         suggestions,
       };
-      setSemanticIr(irKey, result);
-      return result;
     } catch (error) {
       logger.error({ err: error, userId }, 'Failed to ingest text');
       throw error;
@@ -567,28 +549,28 @@ Never extract "LoreBook", "Lore Book", or "Lorekeeper" as entities — those ref
           const { getSuggestionWriteContext } = await import('./lorebook/suggestions/suggestionWriteContext');
           const shouldGate = !IS_TEST_ENV || Boolean(getSuggestionWriteContext());
           if (shouldGate) {
-          const { applySuggestionCandidate } = await import('./lorebook/suggestions/applySuggestionCandidate');
-          const write = await applySuggestionCandidate({
-            userId,
-            domain,
-            name: candidate.name,
-            extractor: 'omega_resolve',
-            source: 'omega_resolve',
-            writePolicy: 'inference',
-          });
-          if (write.outcome === 'ATTACHED' && write.canonical?.id) {
-            match = pool.find((row) => row.id === write.canonical?.id) ?? null;
-            if (!match) {
-              const attached = [...typeEntities.values()].flat().find((row) => row.id === write.canonical?.id);
-              match = attached ?? null;
+            const { applySuggestionCandidate } = await import('./lorebook/suggestions/applySuggestionCandidate');
+            const write = await applySuggestionCandidate({
+              userId,
+              domain,
+              name: candidate.name,
+              extractor: 'omega_resolve',
+              source: 'omega_resolve',
+              writePolicy: 'inference',
+            });
+            if (write.outcome === 'ATTACHED' && write.canonical?.id) {
+              match = pool.find((row) => row.id === write.canonical?.id) ?? null;
+              if (!match) {
+                const attached = [...typeEntities.values()].flat().find((row) => row.id === write.canonical?.id);
+                match = attached ?? null;
+              }
             }
-          }
-          if (write.outcome !== 'CREATED') {
-            if (match) {
-              resolved.push(match);
+            if (write.outcome !== 'CREATED') {
+              if (match) {
+                resolved.push(match);
+              }
+              continue;
             }
-            continue;
-          }
           }
         }
         try {
