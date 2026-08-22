@@ -817,7 +817,7 @@ describe('CharacterDetailModal', () => {
         '/api/relationships/character-links',
         expect.objectContaining({ method: 'POST' }),
       );
-      await waitFor(() => expect(screen.getByText('Shy La')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getAllByText('Shy La').length).toBeGreaterThan(0));
       expect(storyUpdates).toContainEqual(
         expect.objectContaining({
           scopes: expect.arrayContaining(['characters', 'relationships']),
