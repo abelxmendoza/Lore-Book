@@ -1,6 +1,7 @@
 import { logger } from '../../logger';
 import type { ResolvedMemoryEntry } from '../../types';
 import type { CurrentContext } from '../../types/currentContext';
+import { formatSelfRomanticIdentityLines } from '../identity/selfRomanticIdentity';
 import { chapterService } from '../chapterService';
 import { hqiService } from '../hqiService';
 import { loadPromptClaims } from '../knowledgeCrystallization';
@@ -859,7 +860,17 @@ export async function buildRAGPacket(
     allCharacters, allLocations, allChapters, timelineHierarchy, allPeoplePlaces,
     characterAttributesMap: Object.fromEntries(characterAttributesMap),
     characterMemoriesMap,
-    romanticRelationships, romanticContext, corrections, deprecatedUnits,
+    romanticRelationships,
+    selfRomanticIdentity: (() => {
+      const selfChar = (allCharacters as Array<{ metadata?: Record<string, unknown> | null }> | undefined)?.find((row) => {
+        const meta = row.metadata ?? {};
+        return meta.is_self === true || meta.is_user === true;
+      });
+      if (!selfChar?.metadata) return null;
+      const lines = formatSelfRomanticIdentityLines(selfChar.metadata);
+      return lines.length ? { lines } : null;
+    })(),
+    romanticContext, corrections, deprecatedUnits,
     workoutEvents, recentBiometrics, topInterests,
     recentInterpretations, stableArcs, episodicEvents, socialCommunities,
     crystallizedKnowledge,
