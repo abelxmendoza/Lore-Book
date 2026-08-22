@@ -1,4 +1,5 @@
 import { scrubLegacyComposerPrefill } from '../../../lib/scrubLegacyComposerPrefill';
+import { composerIntelligenceMetrics, noteRawComposerDraft } from '../../../lib/composerIntelligence';
 
 const VAULT_KEY = 'lorekeeper.storySafetyVault.v1';
 const DRAFT_PREFIX = 'lorekeeper.composerDraft.v1';
@@ -64,6 +65,8 @@ export function saveComposerDraft(ownerId: string, threadId: string | undefined,
     const key = draftKey(ownerId, threadId);
     if (text.trim()) window.localStorage.setItem(key, text);
     else window.localStorage.removeItem(key);
+    composerIntelligenceMetrics.noteStorageWrite();
+    noteRawComposerDraft(text);
   } catch {
     // Draft persistence is best-effort and must never block typing.
   }

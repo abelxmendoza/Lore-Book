@@ -4,6 +4,7 @@ import { composerMatchSlot } from '../slices/composerSlice';
 import type { RootState } from '../index';
 
 export const selectComposerDraft = (state: RootState) => state.composer.draftText;
+export const selectComposerHasDraft = (state: RootState) => state.composer.hasDraft;
 // A boolean transition (empty <-> non-empty) happens far less often than every
 // keystroke, so components that only need "is there a draft" (not its live
 // text) should read this instead of selectComposerDraft — it only triggers a

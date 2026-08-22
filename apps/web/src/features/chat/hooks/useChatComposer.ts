@@ -19,6 +19,7 @@ import {
   clearComposerState,
   dismissComposerMatch,
   setComposerDraft,
+  setComposerHasDraft,
   composerMatchSlot,
   addComposerConfirming,
   removeComposerConfirming,
@@ -38,6 +39,10 @@ import {
   saveComposerDraft,
   subscribeStoryRecovery,
 } from '../services/storySafetyVault';
+import {
+  composerIntelligenceMetrics,
+  noteRawComposerDraft,
+} from '../../../lib/composerIntelligence';
 
 type UseChatComposerOptions = {
   /** Desktop default: Enter sends, Shift+Enter newline. Mobile should pass false. */
@@ -111,10 +116,22 @@ export const useChatComposer = (
    * Explicit failure recovery (requestStoryRecovery) clears this flag.
    */
   const skipVaultAutoRestoreRef = useRef(false);
+  const hasDraftRef = useRef(Boolean(input.trim()));
   
   const moodEngine = useMoodEngine();
   const autoTagger = useAutoTagger();
   const entityIndexer = useEntityIndexer();
+
+  const syncOccupancy = useCallback(
+    (value: string) => {
+      const has = Boolean(value.trim());
+      if (has === hasDraftRef.current) return;
+      hasDraftRef.current = has;
+      composerIntelligenceMetrics.noteReduxOccupancySync();
+      dispatch(setComposerHasDraft(has));
+    },
+    [dispatch],
+  );
 
   // Draft persistence (localStorage write + Redux mirror) is expensive to run
   // synchronously on every keystroke — see storySafetyVault.saveComposerDraft.
@@ -128,6 +145,11 @@ export const useChatComposer = (
   const draftPersistKeyRef = useRef({ draftOwnerId, threadId });
   draftPersistKeyRef.current = { draftOwnerId, threadId };
 
+  useEffect(() => {
+    noteRawComposerDraft(latestDraftRef.current);
+    syncOccupancy(latestDraftRef.current);
+  }, [syncOccupancy]);
+
   const flushDraftPersist = useCallback((value: string) => {
     if (draftPersistTimerRef.current) {
       window.clearTimeout(draftPersistTimerRef.current);
@@ -140,8 +162,11 @@ export const useChatComposer = (
 
   const setInput = useCallback(
     (value: string) => {
+      composerIntelligenceMetrics.noteKeystroke();
+      noteRawComposerDraft(value);
       setInputState(value);
       latestDraftRef.current = value;
+      syncOccupancy(value);
       // Clearing (send, discard) is correctness-sensitive — persist immediately
       // so a stale non-empty draft can never reappear from a pending timer.
       if (!value.trim()) {
@@ -154,14 +179,18 @@ export const useChatComposer = (
         flushDraftPersist(value);
       }, DRAFT_PERSIST_DEBOUNCE_MS);
     },
-    [flushDraftPersist]
+    [flushDraftPersist, syncOccupancy]
   );
 
   // Blur / unmount: best-effort flush so navigating away or losing focus never
   // drops the last few debounced-but-unpersisted characters.
   const handleComposerBlur = useCallback(() => {
     if (draftPersistTimerRef.current) flushDraftPersist(latestDraftRef.current);
-  }, [flushDraftPersist]);
+    const value = latestDraftRef.current;
+    if (value.trim() && typeof entityIndexer.requestAuthoritativePreview === 'function') {
+      entityIndexer.requestAuthoritativePreview(value, threadId);
+    }
+  }, [entityIndexer, flushDraftPersist, threadId]);
 
   useEffect(() => {
     return () => {
@@ -181,17 +210,23 @@ export const useChatComposer = (
     const recovered = draft || vaultText || '';
     if (recovered && !input) {
       setInputState(recovered);
+      latestDraftRef.current = recovered;
       dispatch(setComposerDraft(recovered));
+      noteRawComposerDraft(recovered);
+      syncOccupancy(recovered);
     }
     return subscribeStoryRecovery((attempt) => {
       if (attempt.ownerId !== draftOwnerId || attempt.threadId !== threadId) return;
       skipVaultAutoRestoreRef.current = false;
       setInputState(attempt.text);
+      latestDraftRef.current = attempt.text;
       saveComposerDraft(draftOwnerId, threadId, attempt.text);
       dispatch(setComposerDraft(attempt.text));
+      noteRawComposerDraft(attempt.text);
+      syncOccupancy(attempt.text);
       requestAnimationFrame(() => textareaRef.current?.focus());
     });
-  }, [dispatch, draftOwnerId, threadId]); // input intentionally checked only when the owner/thread changes
+  }, [dispatch, draftOwnerId, threadId, syncOccupancy]); // input intentionally checked only when the owner/thread changes
 
   // Slash-command detection and clear-on-empty are cheap and expected to
   // react instantly — these stay on the immediate path, unlike the entity
@@ -233,7 +268,7 @@ export const useChatComposer = (
     localIdleTimerRef.current = window.setTimeout(() => {
       localIdleTimerRef.current = null;
       autoTagger.refreshSuggestions(input);
-      entityIndexer.analyze(input, threadId);
+      entityIndexer.analyze(input, threadId, 'lightweight');
       moodEngine.setScore(localHeuristic(input));
     }, COMPOSER_LOCAL_IDLE_DEBOUNCE_MS);
     return () => {

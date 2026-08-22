@@ -15,6 +15,7 @@ test.describe('Journey B — Living Biography', () => {
   test.beforeEach(async ({ page, context }) => {
     await context.addInitScript(() => {
       window.localStorage.setItem('dev-notice-dismissed', 'true');
+      window.localStorage.setItem('lorebook.whatsNew.seenId', '*');
     });
 
     await page.goto('/');

@@ -35,6 +35,7 @@ test.describe('Chat entity mentions — guest UI', () => {
     await context.addInitScript(
       ([key, data, threadId]) => {
         window.localStorage.setItem('dev-notice-dismissed', 'true');
+        window.localStorage.setItem('lorebook.whatsNew.seenId', '*');
         window.localStorage.setItem(key, JSON.stringify(data));
         window.localStorage.setItem('lorekeeper_chat_last_thread_guest', threadId);
         window.localStorage.setItem(

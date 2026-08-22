@@ -85,6 +85,7 @@ test.describe('Admin AI Cost dashboard', () => {
     await context.addInitScript(
       ([storageKey, session]) => {
         window.localStorage.setItem('dev-notice-dismissed', 'true');
+        window.localStorage.setItem('lorebook.whatsNew.seenId', '*');
         window.localStorage.setItem(storageKey as string, JSON.stringify(session));
       },
       [STORAGE_KEY, sessionPayload] as const,

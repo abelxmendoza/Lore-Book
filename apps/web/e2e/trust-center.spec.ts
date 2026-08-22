@@ -6,6 +6,7 @@ test.describe('Trust Center (Knowledge Gaps)', () => {
   test.beforeEach(async ({ page, context }) => {
     await context.addInitScript(() => {
       window.localStorage.setItem('dev-notice-dismissed', 'true');
+      window.localStorage.setItem('lorebook.whatsNew.seenId', '*');
       window.localStorage.setItem('lorebook_use_mock_data', 'true');
       window.sessionStorage.setItem('lk_demo_runtime', 'true');
     });

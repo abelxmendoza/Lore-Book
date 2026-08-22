@@ -2,6 +2,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import { lorebookWhatsNewPlugin } from './vite.whatsNewPlugin';
 
 // Prefer monorepo server ontology in local dev; fall back to web-local copy for
 // Vercel (CLI deploy uploads apps/web only — no ../server on the build machine).
@@ -120,6 +121,7 @@ function backendDownMiddlewarePlugin(flag: { current: boolean }) {
 export default defineConfig({
   base: '/',
   plugins: [
+    lorebookWhatsNewPlugin(),
     backendDownMiddlewarePlugin(backendUnreachable),
     react(),
   ],

@@ -143,7 +143,7 @@ describe('useChatComposer', () => {
     act(() => {
       vi.advanceTimersByTime(COMPOSER_LOCAL_IDLE_DEBOUNCE_MS);
     });
-    expect(analyze).toHaveBeenCalledWith('Tell me about Abel', undefined);
+    expect(analyze).toHaveBeenCalledWith('Tell me about Abel', undefined, 'lightweight');
 
     act(() => {
       result.current.setInput('');

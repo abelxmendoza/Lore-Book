@@ -39,6 +39,7 @@ import {
   peekChatJumpSessionId,
 } from '../../../lib/chatThreadJump';
 import { ThreadSummaryBar } from './ThreadSummaryBar';
+import { ComposerChromeTray } from './ComposerChromeTray';
 import { ThreadRosterBar } from './ThreadRosterBar';
 import { CastTrendsNudge } from './CastTrendsNudge';
 import { fetchCastThreads, fetchThreadRoster } from '../../../api/threadRoster';
@@ -90,9 +91,10 @@ import { useAppDispatch, useAppSelector, useAppStore } from '../../../store/hook
 import { clearChatFocus } from '../../../store/slices/selectionSlice';
 import { selectChatFocus } from '../../../store/selectors';
 import {
-  selectComposerDraftIsEmpty,
+  selectComposerHasDraft,
   selectVisibleComposerMatches,
 } from '../../../store/selectors/composerSelectors';
+import { getLatestRawComposerDraft } from '../../../lib/composerIntelligence';
 import { focusToComposerEntities, focusToEntityContext } from '../../../lib/chatFocusUtils';
 import { takePostEventChatHandoff } from '../../../lib/postEventChatHandoff';
 import { scrubLegacyComposerPrefill } from '../../../lib/scrubLegacyComposerPrefill';
@@ -168,7 +170,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   // entire screen (and everything under it) on every keystroke. The live
   // text/matches/slots are read directly from the store on demand in
   // handleCopyConversation instead, since that's a manual, infrequent action.
-  const composerDraftIsEmpty = useAppSelector(selectComposerDraftIsEmpty);
+  const composerHasDraft = useAppSelector(selectComposerHasDraft);
   const composerChipDebugRef = useRef<ComposerChipDebugPayload | null>(null);
   const handleComposerChipDebugChange = useCallback((snapshot: ComposerChipDebugPayload) => {
     composerChipDebugRef.current = snapshot;
@@ -196,6 +198,16 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     registerMessageRef,
     GroupToastContainer,
   } = useChat();
+
+  const visibleSources = useMemo(
+    () => (sources ?? []).filter((source) => source.usage !== 'rejected'),
+    [sources],
+  );
+  const composerSourceMeta =
+    visibleSources.length > 0 ? `${visibleSources.length} sources` : undefined;
+  const composerSourceSignal = visibleSources
+    .map((source) => `${source.type}:${source.id}`)
+    .join('|');
 
   // ── Thread lifecycle (owned by useConversationRuntime) ────────────────────────
   const {
@@ -850,7 +862,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     });
     const composerAndContext = buildComposerAndContextDebugSnapshot({
       chatFocus,
-      composerDraft: composerState.draftText,
+      composerDraft: getLatestRawComposerDraft() || composerState.draftText,
       composerEntityChips: liveChips?.certifiedEntities ?? selectVisibleComposerMatches(store.getState()),
       confirmingSlots: liveChips?.confirmingSlots ?? composerState.confirmingSlots,
       includedSlots: liveChips?.includedSlots ?? composerState.includedSlots,
@@ -1319,12 +1331,6 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             </div>
           )}
 
-          {messages.length > 0 && (
-            <div className="flex-shrink-0">
-              <ChatSourcesBar sources={sources} onSourceClick={handleSourceClick} />
-            </div>
-          )}
-
           {isGuest && !canSendChatMessage() && (
             <div className="px-4 pb-4 flex-shrink-0">
               <GuestSignUpPrompt />
@@ -1335,19 +1341,40 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
         {/* What LoreBook Knows strip — desktop only; mobile uses context menu */}
         {!contextPanelOpen && !isMobile && <WhatLoreBookKnows />}
 
-        {/* Modal / book focus — character + source section */}
-        {chatFocus && (
-          <ChatFocusChipBar focus={chatFocus} onDismiss={() => dispatch(clearChatFocus())} />
-        )}
+        {/* Sources, focus chips, and thread entities — one collapse over the composer */}
+        <ComposerChromeTray
+          key={activeThreadId ?? 'new-thread'}
+          defaultCollapsed={isMobile}
+          label="On this chat"
+          meta={composerSourceMeta}
+          expandSignal={composerSourceSignal}
+        >
+          {messages.length > 0 && (
+            <ChatSourcesBar sources={sources} onSourceClick={handleSourceClick} />
+          )}
 
-        {composerDraftIsEmpty && (
-          <ThreadEntityChips
-            messages={messages}
-            variant="composer"
-            selectedEntityId={focusedEntityId}
-            onSelectEntity={(entity) => setFocusedEntityId(entity?.id ?? null)}
+          {chatFocus && (
+            <ChatFocusChipBar focus={chatFocus} onDismiss={() => dispatch(clearChatFocus())} />
+          )}
+
+          {!composerHasDraft && (
+            <ThreadEntityChips
+              messages={messages}
+              variant="composer"
+              selectedEntityId={focusedEntityId}
+              onSelectEntity={(entity) => setFocusedEntityId(entity?.id ?? null)}
+            />
+          )}
+
+          <ReturnPointBanner
+            threadId={activeThreadId ?? undefined}
+            onContinue={(ctx: ContinueContext, surfaceLine: string) => {
+              // Prefill a natural continue prompt; structured context rides in the message for the model.
+              const prompt = `${surfaceLine}\n\n[return_point:${ctx.returnPointId} mode=${ctx.recommendedContinuityMode} state=${ctx.unresolvedState}]`;
+              setInitialPrompt(prompt);
+            }}
           />
-        )}
+        </ComposerChromeTray>
 
         {/* Composer */}
         <div
@@ -1359,14 +1386,6 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
               : ''
           }`}
         >
-          <ReturnPointBanner
-            threadId={activeThreadId ?? undefined}
-            onContinue={(ctx: ContinueContext, surfaceLine: string) => {
-              // Prefill a natural continue prompt; structured context rides in the message for the model.
-              const prompt = `${surfaceLine}\n\n[return_point:${ctx.returnPointId} mode=${ctx.recommendedContinuityMode} state=${ctx.unresolvedState}]`;
-              setInitialPrompt(prompt);
-            }}
-          />
           <ChatComposer
             onSubmit={handleSubmit}
             loading={isLoading}
