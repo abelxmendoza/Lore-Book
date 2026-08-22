@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto';
 import { config } from '../config';
 import { AI_THRESHOLDS } from '../config/aiThresholds';
 import { logger } from '../logger';
+import { recordSkippedOperation } from '../lib/messageCostTracker';
 import { assertOmegaEntityOwned, TenantAccessError } from '../lib/tenantOwnership';
 import {
   PRIORS, updateBelief, beliefStats, fromFloat, serializeBelief, deserializeBelief,
@@ -22,6 +23,7 @@ import { expandEntityCandidates } from './kinship/multiEntitySplitter';
 import { extractKinshipMentions } from './kinship/kinshipGlossary';
 import { resolveWithCore } from './entities/entityResolutionBridge';
 import { evaluateEntityCandidates } from './ontology/entityCandidateGate';
+import { getSemanticIr, hashIrContent, semanticIrKey, setSemanticIr } from './ingestion/semanticIrCache';
 import type { ResolutionContext } from './entities/entityResolutionCore';
 import type {
   Entity,
@@ -165,7 +167,25 @@ export class OmegaMemoryService {
   /**
    * Ingest text and extract entities, claims, and relationships
    */
-  async ingestText(userId: string, inputText: string, source: ClaimSource = 'USER'): Promise<IngestionResult> {
+  async ingestText(
+    userId: string,
+    inputText: string,
+    source: ClaimSource = 'USER',
+    opts?: { sourceId?: string },
+  ): Promise<IngestionResult> {
+    const irKey = opts?.sourceId
+      ? semanticIrKey({
+          userId,
+          sourceId: opts.sourceId,
+          contentHash: hashIrContent(inputText),
+        })
+      : null;
+    const cached = irKey ? getSemanticIr<IngestionResult>(irKey) : null;
+    if (cached) {
+      recordSkippedOperation('semantic_ir_reuse');
+      return cached;
+    }
+
     try {
       // Step 1: Extract entities
       const candidateEntities = await this.extractEntities(inputText);
@@ -240,13 +260,15 @@ export class OmegaMemoryService {
         claim.confidence < 0.5 || claim.metadata?.flagged === true
       ).length;
       
-      return {
+      const result = {
         entities: resolvedEntities,
         claims: committedClaims.length > 0 ? committedClaims : claims,
         relationships,
         conflicts_detected: conflictsDetected,
         suggestions,
       };
+      if (irKey) setSemanticIr(irKey, result);
+      return result;
     } catch (error) {
       logger.error({ err: error, userId }, 'Failed to ingest text');
       throw error;
