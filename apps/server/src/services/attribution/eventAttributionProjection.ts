@@ -1,8 +1,8 @@
 import {
   classifyPersonAttribution,
   classifyPlaceAttribution,
-  canonicalLocationsFromAttributions,
-  canonicalPeopleFromAttributions,
+  locationIdsForEventWrite,
+  peopleIdsForEventWrite,
   readStoredAttributions,
   type EntityAttribution,
 } from './eventEntityAttribution';
@@ -151,13 +151,9 @@ export function locationBelongsOnCanonicalEvent(
 }
 
 export function peopleIdsForChronology(event: EventAssociationView): string[] {
-  const stored = readStoredAttributions(event.metadata);
-  if (stored.length > 0) return canonicalPeopleFromAttributions(stored);
-  return [...new Set(event.people ?? [])];
+  return peopleIdsForEventWrite(event.people ?? [], readStoredAttributions(event.metadata));
 }
 
 export function locationIdsForChronology(event: EventAssociationView): string[] {
-  const stored = readStoredAttributions(event.metadata);
-  if (stored.length > 0) return canonicalLocationsFromAttributions(stored);
-  return [...new Set(event.locations ?? [])];
+  return locationIdsForEventWrite(event.locations ?? [], readStoredAttributions(event.metadata));
 }

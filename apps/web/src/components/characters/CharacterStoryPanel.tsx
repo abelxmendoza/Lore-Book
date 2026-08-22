@@ -25,9 +25,11 @@ import { format, parseISO } from 'date-fns';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card, CardContent } from '../ui/card';
-import { fetchJson } from '../../lib/api';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { sortTimelineEventsChronologically } from '../../lib/timelineSort';
+import { stitchedTimelineApi } from '../../api/stitchedTimeline';
+import { stitchedItemsToCharacterTimeline } from '../../lib/stitchedItemsToCharacterTimeline';
+import { openTimelineItemDetail } from '../../lib/resolveTimelineItemDetail';
 import type { SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
 import { EntityTimelinePanel } from '../common/EntityTimelinePanel';
 import { EventDetailModal } from '../events/EventDetailModal';
@@ -53,6 +55,9 @@ export type CharTimelineEvent = {
   characterRole?: string;
   connectionCharacter?: string;
   emotionalImpact?: string;
+  sourceKind?: 'journal_entry' | 'resolved_event' | 'timeline_event';
+  sourceId?: string;
+  userPresence?: 'attended' | 'heard_about' | 'unknown';
 };
 
 export type StoryScope = 'all' | 'events' | 'memories';
@@ -205,19 +210,47 @@ export function CharacterStoryPanel({
       setSelectedEvent(toMockEventDetail(event, characterName));
       return;
     }
-    if (!event.eventId) return;
     setLoadingEvent(true);
     try {
-      const result = await fetchJson<{ success: boolean; event: Event }>(
-        `/api/conversation/events/${event.eventId}`,
+      await openTimelineItemDetail(
+        {
+          id: event.id,
+          kind: event.sourceKind === 'journal_entry' ? 'moment' : 'event',
+          sourceKind: event.sourceKind,
+          sourceId: event.sourceId ?? event.eventId,
+          title: event.eventTitle,
+          body: event.eventSummary,
+          sortTime: event.eventDate,
+        },
+        {
+          openEvent: setSelectedEvent,
+          openMemory: (memory) => {
+            const existing = memories.find(
+              (card) => card.id === memory.journal_entry_id || card.id === memory.id,
+            );
+            if (existing) {
+              onSelectMemory?.(existing);
+              return;
+            }
+            onSelectMemory?.({
+              id: memory.id,
+              title: memory.title ?? event.eventTitle,
+              content: memory.content ?? event.eventSummary ?? '',
+              date: memory.date ?? memory.start_time ?? event.eventDate,
+              tags: [],
+              source: 'journal',
+              sourceIcon: 'book',
+              characters: [characterName],
+            });
+          },
+        },
       );
-      if (result.success && result.event) setSelectedEvent(result.event);
     } catch {
       // keep panel usable if detail fetch fails
     } finally {
       setLoadingEvent(false);
     }
-  }, [characterName, mockMode]);
+  }, [characterName, memories, mockMode, onSelectMemory]);
 
   const loadTimelines = useCallback(async () => {
     if (!characterId) return;
@@ -230,14 +263,13 @@ export function CharacterStoryPanel({
         setLoreEvents(mock.lore);
         return;
       }
-      const r = await fetchJson<{
-        success: boolean;
-        timelines: { sharedExperiences: CharTimelineEvent[]; lore: CharTimelineEvent[] };
-      }>(`/api/conversation/characters/${characterId}/timelines`);
-      if (r.success) {
-        setSharedExperiences(r.timelines.sharedExperiences || []);
-        setLoreEvents(r.timelines.lore || []);
-      }
+      const result = await stitchedTimelineApi.get({
+        scope_type: 'global',
+        character_id: characterId,
+      });
+      const mapped = stitchedItemsToCharacterTimeline(result.items ?? []);
+      setSharedExperiences(mapped.sharedExperiences);
+      setLoreEvents(mapped.lore);
     } catch {
       // keep prior data on refresh failure
     } finally {
@@ -595,7 +627,7 @@ export function CharacterStoryPanel({
                 <button
                   type="button"
                   data-testid={`character-timeline-event-${event.id}`}
-                  disabled={(!mockMode && !event.eventId) || loadingEvent}
+                  disabled={(!mockMode && !(event.sourceId ?? event.eventId)) || loadingEvent}
                   onClick={() => void openEventDetail(event)}
                   className="w-full text-left rounded-lg border border-white/10 bg-black/25 p-3 hover:bg-black/35 transition-colors disabled:cursor-default disabled:hover:bg-black/25"
                 >
@@ -619,9 +651,13 @@ export function CharacterStoryPanel({
                         {event.eventType}
                       </Badge>
                     )}
-                    {(mockMode || event.eventId) && (
+                    {(mockMode || event.sourceId || event.eventId) && (
                       <span className="text-[10px] text-white/35 ml-auto">
-                        {mockMode ? 'Open moment' : 'Open in Life Log'}
+                        {mockMode
+                          ? 'Open moment'
+                          : event.sourceKind === 'journal_entry'
+                            ? 'Open memory'
+                            : 'Open in Life Log'}
                       </span>
                     )}
                   </div>

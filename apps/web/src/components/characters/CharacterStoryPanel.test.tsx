@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { CharacterStoryPanel } from './CharacterStoryPanel';
 import type { MemoryCard } from '../../types/memory';
+import type { StitchedTimelineItem, StitchedTimelineResult } from '../../api/stitchedTimeline';
 
 vi.mock('../../contexts/MockDataContext', () => ({
   useMockData: () => ({ useMockData: false }),
@@ -10,6 +11,13 @@ vi.mock('../../contexts/MockDataContext', () => ({
 
 vi.mock('../../lib/api', () => ({
   fetchJson: vi.fn(),
+}));
+
+const stitchedGet = vi.fn();
+vi.mock('../../api/stitchedTimeline', () => ({
+  stitchedTimelineApi: {
+    get: (...args: unknown[]) => stitchedGet(...args),
+  },
 }));
 
 vi.mock('../../lib/storyRefresh', () => ({
@@ -42,33 +50,94 @@ const sampleMemory: MemoryCard = {
   characters: ['Jerry Medina'],
 };
 
+function stitchedItem(
+  overrides: Partial<StitchedTimelineItem> & Pick<StitchedTimelineItem, 'id' | 'sourceId' | 'sourceKind' | 'title'>,
+): StitchedTimelineItem {
+  return {
+    kind: overrides.sourceKind === 'journal_entry' ? 'moment' : 'event',
+    sourceIds: [overrides.sourceId],
+    sourceType: overrides.sourceKind,
+    sortTime: '2024-06-01T00:00:00.000Z',
+    userSortIndex: null,
+    body: '',
+    ...overrides,
+  };
+}
+
+function stitchedResult(items: StitchedTimelineItem[]): StitchedTimelineResult {
+  return {
+    scope_type: 'global',
+    scope_id: '00000000-0000-0000-0000-000000000000',
+    scope_label: null,
+    items,
+    has_user_order: false,
+  };
+}
+
+const defaultItems: StitchedTimelineItem[] = [
+  stitchedItem({
+    id: 'event:evt-1',
+    sourceId: 'evt-1',
+    sourceKind: 'resolved_event',
+    title: 'Dinner with Jerry',
+    body: 'Shared meal',
+    userPresence: 'attended',
+  }),
+  stitchedItem({
+    id: 'event:evt-2',
+    sourceId: 'evt-2',
+    sourceKind: 'resolved_event',
+    title: 'Graduated college',
+    body: 'Finished the degree',
+    sortTime: '2020-05-15T00:00:00.000Z',
+    userPresence: 'heard_about',
+  }),
+];
+
 describe('CharacterStoryPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    stitchedGet.mockResolvedValue(stitchedResult(defaultItems));
     fetchJsonMock.mockResolvedValue({
       success: true,
-      timelines: {
-        sharedExperiences: [
-          {
-            id: 'cte-1',
-            eventId: 'evt-1',
-            eventTitle: 'Dinner with Jerry',
-            eventDate: '2024-06-01T00:00:00.000Z',
-            eventSummary: 'Shared meal',
-            userWasPresent: true,
-          },
-        ],
-        lore: [
-          {
-            id: 'cte-2',
-            eventId: 'evt-2',
-            eventTitle: 'Graduated college',
-            eventDate: '2020-05-15T00:00:00.000Z',
-            eventSummary: 'Finished the degree',
-          },
-        ],
-      },
+      event: { id: 'evt-1', title: 'Dinner with Jerry', date: '2024-06-01' },
     });
+  });
+
+  it('loads character-scoped stitched chronology instead of character_timeline_events', async () => {
+    render(
+      <MemoryRouter>
+        <CharacterStoryPanel characterId="c1" characterName="Jerry Medina" active />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Dinner with Jerry')).toBeInTheDocument());
+    expect(stitchedGet).toHaveBeenCalledWith(
+      expect.objectContaining({ scope_type: 'global', character_id: 'c1' }),
+    );
+    expect(
+      fetchJsonMock.mock.calls.some(([url]) =>
+        String(url).includes('/api/conversation/characters/c1/timelines'),
+      ),
+    ).toBe(false);
+    expect(screen.getByText('Graduated college')).toBeInTheDocument();
+    expect(screen.getAllByText('With you').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Without you').length).toBeGreaterThan(0);
+  });
+
+  it('renders an empty stitched result without falling back to legacy character timeline rows', async () => {
+    stitchedGet.mockResolvedValue(stitchedResult([]));
+    render(
+      <MemoryRouter>
+        <CharacterStoryPanel characterId="c1" characterName="Marcus" active />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('No story for Marcus yet')).toBeInTheDocument();
+    expect(screen.queryByText('Dinner with Jerry')).not.toBeInTheDocument();
+    expect(
+      fetchJsonMock.mock.calls.some(([url]) => String(url).includes('/api/conversation/characters/')),
+    ).toBe(false);
   });
 
   it('links out to Life Log and Omni Timeline for the character', async () => {
@@ -86,29 +155,7 @@ describe('CharacterStoryPanel', () => {
     expect(omni.getAttribute('href')).toBe('/timeline?view=events&characterId=c1');
   });
 
-  it('opens Life Log event detail when a timeline row is clicked', async () => {
-    fetchJsonMock
-      .mockResolvedValueOnce({
-        success: true,
-        timelines: {
-          sharedExperiences: [
-            {
-              id: 'cte-1',
-              eventId: 'evt-1',
-              eventTitle: 'Dinner with Jerry',
-              eventDate: '2024-06-01T00:00:00.000Z',
-              eventSummary: 'Shared meal',
-              userWasPresent: true,
-            },
-          ],
-          lore: [],
-        },
-      })
-      .mockResolvedValueOnce({
-        success: true,
-        event: { id: 'evt-1', title: 'Dinner with Jerry', date: '2024-06-01' },
-      });
-
+  it('opens resolved-event detail by sourceId, not the stitched composite id', async () => {
     render(
       <MemoryRouter>
         <CharacterStoryPanel characterId="c1" characterName="Jerry Medina" active />
@@ -116,8 +163,49 @@ describe('CharacterStoryPanel', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Dinner with Jerry')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('character-timeline-event-cte-1'));
+    fireEvent.click(screen.getByTestId('character-timeline-event-event:evt-1'));
     await waitFor(() => expect(screen.getByTestId('event-detail-modal')).toBeInTheDocument());
+    expect(fetchJsonMock).toHaveBeenCalledWith('/api/conversation/events/evt-1');
+    expect(
+      fetchJsonMock.mock.calls.some(([url]) => String(url) === '/api/conversation/events/event:evt-1'),
+    ).toBe(false);
+  });
+
+  it('does not fetch conversation-events when a journal-shaped stitched item is clicked', async () => {
+    const onSelectMemory = vi.fn();
+    stitchedGet.mockResolvedValue(
+      stitchedResult([
+        stitchedItem({
+          id: 'moment:journal-1',
+          sourceId: 'journal-1',
+          sourceKind: 'journal_entry',
+          title: 'Walk home from HQ',
+          body: 'Wrote it down after the MemoVault demo.',
+          userPresence: 'attended',
+        }),
+      ]),
+    );
+
+    render(
+      <MemoryRouter>
+        <CharacterStoryPanel
+          characterId="char-marcus"
+          characterName="Marcus"
+          active
+          onSelectMemory={onSelectMemory}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByTestId('character-timeline-event-moment:journal-1'));
+    await waitFor(() => {
+      expect(onSelectMemory).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'journal-1', title: 'Walk home from HQ' }),
+      );
+    });
+    expect(
+      fetchJsonMock.mock.calls.some(([url]) => String(url).includes('/api/conversation/events/')),
+    ).toBe(false);
   });
 
   it('merges journal memories into the story chronology and scopes by chip', async () => {
@@ -183,6 +271,21 @@ describe('CharacterStoryPanel', () => {
     await waitFor(() => expect(screen.getByTestId('open-dating-romance-overview')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('open-dating-romance-overview'));
     expect(onOpenDatingArc).toHaveBeenCalledTimes(1);
+  });
+
+  it('rescans by reloading stitched chronology instead of rebuilding character_timeline_events', async () => {
+    render(
+      <MemoryRouter>
+        <CharacterStoryPanel characterId="char-marcus" characterName="Marcus" active />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(stitchedGet).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: /rescan/i }));
+    await waitFor(() => expect(stitchedGet).toHaveBeenCalledTimes(2));
+    expect(
+      fetchJsonMock.mock.calls.some(([url]) => String(url).includes('rebuild-timelines')),
+    ).toBe(false);
   });
 
   it('orders memories by occurrence and keeps recording time as metadata', async () => {

@@ -5,7 +5,6 @@
 import { logger } from '../../logger';
 import { getCharacterKnowledgeBase } from '../characterKnowledgeBaseService';
 import { entityAttributeDetector } from '../conversationCentered/entityAttributeDetector';
-import { characterTimelineBuilder } from '../conversationCentered/characterTimelineBuilder';
 import { getCharacterEvidenceLocker } from '../characterEvidenceService';
 import { familyTreeService } from '../familyTreeService';
 import { organizationService } from '../organizationService';
@@ -21,6 +20,8 @@ import {
   getCurrentCharacterRelationship,
   type RelationshipProjection,
 } from './characterRelationshipAuthorityService';
+import { stitchedTimelineService } from '../chronologyV2/stitchedTimelineService';
+import { stitchedItemsToCharacterTimelines } from './stitchedItemsToCharacterTimelines';
 
 export const CHARACTER_QUERY_SECTIONS = [
   'identity',
@@ -415,20 +416,18 @@ export async function getCharacterQuery(
     tasks.push(
       (async () => {
         const timelines = await softSection('timelines', partialErrors, async () => {
-          const built = await characterTimelineBuilder.buildTimelines(userId, characterId);
-          const recent = [...built.sharedExperiences, ...built.lore]
-            .sort(
-              (a, b) =>
-                new Date(b.eventDate).getTime() - new Date(a.eventDate).getTime(),
-            )
-            .slice(0, 8);
+          const stitched = await stitchedTimelineService.getStitchedTimeline(userId, {
+            scope_type: 'global',
+            character_id: characterId,
+          });
+          const built = stitchedItemsToCharacterTimelines(stitched.items);
           return {
             sharedExperiences: built.sharedExperiences as unknown as Array<Record<string, unknown>>,
             lore: built.lore as unknown as Array<Record<string, unknown>>,
             summary: {
-              sharedCount: built.sharedExperiences.length,
-              loreCount: built.lore.length,
-              recent: recent as unknown as Array<Record<string, unknown>>,
+              sharedCount: built.summary.sharedCount,
+              loreCount: built.summary.loreCount,
+              recent: built.summary.recent as unknown as Array<Record<string, unknown>>,
             },
           };
         });

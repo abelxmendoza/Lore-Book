@@ -11,6 +11,13 @@ vi.mock('../../lib/api', () => ({
   fetchJson: vi.fn(),
 }));
 
+const stitchedGet = vi.fn();
+vi.mock('../../api/stitchedTimeline', () => ({
+  stitchedTimelineApi: {
+    get: (...args: unknown[]) => stitchedGet(...args),
+  },
+}));
+
 vi.mock('../../lib/storyRefresh', () => ({
   onStoryDataUpdated: () => () => {},
 }));
@@ -33,29 +40,43 @@ const fetchJsonMock = vi.mocked(fetchJson);
 describe('CharacterTimelinePanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    stitchedGet.mockResolvedValue({
+      scope_type: 'global',
+      scope_id: '00000000-0000-0000-0000-000000000000',
+      scope_label: null,
+      has_user_order: false,
+      items: [
+        {
+          id: 'event:evt-1',
+          kind: 'event',
+          sourceId: 'evt-1',
+          sourceIds: ['evt-1'],
+          sourceKind: 'resolved_event',
+          sourceType: 'resolved_event',
+          sortTime: '2024-06-01T00:00:00.000Z',
+          userSortIndex: null,
+          title: 'Dinner with Jerry',
+          body: 'Shared meal',
+          userPresence: 'attended',
+        },
+        {
+          id: 'event:evt-2',
+          kind: 'event',
+          sourceId: 'evt-2',
+          sourceIds: ['evt-2'],
+          sourceKind: 'resolved_event',
+          sourceType: 'resolved_event',
+          sortTime: '2020-05-15T00:00:00.000Z',
+          userSortIndex: null,
+          title: 'Graduated college',
+          body: 'Finished the degree',
+          userPresence: 'heard_about',
+        },
+      ],
+    });
     fetchJsonMock.mockResolvedValue({
       success: true,
-      timelines: {
-        sharedExperiences: [
-          {
-            id: 'cte-1',
-            eventId: 'evt-1',
-            eventTitle: 'Dinner with Jerry',
-            eventDate: '2024-06-01T00:00:00.000Z',
-            eventSummary: 'Shared meal',
-            userWasPresent: true,
-          },
-        ],
-        lore: [
-          {
-            id: 'cte-2',
-            eventId: 'evt-2',
-            eventTitle: 'Graduated college',
-            eventDate: '2020-05-15T00:00:00.000Z',
-            eventSummary: 'Finished the degree',
-          },
-        ],
-      },
+      event: { id: 'evt-1', title: 'Dinner with Jerry', date: '2024-06-01' },
     });
   });
 
@@ -77,27 +98,6 @@ describe('CharacterTimelinePanel', () => {
   });
 
   it('opens Life Log event detail when a timeline row is clicked', async () => {
-    fetchJsonMock
-      .mockResolvedValueOnce({
-        success: true,
-        timelines: {
-          sharedExperiences: [
-            {
-              id: 'cte-1',
-              eventId: 'evt-1',
-              eventTitle: 'Dinner with Jerry',
-              eventDate: '2024-06-01T00:00:00.000Z',
-              userWasPresent: true,
-            },
-          ],
-          lore: [],
-        },
-      })
-      .mockResolvedValueOnce({
-        success: true,
-        event: { id: 'evt-1', title: 'Dinner with Jerry', date: '2024-06-01' },
-      });
-
     render(
       <MemoryRouter>
         <CharacterTimelinePanel characterId="c1" characterName="Jerry Medina" active />
@@ -105,10 +105,13 @@ describe('CharacterTimelinePanel', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Dinner with Jerry')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('character-timeline-event-cte-1'));
+    fireEvent.click(screen.getByTestId('character-timeline-event-event:evt-1'));
 
     await waitFor(() => expect(screen.getByTestId('event-detail-modal')).toBeInTheDocument());
     expect(fetchJsonMock).toHaveBeenCalledWith('/api/conversation/events/evt-1');
+    expect(stitchedGet).toHaveBeenCalledWith(
+      expect.objectContaining({ scope_type: 'global', character_id: 'c1' }),
+    );
   });
 
   it('opens a local event detail modal when a demo timeline moment is clicked', async () => {
