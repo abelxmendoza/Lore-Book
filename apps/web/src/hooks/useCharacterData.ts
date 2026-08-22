@@ -10,6 +10,7 @@ import {
   type RelationshipEdge,
   type CharacterMemory
 } from '../api/characters';
+import { onStoryDataUpdated } from '../lib/storyRefresh';
 
 export const useCharacterData = (characterId: string) => {
   const [profile, setProfile] = useState<CharacterProfile | null>(null);
@@ -48,6 +49,21 @@ export const useCharacterData = (characterId: string) => {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!characterId) return;
+    return onStoryDataUpdated((detail) => {
+      const scopes = detail.scopes ?? [];
+      const hits =
+        scopes.length === 0 ||
+        scopes.includes('all') ||
+        scopes.includes('characters') ||
+        scopes.includes('relationships');
+      if (!hits) return;
+      if (detail.characterIds?.length && !detail.characterIds.includes(characterId)) return;
+      void refresh();
+    });
+  }, [characterId, refresh]);
 
   return { profile, relationships, memories, closeness, influence, refresh };
 };

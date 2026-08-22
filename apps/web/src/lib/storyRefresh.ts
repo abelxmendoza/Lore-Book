@@ -1,7 +1,20 @@
 /** Fired after chat ingestion finishes so family trees, timelines, and groups can refresh. */
 export const STORY_DATA_UPDATED = 'lk:story-data-updated';
 
-export type StoryRefreshScope = 'family' | 'timeline' | 'organizations' | 'characters' | 'skills' | 'quests' | 'projects' | 'story' | 'all';
+export type StoryRefreshScope =
+  | 'family'
+  | 'timeline'
+  | 'organizations'
+  | 'characters'
+  | 'relationships'
+  | 'skills'
+  | 'quests'
+  | 'projects'
+  | 'story'
+  | 'all';
+
+/** Character modal + Character Book + live relationship graph. Not Omni/Calendar. */
+export const RELATIONSHIP_STORY_SCOPES: StoryRefreshScope[] = ['characters', 'relationships'];
 
 export type StoryDataUpdatedDetail = {
   scopes?: StoryRefreshScope[];

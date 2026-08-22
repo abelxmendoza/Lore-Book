@@ -48,15 +48,12 @@ export {
   isPronounPersonQuery,
   parseTalkAboutSubject,
   parseNamedWhoIsSubject,
+  parseNamedChatSubject,
+  subjectNamesMatch,
   messageConflictsWithPinnedFocus,
   countListedNameLikeTokens,
   type ClosedScopeReason,
 } from "./chat/closedScopeIntent";
-
-export {
-  parseNamedChatSubject,
-  subjectNamesMatch,
-} from "./chat/namedChatSubject";
 
 export {
   CHARACTER_QUERY_SECTIONS,
