@@ -43,7 +43,6 @@ import {
   setFilterConfidenceMin,
   setFilterConfidenceMax,
   setFilterProficiencyMin,
-  resetSkillsFilters,
   type SkillCategoryFilter,
   type SkillSortOption,
 } from '../../store/slices/skillsBookSlice';

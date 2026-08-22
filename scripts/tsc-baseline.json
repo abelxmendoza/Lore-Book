@@ -523,7 +523,6 @@
     "src/components/perceptions/PerceptionEntryModal.tsx::TS2345": 2,
     "src/components/persona/PersonaPanel.tsx::TS2322": 1,
     "src/components/PhotoGallery.tsx::TS7006": 1,
-    "src/components/query/BookQueryPanel.tsx::TS2550": 1,
     "src/components/quests/QuestCard.tsx::TS2307": 1,
     "src/components/quests/QuestCard.tsx::TS7053": 1,
     "src/components/quests/QuestCard.tsx::TS7006": 2,

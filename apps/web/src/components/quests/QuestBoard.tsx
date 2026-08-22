@@ -13,7 +13,6 @@ import { EMPTY_QUEST_BOARD } from '../../store/hooks/useQuestData';
 import { useBookEntityIndexSearch } from '../../store/hooks/useEntityBooks';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import type { Quest, QuestStatus, QuestType } from '../../types/quest';
-import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 
 // Prevent body scroll only when mobile detail overlay is open (sm:hidden fixed modal)
 const useBodyScrollLock = (isLocked: boolean) => {
@@ -110,7 +109,6 @@ export const QuestBoard = ({ onOpenAppSidebar }: QuestBoardProps = {}) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedQuestId, setSelectedQuestId] = useState<string | null>(null);
   const isMobile = useIsMobile();
-  const useMock = useShouldUseMockData();
 
   // Lock body scroll only when mobile detail overlay is open (desktop detail lives in right panel, no lock)
   useBodyScrollLock(selectedQuestId !== null && isMobile);
@@ -373,7 +371,6 @@ export const QuestBoard = ({ onOpenAppSidebar }: QuestBoardProps = {}) => {
     () => [...mainQuests, ...sideQuests].filter((q) => q.status === 'active').length,
     [mainQuests, sideQuests]
   );
-
 
   // Auto-select first quest if none selected or current selection is not in displayed quests
   // Only auto-select on desktop (not mobile) to avoid auto-opening modal
