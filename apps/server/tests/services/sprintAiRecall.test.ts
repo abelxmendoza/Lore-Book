@@ -14,6 +14,7 @@ import {
 import {
   containsUnverifiedClaim,
   FORBIDDEN_UNVERIFIED_CLAIMS,
+  isMultiTransitionLifeUpdate,
   VERIFIED_SILENCE_FALLBACK,
 } from '../../src/services/chat/verifiedMemoryLanguage';
 import {
@@ -76,6 +77,14 @@ describe('Sprint AI — memory trust & recall', () => {
     it('documents forbidden patterns', () => {
       expect(FORBIDDEN_UNVERIFIED_CLAIMS.length).toBeGreaterThan(3);
       expect(VERIFIED_SILENCE_FALLBACK).not.toMatch(/captured|saved/i);
+    });
+
+    it('distinguishes a multi-transition life update from a short moment', () => {
+      const update =
+        'I completed the interview at Vanguard Robotics and was rejected afterward. ' +
+        'I am still interviewing for an autonomy role, and right now I am focused on another active job opportunity. '.repeat(2);
+      expect(isMultiTransitionLifeUpdate(update)).toBe(true);
+      expect(isMultiTransitionLifeUpdate('I went for coffee yesterday.')).toBe(false);
     });
   });
 

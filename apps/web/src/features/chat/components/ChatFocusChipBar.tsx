@@ -129,7 +129,9 @@ export function ChatFocusChipBar({ focus, onDismiss }: Props) {
         </CompactChipStrip>
         {focus.entityType === 'character' && (
           <p className="mt-1 px-1 text-[11px] leading-snug text-white/45">
-            Their chip is attached — chat corrections like renaming them or fixing their role update their profile and knowledge base.
+            {isLove
+              ? 'Dating & Romance focus — talk about feelings, history, and this connection. Corrections still update their Character Book card.'
+              : 'Their chip is attached — chat corrections like renaming them or fixing their role update their profile and knowledge base.'}
           </p>
         )}
       </div>

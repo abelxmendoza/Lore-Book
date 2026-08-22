@@ -70,5 +70,7 @@ describe('relationshipTypeSpecificity', () => {
     expect(relationshipTypeSpecificity('cousin_of')).toBeGreaterThan(
       relationshipTypeSpecificity('family'),
     );
+    expect(relationshipTypeSpecificity('mother')).toBeGreaterThan(relationshipTypeSpecificity('friend'));
+    expect(relationshipTypeSpecificity('grandson')).toBeGreaterThan(relationshipTypeSpecificity('child'));
   });
 });

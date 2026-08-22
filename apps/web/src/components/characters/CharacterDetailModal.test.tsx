@@ -109,6 +109,15 @@ vi.mock('../../store/api/entitiesApi', () => ({
     })),
   ],
   useReclassifyEntityMutation: () => [reclassifyTrigger],
+  useAddCharacterToDatingBookMutation: () => [
+    vi.fn(() => ({
+      unwrap: vi.fn().mockResolvedValue({ created: true, relationship: { id: 'rel-new' } }),
+    })),
+  ],
+}));
+
+vi.mock('../../hooks/useAccountAuthority', () => ({
+  useAccountAuthority: () => ({ authority: null, loading: false, error: null, refresh: vi.fn() }),
 }));
 
 const mockCharacter: Character = {
@@ -448,7 +457,7 @@ describe('CharacterDetailModal', () => {
     );
   });
 
-  it('keeps Character Book visible when the character also has romance context', async () => {
+  it('uses Dating & Romance focus when the character is already in that book', async () => {
     const user = userEvent.setup();
     render(
       <CharacterDetailModal
@@ -485,8 +494,9 @@ describe('CharacterDetailModal', () => {
     expect(mockOpenChatWithFocus).toHaveBeenCalledWith(
       expect.objectContaining({
         relationshipId: 'romance-1',
-        sourceSurface: 'characters',
-        sourceLabel: 'Character Book',
+        sourceSurface: 'love',
+        sourceLabel: 'Dating & Romance',
+        knowledgeScope: expect.stringMatching(/romantic interest/i),
       }),
     );
   });

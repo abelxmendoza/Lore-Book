@@ -11,6 +11,7 @@ import { logger } from '../../logger';
 import { runWithMessageCost } from '../../lib/messageCostTracker';
 import { supabaseAdmin } from '../supabaseClient';
 import { pipelineRunService } from './pipelineRunService';
+import { buildIntegrationOutcomeSummary } from './integrationOutcomeSummary';
 import { ingestionJobStore } from './ingestionJobStore';
 import {
   classifyIngestionError,
@@ -590,7 +591,7 @@ class IngestionQueue {
 
       if (runId) {
         const sinceIso = new Date(attemptStart).toISOString();
-        void this.captureProductionSummary(runId, job.userId, sinceIso, attemptStart, entityResolutionFailed);
+        await this.captureProductionSummary(runId, job.userId, sinceIso, attemptStart, entityResolutionFailed);
       }
       if (runId) await pipelineRunService.complete(runId, attemptStart);
       void import('../loreReadiness/loreReadinessService').then(({ loreReadinessService }) => {
@@ -715,14 +716,24 @@ class IngestionQueue {
       const charCount = charRes.status === 'fulfilled' ? (charRes.value.count ?? 0) : -1;
       const candCount = candRes.status === 'fulfilled' ? (candRes.value.count ?? 0) : -1;
       const kuTouched = kuRes2.status === 'fulfilled' ? (kuRes2.value.count ?? 0) : -1;
+      const integrationOutcomes = buildIntegrationOutcomeSummary({
+        entityResolutionFailed,
+        knowledgeUnitsCreated: kuCount,
+        knowledgeUnitsTouched: kuTouched,
+        eventsAssembled: evCount,
+        entitiesCreated: charCount,
+        eventCandidatesCreated: candCount,
+      });
 
       await pipelineRunService.recordStep(runId, {
         step: 'production_summary',
         // A prior entity-resolution failure means these counts are known-incomplete
         // (the OpenAI call behind extraction threw and was caught upstream) — surface
         // that here instead of reporting green with silently-zeroed counts.
-        success: !entityResolutionFailed,
-        error: entityResolutionFailed ? 'entity_resolution_failed' : undefined,
+        success: integrationOutcomes.complete,
+        error: integrationOutcomes.failedStages.length > 0
+          ? integrationOutcomes.failedStages.join(',')
+          : undefined,
         duration_ms: Date.now() - startedAt,
         row_count: kuCount,
         metadata: {
@@ -732,6 +743,7 @@ class IngestionQueue {
           entities_created: charCount,
           event_candidates_created: candCount,
           entity_resolution_failed: entityResolutionFailed,
+          integration_outcomes: integrationOutcomes,
         },
       });
     } catch {

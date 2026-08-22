@@ -409,13 +409,6 @@ const AppContent = ({ defaultSurface: _defaultSurface }: AppContentProps) => {
               : 'overflow-y-auto overscroll-y-contain flex flex-col p-4 sm:p-6 lg:p-8 xl:p-10 max-lg:pt-[calc(env(safe-area-inset-top,0.75rem)+2.75rem)] sm:pt-6 sm:pb-24'
         }`}
         role="main"
-        style={
-          isViewportLocked
-            ? undefined
-            : isHome
-              ? { minHeight: '100vh', overflowY: 'auto' }
-              : undefined
-        }
       >
         <div
           className={

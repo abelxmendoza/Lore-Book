@@ -36,9 +36,9 @@ class RAGPacketCacheService {
   /**
    * Generate cache key from user ID and message
    */
-  private hashMessage(userId: string, message: string): string {
+  private hashMessage(userId: string, message: string, contextKey = ''): string {
     const normalized = message.trim().toLowerCase().slice(0, 500);
-    const key = `${userId}:${normalized}`;
+    const key = `${userId}:${contextKey.trim().toLowerCase().slice(0, 300)}:${normalized}`;
     return crypto.createHash('sha256').update(key).digest('hex');
   }
 
@@ -46,8 +46,8 @@ class RAGPacketCacheService {
    * Get cached RAG packet — LRU: promote to tail on hit so eviction always removes
    * the least-recently-used entry, not the oldest-inserted one.
    */
-  getCachedPacket(userId: string, message: string): any | null {
-    const hash = this.hashMessage(userId, message);
+  getCachedPacket(userId: string, message: string, contextKey = ''): any | null {
+    const hash = this.hashMessage(userId, message, contextKey);
     const cached = this.memoryCache.get(hash);
 
     if (!cached) return null;
@@ -67,8 +67,8 @@ class RAGPacketCacheService {
   /**
    * Cache RAG packet — evicts LRU entry (Map head) when at capacity.
    */
-  cachePacket(userId: string, message: string, packet: any): void {
-    const hash = this.hashMessage(userId, message);
+  cachePacket(userId: string, message: string, packet: any, contextKey = ''): void {
+    const hash = this.hashMessage(userId, message, contextKey);
 
     // If already present, delete first so re-insert lands at tail (MRU)
     if (this.memoryCache.has(hash)) {
@@ -119,4 +119,3 @@ class RAGPacketCacheService {
 }
 
 export const ragPacketCacheService = new RAGPacketCacheService();
-

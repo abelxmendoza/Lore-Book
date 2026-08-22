@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { CharacterMergePanel } from './CharacterMergePanel';
 import type { Character } from './CharacterProfileCard';
+import { useMergeCharactersMutation } from '../../store/api/entitiesApi';
 
 vi.mock('../../store/api/entitiesApi', () => {
   const mutationHook = () =>
@@ -13,6 +14,10 @@ vi.mock('../../store/api/entitiesApi', () => {
     useMergeCharactersMutation: mutationHook(),
   };
 });
+
+vi.mock('../../lib/api', () => ({
+  fetchJson: vi.fn().mockResolvedValue({ duplicate_groups: [] }),
+}));
 
 vi.mock('../../store/invalidateEntityCache', () => ({
   invalidateEntityTags: vi.fn(),
@@ -29,6 +34,10 @@ const baseCharacter = (overrides: Partial<Character>): Character => ({
 describe('CharacterMergePanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(useMergeCharactersMutation).mockReturnValue([
+      vi.fn(() => ({ unwrap: vi.fn().mockResolvedValue({}) })),
+      {} as never,
+    ]);
   });
 
   it('shows consolidate controls and protocol copy', () => {
@@ -106,5 +115,40 @@ describe('CharacterMergePanel', () => {
     expect(payload).toContain('Consolidate Characters — Duplicate Groups');
     expect(payload).toContain('Alex Rivera');
     expect(payload).toContain('Match type: exact');
+  });
+
+  it('shows the merge failure on the keep bar', async () => {
+    const unwrap = vi.fn().mockRejectedValue({
+      status: 400,
+      message: 'Could not update the surviving card: duplicate key',
+    });
+    vi.mocked(useMergeCharactersMutation).mockReturnValue([
+      vi.fn(() => ({ unwrap })),
+      {} as never,
+    ]);
+
+    render(
+      <CharacterMergePanel
+        characters={[
+          baseCharacter({ id: '11111111-1111-1111-1111-111111111111', name: 'Jamie' }),
+          baseCharacter({ id: '22222222-2222-2222-2222-222222222222', name: 'J' }),
+        ]}
+        onConsolidated={vi.fn()}
+        selectionMode
+        onSelectionModeChange={vi.fn()}
+        selectedForMerge={new Set([
+          '11111111-1111-1111-1111-111111111111',
+          '22222222-2222-2222-2222-222222222222',
+        ])}
+        onToggleSelected={vi.fn()}
+        onClearSelection={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Keep Jamie/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /Could not update the surviving card/i
+    );
   });
 });

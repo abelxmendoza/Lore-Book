@@ -67,6 +67,8 @@ export type EvidenceContract = {
    */
   closedScope: boolean;
   closedScopeReason?: ClosedScopeReason;
+  /** Exact calendar window requested by the user (currently month-scoped recall). */
+  temporalRange?: { start: number; end: number; label: string };
   /** Sources scoring below this never reach the model. */
   minScore: number;
   maxSources: number;
@@ -106,6 +108,38 @@ const STOPWORDS = new Set([
   'to', 'in', 'on', 'at', 'for', 'you', 'your', 'be', 'been', 'it', 'this',
   'that', 'right', 'now', 'currently', 'anyone', 'someone', 'having',
 ]);
+
+/**
+ * Bare pronouns never belong in entityNames — they were never a real
+ * roster/character name to begin with (stale pronoun-shaped junk cards
+ * some accounts still carry from before extraction rejected them), and
+ * "his"/"it"/"her" are common enough substrings ("this" contains "his")
+ * that a raw `text.includes(name)` match turns any unrelated memory into a
+ * false "entity hit" that drags it into the model's context.
+ */
+const PRONOUN_ENTITY_JUNK = new Set([
+  'i', 'me', 'my', 'mine', 'you', 'your', 'yours', 'he', 'him', 'his', 'she',
+  'her', 'hers', 'they', 'them', 'their', 'we', 'us', 'our', 'it', 'its',
+  'this', 'that', 'these', 'those',
+]);
+
+function isUsableEntityName(name: string): boolean {
+  return Boolean(name) && !PRONOUN_ENTITY_JUNK.has(name);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Whole-word/phrase containment — not raw substring. A short name like "Ink"
+ * must not match inside "think" or "drink", and "his" must not match inside
+ * "this"; `String.includes` was doing exactly that for every short entity
+ * name before this check.
+ */
+function textContainsEntityName(text: string, name: string): boolean {
+  return new RegExp(`\\b${escapeRegExp(name)}\\b`, 'i').test(text);
+}
 
 function terms(text: string): string[] {
   return text
@@ -214,6 +248,7 @@ export function buildEvidenceContract(
    * closed-scope contracts.
    */
   rosterNames?: string[],
+  now = new Date(),
 ): EvidenceContract {
   const topic = detectTopic(message);
   const rule = TOPIC_RULES.find((r) => r.topic === topic);
@@ -224,14 +259,32 @@ export function buildEvidenceContract(
     .replace(/[?.!]+$/g, '')
     .trim()
     .toLowerCase();
-  const entityNames = (plan?.primaryEntities ?? []).map((e) => e.name.toLowerCase()).filter(Boolean);
-  if (isTimeline && timelineSubject.length >= 3) entityNames.push(timelineSubject);
+  const entityNames = (plan?.primaryEntities ?? [])
+    .map((e) => e.name.toLowerCase())
+    .filter(isUsableEntityName);
+  if (isTimeline && timelineSubject.length >= 3 && isUsableEntityName(timelineSubject)) {
+    entityNames.push(timelineSubject);
+  }
 
   const { closedScope, reason: closedScopeReason } = isClosedScopeQuery(message);
   const closedScopeActive = closedScope || Boolean(plan?.closedScope);
+  const currentMonth = /\b(?:this|current) month\b/i.test(message);
+  const temporalRange = currentMonth
+    ? {
+        start: new Date(now.getFullYear(), now.getMonth(), 1).getTime(),
+        end: new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime() - 1,
+        label: 'current_month',
+      }
+    : undefined;
   if (closedScopeActive && rosterNames?.length) {
-    entityNames.push(...rosterNames.map((n) => n.toLowerCase()).filter(Boolean));
+    entityNames.push(...rosterNames.map((n) => n.toLowerCase()).filter(isUsableEntityName));
   }
+
+  const personQuery =
+    /\b(?:who\s+(?:is|was|are|were)|tell me about|what do you know about|i want to talk about|help me capture)\b/i.test(
+      message,
+    );
+  const requireSubjectOverlap = isTimeline || (personQuery && entityNames.length > 0);
 
   return {
     topic,
@@ -241,9 +294,10 @@ export function buildEvidenceContract(
     forbiddenPatterns: rule ? [rule.forbidden] : [],
     queryTerms: terms(message),
     entityNames: [...new Set(entityNames)],
-    requireSubjectOverlap: isTimeline,
+    requireSubjectOverlap,
     closedScope: closedScopeActive,
     closedScopeReason,
+    temporalRange,
     minScore: DEFAULT_MIN_EVIDENCE_SCORE,
     maxSources: Math.max(plan?.maxEvidenceItems ?? 20, 8),
   };
@@ -257,6 +311,7 @@ type ScorableSource = {
   type?: string;
   title?: string;
   snippet?: string;
+  date?: string;
   relevanceReasons?: string[];
 };
 
@@ -270,6 +325,17 @@ export function scoreEvidence(
 
   if (!text.trim()) return { score: 0, reasons: ['empty'] };
 
+  if (contract.temporalRange) {
+    const sourceTime = source.date ? Date.parse(source.date) : Number.NaN;
+    if (Number.isFinite(sourceTime)) {
+      if (sourceTime < contract.temporalRange.start || sourceTime > contract.temporalRange.end) {
+        return { score: 0, reasons: ['temporal_scope_mismatch'] };
+      }
+      score += 35;
+      reasons.push(`time:${contract.temporalRange.label}`);
+    }
+  }
+
   // Hard reject: evidence kinds that can never answer this question.
   for (const pattern of contract.forbiddenPatterns) {
     if (pattern.test(text) && !contract.supportingPatterns.some((p) => p.test(text))) {
@@ -278,7 +344,7 @@ export function scoreEvidence(
   }
 
   // Entity relevance: the question's subjects appear in the source.
-  const entityHit = contract.entityNames.find((name) => name && text.includes(name));
+  const entityHit = contract.entityNames.find((name) => name && textContainsEntityName(text, name));
   if (entityHit) {
     score += 45;
     reasons.push(`entity:${entityHit}`);
@@ -316,6 +382,11 @@ export function scoreEvidence(
     reasons.push(`terms:${overlap.slice(0, 3).join(',')}`);
   }
 
+  if (contract.temporalRange && /\b(?:milestone|turning point|interview(?:ed)?|rejected|accepted|hired|fired|launched|released|completed|graduated|started|ended|moved|detained)\b/i.test(text)) {
+    score += 15;
+    reasons.push('significance_signal');
+  }
+
   // Crystallized knowledge outranks observations: a durable, evidence-backed
   // claim that matches the question answers it without re-deriving the truth
   // from many raw memories.
@@ -344,6 +415,7 @@ export function scoreEvidence(
     contract.topic === 'general' &&
     !contract.requireSubjectOverlap &&
     !contract.closedScope &&
+    !contract.temporalRange &&
     score < DEFAULT_MIN_EVIDENCE_SCORE
   ) {
     score = 25;

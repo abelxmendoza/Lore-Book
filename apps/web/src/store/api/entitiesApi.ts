@@ -139,6 +139,12 @@ type RomanticRelationshipsResponse = {
   relationships: Array<Record<string, unknown>>;
 };
 
+type AddCharacterToDatingBookInput = {
+  character_id: string;
+  relationship_type?: string;
+  status?: string;
+};
+
 type OrganizationUpdateInput = {
   id: string;
   values: Record<string, unknown>;
@@ -368,6 +374,7 @@ export const entitiesApi = baseApi.injectEndpoints({
         url: '/api/characters/merge',
         method: 'POST',
         body,
+        timeoutMs: 120_000,
       }),
       invalidatesTags: ['Character', 'Organization', 'Event'],
       async onQueryStarted(_, { queryFulfilled }) {

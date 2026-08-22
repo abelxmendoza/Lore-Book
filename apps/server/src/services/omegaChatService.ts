@@ -6,7 +6,6 @@ import { config } from '../config';
 import { logger } from '../logger';
 import { openai } from '../lib/openai';
 import { hasTemporalSignal } from './chat/temporalSignal';
-import { isDatingRomanceChatFocus } from './chat/datingBookChatFocus';
 import { StageTimer } from '../lib/stageTimer';
 import type { MemoryEntry, ResolvedMemoryEntry } from '../types';
 import type { CurrentContext, SoulProfileContext } from '../types/currentContext';
@@ -15,6 +14,8 @@ import { extractTags, shouldPersistMessage, isTrivialMessage } from '../utils/ke
 import { messageReferencesMention } from '../utils/disambiguationUtils';
 import { classifyPostgresError, StorageBlockedError } from '../utils/postgresError';
 import { isClosedScopeQuery, isFocusEntityRelevant } from '@lorebook/api-contracts';
+import { resolveChatSubjectRetarget } from './chat/chatSubjectRetarget';
+import { enrichChatFocusWithDatingBook, isDatingRomanceChatFocus } from './chat/datingBookChatFocus';
 import { buildClientSourcesWithRejected, type RejectedEvidenceItem } from './chat/clientSourcesBuilder';
 import { BIOGRAPHY_RE } from './chat/recallIntentPatterns';
 
@@ -353,6 +354,7 @@ export type StreamingChatResponse = {
       retrievalMs: number;
       contextItems: number;
     };
+    citations?: Array<{ text: string; sourceId: string; sourceType: string }>;
     activePersona?: string;
     sessionId?: string;
     messageId?: string;
@@ -511,6 +513,7 @@ class OmegaChatService {
     currentContext?: CurrentContext,
     scopePlan?: import('./responseScope').ResponseScopePlan,
     currentMessageId?: string,
+    chatFocus?: ChatFocusPayload,
   ) {
     return _buildRAGPacket(
       userId,
@@ -519,6 +522,9 @@ class OmegaChatService {
       this.extractDatesAndTimes.bind(this),
       scopePlan,
       currentMessageId,
+      chatFocus
+        ? { id: chatFocus.entityId, name: chatFocus.entityName, type: chatFocus.entityType }
+        : undefined,
     );
   }
 
@@ -859,7 +865,21 @@ class OmegaChatService {
         : '';
     return `\n\n**USER NAVIGATION FOCUS**
 The user opened chat from **${chatFocus.sourceLabel}** (${chatFocus.sourceSurface}), actively focusing on **${chatFocus.entityName}**.${relationshipLine}${scopeLine}${deepening}${loveNote}${organizationNote}${eventNote}${perceptionNote}${timelineNote}
-When updating relationship analytics or emotional signals from this thread, weight this focus context heavily.`;
+When updating relationship analytics or emotional signals from this thread, weight this focus context heavily. Honor that focus only while the user's words are about this person or they have not named someone else. If they name a different person, treat that person as the subject instead of inventing a connection to ${chatFocus.entityName}.`;
+  }
+
+  private buildCaptureGroundingContext(message: string): string {
+    if (
+      !/\bdo not invent\b/i.test(message) &&
+      !/\bhelp me capture\b/i.test(message) &&
+      !/\bwho\s+(?:is|was|are|were)\s+(he|she|they|him|her|them)\b/i.test(message)
+    ) {
+      return '';
+    }
+    return `
+
+**GROUNDED CAPTURE**: Restate only facts the user has shared in this thread or on the focused person's record. Do not infer job-search status, mentorship, team culture, current employment, or feelings they did not state. A nickname or title is not evidence of influence or an ongoing role. If the record is thin, say what is known and ask one specific question.
+`;
   }
 
   /**
@@ -1218,6 +1238,16 @@ When updating relationship analytics or emotional signals from this thread, weig
       metadata.ingestion_suppressed_reason = 'explicit_knowledge_query';
     }
     if (previewCorrections?.length) metadata.preview_corrections = previewCorrections;
+    if (loreContext?.chatFocus || loreContext?.threadEntities?.length) {
+      metadata.lore_context = {
+        cast: (loreContext.threadEntities ?? []).map((entity) => ({
+          id: entity.id,
+          name: entity.name,
+          type: entity.type,
+        })),
+        focus: loreContext.chatFocus ?? null,
+      };
+    }
     if (attachmentMeta?.length) {
       metadata.attachments = attachmentMeta;
       metadata.vision_pending = true;
@@ -1449,32 +1479,6 @@ When updating relationship analytics or emotional signals from this thread, weig
     // Caption text for persistence/ingestion; placeholder when image-only.
     message = resolveUserMessageText(message, images);
 
-    // Derive entity context from modal/book focus when not explicitly set —
-    // but only when the focus is actually relevant to THIS message. A stale
-    // focus chip (left open from an earlier, unrelated conversation) must not
-    // contaminate a closed-scope query (e.g. "who's new in this story?") with
-    // an entityContext the message never asked about. Ordinary (non-closed-
-    // scope) chat is unaffected — the pin is always honored there, matching
-    // existing behavior.
-    const { closedScope: chatFocusClosedScope } = isClosedScopeQuery(message);
-    const focusRelevant =
-      !chatFocus || !chatFocusClosedScope || isFocusEntityRelevant(message, chatFocus.entityName ?? '');
-
-    if (!entityContext && chatFocus?.relationshipId && focusRelevant) {
-      entityContext = { type: 'ROMANTIC_RELATIONSHIP', id: chatFocus.relationshipId };
-    } else if (!entityContext && chatFocus && focusRelevant) {
-      if (chatFocus.entityType === 'character') {
-        entityContext = { type: 'CHARACTER', id: chatFocus.entityId };
-      } else if (chatFocus.entityType === 'location') {
-        entityContext = { type: 'LOCATION', id: chatFocus.entityId };
-      } else if (chatFocus.entityType !== 'event') {
-        entityContext = { type: 'ENTITY', id: chatFocus.entityId };
-      }
-    }
-    entityContext = resolveEntityContextFromComposer(entityContext, composerEntities) ?? entityContext;
-
-    const focusedCharacter = resolveFocusedCharacter(entityContext, chatFocus, composerEntities);
-
     // Use the UI thread as the session so messages, recall scoping, and
     // ingestion all stay attached to the thread the user is actually in.
     const sessionId = threadId ?? await this.getOrCreateChatSession(userId);
@@ -1499,6 +1503,80 @@ When updating relationship analytics or emotional signals from this thread, weig
         logger.debug({ err, sessionId }, 'Thread roster context unavailable, using client threadEntities');
       }
     }
+
+    const subjectRetarget = resolveChatSubjectRetarget({
+      message,
+      chatFocus,
+      threadEntities,
+      conversationHistory,
+    });
+    if (subjectRetarget.dropStaleFocus) {
+      entityContext = subjectRetarget.entityContext;
+      composerEntities = subjectRetarget.entityContext
+        ? (composerEntities ?? []).filter((entity) => entity.id === subjectRetarget.entityContext?.id)
+        : [];
+      if (subjectRetarget.chatFocusPatch) {
+        chatFocus = {
+          ...(chatFocus ?? {
+            entityId: subjectRetarget.chatFocusPatch.entityId,
+            entityName: subjectRetarget.chatFocusPatch.entityName,
+            entityType: subjectRetarget.chatFocusPatch.entityType,
+            sourceSurface: 'characters',
+            sourceLabel: 'Character Book',
+          }),
+          entityId: subjectRetarget.chatFocusPatch.entityId,
+          entityName: subjectRetarget.chatFocusPatch.entityName,
+          entityType: subjectRetarget.chatFocusPatch.entityType,
+        };
+      } else if (subjectRetarget.subjectName) {
+        chatFocus = {
+          entityId: '',
+          entityName: subjectRetarget.subjectName,
+          entityType: 'character',
+          sourceSurface: 'characters',
+          sourceLabel: 'Character Book',
+        };
+      } else {
+        chatFocus = undefined;
+      }
+    } else if (subjectRetarget.entityContext && !entityContext) {
+      entityContext = subjectRetarget.entityContext;
+    }
+
+    // Derive entity context from modal/book focus when not explicitly set —
+    // but only when the focus is actually relevant to THIS message. A stale
+    // focus chip (left open from an earlier, unrelated conversation) must not
+    // contaminate a closed-scope query (e.g. "who's new in this story?") with
+    // an entityContext the message never asked about. A named capture/who-is
+    // about someone else also drops the leftover pin (see subjectRetarget).
+    const { closedScope: chatFocusClosedScope } = isClosedScopeQuery(message);
+    const focusRelevant =
+      !chatFocus || !chatFocusClosedScope || isFocusEntityRelevant(message, chatFocus.entityName ?? '');
+
+    if (chatFocus?.entityType === 'character' && chatFocus.entityId) {
+      try {
+        chatFocus = await enrichChatFocusWithDatingBook(userId, chatFocus);
+      } catch (err) {
+        logger.debug({ err, userId, entityId: chatFocus?.entityId }, 'Dating-book chat focus enrich failed');
+      }
+    }
+
+    if (!entityContext && chatFocus?.relationshipId && focusRelevant) {
+      entityContext = { type: 'ROMANTIC_RELATIONSHIP', id: chatFocus.relationshipId };
+    } else if (!entityContext && chatFocus && focusRelevant) {
+      if (chatFocus.entityType === 'character' && chatFocus.entityId) {
+        entityContext = { type: 'CHARACTER', id: chatFocus.entityId };
+      } else if (chatFocus.entityType === 'location' && chatFocus.entityId) {
+        entityContext = { type: 'LOCATION', id: chatFocus.entityId };
+      } else if (chatFocus.entityType !== 'event' && chatFocus.entityId) {
+        entityContext = { type: 'ENTITY', id: chatFocus.entityId };
+      }
+    }
+    if (!subjectRetarget.dropStaleFocus) {
+      entityContext = resolveEntityContextFromComposer(entityContext, composerEntities) ?? entityContext;
+    }
+
+    const focusedCharacter = resolveFocusedCharacter(entityContext, chatFocus, composerEntities);
 
     let entryId: string | undefined;
     let ingestionJobId: string | undefined;
@@ -1712,6 +1790,15 @@ When updating relationship analytics or emotional signals from this thread, weig
         }
       : responseScope.deriveActiveContext(conversationHistory);
     const scopePlan = responseScope.planResponseScope(effectiveMessage, { activeContext });
+    if (subjectRetarget.subjectName) {
+      const key = subjectRetarget.subjectName.toLowerCase();
+      if (!scopePlan.primaryEntities.some((entity) => entity.name.toLowerCase() === key)) {
+        scopePlan.primaryEntities.unshift({
+          name: subjectRetarget.subjectName,
+          ...(subjectRetarget.entityContext?.id ? { id: subjectRetarget.entityContext.id } : {}),
+        });
+      }
+    }
     const scopeGuard = (content: string): string => {
       const guarded = responseScope.enforceChatScope(content, scopePlan);
       if (guarded.violations.length > 0) {
@@ -1781,14 +1868,27 @@ When updating relationship analytics or emotional signals from this thread, weig
         const cognition = await answerNarrativeCognition(userId, cognitionKind, message);
         if (cognition) {
           const { formatModeResponse } = await import('./modeRouter/responseFormatter');
+          const cognitionSources = cognition.sources ?? [];
+          const cognitionResponseMode = cognition.grounded === false
+            ? 'COGNITION_INSUFFICIENT_EVIDENCE'
+            : cognitionSources.length > 0
+              ? 'FOCUSED_RECALL'
+              : 'COGNITIVE_SYNTHESIS';
           return formatModeResponse(
             {
               content: cognition.content,
-              response_mode: 'FOCUSED_RECALL',
+              response_mode: cognitionResponseMode,
               confidence: cognition.confidence,
               metadata: {
                 narrative_cognition: cognitionKind,
                 cognition_reasoning: cognition.reasoning,
+                sources: cognitionSources,
+                ragStats: {
+                  sourceCount: cognitionSources.length,
+                  cacheHit: false,
+                  retrievalMs: 0,
+                  contextItems: cognitionSources.length,
+                },
               },
             },
             'FOUNDATION_RECALL',
@@ -1875,7 +1975,12 @@ When updating relationship analytics or emotional signals from this thread, weig
         // "You forgot X" is a correction, not a request for system internals.
         // The full diagnostic dump only renders when the user explicitly asks
         // for retrieval internals; corrections update the answer instead.
-        if (scopePlan.isCorrection && scopePlan.intent === 'work' && scopePlan.correctionNames.length > 0) {
+        if (
+          scopePlan.isCorrection &&
+          scopePlan.intent === 'work' &&
+          scopePlan.correctionNames.length > 0 &&
+          /\b(?:team|roster|coworkers?|manager|boss|supervisor|team ?lead|works? with me)\b/i.test(message)
+        ) {
           const work = await import('./work');
           let workContext = await work.resolveWorkContext(userId);
           workContext = work.applyRosterCorrection(workContext, scopePlan.correctionNames);
@@ -2048,7 +2153,8 @@ When updating relationship analytics or emotional signals from this thread, weig
     // character book, family graph, or memory-layer status.
     if (
       scopePlan.intent === 'work' &&
-      (scopePlan.responseMode === 'focused_recall' || scopePlan.isCorrection)
+      scopePlan.responseMode === 'focused_recall' &&
+      !scopePlan.isCorrection
     ) try {
       const work = await import('./work');
       const { formatModeResponse } = await import('./modeRouter/responseFormatter');
@@ -2167,7 +2273,7 @@ When updating relationship analytics or emotional signals from this thread, weig
     const ragStart = Date.now();
     const ragCacheHit = ragPacketCacheService.getCachedPacket(userId, message) !== null;
     try {
-      ragPacket = await this.buildRAGPacket(userId, message, currentContext, scopePlan, entryId);
+      ragPacket = await this.buildRAGPacket(userId, message, currentContext, scopePlan, entryId, chatFocus);
     } catch (error) {
       logger.error({ error }, 'Failed to build RAG packet, using minimal context');
       ragPacket = {
@@ -2593,6 +2699,10 @@ When updating relationship analytics or emotional signals from this thread, weig
     const chatFocusContext = this.buildChatFocusContext(chatFocus);
     if (chatFocusContext) {
       systemPrompt += chatFocusContext;
+    }
+    const captureGrounding = this.buildCaptureGroundingContext(message);
+    if (captureGrounding) {
+      systemPrompt += captureGrounding;
     }
 
     // Multi-knowledge turn plan — person intro, milestones, reflections, groups.

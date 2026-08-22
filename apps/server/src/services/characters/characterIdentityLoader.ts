@@ -4,6 +4,10 @@
  */
 import { identityStrengthService } from '../identity/identityStrengthService';
 import { dedupeRelationshipsByPerson } from '../relationships/dedupeCharacterRelationships';
+import {
+  isSelfCharacterMetadata,
+  resolveRelatedPersonType,
+} from '../relationships/relatedPersonType';
 import { displayAvatarUrl } from '../characterAvatarService';
 import { filterValidAliases } from './aliasConstraintService';
 import { supabaseAdmin } from '../supabaseClient';
@@ -66,6 +70,13 @@ export type CharacterIdentity = {
   mentioned_by_character_ids: string[];
   context_of_mention?: string | null;
   likelihood_to_meet?: string | null;
+  primary_organization?: {
+    id: string;
+    name: string;
+    group_type?: string;
+    role?: string | null;
+    status?: string;
+  } | null;
   memory_count: number;
   relationship_count: number;
   relationships: CharacterIdentityRelationship[];
@@ -149,6 +160,13 @@ export async function loadCharacterIdentity(
     .select('*')
     .or(`source_character_id.eq.${character.id},target_character_id.eq.${character.id}`);
 
+  const metadataEarly = { ...((character.metadata || {}) as Record<string, unknown>) };
+  const dismissedAssociatedIds = new Set(
+    (Array.isArray(metadataEarly.dismissed_associated_character_ids)
+      ? metadataEarly.dismissed_associated_character_ids
+      : []
+    ).filter((id): id is string => typeof id === 'string' && id.length > 0),
+  );
   const associatedCharacterIds = new Set<string>(
     [
       ...(Array.isArray(character.associated_with_character_ids)
@@ -157,7 +175,13 @@ export async function loadCharacterIdentity(
       ...(Array.isArray(character.mentioned_by_character_ids)
         ? character.mentioned_by_character_ids
         : []),
-    ].filter((id): id is string => typeof id === 'string' && id.length > 0 && id !== character.id),
+    ].filter(
+      (id): id is string =>
+        typeof id === 'string' &&
+        id.length > 0 &&
+        id !== character.id &&
+        !dismissedAssociatedIds.has(id),
+    ),
   );
 
   const relationshipCharacterIds = new Set<string>();
@@ -174,12 +198,15 @@ export async function loadCharacterIdentity(
     relationshipCharacterIds.size > 0
       ? await supabaseAdmin
           .from('characters')
-          .select('id, name')
+          .select('id, name, metadata')
           .in('id', Array.from(relationshipCharacterIds))
       : { data: [] };
 
   const characterNameMap = new Map<string, string>(
     relatedCharacters?.map((char) => [char.id, char.name] as [string, string]) || [],
+  );
+  const relatedMetaById = new Map(
+    (relatedCharacters ?? []).map((row) => [row.id, (row.metadata ?? {}) as Record<string, unknown>]),
   );
 
   const { data: memories } = await supabaseAdmin
@@ -248,11 +275,22 @@ export async function loadCharacterIdentity(
           rel.source_character_id === character.id
             ? rel.target_character_id
             : rel.source_character_id;
+        const otherMeta = relatedMetaById.get(relatedCharId) ?? {};
         return {
           id: rel.id as string,
           character_id: relatedCharId as string,
           character_name: characterNameMap.get(relatedCharId) || 'Unknown',
-          relationship_type: rel.relationship_type as string,
+          relationship_type: resolveRelatedPersonType({
+            storedType: String(rel.relationship_type ?? ''),
+            viewerIsSource: rel.source_character_id === character.id,
+            viewerIsSelf: isSelfCharacter,
+            otherIsSelf: isSelfCharacterMetadata(otherMeta, characterNameMap.get(relatedCharId)),
+            viewerRelationshipToYou:
+              typeof metadata.relationship_to_user === 'string' ? metadata.relationship_to_user : null,
+            otherRelationshipToYou:
+              typeof otherMeta.relationship_to_user === 'string' ? otherMeta.relationship_to_user : null,
+            otherName: characterNameMap.get(relatedCharId),
+          }),
           closeness_score: rel.closeness_score,
           summary: rel.summary,
           status: rel.status,
@@ -272,6 +310,23 @@ export async function loadCharacterIdentity(
       status: 'inferred' as string | null,
     }));
   const allRelationships = [...directRelationships, ...inferredStoryRelationships];
+
+  let primary_organization: CharacterIdentity['primary_organization'] = null;
+  try {
+    const { organizationService } = await import('../organizationService');
+    const preferred =
+      (typeof metadata.primary_organization_id === 'string' && metadata.primary_organization_id) ||
+      (typeof metadata.primary_group_id === 'string' && metadata.primary_group_id) ||
+      undefined;
+    const primaryByCharacter = await organizationService.getPrimaryAffiliationsByCharacterIds(
+      userId,
+      [character.id],
+      preferred ? { preferredOrgIdByCharacter: { [character.id]: preferred } } : undefined,
+    );
+    primary_organization = primaryByCharacter[character.id] ?? null;
+  } catch (err) {
+    logger.debug({ err, characterId: character.id }, 'primary organization attach skipped');
+  }
 
   if (recomputeIdentityStrength) {
     void identityStrengthService.recompute(
@@ -342,5 +397,6 @@ export async function loadCharacterIdentity(
       : [],
     identity_strength_score: character.identity_strength_score,
     identity_strength: character.identity_strength,
+    primary_organization,
   };
 }

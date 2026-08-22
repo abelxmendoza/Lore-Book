@@ -54,6 +54,40 @@ export function isSummaryStale(meta: ThreadMetadata, threshold = STALENESS_THRES
   return meta.message_count - meta.summary_message_count >= threshold;
 }
 
+/** A single dense life update should not wait behind the four-message batch. */
+export function isHighSignalLifeUpdate(message: SummaryMessage): boolean {
+  if (message.role !== 'user') return false;
+  const text = message.content.trim();
+  if (text.length < 180) return false;
+  const transitions = text.match(
+    /\b(?:interview(?:ed)?|rejected|accepted|hired|fired|laid off|unemployed|started|stopped|left|joined|completed|passed|failed|currently|right now|no longer|still|continuing|focused on)\b/gi,
+  );
+  return (transitions?.length ?? 0) >= 2;
+}
+
+const SENSITIVE_SUMMARY_TERMS = [
+  /\b(?:married|marriage|marital|spouse|husband|wife|divorc(?:e|ed|ing))\b/i,
+  /\b(?:boyfriend|girlfriend|romantic partner|dating relationship|breakup)\b/i,
+  /\b(?:employed|unemployed|laid off|fired|hired)\b/i,
+  /\b(?:arrested|detained|charged|convicted)\b/i,
+];
+
+/**
+ * A summary may compress evidence; it may not create evidence. Remove a
+ * sensitive sentence when its theme has no support anywhere in the thread.
+ */
+export function removeUnsupportedSummaryClaims(
+  summary: string | null | undefined,
+  sourceText: string,
+): string | null {
+  if (!summary) return null;
+  const sentences = summary.match(/[^.!?]+[.!?]?/g) ?? [summary];
+  const supported = sentences.filter((sentence) =>
+    SENSITIVE_SUMMARY_TERMS.every((pattern) => !pattern.test(sentence) || pattern.test(sourceText)),
+  );
+  return supported.join(' ').replace(/\s{2,}/g, ' ').trim() || null;
+}
+
 /**
  * Match a People:/Places: section through the next known clause header.
  * Stop-at-first-period leaves leftovers like "Chino. Chino." when the LLM
@@ -183,7 +217,14 @@ class ThreadSummaryService {
     opts: { force?: boolean } = {},
   ): Promise<ThreadSummaries & { version: number; stale: boolean }> {
     const meta = await threadIntelligenceService.getThreadMeta(userId, sessionId);
-    const stale = isSummaryStale(meta);
+    let stale = isSummaryStale(meta);
+    if (!stale && meta.message_count > meta.summary_message_count) {
+      const loaded = await loadThreadMessages(userId, sessionId);
+      const unseen = loaded
+        .slice(meta.summary_message_count)
+        .map((r) => ({ role: r.role === 'user' ? 'user' : 'assistant', content: r.content } as SummaryMessage));
+      stale = unseen.some(isHighSignalLifeUpdate);
+    }
     if (!opts.force && !stale) {
       return {
         short: meta.summary_short,
@@ -245,11 +286,29 @@ class ThreadSummaryService {
       }
     }
 
+    const scrubbedPeople = unionThreadMetaLabels(metaForSummary.people, undefined, { kind: 'people' });
+    const scrubbedPlaces = unionThreadMetaLabels(metaForSummary.places, undefined, { kind: 'places' });
+    const sourceText = loaded.map((message) => message.content).join('\n');
+    summaries = {
+      short: removeUnsupportedSummaryClaims(
+        scrubSummaryEntityClauses(summaries.short, scrubbedPeople, scrubbedPlaces),
+        sourceText,
+      ) ?? deriveDeterministicSummaries(metaForSummary).short,
+      medium: removeUnsupportedSummaryClaims(
+        scrubSummaryEntityClauses(summaries.medium, scrubbedPeople, scrubbedPlaces),
+        sourceText,
+      ) ?? deriveDeterministicSummaries(metaForSummary).medium,
+      long: removeUnsupportedSummaryClaims(
+        scrubSummaryEntityClauses(summaries.long, scrubbedPeople, scrubbedPlaces),
+        sourceText,
+      ) ?? deriveDeterministicSummaries(metaForSummary).long,
+    };
+
     const written = await threadIntelligenceService.writeSummaries(userId, sessionId, {
       short: summaries.short,
       medium: summaries.medium,
       long: summaries.long,
-      builtFromMessageCount: meta.message_count,
+      builtFromMessageCount: metaForSummary.message_count,
     });
 
     return {

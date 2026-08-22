@@ -63,14 +63,28 @@ type Rule = {
   archetype: string;
   confidence: number;
   reason: string;
-  test: (ctx: { text: string; relationshipType: string; kinship: string }) => boolean;
+  test: (ctx: {
+    text: string;
+    relationshipType: string;
+    kinship: string;
+    name: string;
+    familyExcluded: boolean;
+  }) => boolean;
 };
 
-function hasFamilySignal(relationshipType: string, kinship: string): boolean {
-  return (
-    Boolean(kinship) ||
-    /^(family|parent|mother|father|sibling|brother|sister|cousin|aunt|uncle|grand|step)/.test(relationshipType)
-  );
+function hasFamilySignal(
+  relationshipType: string,
+  kinship: string,
+  name: string,
+  familyExcluded: boolean,
+): boolean {
+  if (familyExcluded) return false;
+  if (kinship) return true;
+  const normalizedName = name.toLowerCase().replace(/[._@-]+/g, ' ').trim();
+  if (/^(?:my\s+)?(?:t[ií]o|t[ií]a|uncle|aunt|mom|mother|dad|father|grandma|grandpa|abuela|abuelo|cousin|sister|brother)(?:\s|$)/i.test(normalizedName)) {
+    return true;
+  }
+  return /^(parent|mother|father|sibling|brother|sister|cousin|aunt|uncle|grand|step|niece|nephew)/.test(relationshipType);
 }
 
 function hasCrushSignal(text: string, relationshipType: string): boolean {
@@ -118,8 +132,8 @@ const RULES: Rule[] = [
     archetype: 'family',
     confidence: 0.95,
     reason: 'Family relationship recorded on this card',
-    test: ({ text, relationshipType, kinship }) =>
-      hasFamilySignal(relationshipType, kinship) && !hasCrushSignal(text, relationshipType),
+    test: ({ text, relationshipType, kinship, name, familyExcluded }) =>
+      hasFamilySignal(relationshipType, kinship, name, familyExcluded) && !hasCrushSignal(text, relationshipType),
   },
   {
     archetype: 'past_romantic',
@@ -251,14 +265,19 @@ const RULES: Rule[] = [
 export function inferCharacterArchetype(input: ArchetypeInferenceInput): ArchetypeInference {
   const meta = input.metadata ?? {};
   const relationshipType = String(meta.relationship_type ?? '').toLowerCase().trim();
-  const kinship = String(meta.kinship_label ?? '').toLowerCase().trim();
+  const kinship = String(meta.kinship_label ?? meta.kinship_role ?? '').toLowerCase().trim();
+  const familyExcluded =
+    meta.family_excluded === true ||
+    (typeof meta.family_excluded === 'object' &&
+      meta.family_excluded !== null &&
+      (meta.family_excluded as { value?: unknown }).value === true);
   const text = [input.role, input.summary, input.contextOfMention, ...(input.tags ?? [])]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
 
   for (const rule of RULES) {
-    if (rule.test({ text, relationshipType, kinship })) {
+    if (rule.test({ text, relationshipType, kinship, name: input.name, familyExcluded })) {
       return { archetype: rule.archetype, confidence: rule.confidence, reason: rule.reason };
     }
   }

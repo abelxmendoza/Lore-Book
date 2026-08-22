@@ -2,7 +2,7 @@
  * Household / residence inference — expanded with membership roles and head-of-household.
  */
 import { logger } from '../../logger';
-import { extractNamedPlacesFromText, formatPossessivePlace } from '../../utils/namedPlaceExtractor';
+import { extractNamedPlacesFromText, formatPossessivePlace, isValidPossessiveOwner } from '../../utils/namedPlaceExtractor';
 import { supabaseAdmin } from '../supabaseClient';
 import { organizationService } from '../organizationService';
 import { parseKinshipFromName } from './kinshipGlossary';
@@ -14,9 +14,9 @@ type HouseholdRole = 'resident' | 'visitor' | 'head_of_household';
 
 function inferHeadFromPossessive(context: string, placeName: string): string | undefined {
   const m = context.match(/\b([A-Za-zÀ-ÿ]+(?:'s|s)?)\s+(?:house|home|apartment|condo|casa|place|room|garage|backyard)\b/i);
-  if (m) return m[1].replace(/['']s?$/i, '');
+  if (m && isValidPossessiveOwner(m[1])) return m[1].replace(/['']s?$/i, '');
   const owner = placeName.split(/['']/)[0]?.trim();
-  return owner || undefined;
+  return owner && isValidPossessiveOwner(owner) ? owner : undefined;
 }
 
 export class HouseholdInferenceService {
@@ -26,12 +26,16 @@ export class HouseholdInferenceService {
     messageId: string,
     characterIds: string[]
   ): Promise<{ householdId?: string; locationName?: string }> {
+    // Test residence-type keywords against the candidate's own name, not the
+    // whole message — otherwise any stray "went home" elsewhere in a message
+    // lets every unrelated named phrase in it (an event, a club) pass as a
+    // household candidate.
     const places = extractNamedPlacesFromText(text).filter(
-      (p) => p.isNamed && (RESIDENCE_TYPES.test(p.name + ' ' + p.context) || LIVES_WITH.test(text))
+      (p) => p.isNamed && (RESIDENCE_TYPES.test(p.name) || LIVES_WITH.test(text))
     );
 
     const possessive = places.find(
-      (p) => /['']s?\s/i.test(p.context) || /house|home|casa|apartment|room/i.test(p.name)
+      (p) => /['']s?\s/i.test(p.name) || /house|home|casa|apartment|room/i.test(p.name)
     );
     if (!possessive && !LIVES_WITH.test(text)) return {};
 
