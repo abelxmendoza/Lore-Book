@@ -41,7 +41,6 @@ const EVENT_REFS: Array<{ table: string; column: string }> = [
   { table: 'event_impacts', column: 'event_id' },
   { table: 'event_continuity_links', column: 'current_event_id' },
   { table: 'event_continuity_links', column: 'past_event_id' },
-  { table: 'character_timeline_events', column: 'event_id' },
   { table: 'arc_event_links', column: 'resolved_event_id' },
   { table: 'event_meaning_cache', column: 'event_id' },
 ];

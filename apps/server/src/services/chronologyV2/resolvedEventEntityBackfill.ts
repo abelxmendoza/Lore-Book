@@ -15,6 +15,7 @@
 import { logger } from '../../logger';
 import { isSelfCharacterRow } from '../identity/selfIdentityGuard';
 import { supabaseAdmin } from '../supabaseClient';
+import { classifyPersonAttribution, classifyPlaceAttribution } from '../attribution/eventEntityAttribution';
 
 export interface NamedEntityRef {
   id: string;
@@ -68,8 +69,20 @@ export function planEntityBackfill(
   const text = `${event.title ?? ''} ${event.summary ?? ''}`;
   const existingPeople = new Set(event.people ?? []);
   const existingLocations = new Set(event.locations ?? []);
-  const peopleToAdd = matchEntityIdsInText(text, characterRefs).filter((id) => !existingPeople.has(id));
-  const locationsToAdd = matchEntityIdsInText(text, locationRefs).filter((id) => !existingLocations.has(id));
+  const peopleToAdd = matchEntityIdsInText(text, characterRefs).filter((id) => {
+    if (existingPeople.has(id)) return false;
+    const ref = characterRefs.find((row) => row.id === id);
+    const names = (ref?.names ?? []).filter((name): name is string => Boolean(name && name.trim()));
+    if (names.length === 0) return false;
+    return classifyPersonAttribution(names[0]!, text, { entityId: id, aliases: names.slice(1) }).canonical;
+  });
+  const locationsToAdd = matchEntityIdsInText(text, locationRefs).filter((id) => {
+    if (existingLocations.has(id)) return false;
+    const ref = locationRefs.find((row) => row.id === id);
+    const names = (ref?.names ?? []).filter((name): name is string => Boolean(name && name.trim()));
+    if (names.length === 0) return false;
+    return classifyPlaceAttribution(names[0]!, text, { entityId: id, aliases: names.slice(1) }).canonical;
+  });
   if (peopleToAdd.length === 0 && locationsToAdd.length === 0) return null;
   return { peopleToAdd, locationsToAdd };
 }

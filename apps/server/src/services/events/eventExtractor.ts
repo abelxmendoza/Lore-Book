@@ -20,7 +20,7 @@ export class EventExtractor {
         if (!text) continue;
 
         // Extract timestamp (simple patterns for V1)
-        const timestamp = this.extractTimestamp(text, entry.date || entry.created_at || entry.timestamp);
+        const timestamp = this.extractTimestamp(text, entry.date || null);
 
         // Extract location (simple patterns)
         const location = this.extractLocation(text);

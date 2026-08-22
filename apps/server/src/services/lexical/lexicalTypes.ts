@@ -52,6 +52,8 @@ export type RelationshipRole =
   | 'romantic_partner'
   | 'ex_partner'
   | 'coworker'
+  | 'recruiter'
+  | 'interviewer'
   | 'boss'
   | 'mentor'
   | 'student'

@@ -100,7 +100,7 @@ export async function detectTurningPoints(
   for (const row of journalRows ?? []) {
     const text = String(row.content ?? '');
     if (!text.trim()) continue;
-    const date = row.date ?? row.created_at ?? null;
+    const date = row.date ?? null;
     fromJournal.push(...detectInText(text, date, arcs, 'journal'));
   }
 

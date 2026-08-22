@@ -50,6 +50,12 @@ import { relationshipDriftDetector } from '../services/conversationCentered/rela
 import { relationshipTreeBuilder, type RelationshipCategory } from '../services/conversationCentered/relationshipTreeBuilder';
 import { romanticRelationshipAnalytics } from '../services/conversationCentered/romanticRelationshipAnalytics';
 import { enrichRomanticRelationshipsForUser } from '../services/conversationCentered/romanticRelationshipEnrichment';
+import {
+  addCharacterToDatingBook,
+  DatingBookAddError,
+  MANUAL_DATING_ADD_STATUSES,
+  MANUAL_DATING_ADD_TYPES,
+} from '../services/conversationCentered/addCharacterToDatingBook';
 import { romanticRelationshipDetector } from '../services/conversationCentered/romanticRelationshipDetector';
 import { romanticConversationRescanService } from '../services/romanticConversationRescanService';
 import { queryRomanceForUser } from '../services/romance/romanceQueryService';
@@ -111,6 +117,12 @@ const romanticRelationshipPatchSchema = z.object({
 const romanticRelationshipDeleteSchema = z.object({
   reason: z.string().max(500).optional(),
   reason_note: z.string().max(1000).optional(),
+}).strict();
+
+const addCharacterToDatingBookSchema = z.object({
+  character_id: z.string().uuid(),
+  relationship_type: z.enum(MANUAL_DATING_ADD_TYPES).optional(),
+  status: z.enum(MANUAL_DATING_ADD_STATUSES).optional(),
 }).strict();
 
 /**
@@ -1793,6 +1805,34 @@ router.get(
 );
 
 /**
+ * POST /api/conversation/events/:id/attribution
+ * Retract or swap a person/place on a canonical event without deleting it.
+ */
+router.post(
+  '/events/:id/attribution',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const eventId = String(req.params.id);
+    const body = req.body ?? {};
+    const action = body.action as 'retract' | 'replace_person' | 'replace_place' | undefined;
+    if (!action || !body.entityId) {
+      return res.status(400).json({ error: 'action and entityId are required' });
+    }
+    const { correctResolvedEventAttribution } = await import('../services/attribution/resolvedEventAttributionService');
+    const result = await correctResolvedEventAttribution(userId, eventId, {
+      action,
+      entityId: String(body.entityId),
+      replacementEntityId: body.replacementEntityId ? String(body.replacementEntityId) : undefined,
+      replacementName: body.replacementName ? String(body.replacementName) : undefined,
+      reason: body.reason ? String(body.reason) : undefined,
+    });
+    if (!result) return res.status(404).json({ error: 'Event not found' });
+    return res.json({ success: true, ...result });
+  }),
+);
+
+/**
  * GET /api/conversation/events/:id
  * Get a specific event with source messages, linked decisions, and insights
  */
@@ -3194,6 +3234,49 @@ router.get(
   })
 );
 
+/**
+ * POST /api/conversation/romantic-relationships
+ * Owner/admin only: add an existing Character Book person to Dating & Romance.
+ * Always writes to req.user.id — never accepts another account id.
+ */
+router.post(
+  '/romantic-relationships',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const parsed = addCharacterToDatingBookSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid Dating & Romance add',
+        details: parsed.error.flatten(),
+      });
+    }
+
+    try {
+      const result = await addCharacterToDatingBook({
+        userId: req.user!.id,
+        characterId: parsed.data.character_id,
+        relationshipType: parsed.data.relationship_type,
+        status: parsed.data.status,
+      });
+      res.status(result.created ? 201 : 200).json({
+        success: true,
+        created: result.created,
+        relationship: result.relationship,
+      });
+    } catch (error) {
+      if (error instanceof DatingBookAddError) {
+        return res.status(error.status).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        });
+      }
+      throw error;
+    }
+  }),
+);
+
 router.post(
   '/romantic-relationships/query',
   requireAuth,
@@ -4034,26 +4117,6 @@ router.get(
     res.json({
       success: true,
       timelines,
-    });
-  })
-);
-
-/**
- * POST /api/conversation/characters/:id/rebuild-timelines
- * Rebuild timelines for a character
- */
-router.post(
-  '/characters/:id/rebuild-timelines',
-  requireAuth,
-  asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const userId = req.user!.id;
-    const id = req.params.id as string;
-
-    await characterTimelineBuilder.rebuildTimelinesForCharacter(userId, id);
-
-    res.json({
-      success: true,
-      message: 'Timelines rebuilt',
     });
   })
 );

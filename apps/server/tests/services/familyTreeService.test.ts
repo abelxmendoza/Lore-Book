@@ -14,8 +14,11 @@ import {
   alignMarriedInSidesWithSpouse,
   sortFamilyMembersForDisplay,
   familyTreeService,
+  characterHasFamilyTreeSignal,
+  isFamilyTreeEligibleCharacter,
   type FamilyMemberDTO,
   type FamilyTreeDTO,
+  type CharacterKinshipRow,
 } from '../../src/services/familyTreeService';
 
 function member(overrides: Partial<FamilyMemberDTO> = {}): FamilyMemberDTO {
@@ -46,6 +49,77 @@ describe('familyTreeService — node identity helpers', () => {
     expect(isFamilyExcluded({})).toBe(false);
     expect(isFamilyExcluded(null)).toBe(false);
     expect(isFamilyExcluded(undefined)).toBe(false);
+  });
+});
+
+function kinRow(overrides: Partial<CharacterKinshipRow> = {}): CharacterKinshipRow {
+  return {
+    id: 'char-1',
+    name: 'Jamie',
+    ...overrides,
+  };
+}
+
+describe('familyTreeService — Family Book alignment', () => {
+  it('admits titled kin and an explicit cousin role', () => {
+    expect(characterHasFamilyTreeSignal(kinRow({ name: 'Tía Maya', archetype: 'family' }))).toBe(true);
+    expect(characterHasFamilyTreeSignal(kinRow({ name: 'Jamie', role: 'cousin' }))).toBe(true);
+    expect(isFamilyTreeEligibleCharacter(kinRow({ name: 'Tía Maya', archetype: 'family' }))).toBe(true);
+  });
+
+  it('does not admit a generic family stamp or a crush archetype', () => {
+    expect(
+      characterHasFamilyTreeSignal(
+        kinRow({
+          name: 'Alex',
+          archetype: 'family',
+          metadata: { relationship_type: 'family' },
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isFamilyTreeEligibleCharacter(
+        kinRow({
+          name: 'Renna',
+          archetype: 'unrequited_crush',
+          metadata: { relationship_type: 'family' },
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it('admits a user Family pin and rejects a not-family pin', () => {
+    expect(
+      characterHasFamilyTreeSignal(
+        kinRow({
+          name: 'Alex',
+          metadata: { book_category: 'family', book_category_source: 'user_confirmed' },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isFamilyTreeEligibleCharacter(
+        kinRow({
+          name: 'Alex',
+          metadata: { book_category: 'friends', book_category_source: 'user_confirmed' },
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it('respects family_excluded over a Family pin', () => {
+    expect(
+      isFamilyTreeEligibleCharacter(
+        kinRow({
+          name: 'Tía Maya',
+          metadata: {
+            book_category: 'family',
+            book_category_source: 'user_confirmed',
+            family_excluded: { value: true, reason: 'tree_remove' },
+          },
+        }),
+      ),
+    ).toBe(false);
   });
 });
 

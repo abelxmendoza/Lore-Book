@@ -220,6 +220,139 @@ describe('chronologyAuthority', () => {
     expect(result.excluded[0]?.speechAct).toBe('RECAP_REQUEST');
   });
 
+  it('does not treat recording_fallback sortTime as occurrence', () => {
+    const result = projectCanonicalTimeline([
+      {
+        id: 'journal-write',
+        kind: 'moment',
+        sourceId: 'je-1',
+        sortTime: '2026-08-20T18:42:13.001Z',
+        title: 'Last month I went to a concert with Jamie',
+        body: 'Last month I went to a concert with Jamie',
+        sourceKind: 'journal_entry',
+        sourceIds: ['je-1'],
+        sourceType: 'chat',
+        recordedAt: '2026-08-20T18:42:13.001Z',
+        mentionedAt: '2026-08-20T18:42:13.001Z',
+        occurredAt: null,
+        temporalSource: 'recording_fallback',
+      },
+    ]);
+    expect(result.canonical).toHaveLength(0);
+    expect(result.unresolved[0]?.temporal.occurred.start).toBeNull();
+    expect(result.unresolved[0]?.temporal.recordedAt).toContain('2026-08-20');
+  });
+
+  it('trusts an explicit occurredAt even when temporalSource defaults to recording_fallback — a real date is not the same as no evidence', () => {
+    // resolved_events.temporal_source defaults to 'recording_fallback' at the
+    // schema level whenever the ingestion path that set start_time never
+    // separately classified its evidence — this is the exact production bug
+    // (Character Timeline / Biography canonical-occurrence fix): a caller
+    // that already resolved a real, non-null occurredAt must be trusted,
+    // not silently re-nulled by a source tag that's just an unset default.
+    const result = projectCanonicalTimeline([{
+      id: 'maya-met',
+      kind: 'event',
+      sourceId: 're-maya-1',
+      sortTime: '2024-03-15T00:00:00.000Z',
+      title: 'Met Maya Chen at Northwind Labs',
+      body: 'Met Maya Chen at Northwind Labs',
+      sourceKind: 'resolved_event',
+      sourceIds: ['re-maya-1'],
+      sourceType: 'resolved_event',
+      timePrecision: 'date',
+      timeConfidence: 0.6,
+      temporalSource: 'context_inferred', // upgraded by stitchedTimelineService — see its own test
+      occurredAt: '2024-03-15T00:00:00.000Z',
+    }]);
+    expect(result.canonical.some((i) => i.id === 'maya-met')).toBe(true);
+    const item = result.canonical.find((i) => i.id === 'maya-met');
+    expect(item?.occurrenceStatus).not.toBe('unresolved');
+    expect(item?.temporal.occurred.start).toBe('2024-03-15T00:00:00.000Z');
+  });
+
+  it('a resolved_event whose temporalSource is still the schema default recording_fallback keeps an explicit start_time', () => {
+    const result = projectCanonicalTimeline([{
+      id: 'maya-met-default-source',
+      kind: 'event',
+      sourceId: 're-maya-1',
+      sortTime: '2026-08-21T12:00:00.000Z',
+      title: 'Met Maya Chen at Northwind Labs',
+      body: 'Met Maya Chen at Northwind Labs',
+      sourceKind: 'resolved_event',
+      sourceIds: ['re-maya-1'],
+      sourceType: 'resolved_event',
+      timePrecision: 'date',
+      timeConfidence: 0.6,
+      temporalSource: 'recording_fallback',
+      occurredAt: '2024-03-15T00:00:00.000Z',
+      recordedAt: '2026-08-21T12:00:00.000Z',
+    }]);
+    const item = result.canonical.find((i) => i.id === 'maya-met-default-source');
+    expect(item).toBeTruthy();
+    expect(item?.occurrenceStatus).not.toBe('unresolved');
+    expect(item?.temporal.occurred.start).toBe('2024-03-15T00:00:00.000Z');
+    expect(item?.temporal.occurred.start).not.toBe('2026-08-21T12:00:00.000Z');
+  });
+
+  it('still treats a genuinely undefined occurredAt under recording_fallback as unresolved — no sortTime leak', () => {
+    const result = projectCanonicalTimeline([{
+      id: 'no-evidence',
+      kind: 'moment',
+      sourceId: 'je-no-evidence',
+      sortTime: '2026-08-20T18:42:13.001Z',
+      title: 'Something happened',
+      body: 'Something happened',
+      sourceKind: 'journal_entry',
+      sourceIds: ['je-no-evidence'],
+      sourceType: 'chat',
+      temporalSource: 'recording_fallback',
+      // occurredAt intentionally omitted (undefined) — the caller never made
+      // a determination at all, unlike the resolved_event case above.
+    }]);
+    expect(result.canonical.some((i) => i.id === 'no-evidence')).toBe(false);
+    expect(result.unresolved.find((i) => i.id === 'no-evidence')?.temporal.occurred.start).toBeNull();
+  });
+
+  it('an explicit null occurredAt under recording_fallback stays unresolved (the journal write-time-masquerade case)', () => {
+    const result = projectCanonicalTimeline([{
+      id: 'explicit-null',
+      kind: 'moment',
+      sourceId: 'je-explicit-null',
+      sortTime: '2026-08-20T18:42:13.001Z',
+      title: 'Wrote this today, no real date known',
+      body: 'Wrote this today, no real date known',
+      sourceKind: 'journal_entry',
+      sourceIds: ['je-explicit-null'],
+      sourceType: 'chat',
+      temporalSource: 'recording_fallback',
+      occurredAt: null, // caller explicitly determined "no real occurrence"
+    }]);
+    expect(result.canonical.some((i) => i.id === 'explicit-null')).toBe(false);
+    expect(result.unresolved.find((i) => i.id === 'explicit-null')?.temporal.occurred.start).toBeNull();
+  });
+
+  it('import/recovery-tagged data stays unresolved even with an explicit occurredAt — that veto is deliberate, not a default', () => {
+    const result = projectCanonicalTimeline([{
+      id: 'recovered-with-date',
+      kind: 'event',
+      sourceId: 're-recovered',
+      sortTime: '2026-06-16T04:15:39.000Z',
+      title: 'Recovered memory batch',
+      body: 'Imported blob',
+      sourceKind: 'resolved_event',
+      sourceIds: ['re-recovered'],
+      sourceType: 'resolved_event',
+      tags: ['recovered'],
+      timePrecision: 'exact',
+      timeConfidence: 1,
+      temporalSource: 'context_inferred',
+      occurredAt: '2026-06-16T04:15:39.000Z', // explicit, but the recovery tag still wins
+    }]);
+    expect(result.unresolved.some((i) => i.id === 'recovered-with-date')).toBe(true);
+    expect(result.unresolved.find((i) => i.id === 'recovered-with-date')?.temporal.occurred.start).toBeNull();
+  });
+
   it('keeps a user-stated year range canonical and preserves both endpoints', () => {
     const result = projectCanonicalTimeline([{
       id: 'relationship-range',

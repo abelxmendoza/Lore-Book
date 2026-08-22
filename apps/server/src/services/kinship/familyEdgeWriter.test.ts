@@ -24,7 +24,8 @@ describe('familyEdgeWriter — type normalization', () => {
     expect(normalizeFamilyEdgeType('tía')).toBe('aunt_of');
     expect(normalizeFamilyEdgeType('abuela')).toBe('grandparent_of');
     expect(normalizeFamilyEdgeType('stepdad')).toBe('step_parent_of');
-    expect(kinshipStringToEdgeType('cousin')).toBe('cousin_of');
+    expect(normalizeFamilyEdgeType('grandson')).toBe('grandchild_of');
+    expect(normalizeFamilyEdgeType('granddaughter')).toBe('grandchild_of');
   });
 
   it('inverts directed family edges bidirectionally', () => {
@@ -39,7 +40,9 @@ describe('familyEdgeWriter — type normalization', () => {
     expect(kinshipStringToTreeRelation('mother')).toBe('parent');
     expect(kinshipStringToTreeRelation('tía')).toBe('aunt');
     expect(kinshipStringToTreeRelation('abuela')).toBe('grandparent');
-    expect(kinshipStringToTreeRelation('stepdad')).toBe('step_parent');
+    expect(kinshipStringToTreeRelation('grandson')).toBe('grandchild');
+    expect(kinshipStringToTreeRelation('granddaughter')).toBe('grandchild');
+    expect(normalizeTreeRelation('grandson')).toBe('grandson');
     expect(normalizeTreeRelation('cousin')).toBe('cousin');
     expect(normalizeTreeRelation('not_a_relation')).toBeNull();
   });
@@ -149,7 +152,7 @@ describe('applyKinshipLabelToCharacter', () => {
     );
   });
 
-  it('does not set relationship_to_user for Goth Tio stage personas', async () => {
+  it('does not stamp family onto Goth Tio stage personas', async () => {
     await mockCharacterRow({ name: 'Goth Tio', metadata: {}, archetype: null });
     const { applyKinshipLabelToCharacter } = await import('./familyEdgeWriter');
 
@@ -159,10 +162,7 @@ describe('applyKinshipLabelToCharacter', () => {
       explicitClaim: false,
     });
 
-    expect(updateSpy).toHaveBeenCalled();
-    const patch = (updateSpy as any).mock.calls[0][0] as { metadata: Record<string, unknown> };
-    expect(patch.metadata.kinship_label).toBe('Uncle');
-    expect(patch.metadata.relationship_to_user).toBeUndefined();
+    expect(updateSpy).not.toHaveBeenCalled();
   });
 
   it('does not overwrite a user-confirmed kinship label', async () => {
@@ -194,15 +194,24 @@ describe('applyKinshipLabelToCharacter', () => {
       explicitClaim: true,
     });
 
-    expect(updateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        metadata: expect.objectContaining({
-          kinship_label: 'Cousin',
-          relationship_to_user: 'friend',
-          relationship_to_user_source: 'user_confirmed',
-        }),
-      }),
-    );
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not stamp family onto an unrequited crush without an explicit kinship claim', async () => {
+    await mockCharacterRow({
+      name: 'Renna',
+      metadata: {},
+      archetype: 'unrequited_crush',
+    });
+    const { applyKinshipLabelToCharacter } = await import('./familyEdgeWriter');
+
+    await applyKinshipLabelToCharacter('user-1', 'char-1', 'cousin', {
+      characterName: 'Renna',
+      context: 'Renna came to the family barbecue',
+      explicitClaim: false,
+    });
+
+    expect(updateSpy).not.toHaveBeenCalled();
   });
 
   it('is a no-op for a synthetic/placeholder character id', async () => {

@@ -469,6 +469,8 @@ describe('CharacterBook', () => {
         expect(screen.getByTestId('character-book-sort')).toBeInTheDocument();
       }, { timeout: 5000 });
       expect(screen.getByText(/By impact on me/)).toBeInTheDocument();
+      expect(screen.getByTestId('character-book-sort')).toHaveValue('name');
+      expect(screen.getByRole('option', { name: 'A–Z' })).toBeInTheDocument();
     });
 
     it('loads seeded demo characters for impact scenarios', async () => {
@@ -504,5 +506,103 @@ describe('CharacterBook', () => {
       });
   }, 15_000);
 });
+
+  describe('list presence and pagination', () => {
+    function bookCharacter(partial: Record<string, unknown>) {
+      return {
+        role: 'Friend',
+        archetype: 'ally',
+        summary: 'Test summary',
+        user_id: 'user-1',
+        alias: [],
+        pronouns: null,
+        status: 'active',
+        first_appearance: null,
+        tags: [],
+        metadata: {},
+        created_at: '2026-01-15T12:00:00.000Z',
+        updated_at: '2026-08-16T12:00:00.000Z',
+        ...partial,
+      };
+    }
+
+    it('does not stamp Dormant or 0 closeness on cards without relationship signal', async () => {
+      const user = userEvent.setup();
+      mockUseGetCharactersBookQuery.mockReturnValue({
+        data: {
+          characters: [
+            bookCharacter({
+              id: 'jamie-1',
+              name: 'Jamie Rivera',
+              importance_level: 'minor',
+              importance_score: 0,
+            }),
+          ],
+          duplicate_groups: [],
+          counts: {},
+        },
+        isLoading: false,
+        isFetching: false,
+        refetch: vi.fn(),
+      });
+
+      render(<CharacterBook />);
+      await waitFor(() => {
+        expect(screen.getAllByText('Jamie Rivera').length).toBeGreaterThan(0);
+      });
+
+      await user.click(screen.getByLabelText('List view'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('character-book-list')).toBeInTheDocument();
+      });
+      const list = screen.getByTestId('character-book-list');
+      expect(list.textContent).toContain('Jamie Rivera');
+      expect(list.textContent).not.toMatch(/Dormant/i);
+      expect(list.textContent).not.toMatch(/0 closeness/i);
+      expect(list.textContent).not.toMatch(/Closeness unknown/i);
+    });
+
+    it('paginates list view at 40 rows', async () => {
+      const user = userEvent.setup();
+      const mockCharacters = Array.from({ length: 45 }, (_, i) => {
+        const n = String(i + 1).padStart(2, '0');
+        return bookCharacter({
+          id: `char-${n}`,
+          name: `Character ${n}`,
+          importance_level: 'major',
+        });
+      });
+
+      mockUseGetCharactersBookQuery.mockReturnValue({
+        data: { characters: mockCharacters, duplicate_groups: [], counts: {} },
+        isLoading: false,
+        isFetching: false,
+        refetch: vi.fn(),
+      });
+
+      render(<CharacterBook />);
+      await waitFor(() => {
+        expect(screen.getAllByText('Character 01').length).toBeGreaterThan(0);
+      });
+
+      await user.click(screen.getByLabelText('List view'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('character-book-list')).toBeInTheDocument();
+      });
+      expect(screen.getByText('Character 40')).toBeInTheDocument();
+      expect(screen.queryByText('Character 41')).not.toBeInTheDocument();
+      expect(screen.getByText(/1–40 of 45/)).toBeInTheDocument();
+
+      await user.click(screen.getByTestId('character-book-page-next'));
+
+      await waitFor(() => {
+        expect(screen.getByText('Character 41')).toBeInTheDocument();
+      });
+      expect(screen.getByText('Character 45')).toBeInTheDocument();
+      expect(screen.queryByText('Character 01')).not.toBeInTheDocument();
+    });
+  });
 
 });

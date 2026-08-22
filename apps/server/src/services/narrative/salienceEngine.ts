@@ -14,6 +14,7 @@ import type { PersonSalience, SalienceCategory } from './narrativeCognitionTypes
 const RECENCY_HALF_LIFE_DAYS = 30;
 /** Beyond this silence, a person is considered fading regardless of history. */
 const FADING_AFTER_DAYS = 45;
+const RISING_RATE_MULTIPLIER = 1.5;
 
 const CATEGORY_BOOST: Record<SalienceCategory, number> = {
   family: 0.10,
@@ -42,6 +43,16 @@ function recencyFactor(daysSinceLastSeen: number | null): number {
 
 function clamp01(n: number): number {
   return Math.max(0, Math.min(1, n));
+}
+
+function hasRisingEvidence(input: PersonSalienceInput): boolean {
+  const activity = input.activityComparison;
+  if (!activity) return false;
+  if (activity.recentMentions < 2 || activity.priorMentions < 1) return false;
+  if (activity.recentThreadIds.length < 1 || activity.priorThreadIds.length < 1) return false;
+  const recentRate = activity.recentMentions / activity.recentWindowDays;
+  const priorRate = activity.priorMentions / activity.priorWindowDays;
+  return recentRate >= priorRate * RISING_RATE_MULTIPLIER;
 }
 
 export function computePersonSalience(
@@ -75,15 +86,19 @@ export function computePersonSalience(
         reasons.push('long-standing closeness');
       }
 
+      const rising = hasRisingEvidence(input);
       const trend: PersonSalience['trend'] =
         input.daysSinceLastSeen != null && input.daysSinceLastSeen > FADING_AFTER_DAYS
           ? 'fading'
-          : input.daysSinceLastSeen != null &&
-              input.daysSinceLastSeen <= 7 &&
-              gravity.components.mentionCount < 0.5
+          : rising
             ? 'rising'
             : 'steady';
-      if (trend === 'rising') reasons.push('newer presence, growing fast');
+      if (trend === 'rising' && input.activityComparison) {
+        reasons.push(
+          `${input.activityComparison.recentMentions} recent mentions vs ` +
+          `${input.activityComparison.priorMentions} in the earlier comparison period`,
+        );
+      }
       if (trend === 'fading') reasons.push('has gone quiet lately');
 
       // Confidence tracks evidence richness, not the score itself.
@@ -102,6 +117,7 @@ export function computePersonSalience(
         trend,
         lastUpdated: now,
         confidence: Math.round(confidence * 100) / 100,
+        trendEvidence: trend === 'rising' ? input.activityComparison : undefined,
       };
     })
     .sort((a, b) => b.score - a.score);

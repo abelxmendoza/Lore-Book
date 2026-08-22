@@ -351,6 +351,8 @@ export function extractClaimedName(text: string): string | null {
 
 export function inferRelationshipRole(text: string): string | undefined {
   const t = text.toLowerCase();
+  if (/\brecruiter\b/.test(t)) return 'recruiter';
+  if (/\binterviewer\b|\binterviewed me\b/.test(t)) return 'interviewer';
   if (/\b(father|dad|papá|papa|padre)\b/.test(t)) return 'father';
   if (/\b(mother|mom|mamá|mama|madre)\b/.test(t)) return 'mother';
   if (/\b(uncle|tío|tio)\b/.test(t)) return 'uncle';

@@ -173,10 +173,10 @@ async function routeEntityProposal(
       .from('entity_authority_decisions')
       .insert({
         user_id: userId,
-        kind: 'PERSON',
+        kind: String(payload.entityKind ?? 'UNKNOWN'),
         decision: action.type === 'propose_entity_merge' ? 'MERGE' : action.type === 'propose_alias' ? 'ALIAS' : 'LINK',
-        source_name: String(payload.name ?? payload.targetName ?? 'unknown'),
-        target_name: String(payload.characterId ?? payload.targetEntityId ?? payload.name ?? 'unknown'),
+        source_name: String(payload.sourceName ?? payload.name ?? payload.targetName ?? 'unknown'),
+        target_name: String(payload.targetName ?? payload.characterId ?? payload.targetEntityId ?? payload.name ?? 'unknown'),
         confidence: action.confidence,
         reason: action.label,
         evidence: [JSON.stringify(payload).slice(0, 500)],

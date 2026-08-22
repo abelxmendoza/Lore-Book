@@ -73,6 +73,8 @@ type ColorCodedTimelineProps = {
     title: string;
     date: string;
     type?: string;
+    occurredAt?: string | null;
+    occurrenceStatus?: 'confirmed' | 'range' | 'unresolved';
   }>;
   hierarchyNodes?: TimelineNode[]; // Full hierarchy nodes for nested display
   currentItemId?: string;
@@ -546,13 +548,19 @@ export const ColorCodedTimeline = ({
     });
     
     // Add memories (scattered points)
-    finalMemories.forEach((memory, index) => {
+    // Dummy-data memories (generateDummyTimelineData) predate occurredAt/
+    // occurrenceStatus and are typed without them — real data (`memories`
+    // prop) always carries the full ColorCodedTimelineProps shape.
+    finalMemories.forEach((memoryItem, index) => {
+      const memory = memoryItem as typeof memoryItem & { occurredAt?: string | null; occurrenceStatus?: 'confirmed' | 'range' | 'unresolved' };
+      const date = memory.occurrenceStatus === 'unresolved' ? '' : (memory.occurredAt ?? memory.date);
+      if (!date || Number.isNaN(new Date(date).getTime())) return;
       items.push({
         id: `memory-${memory.id}`,
         title: memory.title,
         type: 'memory',
-        date: memory.date,
-        zIndex: 7 + (index % 3) // Vary z-index for visual depth
+        date,
+        zIndex: 7 + (index % 3)
       });
     });
     

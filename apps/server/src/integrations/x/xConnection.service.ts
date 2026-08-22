@@ -337,48 +337,52 @@ async function saveConnection(input: {
   xUserId: string;
   username: string;
   token: XTokenResponse;
+  /** Extra metadata fields to merge (preserves lore_intake_mode, since_id, etc.). */
+  metadataPatch?: Record<string, unknown>;
 }) {
   const scopes = input.token.scope?.split(/\s+/).filter(Boolean) ?? X_SCOPES;
   const expiresAt = input.token.expires_in
     ? new Date(Date.now() + input.token.expires_in * 1000).toISOString()
     : null;
 
-  let { error } = await supabaseAdmin.from('external_account_connections').upsert(
-    {
-      user_id: input.userId,
-      provider: PROVIDER,
-      provider_user_id: input.xUserId,
-      provider_username: input.username,
-      access_token_enc: encrypt(input.token.access_token),
-      refresh_token_enc: input.token.refresh_token ? encrypt(input.token.refresh_token) : null,
-      scopes,
-      expires_at: expiresAt,
-      status: 'connected',
-      metadata: { token_type: input.token.token_type ?? 'bearer' },
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'user_id,provider' }
-  );
+  // Preserve existing connection metadata across token refresh / reconnect.
+  let existingMeta: Record<string, unknown> = {};
+  try {
+    const existing = await getConnection(input.userId);
+    existingMeta = (existing?.metadata as Record<string, unknown>) ?? {};
+  } catch {
+    // Table may be mid-create; proceed with patch only.
+  }
+  const metadata: Record<string, unknown> = {
+    ...existingMeta,
+    ...(input.metadataPatch ?? {}),
+    token_type: input.token.token_type ?? 'bearer',
+  };
+
+  const row = {
+    user_id: input.userId,
+    provider: PROVIDER,
+    provider_user_id: input.xUserId,
+    provider_username: input.username,
+    access_token_enc: encrypt(input.token.access_token),
+    refresh_token_enc: input.token.refresh_token ? encrypt(input.token.refresh_token) : null,
+    scopes,
+    expires_at: expiresAt,
+    status: 'connected',
+    metadata,
+    updated_at: new Date().toISOString(),
+  };
+
+  let { error } = await supabaseAdmin.from('external_account_connections').upsert(row, {
+    onConflict: 'user_id,provider',
+  });
 
   if (error && (error.code === 'PGRST205' || /schema cache|external_account_connections/i.test(error.message ?? ''))) {
     const created = await ensureExternalAccountConnectionsTable();
     if (created) {
-      const res = await supabaseAdmin.from('external_account_connections').upsert(
-        {
-          user_id: input.userId,
-          provider: PROVIDER,
-          provider_user_id: input.xUserId,
-          provider_username: input.username,
-          access_token_enc: encrypt(input.token.access_token),
-          refresh_token_enc: input.token.refresh_token ? encrypt(input.token.refresh_token) : null,
-          scopes,
-          expires_at: expiresAt,
-          status: 'connected',
-          metadata: { token_type: input.token.token_type ?? 'bearer' },
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'user_id,provider' }
-      );
+      const res = await supabaseAdmin.from('external_account_connections').upsert(row, {
+        onConflict: 'user_id,provider',
+      });
       error = res.error;
     }
   }
@@ -483,42 +487,148 @@ async function fetchMe(accessToken: string): Promise<{ id: string; username: str
   return { id: payload.data.id, username: payload.data.username };
 }
 
-async function fetchUserPosts(accessToken: string, xUserId: string, maxPosts: number): Promise<XResponse> {
-  const params = new URLSearchParams({
-    max_results: `${Math.min(Math.max(maxPosts, 5), 100)}`,
-    expansions: 'author_id,attachments.media_keys,referenced_tweets.id',
-    'tweet.fields': 'created_at,public_metrics,entities,attachments,referenced_tweets,lang,note_tweet',
-    'user.fields': 'username',
-    'media.fields': 'url,preview_image_url,type',
-    exclude: 'retweets,replies',
-  });
+type XTimelinePost = {
+  id: string;
+  [key: string]: unknown;
+};
 
-  const response = await xApiGuard.run(() =>
-    fetch(`${X_API_BASE_URL}/users/${encodeURIComponent(xUserId)}/tweets?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
-  );
-  if (!response.ok) throw new Error(`Failed to fetch X posts: ${response.status} ${await response.text()}`);
-  return response.json() as Promise<XResponse>;
+type XTimelinePage = {
+  data?: XTimelinePost[] | XTimelinePost;
+  posts?: XTimelinePost[];
+  includes?: {
+    media?: Array<{ media_key?: string; [key: string]: unknown }>;
+    users?: Array<{ id?: string; [key: string]: unknown }>;
+  };
+  meta?: {
+    newest_id?: string;
+    oldest_id?: string;
+    result_count?: number;
+    next_token?: string;
+  };
+};
+
+function maxSnowflakeId(ids: Array<string | null | undefined>): string | null {
+  let best: string | null = null;
+  for (const id of ids) {
+    if (!id || !/^\d+$/.test(id)) continue;
+    if (!best || BigInt(id) > BigInt(best)) best = id;
+  }
+  return best;
+}
+
+function pagePostsOf(page: XTimelinePage): XTimelinePost[] {
+  if (Array.isArray(page.data)) return page.data.filter((p) => p?.id);
+  if (page.data?.id) return [page.data];
+  if (Array.isArray(page.posts)) return page.posts.filter((p) => p?.id);
+  return [];
+}
+
+/**
+ * Fetch the user's timeline with pagination.
+ * - Uses `since_id` when available so every post newer than the last sync is pulled.
+ * - Excludes retweets only (replies + quotes stay — they often carry life lore).
+ * - Caps total posts at `maxPosts` across pages (X allows max 100 per page).
+ */
+async function fetchUserPosts(
+  accessToken: string,
+  xUserId: string,
+  options: { maxPosts: number; sinceId?: string | null }
+): Promise<{ payload: XResponse; newestId: string | null }> {
+  const target = Math.min(Math.max(options.maxPosts, 5), 300);
+  const posts: XTimelinePost[] = [];
+  const media: NonNullable<XTimelinePage['includes']>['media'] = [];
+  const users: NonNullable<XTimelinePage['includes']>['users'] = [];
+  const seenMedia = new Set<string>();
+  const seenUsers = new Set<string>();
+  let paginationToken: string | undefined;
+  let newestId: string | null = null;
+
+  while (posts.length < target) {
+    const pageSize = Math.min(Math.max(target - posts.length, 5), 100);
+    const params = new URLSearchParams({
+      max_results: `${pageSize}`,
+      expansions: 'author_id,attachments.media_keys,referenced_tweets.id',
+      'tweet.fields': 'created_at,public_metrics,entities,attachments,referenced_tweets,lang,note_tweet',
+      'user.fields': 'username',
+      'media.fields': 'url,preview_image_url,type',
+      // Keep replies (life lore); drop pure retweets.
+      exclude: 'retweets',
+    });
+    if (options.sinceId) params.set('since_id', options.sinceId);
+    if (paginationToken) params.set('pagination_token', paginationToken);
+
+    const response = await xApiGuard.run(() =>
+      fetch(`${X_API_BASE_URL}/users/${encodeURIComponent(xUserId)}/tweets?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to fetch X posts: ${response.status} ${await response.text()}`);
+    }
+
+    const page = (await response.json()) as XTimelinePage;
+    const pagePosts = pagePostsOf(page);
+    posts.push(...pagePosts);
+
+    for (const m of page.includes?.media ?? []) {
+      if (m.media_key && !seenMedia.has(m.media_key)) {
+        seenMedia.add(m.media_key);
+        media!.push(m);
+      }
+    }
+    for (const u of page.includes?.users ?? []) {
+      if (u.id && !seenUsers.has(u.id)) {
+        seenUsers.add(u.id);
+        users!.push(u);
+      }
+    }
+
+    newestId = maxSnowflakeId([
+      newestId,
+      page.meta?.newest_id,
+      ...pagePosts.map((p) => p.id),
+    ]);
+    paginationToken = page.meta?.next_token;
+    if (!paginationToken || pagePosts.length === 0) break;
+  }
+
+  return {
+    payload: {
+      data: posts,
+      includes: { media, users },
+    } as XResponse,
+    newestId,
+  };
 }
 
 async function importedSourceIds(userId: string, sourceIds: string[]): Promise<Set<string>> {
   if (!sourceIds.length) return new Set();
 
-  const { data, error } = await supabaseAdmin
-    .from('journal_entries')
-    .select('metadata')
-    .eq('user_id', userId)
-    .eq('source', PROVIDER)
-    .in('metadata->>sourceId', sourceIds);
+  // OAuth path stores metadata.sourceId; legacy bearer path used metadata.x_post_id.
+  const [bySourceId, byLegacyId] = await Promise.all([
+    supabaseAdmin
+      .from('journal_entries')
+      .select('metadata')
+      .eq('user_id', userId)
+      .eq('source', PROVIDER)
+      .in('metadata->>sourceId', sourceIds),
+    supabaseAdmin
+      .from('journal_entries')
+      .select('metadata')
+      .eq('user_id', userId)
+      .eq('source', PROVIDER)
+      .in('metadata->>x_post_id', sourceIds),
+  ]);
 
-  if (error) throw error;
+  if (bySourceId.error) throw bySourceId.error;
+  if (byLegacyId.error) throw byLegacyId.error;
 
-  return new Set(
-    (data ?? [])
-      .map((row: any) => row?.metadata?.sourceId)
-      .filter((sourceId: unknown): sourceId is string => typeof sourceId === 'string')
-  );
+  const found = new Set<string>();
+  for (const row of [...(bySourceId.data ?? []), ...(byLegacyId.data ?? [])] as Array<{ metadata?: any }>) {
+    const sid = row?.metadata?.sourceId ?? row?.metadata?.x_post_id;
+    if (typeof sid === 'string') found.add(sid);
+  }
+  return found;
 }
 
 async function persistXImports(
@@ -543,10 +653,13 @@ async function persistXImports(
       continue;
     }
 
+    const importedAt = new Date().toISOString();
     const entry = await memoryService.saveEntry({
       userId,
       content: summary.text ?? summary.summary,
-      date: summary.timestamp,
+      mentionedAt: summary.timestamp,
+      sourceCreatedAt: summary.timestamp,
+      importedAt,
       tags: Array.from(new Set(['x-import', summary.type, ...(summary.tags ?? [])])),
       summary: summary.milestone ?? summary.summary,
       source: PROVIDER,
@@ -556,7 +669,8 @@ async function persistXImports(
         provider: PROVIDER,
         sourceId: summary.sourceId,
         url: summary.url,
-        importedAt: new Date().toISOString(),
+        importedAt,
+        sourceCreatedAt: summary.timestamp ?? null,
         eventType: summary.type,
         imageUrl: summary.imageUrl,
         x: summary.metadata ?? {},
@@ -702,16 +816,60 @@ export class XConnectionService {
     const xUserId = row.provider_user_id;
     if (!xUserId) throw new Error('X connection is missing provider user id. Reconnect X.');
 
-    const payload = await fetchUserPosts(accessToken, xUserId, maxPosts);
+    const meta = (row.metadata as Record<string, unknown> | null) ?? {};
+    let sinceId =
+      typeof meta.since_id === 'string' && /^\d+$/.test(meta.since_id) ? meta.since_id : null;
+
+    // Upgrade path: seed since_id from the newest already-imported post so we
+    // only pull truly new tweets (and never re-skip a burst behind a low maxPosts).
+    if (!sinceId) {
+      try {
+        const { data: recentRows } = await supabaseAdmin
+          .from('journal_entries')
+          .select('metadata')
+          .eq('user_id', userId)
+          .eq('source', PROVIDER)
+          .order('date', { ascending: false })
+          .limit(40);
+        const ids = (recentRows ?? []).map((r: any) => r?.metadata?.sourceId ?? r?.metadata?.x_post_id);
+        sinceId = maxSnowflakeId(ids);
+      } catch (err) {
+        logger.warn({ err }, 'Could not seed X since_id from journal_entries');
+      }
+    }
+
+    // Incremental syncs (with since_id) can pull a wider window safely; first sync stays bounded.
+    const fetchCap = sinceId ? Math.max(maxPosts, 100) : maxPosts;
+    const { payload, newestId } = await fetchUserPosts(accessToken, xUserId, {
+      maxPosts: fetchCap,
+      sinceId,
+    });
     const events = xAdapter(payload);
     const summaries = await summarizeMilestonesBridge(events);
-    const loreIntakeMode = loreIntakeModeFrom(row.metadata as Record<string, unknown> | null);
+    const loreIntakeMode = loreIntakeModeFrom(meta);
     const persistence = await persistXImports(userId, summaries, loreIntakeMode);
+
+    const nextSinceId = maxSnowflakeId([
+      sinceId,
+      newestId,
+      ...summaries.map((s) => s.sourceId),
+    ]);
+    const nextMetadata: Record<string, unknown> = {
+      ...meta,
+      ...(nextSinceId ? { since_id: nextSinceId } : {}),
+      last_sync_imported: persistence.imported,
+      last_sync_skipped: persistence.skipped,
+      last_sync_fetched: summaries.length,
+    };
 
     let updateErr: any = null;
     const updateRes = await supabaseAdmin
       .from('external_account_connections')
-      .update({ last_sync_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .update({
+        last_sync_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        metadata: nextMetadata,
+      })
       .eq('user_id', userId)
       .eq('provider', PROVIDER);
     updateErr = updateRes.error;
@@ -721,7 +879,11 @@ export class XConnectionService {
       if (created) {
         const retry = await supabaseAdmin
           .from('external_account_connections')
-          .update({ last_sync_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .update({
+            last_sync_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            metadata: nextMetadata,
+          })
           .eq('user_id', userId)
           .eq('provider', PROVIDER);
         updateErr = retry.error;
@@ -740,6 +902,8 @@ export class XConnectionService {
       events: summaries,
       loreIntakeMode,
       lore: persistence.lore,
+      sinceId: nextSinceId,
+      incremental: Boolean(sinceId),
     };
   }
 

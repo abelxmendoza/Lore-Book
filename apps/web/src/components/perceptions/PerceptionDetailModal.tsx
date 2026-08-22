@@ -13,6 +13,7 @@ import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Textarea } from '../ui/textarea';
 
+import { getPerceptionShortTitle } from './perceptionDisplayTitle';
 import { PerceptionEvolutionTimeline } from './PerceptionEvolutionTimeline';
 
 
@@ -40,6 +41,7 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
   const [updating, setUpdating] = useState(false);
   const [editing, setEditing] = useState(false);
   const [showKnowledgeInspector, setShowKnowledgeInspector] = useState(false);
+  const shortTitle = getPerceptionShortTitle(perception);
   const [editForm, setEditForm] = useState({
     content: perception.content,
     impact_on_me: perception.impact_on_me,
@@ -73,7 +75,7 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
     onClose();
     openChatWithFocus({
       entityId: perception.id,
-      entityName: `Perception about ${perception.subject_alias}`,
+      entityName: shortTitle,
       entityType: 'perception',
       sourceSurface: 'perceptions',
       sourceLabel: 'Perception Book',
@@ -157,17 +159,22 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-black/90 border border-border/60 rounded-2xl shadow-panel w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-1.5 backdrop-blur-sm sm:p-4">
+      <div className="bg-black/90 border border-border/60 rounded-2xl shadow-panel w-full max-w-4xl max-h-[96dvh] sm:max-h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(255,165,0,0.35),_transparent)]">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <Eye className="w-6 h-6 text-orange-400 flex-shrink-0" />
+        <div className="flex items-center justify-between gap-3 border-b border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(255,165,0,0.35),_transparent)] px-3 py-2.5 sm:px-4 sm:py-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
+            <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-orange-500/15">
+              <Eye className="h-4 w-4 text-orange-400" />
+            </span>
             <div className="flex-1 min-w-0">
-              <h2 className="text-xl font-semibold text-white truncate">
-                Perception: {perception.subject_alias}
+              <p className="break-words text-[10px] font-medium uppercase tracking-wide text-orange-300/70">
+                Perception about {perception.subject_alias}
+              </p>
+              <h2 className="break-words text-base font-semibold leading-tight text-white sm:text-lg">
+                {shortTitle}
               </h2>
-              <p className="text-sm text-white/60">Your perception, not objective truth</p>
+              <p className="break-words text-[11px] text-white/55">Your perception, not objective truth</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -184,54 +191,54 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
           </div>
         </div>
 
-        <div className="border-b border-border/60 bg-orange-500/[0.06] px-4 py-3 sm:px-6">
-          <div className="grid gap-2 sm:grid-cols-2">
+        <div className="border-b border-border/60 bg-orange-500/[0.04] px-3 py-2 sm:px-4">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <button
               type="button"
               onClick={openPerceptionInMainChat}
               data-testid="perception-open-main-chat"
-              className="group flex w-full items-center justify-between gap-4 rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-left transition hover:border-orange-400/60 hover:bg-orange-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
+              className="group flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-orange-500/30 bg-orange-500/10 px-2.5 py-2 text-left transition hover:border-orange-400/60 hover:bg-orange-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 sm:px-3"
             >
-              <span className="flex min-w-0 items-center gap-3">
-                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-orange-300">
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="hidden h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-orange-300 min-[390px]:flex">
                   <MessageSquare className="h-4 w-4" />
                 </span>
                 <span className="min-w-0">
-                  <span className="block font-semibold text-white">Focus this perception in main chat</span>
-                  <span className="block text-xs text-white/60">LoreBook responds first while preserving uncertainty and evidence.</span>
+                  <span className="block text-xs font-semibold leading-tight text-white sm:text-sm">Focus in main chat</span>
+                  <span className="mt-0.5 block break-words text-[11px] leading-tight text-white/55">LoreBook responds first with context.</span>
                 </span>
               </span>
-              <ArrowRight className="h-4 w-4 flex-shrink-0 text-orange-300 transition-transform group-hover:translate-x-1" />
+              <ArrowRight className="h-3.5 w-3.5 flex-shrink-0 text-orange-300 transition-transform group-hover:translate-x-0.5" />
             </button>
             <button
               type="button"
               onClick={() => setShowKnowledgeInspector(true)}
               data-testid="perception-open-evidence"
-              className="group flex w-full items-center justify-between gap-4 rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-left transition hover:border-violet-400/60 hover:bg-violet-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+              className="group flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2.5 py-2 text-left transition hover:border-violet-400/60 hover:bg-violet-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 sm:px-3"
             >
-              <span className="flex min-w-0 items-center gap-3">
-                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-violet-500/20 text-violet-300">
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="hidden h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-violet-500/20 text-violet-300 min-[390px]:flex">
                   <ShieldCheck className="h-4 w-4" />
                 </span>
                 <span className="min-w-0">
-                  <span className="block font-semibold text-white">Why is this recorded?</span>
-                  <span className="block text-xs text-white/60">See evidence, uncertainty, alternatives, and changes.</span>
+                  <span className="block text-xs font-semibold leading-tight text-white sm:text-sm">Why is this recorded?</span>
+                  <span className="mt-0.5 block break-words text-[11px] leading-tight text-white/55">Evidence, uncertainty, and changes.</span>
                 </span>
               </span>
-              <ArrowRight className="h-4 w-4 flex-shrink-0 text-violet-300 transition-transform group-hover:translate-x-1" />
+              <ArrowRight className="h-3.5 w-3.5 flex-shrink-0 text-violet-300 transition-transform group-hover:translate-x-0.5" />
             </button>
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-1 px-4 sm:px-6 pt-4 border-b border-border/60">
+        <div className="flex items-center gap-1 border-b border-border/60 px-3 pt-1.5 sm:px-4">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-2 px-4 py-2 text-sm rounded-t-lg transition-colors ${
+                className={`flex items-center gap-1.5 rounded-t-lg px-3 py-1.5 text-xs transition-colors sm:text-sm ${
                   activeTab === tab.key
                     ? 'bg-orange-500/20 text-white border-b-2 border-orange-500'
                     : 'text-white/60 hover:text-white hover:bg-white/5'

@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { memoryService } from '../src/services/memoryService';
 import { supabaseAdmin } from '../src/services/supabaseClient';
+import { dateAssignmentService } from '../src/services/dateAssignmentService';
+import { peoplePlacesService } from '../src/services/peoplePlacesService';
+import { embeddingService } from '../src/services/embeddingService';
 
 vi.mock('../src/services/supabaseClient', () => ({
   supabaseAdmin: {
@@ -18,6 +21,38 @@ vi.mock('../src/services/supabaseClient', () => ({
       }))
     }))
   }
+}));
+
+vi.mock('../src/services/dateAssignmentService', () => ({
+  dateAssignmentService: { suggestDate: vi.fn() },
+}));
+
+vi.mock('../src/services/peoplePlacesService', () => ({
+  peoplePlacesService: { recordEntitiesForEntry: vi.fn().mockResolvedValue([]) },
+}));
+
+vi.mock('../src/services/embeddingService', () => ({
+  embeddingService: { embedText: vi.fn().mockResolvedValue([0.1, 0.2]) },
+}));
+
+vi.mock('../src/services/characterFoundationService', () => ({
+  characterFoundationService: { promoteEntityToCharacter: vi.fn().mockResolvedValue(undefined) },
+}));
+
+vi.mock('../src/services/skills/skillExtractionService', () => ({
+  skillExtractionService: { processEntryForSkills: vi.fn().mockResolvedValue([]) },
+}));
+
+vi.mock('../src/services/quests/questSuggestionService', () => ({
+  questSuggestionService: { processEntryForQuestSuggestions: vi.fn().mockResolvedValue(0) },
+}));
+
+vi.mock('../src/services/projects/projectSuggestionService', () => ({
+  projectSuggestionService: { processEntryForProjectSuggestions: vi.fn().mockResolvedValue(0) },
+}));
+
+vi.mock('../src/services/unifiedErIngestion', () => ({
+  ingestJournalEntry: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe('MemoryService', () => {
@@ -94,6 +129,94 @@ describe('MemoryService', () => {
         entryCacheHit: expect.any(Boolean),
         openaiMs: 0,
       });
+    });
+  });
+
+  describe('saveEntry — time_precision/time_confidence evidence (not just now()-defaults)', () => {
+    let insertedRows: Record<string, unknown>[];
+
+    beforeEach(() => {
+      insertedRows = [];
+      // A queued mockResolvedValueOnce that a test's primary text-based
+      // occurrence classifier ends up never needing (because it already
+      // resolved a date on its own) would otherwise leak into the next
+      // test's first real call to suggestDate. Full reset avoids that.
+      vi.mocked(dateAssignmentService.suggestDate).mockReset();
+      vi.mocked(supabaseAdmin.from).mockImplementation((table: string) => {
+        if (table === 'journal_entries') {
+          return {
+            insert: vi.fn((row: Record<string, unknown>) => {
+              insertedRows.push(row);
+              return Promise.resolve({ data: null, error: null });
+            }),
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                order: vi.fn(() => ({ limit: vi.fn(() => Promise.resolve({ data: [], error: null })) })),
+              })),
+            })),
+          } as any;
+        }
+        return {
+          select: vi.fn(() => ({ eq: vi.fn(() => ({ order: vi.fn(() => ({ limit: vi.fn(() => Promise.resolve({ data: [], error: null })) })) })) })),
+          insert: vi.fn(() => Promise.resolve({ data: null, error: null })),
+          update: vi.fn(() => ({ eq: vi.fn(() => Promise.resolve({ data: null, error: null })) })),
+        } as any;
+      });
+    });
+
+    it('an explicit caller-supplied date is treated as high-confidence, day-level occurrence evidence', async () => {
+      await memoryService.saveEntry({
+        userId: 'u1',
+        content: 'Short note.',
+        date: '2026-07-04T00:00:00.000Z',
+      });
+      expect(insertedRows[0]).toMatchObject({ time_precision: 'day', time_confidence: 0.95 });
+    });
+
+    it('a confident, explicit date extracted from content carries its real precision/confidence through', async () => {
+      vi.mocked(dateAssignmentService.suggestDate).mockResolvedValueOnce({
+        date: new Date('2026-03-01T00:00:00.000Z'),
+        precision: 'month',
+        confidence: 0.85,
+        source: 'extracted',
+      });
+      await memoryService.saveEntry({
+        userId: 'u1',
+        content: 'A long enough entry describing something that happened sometime in March, a while back now.',
+      });
+      expect(insertedRows[0]).toMatchObject({ time_precision: 'month', time_confidence: 0.85 });
+    });
+
+    it('a low-confidence suggestion does not get promoted to exact/full confidence — falls through as approximate, low confidence', async () => {
+      vi.mocked(dateAssignmentService.suggestDate).mockResolvedValueOnce({
+        date: new Date(),
+        precision: 'day',
+        confidence: 0.2,
+        source: 'default',
+        context: 'No date found, using current date',
+      });
+      await memoryService.saveEntry({
+        userId: 'u1',
+        content: 'A long enough entry with genuinely no date information anywhere in it at all.',
+      });
+      expect(insertedRows[0].time_precision).toBe('approximate');
+      expect(insertedRows[0].time_confidence as number).toBeLessThan(0.3);
+    });
+
+    it('no content to infer from at all (pure write-time fallback) is marked approximate with zero confidence, never a confident date', async () => {
+      await memoryService.saveEntry({ userId: 'u1', content: 'short' });
+      expect(insertedRows[0]).toMatchObject({ time_precision: 'approximate', time_confidence: 0 });
+      expect(insertedRows[0].date).toBeNull();
+    });
+
+    it('a dateAssignmentService failure does not silently claim a confident date', async () => {
+      vi.mocked(dateAssignmentService.suggestDate).mockRejectedValueOnce(new Error('boom'));
+      await memoryService.saveEntry({
+        userId: 'u1',
+        content: 'A long enough entry with genuinely no temporal expression, so the text classifier finds nothing and the fallback also fails.',
+      });
+      expect(insertedRows[0]).toMatchObject({ time_precision: 'approximate', time_confidence: 0 });
+      expect(insertedRows[0].date).toBeNull();
     });
   });
 

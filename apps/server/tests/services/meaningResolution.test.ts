@@ -161,6 +161,13 @@ describe('meaningResolutionService', () => {
     expect(resolveFactuality('Do you remember?', lexical).factuality).toBe('question');
   });
 
+  it('treats punctuation-free employment and monthly recall prompts as questions', () => {
+    const lexical = lexicalAnalyzerService.analyzeMessage({ ...base, text: 'x' });
+    expect(resolveFactuality('Am I currently employed', lexical).factuality).toBe('question');
+    expect(resolveFactuality('What were my biggest milestones this month', lexical).factuality).toBe('question');
+    expect(resolveFactuality('What changed? I started a new role.', lexical).factuality).toBe('fact');
+  });
+
   it('detects hypothetical and prevents hard memory candidate', async () => {
     const result = await resolve('If I worked at SpaceX I would be happy.');
     expect(result.factuality).toBe('hypothetical');
@@ -226,6 +233,16 @@ describe('meaningResolutionService', () => {
     const result = await resolve('I work at SpaceX now.');
     expect(result.contradictions.some((c) => c.field === 'works_at')).toBe(true);
     expect(result.contradictions[0]?.needsReview).toBe(true);
+    expect(meaningResolutionService.allowsMemoryWrite(result)).toBe(true);
+  });
+
+  it('recognizes recruiter and interviewer roles instead of coworker', async () => {
+    const result = await resolve(
+      'Morgan is my recruiter for the active role, and Riley was the interviewer for the completed interview.',
+    );
+    expect(result.resolvedRelationships.some((relationship) => relationship.role === 'recruiter')).toBe(true);
+    expect(result.resolvedRelationships.some((relationship) => relationship.role === 'interviewer')).toBe(true);
+    expect(result.resolvedRelationships.some((relationship) => relationship.role === 'coworker')).toBe(false);
   });
 
   it('low confidence routes to review only', async () => {

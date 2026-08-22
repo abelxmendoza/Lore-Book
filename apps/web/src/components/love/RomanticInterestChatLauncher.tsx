@@ -25,6 +25,9 @@ type Props = {
   busy?: boolean;
   error?: string | null;
   onContinue: (selection: { name: string; character?: RomanticInterestCharacterOption }) => void | Promise<void>;
+  /** Owner/admin only — add an existing Character Book person to Dating & Romance. */
+  allowDirectAdd?: boolean;
+  onAddCharacter?: (character: RomanticInterestCharacterOption) => void | Promise<void>;
 };
 
 function normalized(value: string): string {
@@ -36,6 +39,8 @@ export function RomanticInterestChatLauncher({
   busy = false,
   error,
   onContinue,
+  allowDirectAdd = false,
+  onAddCharacter,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [name, setName] = useState('');
@@ -71,6 +76,10 @@ export function RomanticInterestChatLauncher({
   const continueToChat = async (character?: RomanticInterestCharacterOption) => {
     const resolvedName = character?.name ?? name.trim();
     if (!resolvedName || busy) return;
+    if (allowDirectAdd && character && onAddCharacter) {
+      await onAddCharacter(character);
+      return;
+    }
     await onContinue({ name: resolvedName, character });
   };
 
@@ -83,10 +92,13 @@ export function RomanticInterestChatLauncher({
               <MessageCircle className="h-5 w-5" />
             </div>
             <div>
-              <p className="font-medium text-white">Someone new on your mind?</p>
+              <p className="font-medium text-white">
+                {allowDirectAdd ? 'Add someone from Character Book' : 'Someone new on your mind?'}
+              </p>
               <p className="mt-1 max-w-2xl text-xs leading-relaxed text-white/55 sm:text-sm">
-                Start a focused chat. Choose someone already in Character Book or create a new
-                character, then LoreBook will attach their chip and grow their context as you talk.
+                {allowDirectAdd
+                  ? 'Pick a person already in your Character Book to put them on Dating & Romance. This stays on your signed-in account and never writes into demo.'
+                  : 'Start a focused chat. Choose someone already in Character Book or create a new character, then LoreBook will attach their chip and grow their context as you talk.'}
               </p>
             </div>
           </div>
@@ -96,7 +108,7 @@ export function RomanticInterestChatLauncher({
             className="shrink-0 bg-pink-600 text-white hover:bg-pink-500"
           >
             <Heart className="mr-2 h-4 w-4" />
-            Add a new romantic interest
+            {allowDirectAdd ? 'Add a character' : 'Add a new romantic interest'}
           </Button>
         </CardContent>
       </Card>
@@ -110,10 +122,12 @@ export function RomanticInterestChatLauncher({
           <div>
             <p className="flex items-center gap-2 font-medium text-white">
               <Heart className="h-4 w-4 text-pink-300" />
-              Add a new romantic interest
+              {allowDirectAdd ? 'Add a character to Dating & Romance' : 'Add a new romantic interest'}
             </p>
             <p className="mt-1 text-xs text-white/55">
-              Search Character Book first, or enter a new person to introduce them in chat.
+              {allowDirectAdd
+                ? 'Search your Character Book. Selecting a person adds them as a crush unless you already have a row.'
+                : 'Search Character Book first, or enter a new person to introduce them in chat.'}
             </p>
           </div>
           <button
@@ -175,7 +189,9 @@ export function RomanticInterestChatLauncher({
                 >
                   <span className="min-w-0 truncate">{character.name}</span>
                   <span className="flex shrink-0 items-center gap-1 text-[11px] text-pink-200/65">
-                    <span className="hidden sm:inline">In Character Book</span>
+                    <span className="hidden sm:inline">
+                      {allowDirectAdd ? 'Add to Dating & Romance' : 'In Character Book'}
+                    </span>
                     <ArrowRight className="h-3 w-3" />
                   </span>
                 </button>
@@ -205,9 +221,13 @@ export function RomanticInterestChatLauncher({
               )}
               <span className="truncate">
                 {busy
-                  ? 'Opening chat…'
+                  ? allowDirectAdd && exactMatch
+                    ? 'Adding…'
+                    : 'Opening chat…'
                   : exactMatch
-                    ? `Chat about ${exactMatch.name}`
+                    ? allowDirectAdd
+                      ? `Add ${exactMatch.name} to Dating & Romance`
+                      : `Chat about ${exactMatch.name}`
                     : `Introduce ${name.trim() || 'them'} in chat`}
               </span>
             </Button>

@@ -27,6 +27,12 @@ import {
   impactOnUserWithPublicFigureCap,
   isPublicFigureCharacter,
 } from '../../lib/publicFigure';
+import {
+  characterCreatedAt,
+  characterFirstMentionedAt,
+  formatCharacterDate,
+} from '../../lib/characterTimeline';
+import { resolveCharacterPresence, type CharacterPresence } from '../../lib/characterPresence';
 
 export type SocialMedia = {
   instagram?: string;
@@ -54,6 +60,8 @@ export type Character = {
   archetype?: string;
   role?: string;
   status?: string;
+  /** Non-null marks this character as a pet (dog, cat, etc.) rather than a person. */
+  species?: string | null;
   first_appearance?: string;
   summary?: string;
   tags?: string[];
@@ -62,6 +70,8 @@ export type Character = {
   metadata?: Record<string, unknown>;
   created_at?: string;
   updated_at?: string;
+  last_perception_at?: string | null;
+  perception_count?: number | null;
   memory_count?: number;
   direct_memory_count?: number;
   knowledge_count?: number;
@@ -80,6 +90,11 @@ export type Character = {
     entry_id: string;
     date: string;
     summary?: string;
+    occurredAt?: string | null;
+    mentionedAt?: string | null;
+    recordedAt?: string | null;
+    occurrenceStatus?: 'confirmed' | 'range' | 'unresolved';
+    canonicalEventId?: string | null;
   }>;
   importance_level?: 'protagonist' | 'major' | 'supporting' | 'minor' | 'background' | null;
   importance_score?: number | null;
@@ -183,6 +198,8 @@ type CharacterProfileCardProps = {
    * self-fetches (backward compatible for standalone usages).
    */
   attributes?: CharacterAttribute[];
+  /** Precomputed presence from the book roster index. */
+  presence?: CharacterPresence;
 };
 
 const splitCharacterLabels = (value?: string | null) =>
@@ -202,6 +219,7 @@ export const CharacterProfileCard = ({
   selected = false,
   onToggleSelected,
   attributes: attributesProp,
+  presence: presenceProp,
 }: CharacterProfileCardProps) => {
   const isControlled = attributesProp !== undefined;
   const [fetchedAttributes, setFetchedAttributes] = useState<CharacterAttribute[]>([]);
@@ -215,6 +233,8 @@ export const CharacterProfileCard = ({
   const primaryRole = primaryCharacterLabel(character.role);
   const roleCount = splitCharacterLabels(character.role).length;
   const unknownRoleFallbackLabel = kinshipLabel || (primaryArchetype ? archetypeDisplayLabel(primaryArchetype) : '');
+  const createdLabel = formatCharacterDate(characterCreatedAt(character));
+  const firstMentionedLabel = formatCharacterDate(characterFirstMentionedAt(character));
 
   // Load attributes for this character only when not provided by the parent
   // (the grid batches them in a single request and passes them down).
@@ -382,11 +402,11 @@ export const CharacterProfileCard = ({
   type RelPhase = 'CORE' | 'ACTIVE' | 'WEAK' | 'DORMANT';
   const getRelationshipPhase = (): RelPhase | null => {
     if (!character.analytics) return null;
-    const c = character.analytics.closeness_score ?? 0;
-    const r = character.analytics.recency_score ?? 0;
-    if (c >= 70 && r >= 0.6) return 'CORE';
-    if (c >= 45 || r >= 0.4) return 'ACTIVE';
-    if (c >= 20 || r >= 0.2) return 'WEAK';
+    const presence = presenceProp ?? resolveCharacterPresence(character);
+    if (!presence.phase) return null;
+    if (presence.phase === 'core') return 'CORE';
+    if (presence.phase === 'active') return 'ACTIVE';
+    if (presence.phase === 'fading') return 'WEAK';
     return 'DORMANT';
   };
 
@@ -761,10 +781,24 @@ export const CharacterProfileCard = ({
               <span className="hidden sm:inline">Mentioned Only</span>
             </div>
           )}
-          {character.first_appearance && (
-            <div className="flex items-center gap-0.5 sm:gap-1">
+          {createdLabel && (
+            <div
+              className="flex items-center gap-0.5 sm:gap-1"
+              title="When this Character Book card was created"
+              data-testid="character-card-created-at"
+            >
               <Calendar className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
-              <span>{new Date(character.first_appearance).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+              <span>Added {createdLabel}</span>
+            </div>
+          )}
+          {firstMentionedLabel && (
+            <div
+              className="flex items-center gap-0.5 sm:gap-1"
+              title="When they were first mentioned in your story"
+              data-testid="character-card-first-mentioned"
+            >
+              <Calendar className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
+              <span>First mentioned {firstMentionedLabel}</span>
             </div>
           )}
         </div>

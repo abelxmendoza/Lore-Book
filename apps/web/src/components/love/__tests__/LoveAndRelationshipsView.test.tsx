@@ -26,6 +26,10 @@ vi.mock('../../../lib/api', () => ({
   fetchJson: vi.fn()
 }));
 
+vi.mock('../../../hooks/useAccountAuthority', () => ({
+  useAccountAuthority: () => ({ authority: null, loading: false, error: null, refresh: vi.fn() }),
+}));
+
 describe('LoveAndRelationshipsView', () => {
   const mockRelationships = [
     {
@@ -281,6 +285,18 @@ describe('LoveAndRelationshipsView', () => {
     await waitFor(() => {
       expect(screen.getByText(/1 relationship/i)).toBeInTheDocument();
     });
+  });
+
+  it('does not expose admin character-add in demo mode', async () => {
+    render(<LoveAndRelationshipsView />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/your love story/i)).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('button', { name: /add a new romantic interest/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^add a character$/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('add-to-dating-romance')).not.toBeInTheDocument();
   });
 
   it('shows mock data indicator when using mock data', async () => {

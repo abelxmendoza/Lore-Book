@@ -180,7 +180,7 @@ const RELATION_LABEL: Record<string, string> = {
  *  allow-list of editable relations. */
 const RELATION_GENERATION: Record<string, number> = { ...TREE_RELATION_GENERATION };
 
-type CharacterKinshipRow = {
+export type CharacterKinshipRow = {
   id: string;
   name: string;
   alias?: string[] | null;
@@ -188,6 +188,95 @@ type CharacterKinshipRow = {
   archetype?: string | null;
   metadata?: Record<string, unknown> | null;
 };
+
+const ROMANTIC_OR_CRUSH_ARCHETYPES = new Set([
+  'romantic',
+  'crush',
+  'unrequited_crush',
+  'romantic_interest',
+  'past_romantic',
+  'one_night_stand',
+]);
+
+const KIN_RELATIONSHIP_TYPES =
+  /^(parent|mother|father|sibling|brother|sister|cousin|aunt|uncle|grand|step|niece|nephew|in_law)/;
+
+const EXPLICIT_KIN_IN_TEXT =
+  /\b(?:my|his|her|their|our)\s+(?:grandmother|grandfather|mom|dad|mother|father|sister|brother|cousin|aunt|uncle|grandma|grandpa|abuela|abuelo|t[ií]o|t[ií]a|family)\b/;
+
+function displayNameHasFamilyTitle(name: string): boolean {
+  const normalized = String(name ?? '').toLowerCase().replace(/[._@-]+/g, ' ').trim();
+  return /^(?:my\s+)?(?:t[ií]o|t[ií]a|uncle|aunt|mom|mother|dad|father|grandma|grandpa|abuela|abuelo|cousin|sister|brother)(?:\s|$)/i.test(
+    normalized,
+  );
+}
+
+function hasExplicitKinPhrase(...values: unknown[]): boolean {
+  return values.some((value) => {
+    if (Array.isArray(value)) {
+      return value.some((item) => EXPLICIT_KIN_IN_TEXT.test(String(item ?? '').toLowerCase()));
+    }
+    return EXPLICIT_KIN_IN_TEXT.test(String(value ?? '').toLowerCase());
+  });
+}
+
+function isUserPinnedBookCategory(metadata: Record<string, unknown>, category: string): boolean {
+  const source = String(metadata.book_category_source ?? '').toLowerCase();
+  if (source !== 'user' && source !== 'user_confirmed') return false;
+  return String(metadata.book_category ?? '').toLowerCase().trim() === category;
+}
+
+function isGenericFamilyEdgeType(type: string): boolean {
+  return GENERIC_FAMILY_BUCKET_TYPES.has((type ?? '').toLowerCase());
+}
+
+/** True when this card is allowed on the family tree (and therefore the Family tab). */
+export function isFamilyTreeEligibleCharacter(row: CharacterKinshipRow): boolean {
+  const metadata = row.metadata ?? {};
+  if (isFamilyExcluded(metadata)) return false;
+  const categorySource = String(metadata.book_category_source ?? '').toLowerCase();
+  const pinnedCategory = String(metadata.book_category ?? '').toLowerCase().trim();
+  if ((categorySource === 'user' || categorySource === 'user_confirmed') && pinnedCategory && pinnedCategory !== 'family') {
+    return false;
+  }
+  const archetype = String(row.archetype ?? '').split(',')[0]?.trim().toLowerCase();
+  if (
+    ROMANTIC_OR_CRUSH_ARCHETYPES.has(archetype) &&
+    metadata.family_reviewed !== true &&
+    !metadata.family_override &&
+    !metadata.kinship_label &&
+    pinnedCategory !== 'family'
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Strong kinship / user pin — used for name inference and for generic
+ * `family` / `related_to` edges. Typed kin edges (`cousin_of`, …) can still
+ * admit an eligible card that fails this bar.
+ */
+export function characterHasFamilyTreeSignal(row: CharacterKinshipRow): boolean {
+  return hasFamilySignal(row);
+}
+
+function shouldAdmitRootFamilyEdge(
+  rootId: string,
+  sourceId: string,
+  targetId: string,
+  rawType: string,
+  normalizedType: string,
+  charactersById: Map<string, CharacterKinshipRow>,
+): boolean {
+  const otherId = sourceId === rootId ? targetId : targetId === rootId ? sourceId : null;
+  if (!otherId) return true;
+  const other = charactersById.get(otherId);
+  if (!other) return false;
+  const generic = isGenericFamilyEdgeType(rawType) && isGenericFamilyEdgeType(normalizedType);
+  if (generic && !hasFamilySignal(other)) return false;
+  return true;
+}
 
 function isFamilyType(type: string): boolean {
   const t = (type ?? '').toLowerCase();
@@ -206,7 +295,7 @@ function relationFromType(type: string, delta: number): FamilyRelationType {
   if (t.includes('uncle')) return 'uncle';
   if (t.includes('cousin')) return 'cousin';
   if (t.includes('grandparent') || t === 'grandmother' || t === 'grandfather' || delta <= -2) return 'grandparent';
-  if (t.includes('grandchild') || delta >= 2) return 'grandchild';
+  if (t.includes('grandchild') || t === 'grandson' || t === 'granddaughter' || t === 'nieto' || t === 'nieta' || delta >= 2) return 'grandchild';
   if (t.includes('half_sibling')) return 'half_sibling';
   if (t.includes('step_sibling')) return 'step_sibling';
   if (t.includes('step_parent')) return 'step_parent';
@@ -274,8 +363,34 @@ function primaryKinshipText(row: CharacterKinshipRow): string {
 function hasFamilySignal(row: CharacterKinshipRow): boolean {
   const metadata = row.metadata ?? {};
   if (isFamilyExcluded(metadata)) return false;
-  const text = searchableKinshipText(row);
+
+  if (isUserPinnedBookCategory(metadata, 'family')) return true;
+  const categorySource = String(metadata.book_category_source ?? '').toLowerCase();
+  const pinnedCategory = String(metadata.book_category ?? '').toLowerCase().trim();
+  if ((categorySource === 'user' || categorySource === 'user_confirmed') && pinnedCategory) {
+    return false;
+  }
+
+  const archetype = String(row.archetype ?? '').split(',')[0]?.trim().toLowerCase();
+  if (
+    ROMANTIC_OR_CRUSH_ARCHETYPES.has(archetype) &&
+    metadata.family_reviewed !== true &&
+    !metadata.family_override &&
+    !metadata.kinship_label
+  ) {
+    return false;
+  }
+
   const isPublicFigure = metadata.public_figure === true;
+  const nameKind = (metadata.nameProfile as { kind?: string } | undefined)?.kind;
+  const role = String(row.role ?? '').toLowerCase().trim();
+  const explicitKin =
+    Boolean(String(metadata.kinship_label ?? metadata.kinship_role ?? '').trim()) ||
+    displayNameHasFamilyTitle(row.name) ||
+    KIN_RELATIONSHIP_TYPES.test(role) ||
+    KIN_RELATIONSHIP_TYPES.test(String(metadata.relationship_type ?? '').toLowerCase()) ||
+    KIN_RELATIONSHIP_TYPES.test(String(metadata.relationship_to_user ?? '').toLowerCase()) ||
+    hasExplicitKinPhrase(row.name, row.alias, row.role, metadata.context);
 
   // A card the user confirmed DISTINCT from another character must not enter
   // the family tree on bare relationship_type metadata alone — that's how a
@@ -283,29 +398,20 @@ function hasFamilySignal(row: CharacterKinshipRow): boolean {
   // needs a real kinship anchor: a kinship_label, family archetype, or a
   // kinship word in its own name/story.
   const confirmedDistinct = Array.isArray(metadata.confirmed_distinct_from) && metadata.confirmed_distinct_from.length > 0;
-  if (confirmedDistinct && !metadata.kinship_label && row.archetype !== 'family' && row.archetype !== 'kin') {
-    const hasKinshipAnchor =
-      /\b(abuela|abuelita|abuelo|abuelito|grandma|grandmother|grandpa|grandfather|tia|tía|aunt|tio|tío|uncle|cousin|primo|prima|brother|sister|mom|mother|dad|father|step)\b/.test(text);
-    if (!hasKinshipAnchor) return false;
+  if (confirmedDistinct && !explicitKin) {
+    return false;
   }
-  const explicitFamily =
-    row.archetype === 'family' ||
-    row.archetype === 'kin' ||
-    row.role?.toLowerCase() === 'family' ||
-    metadata.relationship_type === 'family' ||
-    (Array.isArray(metadata.relationship_categories) && metadata.relationship_categories.includes('family'));
 
-  if (isPublicFigure && !explicitFamily && !/\bmy\s+(tia|tía|tio|tío|aunt|uncle|abuela|abuelo)\b/.test(text)) {
+  if (isPublicFigure && !explicitKin) {
     return false;
   }
 
   // Stage-name / handle profiles are social identities, not kin labels.
-  const nameKind = (metadata.nameProfile as { kind?: string } | undefined)?.kind;
-  if ((nameKind === 'stage_name' || nameKind === 'handle') && !metadata.kinship_label && !explicitFamily) {
+  if ((nameKind === 'stage_name' || nameKind === 'handle') && !explicitKin) {
     return false;
   }
 
-  return explicitFamily || /\b(my\s+)?(abuela|abuelita|abuelo|abuelito|grandma|grandmother|grandpa|grandfather|tia|tía|aunt|tio|tío|uncle|cousin|primo|prima|brother|sister|mom|mother|dad|father)\b/.test(text);
+  return explicitKin;
 }
 
 // Kinship terms a user might use as the person's name/alias. Longer/more
@@ -853,10 +959,18 @@ class FamilyTreeService {
       .maybeSingle();
     if (!character) return false;
 
-    const metadata = {
-      ...((character.metadata as Record<string, unknown>) ?? {}),
+    const previous = { ...((character.metadata as Record<string, unknown>) ?? {}) };
+    const metadata: Record<string, unknown> = {
+      ...previous,
       family_excluded: { value: true, reason: reason ?? null, at: new Date().toISOString() },
     };
+    const pinnedFamily = isUserPinnedBookCategory(previous, 'family');
+    if (pinnedFamily || String(previous.book_category ?? '').toLowerCase().trim() === 'family') {
+      delete metadata.book_category;
+      metadata.book_category_source = 'user_cleared';
+      metadata.book_category_reason = 'Removed from the family tree.';
+      metadata.book_category_previous = 'family';
+    }
     const { error } = await supabaseAdmin
       .from('characters')
       .update({ metadata })
@@ -1326,15 +1440,17 @@ class FamilyTreeService {
     const edges: Array<{ fromId: string; toId: string; type: string; confidence: number; evidence?: string }> = [];
     const seen = new Set<string>();
 
-    const { data: excludedRows } = await supabaseAdmin
+    const { data: charRows } = await supabaseAdmin
       .from('characters')
-      .select('id, metadata')
-      .eq('user_id', userId)
-      .not('metadata->family_excluded', 'is', null);
+      .select('id, name, alias, role, archetype, metadata')
+      .eq('user_id', userId);
+    const charactersById = new Map(
+      ((charRows ?? []) as CharacterKinshipRow[]).map((row) => [row.id, row]),
+    );
     const excludedIds = new Set(
-      (excludedRows ?? [])
-        .filter((row) => isFamilyExcluded((row.metadata as Record<string, unknown>) ?? null))
-        .map((row) => row.id as string),
+      ((charRows ?? []) as CharacterKinshipRow[])
+        .filter((row) => !isFamilyTreeEligibleCharacter(row))
+        .map((row) => row.id),
     );
     if (excludedIds.has(rootId)) return edges;
 
@@ -1352,6 +1468,7 @@ class FamilyTreeService {
       if ((r.relationship_type ?? '').toLowerCase() === 'possible_family') continue;
       if (r.relationship_category !== 'family' && !isFamilyType(rawType) && !isFamilyType(r.relationship_type) && !isFamilyType(metaKinship ?? '')) continue;
       const type = normalizeRelationshipType(rawType);
+      if (!shouldAdmitRootFamilyEdge(rootId, r.source_character_id, r.target_character_id, rawType, type, charactersById)) continue;
       const key = `${r.source_character_id}|${r.target_character_id}|${type}`;
       if (seen.has(key)) continue;
       seen.add(key);

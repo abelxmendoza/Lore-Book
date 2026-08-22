@@ -52,7 +52,7 @@ describe('graphRecoveryTrigger.runNow — shared live/batch logic', () => {
   it('invokes BOTH recovery services (connects them to the runtime)', async () => {
     const u = nextUser();
     await graphRecoveryTrigger.runNow(u);
-    expect(recoverRelationshipGraph).toHaveBeenCalledWith(u);
+    expect(recoverRelationshipGraph).toHaveBeenCalledWith(u, expect.objectContaining({ mode: 'delta' }));
     expect(recoverMissingEvents).toHaveBeenCalledWith(u);
   });
 

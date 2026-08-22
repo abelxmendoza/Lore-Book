@@ -188,13 +188,13 @@ export class UnifiedFileIngestionService {
     const summaryEntry = await memoryService.saveEntry({
       userId,
       content: `[Resume: ${filename}]\n\n${artifact.text.slice(0, 4000)}`,
-      date: artifact.detectedDate ?? new Date().toISOString(),
       tags: ['resume', 'career', 'imported'],
       source: 'document_upload',
       metadata: {
         ...PROVENANCE_META(sourceFileId),
         resume_document_id: document.id,
         claims_count: createdClaims.length,
+        importedAt: new Date().toISOString(),
       },
     });
 

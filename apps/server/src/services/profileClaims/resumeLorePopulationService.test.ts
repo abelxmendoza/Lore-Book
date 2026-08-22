@@ -212,4 +212,46 @@ describe('resumeLorePopulationService — multi-resume reconciliation', () => {
     expect(result2.itemsReconciled).toBe(0);
     expect(result2.timelineEvents).toBe(1);
   });
+
+  it('1. uses job year as occurrence, not upload time', async () => {
+    installResolvedEventsStore();
+    await resumeLorePopulationService.populate(
+      'user-1',
+      resumeWithVanguardJob('Vanguard Robotics', { startDate: '2024', endDate: '2025' }),
+      { sourceFileId: 'file-1', resumeDocumentId: 'doc-1', fileName: 'resume.pdf' },
+    );
+    const jobCall = vi.mocked(memoryService.saveEntry).mock.calls.find((call) =>
+      String(call[0].content).includes('Vanguard Robotics'),
+    );
+    expect(jobCall?.[0].date).toBe('2024-01-01');
+    expect(jobCall?.[0].occurrencePrecision).toBe('year');
+    expect(jobCall?.[0].temporalSource).toBe('document_stated');
+    expect(jobCall?.[0].date).not.toBe(new Date().toISOString());
+  });
+
+  it('2. undated resume jobs persist without an occurrence date', async () => {
+    installResolvedEventsStore();
+    await resumeLorePopulationService.populate(
+      'user-1',
+      resumeWithVanguardJob('Vanguard Robotics', { startDate: undefined, endDate: undefined }),
+      { sourceFileId: 'file-1', resumeDocumentId: 'doc-1', fileName: 'resume.pdf' },
+    );
+    const jobCall = vi.mocked(memoryService.saveEntry).mock.calls.find((call) =>
+      String(call[0].content).includes('Vanguard Robotics'),
+    );
+    expect(jobCall).toBeDefined();
+    expect(jobCall?.[0].date).toBeUndefined();
+  });
+
+  it('16. tenant isolation — populate is scoped to the given userId', async () => {
+    installResolvedEventsStore();
+    await resumeLorePopulationService.populate('user-1', resumeWithVanguardJob(), {
+      sourceFileId: 'file-1',
+      resumeDocumentId: 'doc-1',
+      fileName: 'resume.pdf',
+    });
+    for (const call of vi.mocked(memoryService.saveEntry).mock.calls) {
+      expect(call[0].userId).toBe('user-1');
+    }
+  });
 });

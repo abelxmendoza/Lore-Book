@@ -3,13 +3,17 @@
  */
 import { supabaseAdmin } from '../supabaseClient';
 import { normalizeLexicalText } from '../lexical/lexicalNormalizer';
+import { createTtlMemo } from '../../lib/ttlMemo';
 import type { HistoryContext } from './inferenceAssociationTypes';
 
 function norm(s: string): string {
   return normalizeLexicalText(s);
 }
 
-export async function loadHistoryContext(userId: string): Promise<HistoryContext> {
+const HISTORY_CONTEXT_TTL_MS = 15_000;
+const historyContextMemo = createTtlMemo<HistoryContext>(HISTORY_CONTEXT_TTL_MS);
+
+async function loadHistoryContextUncached(userId: string): Promise<HistoryContext> {
   const people = new Map<string, { id: string; name: string; aliases: string[] }>();
   const groups = new Map<string, { id: string; name: string }>();
   const schools = new Map<string, { id: string; name: string }>();
@@ -80,6 +84,18 @@ export async function loadHistoryContext(userId: string): Promise<HistoryContext
   }
 
   return { people, groups, schools, employers, worksites, places, streetCommunities, skills, hobbies };
+}
+
+/** Cached for composer preview bursts — 3 DB queries per rebuild. */
+export async function loadHistoryContext(userId: string): Promise<HistoryContext> {
+  // Vitest files share this process-wide memo and mutate per-test DB fixtures.
+  if (process.env.VITEST) return loadHistoryContextUncached(userId);
+  return historyContextMemo.getOrLoad(userId, () => loadHistoryContextUncached(userId));
+}
+
+/** Test helper — drop the per-user (or entire) history-context cache. */
+export function resetHistoryContextCache(userId?: string): void {
+  historyContextMemo.invalidate(userId);
 }
 
 export function matchExistingSchool(history: HistoryContext, name?: string) {

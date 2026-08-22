@@ -40,7 +40,12 @@ const GENERIC_TEAM_DEPT_NOUNS = new Set([
   'sales team', 'success team', 'product team', 'design team', 'hr team',
   'support department', 'engineering department', 'marketing department',
   'venture capital firm', 'staffing agency', 'recruiting firm',
+  'failure analysis', 'prototypes team', 'prototype team',
 ]);
+
+/** "Amazon Engineers" / "Ring Failure Analysis" without Team/Lab/Department — a function, not a named org. */
+const BARE_FUNCTION_COLLECTIVE =
+  /^(?:[A-Z][\w.&'-]+\s+){0,2}(?:engineers|analysts|prototypes|failure analysis)$/i;
 
 /** Narrative/descriptive spans, not names — a sentence fragment describing an
  *  event or errand, not an organization ("Social workers visiting Tio Juan"). */
@@ -54,6 +59,9 @@ export function isGenericOrganizationPhrase(name: string): boolean {
   if (!key) return true;
   if (GENERIC_TEAM_DEPT_NOUNS.has(key)) return true;
   if (NARRATIVE_SPAN.test(name)) return true;
+  if (BARE_FUNCTION_COLLECTIVE.test(name.trim()) && !/\b(?:team|lab|department|division)\b/i.test(name)) {
+    return true;
+  }
   return false;
 }
 

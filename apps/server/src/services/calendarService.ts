@@ -116,6 +116,8 @@ Generate a journal entry:`;
         userId,
         content: summary,
         date: event.startDate,
+        occurredEnd: event.endDate,
+        temporalSource: 'document_stated',
         tags,
         source: 'calendar',
         metadata: {

@@ -115,7 +115,10 @@ export function extractPreferenceLifecycle(text: string): PreferenceLifecycleHit
       const subject = clean(m[p.subjectGroup] || '');
       if (subject.length < 2) continue;
       // Avoid identity false positives on "I am going..."
-      if (p.kind === 'identity' && /^(going|trying|just|not|so|really|very)\b/i.test(subject)) {
+      if (
+        p.kind === 'identity' &&
+        /^(?:going|trying|just|not|so|really|very|unemployed|employed|between jobs|no longer working|working at|focused on|mainly focused|currently focused|building)\b/i.test(subject)
+      ) {
         continue;
       }
       const evidence = m[0].trim().slice(0, 160);

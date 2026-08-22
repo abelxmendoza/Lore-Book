@@ -1,4 +1,3 @@
-/* Vendored mirror of packages/api-contracts — DO NOT EDIT. */
 export {
   apiSuccessEnvelopeSchema,
   apiErrorEnvelopeSchema,
@@ -46,6 +45,12 @@ export {
   isEventWriteRequest,
   isClosedScopeQuery,
   isFocusEntityRelevant,
+  isPronounPersonQuery,
+  parseTalkAboutSubject,
+  parseNamedWhoIsSubject,
+  parseNamedChatSubject,
+  subjectNamesMatch,
+  messageConflictsWithPinnedFocus,
   countListedNameLikeTokens,
   type ClosedScopeReason,
 } from "./chat/closedScopeIntent";

@@ -242,7 +242,9 @@ async function attachPipelineMetadata(
           },
         }
       : {}),
-    lexical_signals: buildMessageLexicalSignals(lexical.rawText) ?? (existing?.metadata as Record<string, unknown> | undefined)?.lexical_signals,
+    // Lexical metadata belongs to this exact message text. Null deliberately
+    // clears stale signals from a retry/reused row instead of leaking another thread.
+    lexical_signals: buildMessageLexicalSignals(lexical.rawText),
   };
 
   await supabaseAdmin

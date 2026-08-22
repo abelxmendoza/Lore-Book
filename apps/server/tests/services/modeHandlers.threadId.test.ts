@@ -80,4 +80,17 @@ describe('thread-scoped recall mode handlers', () => {
     });
     expect(recordSuggestionDismissalLearning).toHaveBeenCalled();
   });
+
+  it('does not dismiss a pronoun/junk-word "suggestion name" like "You" or "That"', async () => {
+    const result = await modeHandlers.handleMode(
+      'SUGGESTION_DISMISS_WRITE',
+      'user-a',
+      'Dismiss You from Character suggestions',
+      { threadId: 'thread-a' },
+    );
+
+    expect(result.content).toMatch(/tell me both the book and the suggestion name/i);
+    expect(recordDismissal).not.toHaveBeenCalled();
+    expect(recordSuggestionDismissalLearning).not.toHaveBeenCalled();
+  });
 });

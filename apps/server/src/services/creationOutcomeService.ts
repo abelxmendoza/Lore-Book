@@ -9,8 +9,10 @@ import {
 import {
   arbitrateDomainStrong,
   arbitrateDomainWeak,
+  evaluateSentenceBleed,
   hasPersonNameShape,
   nameAdjacentDomain,
+  NOT_OCCUPATION_AFTER_MARKER,
   type ArbitrationDomain,
 } from './characters/audit/characterIdentityGate';
 import {
@@ -108,14 +110,18 @@ export function classifyCreationMentionDomain(
   );
   if (musicTitle.test(message)) return 'media';
 
+  // Name-level (strong) arbitration runs before the looser explicit-event
+  // regex below — a business/brand suffix ("East Los Productions") or a
+  // literal event-name word must win over a generic "X is ... show" match
+  // in the same message.
+  const strong = arbitrateDomainStrong(mention, message);
+  if (strong.domain) return strong.domain;
+
   const explicitEvent = new RegExp(
-    `${escaped}\\b[^.!?\\n]{0,90}\\b(?:is|was|will be|coming up)\\b[^.!?\\n]{0,90}\\b(?:show|event|festival|concert|expo|rave|gala)\\b`,
+    `${escaped}\\b[^.!?\\n]{0,90}\\b(?:is|was|will be|coming up)\\b[^.!?\\n]{0,90}\\b(?:show|event|festival|concert|expo|rave|gala)\\b${NOT_OCCUPATION_AFTER_MARKER}`,
     'i',
   );
   if (explicitEvent.test(message)) return 'event';
-
-  const strong = arbitrateDomainStrong(mention, message);
-  if (strong.domain) return strong.domain;
   // Apposition ("Malcolm ... the show") is checked even for name-shaped
   // mentions — a character's name doubling as (part of) a title is strong,
   // specific evidence, unlike the broad "some media word is somewhere in
@@ -156,6 +162,12 @@ export async function collectCreationOutcomesForMessage(
     const key = mention.text.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
+
+    // Bare pronouns/connective fragments ("His", "They") are sentence bleed,
+    // not entity mentions — skip before domain routing so they never get
+    // misrouted to event/band detection on the strength of an unrelated
+    // nearby word.
+    if (evaluateSentenceBleed(mention.text).rejected) continue;
 
     const routedDomain = classifyCreationMentionDomain(mention.text, message);
     if (routedDomain) {

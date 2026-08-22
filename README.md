@@ -285,7 +285,7 @@ Everything Lorekeeper knows about you comes from what you explicitly shared.
 | `event_confidence_snapshots` | Confidence evolution history per event |
 | `event_candidates` | Recurring behavioral scene patterns with continuity strength |
 | `event_unit_links` | Links extracted_units to resolved_events |
-| `character_timeline_events` | Events linked to specific characters (shared_experience, lore, mentioned) |
+| Character chronology | `resolved_events.people[]` + stitched CanonicalTemporalModel. `character_timeline_events` was dropped in production (`20260821194550`). |
 | `episodes` | Thread segments with boundary provenance, participants, and linked events |
 | `user_files` | Canonical registry for uploads; all file ingestion flows through this table |
 | `projects` | Canonical project entities with type, status, tags, and lexical detection |

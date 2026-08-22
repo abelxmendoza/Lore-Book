@@ -1,8 +1,10 @@
-import { Clock, Target, TrendingUp, CheckCircle, Link as LinkIcon, Sparkles, X, Pause, Play, Flag } from 'lucide-react';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
+import { ArrowRight, CheckCircle, Clock, FileText, Flag, History, Link as LinkIcon, ListChecks, MessageSquare, Pause, Play, Sparkles, Target, TrendingUp, X } from 'lucide-react';
+import { useState } from 'react';
+
 import { useAbandonQuest, useCompleteQuest, usePauseQuest, useQuest, useQuestHistory, useStartQuest, useUpdateQuestProgress } from '../../hooks/useQuests';
-import type { Quest } from '../../types/quest';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
 
 interface QuestDetailPanelProps {
   questId: string | null;
@@ -13,7 +15,21 @@ interface QuestDetailPanelProps {
   embedded?: boolean;
 }
 
+type QuestDetailTab = 'overview' | 'progress' | 'activity' | 'focus-chat';
+
+const QUEST_DETAIL_TABS: Array<{
+  id: QuestDetailTab;
+  label: string;
+  icon: typeof Target;
+}> = [
+  { id: 'overview', label: 'Overview', icon: FileText },
+  { id: 'progress', label: 'Progress', icon: ListChecks },
+  { id: 'activity', label: 'Activity', icon: History },
+  { id: 'focus-chat', label: 'Focus Chat', icon: MessageSquare },
+];
+
 export const QuestDetailPanel = ({ questId, onClose, mobile = false, embedded = false }: QuestDetailPanelProps) => {
+  const [activeTab, setActiveTab] = useState<QuestDetailTab>('overview');
   const { data: quest, isLoading } = useQuest(questId || '');
   const { data: history, isLoading: historyLoading } = useQuestHistory(questId || '');
   const updateProgress = useUpdateQuestProgress();
@@ -81,6 +97,24 @@ export const QuestDetailPanel = ({ questId, onClose, mobile = false, embedded = 
   const actionButtonClass =
     'text-xs px-2 h-10 sm:h-9 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50 min-h-[44px] sm:min-h-0 flex-1 sm:flex-none';
 
+  const openQuestInMainChat = () => {
+    onClose?.();
+    openChatWithFocus({
+      entityId: quest.id,
+      entityName: quest.title,
+      entityType: 'quest',
+      sourceSurface: 'quests',
+      sourceLabel: 'Quest Log',
+      knowledgeScope: 'this quest, its current status, progress, milestones, motivation, blockers, history, and connected evidence',
+      initialPrompt:
+        `Let’s focus on my quest “${quest.title}.” Start by giving me a grounded update on where it stands ` +
+        `(${Math.round(quest.progress_percentage)}% complete, ${quest.status}), what progress or blockers LoreBook can support, ` +
+        'and the most useful next step. Clearly separate recorded details from suggestions, then invite me to update the quest.',
+      autoSubmit: true,
+      startNewThread: true,
+    });
+  };
+
   return (
     <div
       className={`h-full w-full bg-black/30 flex flex-col min-h-0 overflow-hidden ${
@@ -136,87 +170,36 @@ export const QuestDetailPanel = ({ questId, onClose, mobile = false, embedded = 
           )}
         </div>
 
-        <div className="relative">
-          <div className="flex items-center justify-between text-xs text-white/55 mb-2">
-            <span>Progress</span>
-            <span>{Math.round(quest.progress_percentage)}%</span>
-          </div>
-          <div className="relative w-full h-2 bg-black/50 rounded-full overflow-hidden border border-white/10">
-            <div
-              className="absolute inset-y-0 left-0 bg-gradient-to-r from-amber-500/80 to-amber-400/60 transition-all duration-500"
-              style={{ width: `${quest.progress_percentage}%` }}
-            />
-          </div>
-          <div className="flex gap-2 mt-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => { void updateProgress.mutateAsync({ questId, progress: Math.max(0, quest.progress_percentage - 10) }).catch(() => {}); }}
-              className="text-xs px-2 flex-1 sm:flex-none min-h-[44px] sm:min-h-0 sm:h-9 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50"
-            >
-              -10%
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => { void updateProgress.mutateAsync({ questId, progress: Math.min(100, quest.progress_percentage + 10) }).catch(() => {}); }}
-              className="text-xs px-2 flex-1 sm:flex-none min-h-[44px] sm:min-h-0 sm:h-9 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50"
-            >
-              +10%
-            </Button>
-          </div>
-          <div className={`mt-3 ${mobile ? 'grid grid-cols-2 gap-2' : 'flex flex-wrap gap-2'}`}>
-            {canResume && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={isMutatingStatus}
-                onClick={() => { void startQuest.mutateAsync(questId); }}
-                className={actionButtonClass}
-              >
-                <Play className="h-3.5 w-3.5 mr-1" />
-                Resume
-              </Button>
-            )}
-            {canPause && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={isMutatingStatus}
-                onClick={() => { void pauseQuest.mutateAsync(questId); }}
-                className={actionButtonClass}
-              >
-                <Pause className="h-3.5 w-3.5 mr-1" />
-                Pause
-              </Button>
-            )}
-            {canComplete && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={isMutatingStatus}
-                onClick={() => { void completeQuest.mutateAsync({ questId }); }}
-                className={`${actionButtonClass} border-green-500/30 text-green-300 hover:bg-green-500/10 hover:border-green-500/50`}
-              >
-                <CheckCircle className="h-3.5 w-3.5 mr-1" />
-                Complete
-              </Button>
-            )}
-            {canAbandon && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={isMutatingStatus}
-                onClick={() => { void abandonQuest.mutateAsync({ questId, reason: 'Marked from quest details' }); }}
-                className="text-xs px-2 h-10 sm:h-9 border-red-500/30 text-red-300 hover:bg-red-500/10 hover:border-red-500/50 min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"
-              >
-                <Flag className="h-3.5 w-3.5 mr-1" />
-                Abandon
-              </Button>
-            )}
-          </div>
-        </div>
       </div>
+
+      <nav
+        aria-label="Quest details"
+        role="tablist"
+        className="flex shrink-0 gap-1 overflow-x-auto border-b border-white/10 bg-black/80 px-2 pt-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:px-4"
+      >
+        {QUEST_DETAIL_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const selected = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              data-testid={`quest-detail-tab-${tab.id}`}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex min-h-10 shrink-0 items-center gap-1.5 rounded-t-lg border-b-2 px-3 py-2 text-xs font-medium transition-colors touch-manipulation sm:text-sm ${
+                selected
+                  ? 'border-amber-400 bg-amber-500/10 text-amber-200'
+                  : 'border-transparent text-white/55 hover:bg-white/5 hover:text-white'
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </nav>
 
       <div
         className={`flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-5 space-y-4 min-h-0 ${
@@ -224,14 +207,101 @@ export const QuestDetailPanel = ({ questId, onClose, mobile = false, embedded = 
         }`}
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
-        {quest.description && (
+        {activeTab === 'progress' && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-4">
+              <div className="mb-2 flex items-center justify-between text-sm text-white/70">
+                <span className="font-medium">Quest progress</span>
+                <span className="font-semibold text-amber-300">{Math.round(quest.progress_percentage)}%</span>
+              </div>
+              <div className="relative h-2.5 w-full overflow-hidden rounded-full border border-white/10 bg-black/50">
+                <div
+                  className="absolute inset-y-0 left-0 bg-gradient-to-r from-amber-500/80 to-amber-400/60 transition-all duration-500"
+                  style={{ width: `${quest.progress_percentage}%` }}
+                />
+              </div>
+              <div className="mt-3 flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { void updateProgress.mutateAsync({ questId, progress: Math.max(0, quest.progress_percentage - 10) }).catch(() => {}); }}
+                  className="min-h-[44px] flex-1 border-primary/30 px-2 text-xs text-primary hover:border-primary/50 hover:bg-primary/20 sm:h-9 sm:min-h-0 sm:flex-none"
+                >
+                  -10%
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { void updateProgress.mutateAsync({ questId, progress: Math.min(100, quest.progress_percentage + 10) }).catch(() => {}); }}
+                  className="min-h-[44px] flex-1 border-primary/30 px-2 text-xs text-primary hover:border-primary/50 hover:bg-primary/20 sm:h-9 sm:min-h-0 sm:flex-none"
+                >
+                  +10%
+                </Button>
+              </div>
+              <div className={`mt-3 ${mobile ? 'grid grid-cols-2 gap-2' : 'flex flex-wrap gap-2'}`}>
+                {canResume && (
+                  <Button variant="outline" size="sm" disabled={isMutatingStatus} onClick={() => { void startQuest.mutateAsync(questId); }} className={actionButtonClass}>
+                    <Play className="mr-1 h-3.5 w-3.5" /> Resume
+                  </Button>
+                )}
+                {canPause && (
+                  <Button variant="outline" size="sm" disabled={isMutatingStatus} onClick={() => { void pauseQuest.mutateAsync(questId); }} className={actionButtonClass}>
+                    <Pause className="mr-1 h-3.5 w-3.5" /> Pause
+                  </Button>
+                )}
+                {canComplete && (
+                  <Button variant="outline" size="sm" disabled={isMutatingStatus} onClick={() => { void completeQuest.mutateAsync({ questId }); }} className={`${actionButtonClass} border-green-500/30 text-green-300 hover:border-green-500/50 hover:bg-green-500/10`}>
+                    <CheckCircle className="mr-1 h-3.5 w-3.5" /> Complete
+                  </Button>
+                )}
+                {canAbandon && (
+                  <Button variant="outline" size="sm" disabled={isMutatingStatus} onClick={() => { void abandonQuest.mutateAsync({ questId, reason: 'Marked from quest details' }); }} className="min-h-[44px] flex-1 border-red-500/30 px-2 text-xs text-red-300 hover:border-red-500/50 hover:bg-red-500/10 sm:h-9 sm:min-h-0 sm:flex-none">
+                    <Flag className="mr-1 h-3.5 w-3.5" /> Abandon
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'focus-chat' && (
+          <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/15 via-amber-500/[0.06] to-transparent p-4 sm:p-5">
+            <div className="mb-4 flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/20 text-amber-300">
+                <MessageSquare className="h-5 w-5" />
+              </span>
+              <div>
+                <h3 className="font-semibold text-white">Focus this quest in main chat</h3>
+                <p className="mt-1 text-xs leading-relaxed text-white/60 sm:text-sm">
+                  LoreBook responds first with a grounded status update, supported progress, possible blockers, and a useful next step.
+                </p>
+              </div>
+            </div>
+            <div className="mb-4 rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-white/60">
+              <p><span className="text-white/40">Focused quest:</span> {quest.title}</p>
+              <p className="mt-1"><span className="text-white/40">Current state:</span> {Math.round(quest.progress_percentage)}% · {quest.status}</p>
+            </div>
+            <Button
+              type="button"
+              onClick={openQuestInMainChat}
+              data-testid="quest-open-focus-chat"
+              className="group min-h-11 w-full bg-amber-500 text-black hover:bg-amber-400"
+            >
+              Open focused chat
+              <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            </Button>
+            <p className="mt-3 text-center text-[11px] text-white/40">Opens a fresh focused thread. Nothing is changed until you confirm an update.</p>
+          </div>
+        )}
+
+        {activeTab === 'overview' && quest.description && (
           <div className="bg-black/30 border border-white/10 rounded-xl p-4">
             <div className="text-xs text-white/45 mb-2 uppercase tracking-wide">Description</div>
             <p className="text-sm text-white/80 leading-relaxed">{quest.description}</p>
           </div>
         )}
 
-        {quest.tags && quest.tags.length > 0 && (
+        {activeTab === 'overview' && quest.tags && quest.tags.length > 0 && (
           <div>
             <div className="text-xs sm:text-sm text-primary/60 mb-2 font-mono">TAGS</div>
             <div className="flex flex-wrap gap-1.5">
@@ -244,14 +314,14 @@ export const QuestDetailPanel = ({ questId, onClose, mobile = false, embedded = 
           </div>
         )}
 
-        {quest.motivation_notes && (
+        {activeTab === 'overview' && quest.motivation_notes && (
           <div className="bg-black/30 border border-emerald-500/20 rounded p-3 sm:p-4">
             <div className="text-xs sm:text-sm text-emerald-400/60 mb-2 font-mono">WHY THIS MATTERS</div>
             <p className="text-xs sm:text-sm text-white/75 leading-relaxed">{quest.motivation_notes}</p>
           </div>
         )}
 
-        {quest.reward_description && (
+        {activeTab === 'overview' && quest.reward_description && (
           <div className="bg-black/30 border border-yellow-500/20 rounded p-3 sm:p-4">
             <div className="text-xs sm:text-sm text-yellow-400/60 mb-2 font-mono">REWARD</div>
             <p className="text-xs sm:text-sm text-white/75 leading-relaxed">{quest.reward_description}</p>
@@ -259,7 +329,7 @@ export const QuestDetailPanel = ({ questId, onClose, mobile = false, embedded = 
         )}
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+        {activeTab === 'overview' && <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
           <div className="bg-black/40 border border-primary/20 rounded p-2 sm:p-3 hover:border-primary/50 transition-colors">
             <div className="flex items-center gap-1.5 text-primary/60 text-[10px] sm:text-xs mb-1 font-mono">
               <TrendingUp className="h-3 w-3" />
@@ -287,10 +357,10 @@ export const QuestDetailPanel = ({ questId, onClose, mobile = false, embedded = 
               <div className="text-lg sm:text-2xl font-bold text-orange-400 font-mono">{quest.difficulty}</div>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Milestones */}
-        {quest.milestones && quest.milestones.length > 0 && (
+        {activeTab === 'progress' && quest.milestones && quest.milestones.length > 0 && (
           <div>
             <div className="text-xs sm:text-sm text-primary/60 mb-3 font-mono">MILESTONES</div>
             <div className="space-y-2">
@@ -329,7 +399,7 @@ export const QuestDetailPanel = ({ questId, onClose, mobile = false, embedded = 
         )}
 
         {/* History */}
-        {(historyLoading || (history && history.length > 0)) && (
+        {activeTab === 'activity' && (historyLoading || (history && history.length > 0)) && (
           <div>
             <div className="text-xs sm:text-sm text-primary/60 mb-3 font-mono">HISTORY</div>
             {historyLoading ? (
@@ -364,9 +434,17 @@ export const QuestDetailPanel = ({ questId, onClose, mobile = false, embedded = 
           </div>
         )}
 
+        {activeTab === 'activity' && !historyLoading && (!history || history.length === 0) && (
+          <div className="flex min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-white/10 bg-black/20 px-5 text-center">
+            <History className="mb-3 h-8 w-8 text-white/20" />
+            <p className="text-sm font-medium text-white/70">No activity recorded yet</p>
+            <p className="mt-1 max-w-xs text-xs leading-relaxed text-white/45">Progress changes and quest status updates will appear here.</p>
+          </div>
+        )}
+
 
         {/* Time & Links */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {activeTab === 'overview' && <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {(quest.effort_hours || quest.time_spent_hours) && (
             <div>
               <div className="text-xs sm:text-sm text-primary/60 mb-2 font-mono">TIME</div>
@@ -406,10 +484,10 @@ export const QuestDetailPanel = ({ questId, onClose, mobile = false, embedded = 
               </div>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Completion Notes */}
-        {quest.completion_notes && (
+        {activeTab === 'overview' && quest.completion_notes && (
           <div className="bg-black/40 border border-yellow-500/30 rounded p-3 sm:p-4">
             <div className="text-xs sm:text-sm text-yellow-400/60 mb-2 font-mono">COMPLETION NOTES</div>
             <p className="text-xs sm:text-sm text-white/80">{quest.completion_notes}</p>

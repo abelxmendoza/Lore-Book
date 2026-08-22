@@ -14,7 +14,7 @@ export type CreationOutcome = {
   action: 'create' | 'merge' | 'defer' | 'reject' | 'route';
   entityId?: string;
   entityName?: string;
-  entityType?: 'character' | 'self_alias' | 'tool' | 'media' | 'band' | 'role' | 'event' | 'process';
+  entityType?: 'character' | 'self_alias' | 'tool' | 'media' | 'band' | 'role' | 'event' | 'process' | 'organization';
   persistence?: 'candidate' | 'confirmed';
   reason?: string;
   candidates?: Array<{ character_id: string; name: string; subtitle?: string }>;

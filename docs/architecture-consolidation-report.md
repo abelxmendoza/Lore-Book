@@ -10,6 +10,11 @@
 **Optimize for:** simplicity, maintainability, correctness — **not** feature count.
 **Status:** Draft for engineering review.
 
+> **Historical snapshot.** Event-store counts below describe the 2026-06 audit.
+> Character chronology is now only `resolved_events.people[]` → Canonical Temporal
+> Model → Timeline / Biography / WMA. `character_timeline_events` was dropped in
+> production on 2026-08-21.
+
 > **Pre-deletion gate (2026-06-18):** See
 > [`docs/pre-deletion-salvage-audit.md`](./pre-deletion-salvage-audit.md). Phase 0 drops done.
 > **`timelines_v2`** → `life_arcs`. **`people_places`** chat hot path fully redirected (Phase 1a+1b);
@@ -27,7 +32,7 @@ and narrative reasoning) is genuinely differentiated and should be protected. Th
 |---|---:|---:|
 | Person/entity stores | **4** (`characters`, `omega_entities`, `people_places`, `entities`) | **1 canonical + mention log** |
 | Relationship/edge stores | **8** (`character_relationships`, `entity_relationships`, `omega_relationships`, `romantic_relationships`, `social_edges`, `graph_edges`, `temporal_edges`, `relationship_snapshots`) | **1 typed bi-temporal edge table + derived projections** |
-| Event stores | **3** (`resolved_events`, `timeline_events`, `character_timeline_events`) | **1 canonical event + per-entity projection** |
+| Event stores | **2 remaining** (`resolved_events`, `timeline_events`; `character_timeline_events` dropped 2026-08-21) | **1 canonical event (`resolved_events.people[]`)** |
 | "Arc" namespaces | **3** (`life_arcs`, `timeline_arcs`, analytics `arcs`) | **1** |
 | Timeline assembly paths (read-time) | **~14** | **1 stitched read model** |
 | Retrieval paths | **~10** (2–4 run per chat turn) | **1 budgeted assembler** |
@@ -74,7 +79,7 @@ already run. The end state has **fewer moving parts carrying the same intelligen
 ┌───────────────────────────────────────────────────────────────────────────┐
 │  EVENT / TIMELINE STORES                                                    │
 │  journal_entries (raw moments, authoritative)                              │
-│  resolved_events │ timeline_events │ character_timeline_events  (3 events) │
+│  resolved_events │ timeline_events  (character_timeline_events dropped 2026-08-21) │
 │  life_arcs │ timeline_arcs │ analytics arcs  (3 "arc" namespaces)          │
 │  episodes (chat scenes) │ entry_ir (LNC) │ chronology_index (derived)      │
 └───────────────────────────────────────────────────────────────────────────┘
@@ -202,11 +207,11 @@ Each card answers the six required questions: **Responsibility · Owns · Overla
 
 ### 2.C TIMELINES / STORY
 
-#### Event stores — `resolved_events` / `timeline_events` / `character_timeline_events`
-- **Responsibility:** `resolved_events` (`20250223000097_temporal_events.sql`) = unified WHO/WHERE/WHAT/WHEN; `timeline_events` (`20250325000134_…`) = task/normalizer-sourced events; `character_timeline_events` (`20250127000044_…`) = per-character projection (FK → `resolved_events`).
-- **Overlaps:** All three represent "an event" and surface in different assembly/retrieval paths.
-- **Authoritative or derived:** `resolved_events` authoritative (written by `timelineFoundationService.ts`); `character_timeline_events` derived projection; `timeline_events` authoritative-but-parallel for task events.
-- **Verdict:** **MERGE on `resolved_events`** as the one canonical event; keep `character_timeline_events` as a derived per-entity index; fold `timeline_events` task sources into `resolved_events` via a source_type.
+#### Event stores — `resolved_events` / `timeline_events`
+- **Responsibility:** `resolved_events` = unified WHO/WHERE/WHAT/WHEN; Character membership is `people[]`. `timeline_events` = task/normalizer-sourced events.
+- **Historical:** `character_timeline_events` was a derived per-character projection. It was dropped in production on 2026-08-21.
+- **Authoritative or derived:** `resolved_events` authoritative (written by `timelineFoundationService.ts`); `timeline_events` remaining parallel store for task events.
+- **Verdict (done for Character):** Character Timeline / Biography / WMA read `resolved_events.people[]` + Canonical Temporal Model. Fold `timeline_events` task sources into `resolved_events` via a source_type.
 
 #### `chronology_index` + chronology engines (V1 + V2)
 - **Responsibility:** `chronology_index` (`20250201000053_…`) = derived temporal index over `journal_entries`. `chronologyV2/chronologyService.ts` (ordering, gaps, buckets) supersedes V1 `chronology/chronologyEngine.ts` (causal chains, ephemeral), but both are still mounted on the same router.
@@ -316,8 +321,8 @@ Who is the **system of record** for each concept (vs. who else writes/derives it
 | Social analytics graph | `social_edges` (name-keyed, derived) | — | **derived view over `edges`** |
 | Memory-component graph | `graph_edges` | — | **keep (distinct domain)** |
 | Raw moments | `journal_entries` | — | **keep** |
-| Structured events | `resolved_events` (`timelineFoundationService`) | `timeline_events`, `character_timeline_events` | **`resolved_events` canonical** |
-| Per-character event view | `character_timeline_events` (derived) | — | **keep as projection** |
+| Structured events | `resolved_events` (`timelineFoundationService`) | `timeline_events` | **`resolved_events` canonical; `people[]` for Character** |
+| Per-character event view | `resolved_events.people[]` + Canonical Temporal Model | dropped `character_timeline_events` | **canonical Character Timeline** |
 | Chronological order | `chronology_index` + `user_chronology_order` | chronology V1, `memoryService.getTimeline` | **`chronology_index` (+ user order)** |
 | Arcs | `life_arcs` | `timeline_arcs`, analytics `arcs` | **`life_arcs` canonical** |
 | Conversation episodes | `episodes` (orphaned from retrieval) | WMA mislabels journals as "episode" | **`episodes` (wired or retired)** |
@@ -341,7 +346,7 @@ Who is the **system of record** for each concept (vs. who else writes/derives it
 |---|---|---|---|---|
 | 1 | **Person store** | `characters`, `omega_entities`, `people_places`, `entities` | Merge complexity, "duplicate person" bugs, recall gaps | Unify on `characters`→canonical `entities` |
 | 2 | **Edge store** | `character_relationships`, `entity_relationships`, `omega_relationships`, `romantic_relationships`, `social_edges`, `temporal_edges`(+snapshots), `graph_edges` | No single graph to traverse | One bi-temporal `edges` + extensions/views |
-| 3 | **Event store** | `resolved_events`, `timeline_events`, `character_timeline_events` | Triple event semantics in assembly | Canonical `resolved_events` |
+| 3 | **Event store** | `resolved_events`, `timeline_events` (`character_timeline_events` dropped) | Remaining task-event parallel store | Canonical `resolved_events` |
 | 4 | **"Arc" namespace** | `life_arcs`, `timeline_arcs`, analytics `arcs` | Same word, 3 tables | One arc model |
 | 5 | **Timeline assembly** | ~14 read-time paths (chapter-month, multi-lane, chronology V1/V2, stitched, calendar, hierarchy, narrative, synthesis, recent-arc, character, broken v2…) | Hard to reason about; fake data risk | Converge on stitched read model |
 | 6 | **Retrieval** | ~10 paths (WMA, MemoryRetriever, entity-scoped, context-aware, explicit recall, MRE, story recall, contract, HQI, orchestrator) | ~19 queries/turn, latency/cost | One budgeted assembler |
@@ -374,7 +379,7 @@ Sequenced so each step de-risks the next. **No second database. No new features 
 - Unify the 6+ classifiers to 2; unify the two lexical stacks and the kinship dictionaries to one glossary.
 
 ### Phase 2 — Unify events & arcs (2–4 weeks)
-- Canonicalize on `resolved_events`; fold `timeline_events` task sources in via `source_type`; keep `character_timeline_events` as a derived projection.
+- Canonicalize on `resolved_events`; fold `timeline_events` task sources in via `source_type`. Character projection `character_timeline_events` is already dropped.
 - Collapse `life_arcs` / `timeline_arcs` / analytics `arcs` to one arc model.
 
 ### Phase 3 — Unify the edge model (the big one) (4–8 weeks)

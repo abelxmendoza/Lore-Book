@@ -3,6 +3,9 @@
 **Date:** 2026-06-16  
 **Source:** `apps/server/src/services/chat/workingMemoryAssembler.ts`
 
+> **Historical snapshot (2026-06-16).** Person events now come from
+> `resolved_events.people[]`, not `character_timeline_events` (dropped 2026-08-21).
+
 ## Assembly Flow
 
 ```

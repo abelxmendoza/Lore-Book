@@ -6,7 +6,7 @@ import {
   inferenceAssociationService,
   NEIGHBORHOOD_CODING_CLUB_FIXTURE_TEXT,
 } from '../../src/services/inference';
-import { loadHistoryContext } from '../../src/services/inference/historyAssociationService';
+import { loadHistoryContext, resetHistoryContextCache } from '../../src/services/inference/historyAssociationService';
 import { buildActionsFromOntologyCandidates } from '../../src/services/ontology/actionPlanService';
 
 const storedCharacters: Array<{ id: string; name: string; aliases?: string[] }> = [];
@@ -114,6 +114,7 @@ describe('inferenceAssociationService — neighborhood_after_school_coding_club'
   beforeEach(() => {
     storedCharacters.length = 0;
     vi.clearAllMocks();
+    resetHistoryContextCache();
   });
 
   it('creates street community from named street context', async () => {

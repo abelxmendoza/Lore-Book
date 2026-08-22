@@ -65,7 +65,7 @@ export async function getWhatChangedSinceLastVisit(
       .select('id, name, created_at, metadata')
       .eq('user_id', userId),
     supabaseAdmin
-      .from('character_timeline_events')
+      .from('resolved_events')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
       .gt('created_at', sinceIso),

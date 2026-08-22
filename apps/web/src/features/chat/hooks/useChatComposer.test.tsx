@@ -11,7 +11,7 @@ import {
   enterDemoRuntime,
 } from '../../../lib/demoRuntime';
 import { preserveStoryAttempt, saveComposerDraft } from '../services/storySafetyVault';
-import { useChatComposer } from './useChatComposer';
+import { COMPOSER_DRAFT_PERSIST_DEBOUNCE_MS, COMPOSER_LOCAL_IDLE_DEBOUNCE_MS, useChatComposer } from './useChatComposer';
 
 const analyze = vi.fn();
 const mockMatches = vi.fn(() => [] as Array<Record<string, unknown>>);
@@ -40,6 +40,8 @@ vi.mock('../../../hooks/useEntityIndexer', () => ({
   useEntityIndexer: () => ({
     matches: mockMatches(),
     analyze,
+    abortInFlightPreview: vi.fn(),
+    primeDraft: vi.fn(),
   }),
 }));
 
@@ -60,6 +62,7 @@ describe('useChatComposer', () => {
   afterEach(() => {
     clearDemoSession();
     window.history.replaceState({}, '', '/');
+    vi.useRealTimers();
   });
 
   it('does not leak an unsent draft between composers with different threadIds', () => {
@@ -116,6 +119,9 @@ describe('useChatComposer', () => {
     act(() => {
       result.current.setInput('demo-only note');
     });
+    act(() => {
+      result.current.handleComposerBlur();
+    });
     expect(window.localStorage.getItem(
       `lorekeeper.composerDraft.v1:${realUserId}:new-thread`,
     )).toBe(privateDraft);
@@ -124,19 +130,44 @@ describe('useChatComposer', () => {
     )).toBe('demo-only note');
   });
 
-  it('analyzes input as the user types and clears on empty input', () => {
+  it('analyzes input after a short idle and clears on empty input', () => {
+    vi.useFakeTimers();
     const { result } = renderHook(() => useChatComposer(vi.fn()), { wrapper });
+    analyze.mockClear();
 
     act(() => {
       result.current.setInput('Tell me about Abel');
     });
-    // analyze now receives the active threadId as a second arg (undefined here).
+    expect(analyze).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(COMPOSER_LOCAL_IDLE_DEBOUNCE_MS);
+    });
     expect(analyze).toHaveBeenCalledWith('Tell me about Abel', undefined);
 
     act(() => {
       result.current.setInput('');
     });
     expect(analyze).toHaveBeenCalledWith('');
+    vi.useRealTimers();
+  });
+
+  it('does not persist a draft on every keystroke', () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useChatComposer(vi.fn()), { wrapper });
+
+    act(() => {
+      result.current.setInput('M');
+      result.current.setInput('Ma');
+      result.current.setInput('Maya');
+    });
+    expect(window.localStorage.getItem('lorekeeper.composerDraft.v1:guest-or-anonymous:new-thread')).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(COMPOSER_DRAFT_PERSIST_DEBOUNCE_MS);
+    });
+    expect(window.localStorage.getItem('lorekeeper.composerDraft.v1:guest-or-anonymous:new-thread')).toBe('Maya');
+    vi.useRealTimers();
   });
 
   it('passes visible matches to onSubmit and clears composer state', () => {

@@ -55,7 +55,6 @@ import { relationshipDriftDetector } from './relationshipDriftDetector';
 import { relationshipCycleDetector } from './relationshipCycleDetector';
 import { breakupDetector } from './breakupDetector';
 import { extractAndLogInteraction } from './romanticInteractionExtractor';
-import { characterTimelineBuilder } from './characterTimelineBuilder';
 import {
   organizationTimelineBuilder,
   locationTimelineBuilder,
@@ -2560,32 +2559,7 @@ export class ConversationIngestionPipeline {
                       );
                     }
 
-                    // Step 12.8: Build character timelines (shared experiences and lore)
                     if (fullEvent.people && fullEvent.people.length > 0) {
-                      characterTimelineBuilder
-                        .processEventForCharacters(
-                          userId,
-                          fullEvent.id,
-                          {
-                            title: fullEvent.title,
-                            summary: fullEvent.summary,
-                            type: fullEvent.type,
-                            start_time: fullEvent.start_time,
-                            people: fullEvent.people,
-                          },
-                          impact?.impactType,
-                          impact?.connectionCharacterId
-                        )
-                        .then(() => {
-                          logger.debug(
-                            { userId, eventId: fullEvent.id, characters: fullEvent.people.length },
-                            'Processed event for character timelines'
-                          );
-                        })
-                        .catch(err => {
-                          logger.warn({ err }, 'Character timeline processing failed (non-blocking)');
-                        });
-
                       // Step 12.8b: Build organization timelines (member overlap with fullEvent.people)
                       getOrganizationIdsForCharacters(userId, fullEvent.people)
                         .then(orgIds => {
@@ -2597,6 +2571,8 @@ export class ConversationIngestionPipeline {
                                 type: fullEvent.type,
                                 start_time: fullEvent.start_time,
                                 people: fullEvent.people,
+                                locations: fullEvent.locations,
+                                metadata: fullEvent.metadata,
                               })
                               .catch(err => {
                                 logger.warn({ err }, 'Organization timeline processing failed (non-blocking)');
@@ -2645,6 +2621,8 @@ export class ConversationIngestionPipeline {
                             type: fullEvent.type,
                             start_time: fullEvent.start_time,
                             people: fullEvent.people || [],
+                            locations: fullEvent.locations,
+                            metadata: fullEvent.metadata,
                           })
                           .catch(err => {
                             logger.warn({ err }, 'Location timeline processing failed (non-blocking)');

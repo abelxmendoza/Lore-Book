@@ -16,6 +16,10 @@ import {
   isRomanceWriteRequest,
   isClosedScopeQuery,
   isFocusEntityRelevant,
+  isPronounPersonQuery,
+  parseTalkAboutSubject,
+  parseNamedChatSubject,
+  messageConflictsWithPinnedFocus,
 } from './closedScopeIntent';
 
 describe('isCastRosterQuery', () => {
@@ -138,5 +142,35 @@ describe('isFocusEntityRelevant', () => {
   it('matches name substring', () => {
     expect(isFocusEntityRelevant('tell me about Marcus', 'Marcus')).toBe(true);
     expect(isFocusEntityRelevant('how was lunch?', 'Marcus')).toBe(false);
+  });
+});
+
+describe('named chat subject vs pinned focus', () => {
+  it('parses a capture prompt subject', () => {
+    expect(
+      parseTalkAboutSubject(
+        'I want to talk about Marcus. Help me capture who they are, how we know each other, and what matters about them right now. Please do not invent details I have not shared.',
+      ),
+    ).toBe('Marcus');
+  });
+
+  it('treats who-is-he as a pronoun query, not a named subject', () => {
+    expect(isPronounPersonQuery('who is he')).toBe(true);
+    expect(parseNamedChatSubject('who is he')).toBeNull();
+  });
+
+  it('flags a leftover pin when the message names someone else', () => {
+    expect(
+      messageConflictsWithPinnedFocus(
+        'I want to talk about Marcus. Help me capture who they are.',
+        'Jamie',
+      ),
+    ).toBe(true);
+    expect(
+      messageConflictsWithPinnedFocus(
+        'I want to talk about Marcus. Help me capture who they are.',
+        'Marcus',
+      ),
+    ).toBe(false);
   });
 });

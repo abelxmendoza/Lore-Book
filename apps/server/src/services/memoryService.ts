@@ -28,6 +28,7 @@ import { projectSuggestionService } from './projects/projectSuggestionService';
 import { supabaseAdmin } from './supabaseClient';
 import { ingestJournalEntry } from './unifiedErIngestion';
 import { dateAssignmentService } from './dateAssignmentService';
+import type { TemporalPrecision, TemporalSource } from './temporal/temporalEvidence';
 
 const ENTRY_LIST_CACHE_TTL_MS = 30_000;
 const BOOTSTRAP_ENTRY_FETCH_LIMIT = 500;
@@ -73,6 +74,8 @@ export type SaveEntryPayload = {
   userId: string;
   content: string;
   date?: string;
+  /** Inclusive end of a known occurrence range (resume 2024–2025, calendar span). */
+  occurredEnd?: string;
   tags?: string[];
   chapterId?: string | null;
   mood?: string | null;
@@ -89,6 +92,19 @@ export type SaveEntryPayload = {
   derivedFromEntryId?: string | null;
   /** Skip the automatic ER ingestion (used by external syncs that call ingestExternalPost themselves for provenance). */
   skipIngestion?: boolean;
+  /**
+   * Provenance for an explicit `date`. User journal APIs may omit this (treated as user_stated).
+   * Importers that pass a date must set document_stated / relative_expression / etc.
+   * recording_fallback + date is ignored — unknown stays unknown.
+   */
+  temporalSource?: TemporalSource;
+  /** When the user wrote/spoke about it (source message time). Not occurrence. */
+  mentionedAt?: string;
+  /** When the source artifact was created (tweet, ChatGPT message). Not occurrence. */
+  sourceCreatedAt?: string;
+  /** When LoreBook received the artifact. RecordedAt remains created_at. */
+  importedAt?: string;
+  occurrencePrecision?: TemporalPrecision;
 };
 
 class MemoryService {
@@ -111,10 +127,14 @@ class MemoryService {
 
   async saveEntry(payload: SaveEntryPayload): Promise<MemoryEntry> {
     const isEncrypted = Boolean((payload.metadata as { encrypted?: boolean } | undefined)?.encrypted);
-    const metadata = { ...(payload.metadata ?? {}) } as Record<string, unknown>;
+    let metadata = { ...(payload.metadata ?? {}) } as Record<string, unknown>;
     if (payload.relationships?.length) {
       metadata.relationships = payload.relationships;
     }
+    if (payload.sourceCreatedAt) metadata.sourceCreatedAt = payload.sourceCreatedAt;
+    if (payload.importedAt) metadata.importedAt = payload.importedAt;
+    if (payload.mentionedAt) metadata.mentionedAt = payload.mentionedAt;
+    if (payload.temporalSource) metadata.temporal_source = payload.temporalSource;
     // Auto-generate summary if not provided
     // Skip auto-summary for preserved content types (they should keep original wording)
     let summary = payload.summary;
@@ -132,25 +152,47 @@ class MemoryService {
       }
     }
 
-    // If no date supplied, ask dateAssignmentService to infer one from content.
-    // Only use the suggestion when confidence is reasonable (≥0.5); otherwise keep now().
-    let entryDate = payload.date;
-    if (!entryDate && payload.content && payload.content.length > 20) {
+    // Occurrence is assigned only from explicit payload date or content evidence.
+    // No evidence → date stays null. created_at remains recording time.
+    const now = new Date();
+    const { resolveJournalWriteOccurrence, journalWriteMetadata, isNotNullViolation } = await import('./temporal/journalOccurrenceWrite');
+    let write = resolveJournalWriteOccurrence({
+      explicitDate: payload.date,
+      occurredEnd: payload.occurredEnd,
+      content: payload.content,
+      sourceType: payload.source,
+      metadata,
+      temporalSource: payload.temporalSource,
+      mentionedAt: payload.mentionedAt,
+      sourceCreatedAt: payload.sourceCreatedAt,
+      occurrencePrecision: payload.occurrencePrecision,
+      now,
+    });
+    if (!payload.date && payload.content && payload.content.length > 20 && !write.occurredAt && write.unresolvedReason !== 'user said occurrence is unknown') {
       try {
-        const suggestion = await dateAssignmentService.suggestDate(payload.userId, payload.content);
-        if (suggestion.confidence >= 0.5 && suggestion.source !== 'default') {
-          entryDate = suggestion.date.toISOString();
+        const suggestion = await dateAssignmentService.suggestDate(payload.userId, payload.content, { now });
+        if (suggestion.date && suggestion.source !== 'unresolved' && suggestion.confidence >= 0.5) {
+          write = {
+            ...write,
+            occurredAt: suggestion.date.toISOString(),
+            occurredEnd: suggestion.endDate ? suggestion.endDate.toISOString() : write.occurredEnd,
+            confidence: suggestion.confidence,
+            temporalSource: 'user_stated',
+            unresolvedReason: null,
+          };
         }
       } catch (error) {
-        logger.debug({ error }, 'Date suggestion failed, using current date');
+        logger.debug({ error }, 'Date suggestion failed; leaving occurrence unresolved');
       }
     }
+
+    metadata = journalWriteMetadata(metadata, write);
 
     const entry: MemoryEntry = {
       id: uuid(),
       user_id: payload.userId,
       content: payload.content,
-      date: entryDate ?? new Date().toISOString(),
+      date: write.occurredAt,
       tags: payload.tags ?? [],
       chapter_id: payload.chapterId ?? null,
       mood: payload.mood ?? null,
@@ -174,10 +216,37 @@ class MemoryService {
     const insertRow: Record<string, unknown> = { ...entry };
     if (payload.narrativeOrder != null) insertRow.narrative_order = payload.narrativeOrder;
     if (payload.derivedFromEntryId != null) insertRow.derived_from_entry_id = payload.derivedFromEntryId;
-    // Derive emotional intensity at ingestion — high-emotion entries decay slower (see migration 20260529000007)
     insertRow.emotional_intensity = deriveEmotionalIntensity(payload.content, payload.mood);
+    insertRow.time_precision = write.dbPrecision;
+    insertRow.time_confidence = write.confidence;
+    insertRow.end_time = write.occurredEnd;
+    insertRow.timestamp = write.occurredAt;
 
-    const { error } = await supabaseAdmin.from('journal_entries').insert(insertRow);
+    let { error } = await supabaseAdmin.from('journal_entries').insert(insertRow);
+    if (error && isNotNullViolation(error) && write.occurredAt == null) {
+      // Transitional: date/timestamp columns are still NOT NULL DEFAULT now() until
+      // 20260821120000_journal_occurrence_nullable.sql is applied. Stamp recording
+      // fallback so canonical readers reject it as occurrence.
+      logger.warn({ userId: payload.userId }, 'journal_entries.date is still NOT NULL; writing recording_fallback occurrence');
+      const fallbackIso = now.toISOString();
+      write = {
+        ...write,
+        occurredAt: null,
+        temporalSource: 'recording_fallback',
+        confidence: 0.05,
+        unresolvedReason: write.unresolvedReason ?? 'nullable date column not applied',
+      };
+      metadata = journalWriteMetadata(metadata, write);
+      entry.date = null;
+      entry.metadata = metadata;
+      insertRow.metadata = metadata;
+      insertRow.date = fallbackIso;
+      insertRow.timestamp = fallbackIso;
+      insertRow.time_precision = 'approximate';
+      insertRow.time_confidence = 0.05;
+      const retry = await supabaseAdmin.from('journal_entries').insert(insertRow);
+      error = retry.error;
+    }
     if (error) {
       // Check if table doesn't exist
       if (error.code === '42P01' || error.message?.includes('does not exist')) {
@@ -496,7 +565,12 @@ class MemoryService {
   }
 
   private groupByMonth(entries: MemoryEntry[]): MonthGroup[] {
+    // An entry with no occurrence date (unresolved) has no honest month to
+    // group into — including it here would mean either crashing on
+    // parseISO(null) or fabricating a bucket, both of which contradict
+    // "unknown occurrence remains unknown."
     const grouped = entries.reduce<Record<string, MemoryEntry[]>>((acc, entry) => {
+      if (!entry.date) return acc;
       const month = format(parseISO(entry.date), 'yyyy MMMM');
       acc[month] = acc[month] ?? [];
       acc[month].push(entry);

@@ -1,4 +1,5 @@
 import { fetchEntityProfile } from './chat/foundationRecallDataService';
+import { countCanonicalEventsForCharacter } from './characters/canonicalCharacterEventCount';
 import { entityFactsService } from './entityFactsService';
 import { computeLearningScore } from './entities/learningScore';
 import { supabaseAdmin } from './supabaseClient';
@@ -118,7 +119,7 @@ export async function getCharacterKnowledgeBase(
     sceneCandidatesResult,
     identityRows,
     relationships,
-    timelineCountResult,
+    timelineEventCount,
     orgsResult,
     conversationLinks,
   ] = await Promise.all([
@@ -139,11 +140,7 @@ export async function getCharacterKnowledgeBase(
       .from('character_relationships')
       .select('source_character_id, target_character_id, relationship_type')
       .or(`source_character_id.eq.${characterId},target_character_id.eq.${characterId}`),
-    supabaseAdmin
-      .from('character_timeline_events')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('character_id', characterId),
+    countCanonicalEventsForCharacter(userId, characterId),
     supabaseAdmin
       .from('organization_members')
       .select('organization_id, role, organizations:organization_id(id, name)')
@@ -205,7 +202,6 @@ export async function getCharacterKnowledgeBase(
   ];
 
   const memoryCount = profile?.memoryCount ?? 0;
-  const timelineEventCount = timelineCountResult.count ?? profile?.timelineEvents.length ?? 0;
   const identityMentions = (identityRows.data ?? []).map((row) => ({
     mention: row.mention,
     source: row.source,

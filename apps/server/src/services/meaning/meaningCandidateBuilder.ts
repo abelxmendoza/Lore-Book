@@ -15,6 +15,7 @@ import type {
 import type { LexicalAnalysisResult } from '../lexical/lexicalTypes';
 import { allowsHardMemoryCandidate, allowsPreferenceCandidate } from './factualityResolutionService';
 import { isFamilyOrRomantic } from './relationshipResolutionService';
+import { detectExplicitEntityCorrection } from './entityCorrectionIntent';
 
 export function buildOntologyActionCandidates(
   entities: ResolvedEntity[],
@@ -27,6 +28,23 @@ export function buildOntologyActionCandidates(
   factuality: Factuality
 ): OntologyActionCandidate[] {
   const actions: OntologyActionCandidate[] = [];
+
+  const explicitEntityCorrection = detectExplicitEntityCorrection(text);
+  if (explicitEntityCorrection) {
+    actions.push({
+      kind: 'resolve_duplicate',
+      label: `Review whether “${explicitEntityCorrection.sourceName}” and “${explicitEntityCorrection.targetName}” are the same entity`,
+      confidence: explicitEntityCorrection.confidence,
+      requiresConfirmation: true,
+      payload: {
+        sourceName: explicitEntityCorrection.sourceName,
+        targetName: explicitEntityCorrection.targetName,
+        relation: explicitEntityCorrection.relation,
+        evidence: explicitEntityCorrection.evidence,
+        explicitUserCorrection: true,
+      },
+    });
+  }
 
   for (const collision of collisions) {
     if (collision.claims.includes('self')) {

@@ -85,6 +85,32 @@ describe('RomanticInterestChatLauncher', () => {
       expect(matches).not.toHaveTextContent('Taylor');
     });
 
+  it('adds an existing Character Book person when direct add is enabled', async () => {
+    const user = userEvent.setup();
+    const onContinue = vi.fn();
+    const onAddCharacter = vi.fn();
+
+    render(
+      <RomanticInterestChatLauncher
+        characters={[{ id: 'char-jamie', name: 'Jamie', aliases: ['Jay'] }]}
+        allowDirectAdd
+        onContinue={onContinue}
+        onAddCharacter={onAddCharacter}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /add a character/i }));
+    await user.type(screen.getByRole('textbox', { name: /romantic interest name/i }), 'Jay');
+    await user.click(screen.getByRole('button', { name: /add jamie to dating & romance/i }));
+
+    expect(onAddCharacter).toHaveBeenCalledWith({
+      id: 'char-jamie',
+      name: 'Jamie',
+      aliases: ['Jay'],
+    });
+    expect(onContinue).not.toHaveBeenCalled();
+  });
+
     it('shows everyone again when switching back to "All"', async () => {
       const user = userEvent.setup();
       render(<RomanticInterestChatLauncher characters={characters} onContinue={vi.fn()} />);

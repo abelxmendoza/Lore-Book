@@ -45,6 +45,9 @@ type UseChatComposerOptions = {
   threadId?: string;
 };
 
+export const COMPOSER_DRAFT_PERSIST_DEBOUNCE_MS = 600;
+export const COMPOSER_LOCAL_IDLE_DEBOUNCE_MS = 200;
+
 function openConfirmedComposerEntity(result: Awaited<ReturnType<typeof confirmComposerEntity>>): void {
   if (!result?.id) return;
   switch (result.type) {
@@ -113,14 +116,59 @@ export const useChatComposer = (
   const autoTagger = useAutoTagger();
   const entityIndexer = useEntityIndexer();
 
+  // Draft persistence (localStorage write + Redux mirror) is expensive to run
+  // synchronously on every keystroke — see storySafetyVault.saveComposerDraft.
+  // Typing updates local `input` state immediately (for the textarea itself
+  // and for Send, which always reads `input` directly — never this mirror);
+  // the persisted copies trail on a short idle debounce and are flushed
+  // immediately on blur/send/unmount so draft recovery never loses text.
+  const DRAFT_PERSIST_DEBOUNCE_MS = COMPOSER_DRAFT_PERSIST_DEBOUNCE_MS;
+  const draftPersistTimerRef = useRef<number | null>(null);
+  const latestDraftRef = useRef(input);
+  const draftPersistKeyRef = useRef({ draftOwnerId, threadId });
+  draftPersistKeyRef.current = { draftOwnerId, threadId };
+
+  const flushDraftPersist = useCallback((value: string) => {
+    if (draftPersistTimerRef.current) {
+      window.clearTimeout(draftPersistTimerRef.current);
+      draftPersistTimerRef.current = null;
+    }
+    const { draftOwnerId: ownerId, threadId: tid } = draftPersistKeyRef.current;
+    saveComposerDraft(ownerId, tid, value);
+    dispatch(setComposerDraft(value));
+  }, [dispatch]);
+
   const setInput = useCallback(
     (value: string) => {
       setInputState(value);
-      saveComposerDraft(draftOwnerId, threadId, value);
-      dispatch(setComposerDraft(value));
+      latestDraftRef.current = value;
+      // Clearing (send, discard) is correctness-sensitive — persist immediately
+      // so a stale non-empty draft can never reappear from a pending timer.
+      if (!value.trim()) {
+        flushDraftPersist(value);
+        return;
+      }
+      if (draftPersistTimerRef.current) window.clearTimeout(draftPersistTimerRef.current);
+      draftPersistTimerRef.current = window.setTimeout(() => {
+        draftPersistTimerRef.current = null;
+        flushDraftPersist(value);
+      }, DRAFT_PERSIST_DEBOUNCE_MS);
     },
-    [dispatch, draftOwnerId, threadId]
+    [flushDraftPersist]
   );
+
+  // Blur / unmount: best-effort flush so navigating away or losing focus never
+  // drops the last few debounced-but-unpersisted characters.
+  const handleComposerBlur = useCallback(() => {
+    if (draftPersistTimerRef.current) flushDraftPersist(latestDraftRef.current);
+  }, [flushDraftPersist]);
+
+  useEffect(() => {
+    return () => {
+      if (draftPersistTimerRef.current) flushDraftPersist(latestDraftRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Restore unsent drafts on thread switch / remount.
   // Vault attempts restore only on reload (when we did not just submit) or via
@@ -145,33 +193,55 @@ export const useChatComposer = (
     });
   }, [dispatch, draftOwnerId, threadId]); // input intentionally checked only when the owner/thread changes
 
-  // Analyze input for mood, tags, and characters (debounced to avoid excessive API calls)
+  // Slash-command detection and clear-on-empty are cheap and expected to
+  // react instantly — these stay on the immediate path, unlike the entity
+  // matching / mood / autotag pipeline below.
   useEffect(() => {
-    // Immediate updates for non-API operations
-    if (input.trim()) {
-      // Non-API operations can run immediately
-      autoTagger.refreshSuggestions(input);
-      entityIndexer.analyze(input, threadId);
-      
-      // Check for slash commands
-      if (input.startsWith('/')) {
-        const suggestions = getCommandSuggestions(input);
-        setCommandSuggestions(suggestions);
-        setShowCommandSuggestions(suggestions.length > 0);
-      } else {
-        setShowCommandSuggestions(false);
-      }
-    } else {
+    if (typeof entityIndexer.primeDraft === 'function') {
+      entityIndexer.primeDraft(input, threadId);
+    }
+    if (typeof entityIndexer.abortInFlightPreview === 'function') {
+      entityIndexer.abortInFlightPreview();
+    }
+    if (!input.trim()) {
       moodEngine.setScore(0);
       autoTagger.refreshSuggestions('');
       entityIndexer.analyze('');
       setShowCommandSuggestions(false);
+      return;
     }
+    if (input.startsWith('/')) {
+      const suggestions = getCommandSuggestions(input);
+      setCommandSuggestions(suggestions);
+      setShowCommandSuggestions(suggestions.length > 0);
+    } else {
+      setShowCommandSuggestions(false);
+    }
+  }, [input, threadId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Use local heuristic for realtime mood feedback — no API call during typing
-    if (input.trim()) {
+  // Composer intelligence (entity matching, autotag, mood) is expensive
+  // (certified-entity regex scanning, draft-name detection, lexical parsing,
+  // promotion scoring — see certifiedEntityMatch.ts) and must trail typing
+  // rather than run on every keystroke. This is the "LOCAL CHIP IDLE" tier —
+  // deliberately a separate, shorter timer than the remote preview debounce
+  // inside entityIndexer.analyze (that one schedules its own longer-delayed
+  // server fetch independently once this fires).
+  const localIdleTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!input.trim()) return; // handled immediately above
+    if (localIdleTimerRef.current) window.clearTimeout(localIdleTimerRef.current);
+    localIdleTimerRef.current = window.setTimeout(() => {
+      localIdleTimerRef.current = null;
+      autoTagger.refreshSuggestions(input);
+      entityIndexer.analyze(input, threadId);
       moodEngine.setScore(localHeuristic(input));
-    }
+    }, COMPOSER_LOCAL_IDLE_DEBOUNCE_MS);
+    return () => {
+      if (localIdleTimerRef.current) {
+        window.clearTimeout(localIdleTimerRef.current);
+        localIdleTimerRef.current = null;
+      }
+    };
   }, [input, threadId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addPendingImages = useCallback(async (files: FileList | File[]) => {
@@ -245,13 +315,15 @@ export const useChatComposer = (
     if (overrideText === undefined || overrideText === input) {
       setInput('');
     } else {
-      dispatch(setComposerDraft(input));
-      saveComposerDraft(draftOwnerId, threadId, input);
+      // Cancels any pending debounced persist for the old value before
+      // re-persisting the preserved input, so a stale timer can't later
+      // overwrite this with what was just submitted.
+      flushDraftPersist(input);
     }
     setPreviewCorrections([]);
     setPendingImages([]);
     setImageError(null);
-  }, [input, pendingImages, onSubmit, visibleMatches, includedSlots, previewCorrections, setInput, dispatch, draftOwnerId, threadId]);
+  }, [input, pendingImages, onSubmit, visibleMatches, includedSlots, previewCorrections, setInput, flushDraftPersist]);
 
   const dismissMatch = useCallback(
     (match: CertifiedEntityMatch) => {
@@ -307,6 +379,7 @@ export const useChatComposer = (
   return {
     input,
     setInput,
+    handleComposerBlur,
     textareaRef,
     showCommandSuggestions,
     commandSuggestions,

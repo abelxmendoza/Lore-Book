@@ -202,6 +202,57 @@ router.get('/cognition-health', requireAuth, requireAdmin, async (_req: Request,
 });
 
 /**
+ * GET /api/diagnostics/event-attribution
+ * Why is this event on an entity timeline? User-scoped; not shown in product UI.
+ */
+router.get('/event-attribution', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as AuthenticatedRequest).user!.id;
+    const eventId = typeof req.query.eventId === 'string' ? req.query.eventId : '';
+    const entityId = typeof req.query.entityId === 'string' ? req.query.entityId : '';
+    if (!eventId || !entityId) {
+      return res.status(400).json({ error: 'eventId and entityId are required' });
+    }
+    const { diagnoseResolvedEventAttribution } = await import('../services/attribution/resolvedEventAttributionService');
+    const report = await diagnoseResolvedEventAttribution(userId, eventId, entityId, {
+      entityName: typeof req.query.entityName === 'string' ? req.query.entityName : undefined,
+      entityKind: req.query.entityKind === 'location' ? 'location' : 'character',
+    });
+    if (!report) return res.status(404).json({ error: 'Event not found' });
+    return res.json(report);
+  } catch (err) {
+    res.status(500).json({ error: 'Event attribution diagnostics failed', detail: String(err) });
+  }
+});
+
+/**
+ * POST /api/diagnostics/event-attribution/repair
+ * Tenant-scoped historical attribution repair. Dry-run by default.
+ * Pass apply=true (query or body) to write people/locations + entityAttributions.
+ * Never writes the retired Character compatibility table and never accepts another user's id.
+ */
+router.post('/event-attribution/repair', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as AuthenticatedRequest).user!.id;
+    const body = (req.body ?? {}) as { apply?: unknown; limit?: unknown };
+    const apply =
+      req.query.apply === 'true' || body.apply === true || body.apply === 'true';
+    const limitRaw = typeof req.query.limit === 'string' ? req.query.limit : body.limit;
+    const limit = typeof limitRaw === 'number' ? limitRaw : typeof limitRaw === 'string' ? Number(limitRaw) : undefined;
+    const { repairResolvedEventAttributionForUser } = await import(
+      '../services/attribution/resolvedEventAttributionRepairService'
+    );
+    const report = await repairResolvedEventAttributionForUser(userId, {
+      dryRun: !apply,
+      limit: Number.isFinite(limit) ? limit : undefined,
+    });
+    return res.json(report);
+  } catch (err) {
+    res.status(500).json({ error: 'Event attribution repair failed', detail: String(err) });
+  }
+});
+
+/**
  * GET /api/diagnostics/graph-recovery
  * Proves live graph recovery ran: returns the last live relationship/event
  * recovery for the authenticated user with before/after counts and deltas.
@@ -849,7 +900,7 @@ router.post('/recover-relationships', requireAuth, async (req: Request, res: Res
 
 /**
  * POST /api/diagnostics/recover-events
- * Backfill character_timeline_events from chat, facts, and thread summaries.
+ * Backfill missing canonical resolved_events from chat, facts, and thread summaries.
  */
 router.post('/recover-events', requireAuth, async (req: Request, res: Response) => {
   try {

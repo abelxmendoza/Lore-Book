@@ -245,6 +245,7 @@ describe('OmegaChatService', () => {
           'What plans, opinions, goals, or priorities of mine have changed over time? Show me the before and after.',
         );
         expect(result.content).toContain('Before: focused on Omega1');
+        expect(result.metadata.response_mode).toBe('COGNITIVE_SYNTHESIS');
       } finally {
         if (previousWorkingMemoryPrimary === undefined) {
           delete process.env.WORKING_MEMORY_PRIMARY;
@@ -252,6 +253,53 @@ describe('OmegaChatService', () => {
           process.env.WORKING_MEMORY_PRIMARY = previousWorkingMemoryPrimary;
         }
       }
+    });
+
+    it('only labels cognition as focused recall when supporting sources exist', async () => {
+      detectCognitionQuestionFn.mockReturnValue('rising_people');
+      answerNarrativeCognitionFn.mockResolvedValue({
+        kind: 'rising_people',
+        content: 'Jamie has become more relevant recently.',
+        confidence: 0.8,
+        reasoning: ['recent activity exceeded the earlier period'],
+        grounded: true,
+        sources: [{
+          type: 'knowledge',
+          id: 'conversation:recent-thread',
+          title: 'Jamie — recent conversation evidence',
+          usage: 'supporting',
+        }],
+      });
+
+      const result = await omegaChatService.chatStream(
+        'user-123',
+        'Who has become more relevant in my life recently, and why?',
+      );
+
+      expect(result.metadata.response_mode).toBe('FOCUSED_RECALL');
+      expect(result.metadata.sources).toHaveLength(1);
+      expect(result.metadata.ragStats?.sourceCount).toBe(1);
+    });
+
+    it('fails closed when a comparative cognition answer lacks evidence', async () => {
+      detectCognitionQuestionFn.mockReturnValue('rising_people');
+      answerNarrativeCognitionFn.mockResolvedValue({
+        kind: 'rising_people',
+        content: "I don't have enough grounded history to make that comparison.",
+        confidence: 0.9,
+        reasoning: ['missing prior period'],
+        grounded: false,
+        sources: [],
+      });
+
+      const result = await omegaChatService.chatStream(
+        'user-123',
+        'Who has become more relevant in my life recently, and why?',
+      );
+
+      expect(result.metadata.response_mode).toBe('COGNITION_INSUFFICIENT_EVIDENCE');
+      expect(result.metadata.sources).toEqual([]);
+      expect(result.metadata.ragStats?.sourceCount).toBe(0);
     });
 
     it('does not enter cognition routing for debug/audit-facing requests', async () => {
