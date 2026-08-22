@@ -7,6 +7,15 @@
  */
 
 import { supabaseAdmin } from '../supabaseClient';
+import { stitchedTimelineService, type StitchedTimelineItem } from '../chronologyV2/stitchedTimelineService';
+
+/** Occurrence from CanonicalTemporalModel only — never sortTime / recordedAt. */
+function stitchedOccurredStart(item: StitchedTimelineItem): string | null {
+  if (item.occurrenceStatus === 'unresolved' || item.temporal?.occurred.status === 'unanchored') {
+    return null;
+  }
+  return item.temporal?.occurred.start ?? null;
+}
 import {
   fetchCharacterRoster,
   fetchFamilyMembers,
@@ -112,6 +121,237 @@ type FullLifeBiographyRow = {
   updated_at?: string | null;
 };
 
+type IdentityDossier = {
+  identitySummary: string | null;
+  identityAnchors: string[];
+  identityDimensions: Array<{ name: string; score: number; evidenceCount: number }>;
+  careerOrganizations: Array<{ name: string; description: string | null }>;
+  projects: Array<{ name: string; summary: string | null; score: number }>;
+  interests: Array<{ name: string; score: number; evidenceCount: number }>;
+  skills: string[];
+  relationships: Array<{
+    name: string;
+    role: string | null;
+    score: number;
+    evidenceCount: number;
+  }>;
+};
+
+const EMPTY_IDENTITY_DOSSIER: IdentityDossier = {
+  identitySummary: null,
+  identityAnchors: [],
+  identityDimensions: [],
+  careerOrganizations: [],
+  projects: [],
+  interests: [],
+  skills: [],
+  relationships: [],
+};
+
+function score100(value: unknown, fallback = 0): number {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return number <= 1 ? Math.round(number * 100) : Math.round(number);
+}
+
+function uniqueNames(values: string[], max: number): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const clean = cleanBiographyText(value);
+    const key = clean.toLocaleLowerCase();
+    if (!clean || seen.has(key)) continue;
+    seen.add(key);
+    result.push(clean);
+    if (result.length >= max) break;
+  }
+  return result;
+}
+
+function joinNatural(values: string[]): string {
+  if (values.length === 0) return '';
+  if (values.length === 1) return values[0];
+  if (values.length === 2) return `${values[0]} and ${values[1]}`;
+  return `${values.slice(0, -1).join(', ')}, and ${values[values.length - 1]}`;
+}
+
+function relationshipRoleFloor(role: string | null): number {
+  if (!role) return 0;
+  if (/parent|mother|father|child|sibling|brother|sister|spouse|wife|husband/i.test(role)) return 95;
+  if (/romantic|partner|girlfriend|boyfriend|fiance|fiancé|ex\b/i.test(role)) return 90;
+  if (/grandmother|grandfather|grandparent|abuela|abuelo/i.test(role)) return 85;
+  if (/aunt|uncle|t[ií]a|t[ií]o/i.test(role)) return 70;
+  // Extended-family labels are not proof of narrative importance. A cousin
+  // must earn inclusion through stored importance, depth, or repeated evidence.
+  if (/cousin|extended.family/i.test(role)) return 55;
+  if (/family/i.test(role)) return 72;
+  if (/mentor|best.friend|close.friend/i.test(role)) return 78;
+  if (/friend|coworker|colleague|manager|supervisor/i.test(role)) return 65;
+  return 0;
+}
+
+async function fetchIdentityDossier(userId: string): Promise<IdentityDossier> {
+  const [profileResult, projectsResult, interestsResult, skillsResult, orgsResult, charsResult, relsResult, memoriesResult] =
+    await Promise.all([
+      supabaseAdmin
+        .from('identity_core_profiles')
+        .select('summary, dimensions, stability, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabaseAdmin
+        .from('projects')
+        .select('name, summary, description, status, importance_score, metadata')
+        .eq('user_id', userId)
+        .order('importance_score', { ascending: false })
+        .limit(12),
+      supabaseAdmin
+        .from('interests')
+        .select('interest_name, interest_level, mention_count, behavioral_impact_score, time_investment_hours')
+        .eq('user_id', userId)
+        .order('interest_level', { ascending: false })
+        .limit(20),
+      supabaseAdmin.from('skills').select('*').eq('user_id', userId).limit(30),
+      supabaseAdmin
+        .from('organizations')
+        .select('name, type, description, importance_score, metadata')
+        .eq('user_id', userId)
+        .order('importance_score', { ascending: false })
+        .limit(30),
+      supabaseAdmin
+        .from('characters')
+        .select('id, name, importance_score, importance_level, relationship_depth, metadata')
+        .eq('user_id', userId)
+        .order('importance_score', { ascending: false })
+        .limit(40),
+      supabaseAdmin
+        .from('character_relationships')
+        .select('source_character_id, target_character_id, relationship_type, closeness_score, metadata')
+        .eq('user_id', userId),
+      supabaseAdmin.from('character_memories').select('character_id').eq('user_id', userId),
+    ]);
+
+  const profile = profileResult.data as Record<string, any> | null;
+  const identityAnchors = uniqueNames(
+    Array.isArray(profile?.stability?.anchors) ? profile.stability.anchors.map(String) : [],
+    8,
+  );
+  const identityDimensions = (Array.isArray(profile?.dimensions) ? profile.dimensions : [])
+    .map((dimension: Record<string, any>) => ({
+      name: cleanBiographyText(dimension.name),
+      score: score100(dimension.score),
+      evidenceCount: Array.isArray(dimension.signals) ? dimension.signals.length : 0,
+    }))
+    .filter((dimension: { name: string; score: number; evidenceCount: number }) =>
+      Boolean(dimension.name) && dimension.score >= 55 && dimension.evidenceCount > 0,
+    )
+    .sort((a: { score: number }, b: { score: number }) => b.score - a.score)
+    .slice(0, 6);
+
+  const projects = (projectsResult.data ?? [])
+    .map((project: Record<string, any>) => {
+      const active = !/abandoned|archived|cancelled/i.test(String(project.status ?? ''));
+      const name = cleanBiographyText(project.name);
+      const storedScore = score100(project.importance_score, active ? 72 : 45);
+      const identityProject = /lorebook|lifeledger|robot|ai|memory/i.test(
+        `${name} ${project.summary ?? ''} ${project.description ?? ''}`,
+      );
+      return {
+        name,
+        summary: cleanBiographyText(project.summary ?? project.description) || null,
+        score: Math.max(storedScore, identityProject && active ? 88 : 0),
+      };
+    })
+    .filter((project: { name: string; score: number }) => project.name && project.score >= 65)
+    .sort((a: { score: number }, b: { score: number }) => b.score - a.score)
+    .slice(0, 6);
+
+  const interests = (interestsResult.data ?? [])
+    .map((interest: Record<string, any>) => {
+      const evidenceCount = Number(interest.mention_count ?? 0);
+      const level = score100(interest.interest_level);
+      const behavioral = score100(interest.behavioral_impact_score);
+      const investment = Math.min(100, Math.round(Math.log2(Number(interest.time_investment_hours ?? 0) + 1) * 18));
+      return {
+        name: cleanBiographyText(interest.interest_name),
+        score: Math.round(level * 0.55 + behavioral * 0.25 + investment * 0.2),
+        evidenceCount,
+      };
+    })
+    .filter((interest: { name: string; score: number; evidenceCount: number }) =>
+      interest.name && interest.score >= 45 && interest.evidenceCount >= 2,
+    )
+    .sort((a: { score: number }, b: { score: number }) => b.score - a.score)
+    .slice(0, 10);
+
+  const skills = uniqueNames(
+    (skillsResult.data ?? [])
+      .filter((skill: Record<string, any>) => skill.is_active !== false)
+      .sort((a: Record<string, any>, b: Record<string, any>) =>
+        Number(b.total_xp ?? b.proficiency_level ?? 0) - Number(a.total_xp ?? a.proficiency_level ?? 0),
+      )
+      .map((skill: Record<string, any>) => String(skill.skill_name ?? skill.name ?? '')),
+    12,
+  );
+
+  const careerOrganizations = (orgsResult.data ?? [])
+    .filter((org: Record<string, any>) => {
+      const type = String(org.type ?? '').toLowerCase();
+      const metadata = (org.metadata ?? {}) as Record<string, unknown>;
+      return /company|employer|work|school|university|college/.test(type) ||
+        /employer|resume|education|career/.test(String(metadata.provenance ?? metadata.category ?? ''));
+    })
+    .map((org: Record<string, any>) => ({
+      name: cleanBiographyText(org.name),
+      description: cleanBiographyText(org.description) || null,
+      score: score100(org.importance_score, 65),
+    }))
+    .filter((org: { name: string }) => Boolean(org.name))
+    .sort((a: { score: number }, b: { score: number }) => b.score - a.score)
+    .slice(0, 12)
+    .map(({ name, description }: { name: string; description: string | null }) => ({ name, description }));
+
+  const evidenceByCharacter = new Map<string, number>();
+  for (const memory of memoriesResult.data ?? []) {
+    evidenceByCharacter.set(memory.character_id, (evidenceByCharacter.get(memory.character_id) ?? 0) + 1);
+  }
+  const relationshipRows = (relsResult.data ?? []) as Array<Record<string, any>>;
+  const self = (charsResult.data ?? []).find((character: Record<string, any>) =>
+    character.importance_level === 'protagonist' || character.metadata?.is_self === true,
+  ) as Record<string, any> | undefined;
+  const relationships = (charsResult.data ?? [])
+    .filter((character: Record<string, any>) => character.id !== self?.id)
+    .map((character: Record<string, any>) => {
+      const rel = relationshipRows.find((row) =>
+        (row.source_character_id === character.id && row.target_character_id === self?.id) ||
+        (row.target_character_id === character.id && row.source_character_id === self?.id),
+      );
+      const role = rel?.relationship_type ? String(rel.relationship_type) : null;
+      const evidenceCount = evidenceByCharacter.get(character.id) ?? Number(character.metadata?.mention_count ?? 0);
+      const stored = score100(character.importance_score);
+      const depth = score100(character.relationship_depth);
+      const score = Math.max(stored, depth, relationshipRoleFloor(role));
+      return { name: cleanBiographyText(character.name), role, score, evidenceCount };
+    })
+    .filter((person: { name: string; score: number; evidenceCount: number; role: string | null }) =>
+      person.name && person.score >= 65 && (person.evidenceCount >= 2 || relationshipRoleFloor(person.role) >= 78),
+    )
+    .sort((a: { score: number }, b: { score: number }) => b.score - a.score)
+    .slice(0, 8);
+
+  return {
+    identitySummary: cleanBiographyText(profile?.summary) || null,
+    identityAnchors,
+    identityDimensions,
+    careerOrganizations,
+    projects,
+    interests,
+    skills,
+    relationships,
+  };
+}
+
 function cleanBiographyText(value: string | null | undefined): string {
   return (value ?? '').replace(/\s+/g, ' ').trim();
 }
@@ -133,6 +373,9 @@ function formatIdentityFacts(snapshot: BiographySnapshotRow | null): string {
   push('Education', identity?.education);
   push('Career', identity?.career ?? identity?.employment);
   push('Languages', identity?.languages);
+  push('Gender', identity?.gender ?? identity?.gender_identity);
+  push('Orientation', identity?.orientation ?? identity?.sexual_orientation);
+  push('Dating preference', identity?.dating_preference ?? identity?.datingPreference);
 
   return lines.length ? ['## CORE IDENTITY', ...lines].join('\n') : '';
 }
@@ -177,6 +420,7 @@ function formatLifeChapters(fullLife: FullLifeBiographyRow | null): string {
 export function formatLongitudinalBiographyContext(
   snapshot: BiographySnapshotRow | null,
   fullLife: FullLifeBiographyRow | null,
+  dossier: IdentityDossier = EMPTY_IDENTITY_DOSSIER,
 ): string {
   const identity = formatIdentityFacts(snapshot);
   const lifeChapters = formatLifeChapters(fullLife);
@@ -186,9 +430,73 @@ export function formatLongitudinalBiographyContext(
     .map((theme) => cleanBiographyText(theme.theme))
     .filter(Boolean);
 
+  const facts = (meta.facts as Record<string, unknown> | undefined) ?? {};
+  const identityFacts = (facts.identity as Record<string, unknown> | undefined) ?? {};
+  const name = cleanBiographyText(String(identityFacts.name ?? ''));
+  const background = cleanBiographyText(String(identityFacts.background ?? ''));
+  const hometown = cleanBiographyText(String(identityFacts.hometown ?? ''));
+  const education = cleanBiographyText(String(identityFacts.education ?? ''));
+
+  const openingSentences: string[] = [];
+  if (name || background || hometown) {
+    const clauses = [
+      name ? `You are ${name}` : '',
+      background ? `your background is ${background}` : '',
+      hometown ? `you grew up in ${hometown}` : '',
+    ].filter(Boolean);
+    openingSentences.push(`${joinNatural(clauses)}.`);
+  }
+  if (education) openingSentences.push(`Your educational foundation includes ${education}.`);
+  if (dossier.identitySummary) openingSentences.push(dossier.identitySummary);
+
+  const careerNames = uniqueNames(dossier.careerOrganizations.map((org) => org.name), 12);
+  const careerNarrative = careerNames.length
+    ? `Your career path runs through ${joinNatural(careerNames)}. These are treated as career chapters, not interchangeable recent mentions.`
+    : '';
+
+  const projectNarrative = dossier.projects.length
+    ? `The projects that carry the most identity weight are ${joinNatural(
+        dossier.projects.map((project) =>
+          project.summary ? `${project.name} (${project.summary})` : project.name,
+        ),
+      )}.`
+    : '';
+
+  const interestNames = uniqueNames(
+    [...dossier.interests.map((interest) => interest.name), ...dossier.skills],
+    14,
+  );
+  const interestsNarrative = interestNames.length
+    ? `Your recurring interests and practiced skills include ${joinNatural(interestNames)}.`
+    : '';
+
+  const dimensionsNarrative = dossier.identityDimensions.length
+    ? `Evidence-backed identity patterns: ${dossier.identityDimensions
+        .map((dimension) => `${dimension.name} (${dimension.score}% confidence from ${dimension.evidenceCount} signals)`)
+        .join('; ')}.`
+    : dossier.identityAnchors.length
+      ? `Stable identity anchors: ${joinNatural(dossier.identityAnchors)}.`
+      : '';
+
+  const relationshipNarrative = dossier.relationships.length
+    ? [
+        '## RELATIONSHIPS WITH AUTOBIOGRAPHICAL WEIGHT',
+        'These people are included because of structural role, stored importance, relationship depth, and evidence—not mention count alone.',
+        ...dossier.relationships.map((person) =>
+          `- ${person.name}${person.role ? ` — ${person.role.replace(/_/g, ' ')}` : ''}; importance ${person.score}/100; ${person.evidenceCount} supporting ${person.evidenceCount === 1 ? 'memory' : 'memories'}`,
+        ),
+      ].join('\n')
+    : '';
+
   const body = [
+    openingSentences.length ? `## IDENTITY SYNTHESIS\n${openingSentences.join(' ')}` : '',
     identity,
     lifeChapters,
+    careerNarrative ? `## CAREER TRAJECTORY\n${careerNarrative}` : '',
+    projectNarrative ? `## DEFINING PROJECTS\n${projectNarrative}` : '',
+    interestsNarrative ? `## LONG-TERM INTERESTS AND SKILLS\n${interestsNarrative}` : '',
+    dimensionsNarrative ? `## CHARACTER PATTERNS\n${dimensionsNarrative}` : '',
+    relationshipNarrative,
     currentSnapshot ? `## CURRENT CHAPTER\n${currentSnapshot}` : '',
     themes.length ? `**Current themes:** ${themes.join(', ')}` : '',
   ].filter(Boolean);
@@ -197,7 +505,7 @@ export function formatLongitudinalBiographyContext(
 }
 
 async function fetchBiographyContext(userId: string): Promise<string> {
-  const [snapshotResult, fullLifeResult] = await Promise.all([
+  const [snapshotResult, fullLifeResult, dossier] = await Promise.all([
     supabaseAdmin
       .from('narrative_accounts')
       .select('narrative_text, metadata, recorded_at')
@@ -213,11 +521,12 @@ async function fetchBiographyContext(userId: string): Promise<string> {
       .order('lorebook_version', { ascending: false })
       .limit(1)
       .maybeSingle(),
+    fetchIdentityDossier(userId),
   ]);
 
   const snapshot = snapshotResult.data as BiographySnapshotRow | null;
   const fullLife = fullLifeResult.data as FullLifeBiographyRow | null;
-  return formatLongitudinalBiographyContext(snapshot, fullLife);
+  return formatLongitudinalBiographyContext(snapshot, fullLife, dossier);
 }
 
 async function fetchEntityContext(
@@ -251,22 +560,19 @@ async function fetchFamilyContext(userId: string): Promise<string> {
 }
 
 async function fetchTemporalContext(userId: string): Promise<string> {
-  const { data: events } = await supabaseAdmin
-    .from('character_timeline_events')
-    .select('event_title, event_type, event_date, event_summary')
-    .eq('user_id', userId)
-    .order('event_date', { ascending: false })
-    .limit(5);
-
+  const stitched = await stitchedTimelineService.getStitchedTimeline(userId, { limit: 5 });
   const lines: string[] = ['## RECENT TIMELINE'];
-  if (events?.length) {
-    for (const ev of events) {
-      const date = ev.event_date ? new Date(ev.event_date).toDateString() : '';
-      lines.push(`• ${date}: ${ev.event_title} [${ev.event_type}]`);
-      if (ev.event_summary) lines.push(`  ${ev.event_summary.slice(0, 150)}`);
+  const items = stitched.items ?? [];
+  if (items.length) {
+    for (const item of items) {
+      const occurred = stitchedOccurredStart(item);
+      const unresolved = occurred == null;
+      const when = unresolved ? 'date unresolved' : occurred;
+      lines.push(`• ${when}: ${item.title}`);
+      if (item.body) lines.push(`  ${item.body.slice(0, 150)}`);
     }
   } else {
-    lines.push('No timeline events recorded yet.');
+    lines.push('No verified timeline events are currently linked.');
   }
   return lines.join('\n');
 }
@@ -511,7 +817,7 @@ export async function buildRecallCoverageReport(userId: string): Promise<
     fetchCharacterRoster(userId),
     fetchFamilyMembers(userId),
     supabaseAdmin.from('character_relationships').select('id').eq('user_id', userId).limit(1),
-    supabaseAdmin.from('character_timeline_events').select('id').eq('user_id', userId).limit(1),
+    supabaseAdmin.from('resolved_events').select('id').eq('user_id', userId).limit(1),
     supabaseAdmin.from('character_memories').select('id').eq('user_id', userId).limit(1),
   ]);
 

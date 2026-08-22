@@ -55,7 +55,6 @@ import { relationshipDriftDetector } from './relationshipDriftDetector';
 import { relationshipCycleDetector } from './relationshipCycleDetector';
 import { breakupDetector } from './breakupDetector';
 import { extractAndLogInteraction } from './romanticInteractionExtractor';
-import { characterTimelineBuilder } from './characterTimelineBuilder';
 import {
   organizationTimelineBuilder,
   locationTimelineBuilder,
@@ -77,7 +76,7 @@ import { dayOccasionService } from '../continuityRuntime/arcs/dayOccasionService
 import { narrativeContinuityService } from '../narrativeContinuityService';
 import { groupCandidateService } from '../groupCandidateService';
 import { shadowModeOrchestrator } from '../ingestion/shadowMode';
-import { hybridExtractor } from './hybridExtractor';
+import { hybridExtractor, type HybridExtractionResult } from './hybridExtractor';
 import { IngestionCostMeter } from '../ingestion/ingestionCostMeter';
 import { evaluateEntityCandidates } from '../ontology/entityCandidateGate';
 import { classifyIngestionScope, isLoreBookProductName } from '../chat/metaConversationClassifier';
@@ -2035,6 +2034,25 @@ export class ConversationIngestionPipeline {
 
       // Step 5: Extract semantic units from each utterance
       const unitIds: string[] = [];
+      const hybridByIndex: Array<HybridExtractionResult | null> = new Array(utteranceIds.length).fill(null);
+      const batchIndexes: number[] = [];
+      const batchTexts: string[] = [];
+      for (let i = 0; i < utteranceIds.length; i++) {
+        const processed = processedUtterances[i];
+        if (processed?.splitEvents && processed.splitEvents.length > 0) continue;
+        batchIndexes.push(i);
+        batchTexts.push(processed.normalized.normalized_text);
+      }
+      if (batchTexts.length > 0 && typeof hybridExtractor.extractBatch === 'function') {
+        const batched = await hybridExtractor.extractBatch(
+          batchTexts,
+          conversationHistory,
+          sender === 'AI'
+        );
+        batchIndexes.forEach((idx, j) => {
+          hybridByIndex[idx] = batched[j] ?? null;
+        });
+      }
       for (let i = 0; i < utteranceIds.length; i++) {
         const processed = processedUtterances[i];
         const normalized = processed.normalized;
@@ -2102,11 +2120,13 @@ export class ConversationIngestionPipeline {
         } else {
           // Normal extraction for single-event utterances — hybrid router first,
           // falls back to full LLM only for complex messages.
-          const hybridResult = await hybridExtractor.extractSemanticUnits(
-            normalized.normalized_text,
-            conversationHistory,
-            sender === 'AI'
-          );
+          const hybridResult =
+            hybridByIndex[i] ??
+            (await hybridExtractor.extractSemanticUnits(
+              normalized.normalized_text,
+              conversationHistory,
+              sender === 'AI'
+            ));
           const units = hybridResult;
           logger.debug(
             { route: hybridResult.route, complexity: hybridResult.classification.complexity },
@@ -2395,10 +2415,9 @@ export class ConversationIngestionPipeline {
         }
       }
 
-      // Step 12: Trigger event assembly (async, non-blocking)
-      // Note: Currently processes all EXPERIENCE units for user
-      // Can be optimized later to process only new units
-      // Event assembly will skip deprecated units automatically
+      // Step 12: Trigger event assembly (async, non-blocking).
+      // The default event-assembly mode is delta: new/changed EXPERIENCE units
+      // plus a 24h overlap for grouping.
       if (unitIds.length > 0) {
         eventAssemblyService
           .assembleEvents(userId, threadId)
@@ -2560,33 +2579,7 @@ export class ConversationIngestionPipeline {
                       );
                     }
 
-                    // Step 12.8: Build character timelines (shared experiences and lore)
                     if (fullEvent.people && fullEvent.people.length > 0) {
-                      characterTimelineBuilder
-                        .processEventForCharacters(
-                          userId,
-                          fullEvent.id,
-                          {
-                            title: fullEvent.title,
-                            summary: fullEvent.summary,
-                            type: fullEvent.type,
-                            start_time: fullEvent.start_time,
-                            people: fullEvent.people,
-                            metadata: fullEvent.metadata,
-                          },
-                          impact?.impactType,
-                          impact?.connectionCharacterId
-                        )
-                        .then(() => {
-                          logger.debug(
-                            { userId, eventId: fullEvent.id, characters: fullEvent.people.length },
-                            'Processed event for character timelines'
-                          );
-                        })
-                        .catch(err => {
-                          logger.warn({ err }, 'Character timeline processing failed (non-blocking)');
-                        });
-
                       // Step 12.8b: Build organization timelines (member overlap with fullEvent.people)
                       getOrganizationIdsForCharacters(userId, fullEvent.people)
                         .then(orgIds => {

@@ -51,6 +51,31 @@ vi.mock('../../../src/services/omegaMemoryService', () => ({
   omegaMemoryService: { createEntity: mockCreateEntity },
 }));
 
+vi.mock('../../../src/services/lorebook/suggestions/suggestionWriteContext', () => ({
+  withSuggestionWriteContext: vi.fn(
+    async (_userId: string, fn: (ctx: { index: Record<string, unknown> }) => Promise<unknown>) =>
+      fn({ index: {} }),
+  ),
+  getSuggestionWriteContext: vi.fn(() => ({ userId: 'user-1', decisions: null, index: {} })),
+}));
+
+vi.mock('../../../src/services/lorebook/suggestions/applySuggestionCandidate', () => ({
+  applySuggestionCandidate: vi.fn(async (input: { onCreate?: () => Promise<void> }) => {
+    await input.onCreate?.();
+    return { outcome: 'CREATED' as const };
+  }),
+}));
+
+vi.mock('../../../src/services/lorebook/parser/canonIndexBuilder', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('../../../src/services/lorebook/parser/canonIndexBuilder')
+  >();
+  return {
+    ...actual,
+    buildCanonIndexForUser: vi.fn(async () => actual.buildEmptyCanonIndex()),
+  };
+});
+
 import {
   applyParseOperations,
   loadRecentCorpusLines,

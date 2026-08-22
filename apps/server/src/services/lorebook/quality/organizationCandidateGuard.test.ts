@@ -16,6 +16,7 @@ describe('organizationCandidateGuard', () => {
     expect(isGenericOrganizationPhrase('Support Team')).toBe(true);
     expect(isGenericOrganizationPhrase('Venture Capital Firm')).toBe(true);
     expect(isGenericOrganizationPhrase('Engineering Team')).toBe(true);
+    expect(isGenericOrganizationPhrase('Failure Analysis')).toBe(true);
   });
 
   it('rejects narrative/descriptive spans, not names', () => {

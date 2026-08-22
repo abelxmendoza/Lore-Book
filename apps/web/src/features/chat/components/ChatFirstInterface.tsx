@@ -55,7 +55,7 @@ import {
   scrubSummaryDisplayLine,
 } from '../utils/threadSurfaceScrub';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
-import { isClosedScopeQuery, isFocusEntityRelevant } from '@lorebook/api-contracts';
+import { isClosedScopeQuery, isFocusEntityRelevant, messageConflictsWithPinnedFocus, parseNamedChatSubject, subjectNamesMatch } from '@lorebook/api-contracts';
 import { ChatSourcesBar } from '../sources/ChatSourcesBar';
 import { ChatSourceNavigator } from '../sources/ChatSourceNavigator';
 import { ChatSearchModal } from '../search/ChatSearchModal';
@@ -86,13 +86,11 @@ import { Logo } from '../../../components/Logo';
 import { useAuth } from '../../../lib/supabase';
 import { demoThreadStorageUserId, isDemoRuntimeActive } from '../../../lib/demoRuntime';
 import { useAccountAuthority } from '../../../hooks/useAccountAuthority';
-import { useAppDispatch, useAppSelector } from '../../../store/hooks';
+import { useAppDispatch, useAppSelector, useAppStore } from '../../../store/hooks';
 import { clearChatFocus } from '../../../store/slices/selectionSlice';
 import { selectChatFocus } from '../../../store/selectors';
 import {
-  selectComposerConfirmingSlots,
-  selectComposerDraft,
-  selectComposerIncludedSlots,
+  selectComposerDraftIsEmpty,
   selectVisibleComposerMatches,
 } from '../../../store/selectors/composerSelectors';
 import { focusToComposerEntities, focusToEntityContext } from '../../../lib/chatFocusUtils';
@@ -163,11 +161,14 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   const canCopyAdminDiagnostics = authority?.canAccessAdmin === true;
   const { subscription } = useSubscription();
   const dispatch = useAppDispatch();
+  const store = useAppStore();
   const chatFocus = useAppSelector(selectChatFocus);
-  const composerDraft = useAppSelector(selectComposerDraft);
-  const composerVisibleMatches = useAppSelector(selectVisibleComposerMatches);
-  const composerConfirmingSlots = useAppSelector(selectComposerConfirmingSlots);
-  const composerIncludedSlots = useAppSelector(selectComposerIncludedSlots);
+  // Only the empty/non-empty transition is needed at render time (see usage
+  // below) — subscribing to the raw draft text here would re-render this
+  // entire screen (and everything under it) on every keystroke. The live
+  // text/matches/slots are read directly from the store on demand in
+  // handleCopyConversation instead, since that's a manual, infrequent action.
+  const composerDraftIsEmpty = useAppSelector(selectComposerDraftIsEmpty);
   const composerChipDebugRef = useRef<ComposerChipDebugPayload | null>(null);
   const handleComposerChipDebugChange = useCallback((snapshot: ComposerChipDebugPayload) => {
     composerChipDebugRef.current = snapshot;
@@ -221,19 +222,24 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
 
   // Build the display list: prepend the ephemeral greeting when present.
   // greetingMessage is never persisted — it lives only in runtime state.
-  const greetingDisplayMsg = greetingMessage
-    ? ({
-        id: `greeting-${activeThreadId}`,
-        role: 'assistant' as const,
-        content: greetingMessage,
-        timestamp: new Date(),
-        metadata: { intent: 'return_greeting' },
-      })
-    : null;
+  const greetingDisplayMsg = useMemo(
+    () =>
+      greetingMessage
+        ? {
+            id: `greeting-${activeThreadId}`,
+            role: 'assistant' as const,
+            content: greetingMessage,
+            timestamp: new Date(),
+            metadata: { intent: 'return_greeting' },
+          }
+        : null,
+    [greetingMessage, activeThreadId],
+  );
 
-  const displayMessages = greetingDisplayMsg
-    ? [greetingDisplayMsg, ...messages]
-    : messages;
+  const displayMessages = useMemo(
+    () => (greetingDisplayMsg ? [greetingDisplayMsg, ...messages] : messages),
+    [greetingDisplayMsg, messages],
+  );
 
   // Prefer explicit hydration state — the old messageCount heuristic could spin
   // forever after a failed/empty hydrate while list metadata still said > 0.
@@ -280,6 +286,41 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       if (focused) return chatSendOptions;
 
       const { closedScope } = isClosedScopeQuery(msg);
+      const namedConflict = Boolean(
+        chatFocus && messageConflictsWithPinnedFocus(msg, chatFocus.entityName ?? ''),
+      );
+      if (namedConflict && chatFocus) {
+        const named = parseNamedChatSubject(msg);
+        const match = named
+          ? threadEntities.find(
+              (entity) => entity.type === 'character' && subjectNamesMatch(entity.name, named),
+            )
+          : undefined;
+        if (match) {
+          return {
+            ...chatSendOptions,
+            entityContext: toEntityContext(match),
+            composerEntities: [
+              {
+                id: match.id,
+                name: match.name,
+                type: 'character',
+                status: 'confirmed',
+                aliases: [],
+                mentionKeys: [match.name.toLowerCase()],
+                matchedLabel: match.name,
+              },
+            ] as CertifiedEntityMatch[],
+            chatFocus: {
+              ...chatFocus,
+              entityId: match.id,
+              entityName: match.name,
+              entityType: 'character' as const,
+            },
+          };
+        }
+        return { ...chatSendOptions, entityContext: undefined, composerEntities: undefined, chatFocus: undefined };
+      }
       const focusRelevant = !chatFocus || !closedScope || isFocusEntityRelevant(msg, chatFocus.entityName ?? '');
       if (focusRelevant) return chatSendOptions;
 
@@ -604,6 +645,22 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     }
   };
 
+  const handleForkMessage = useCallback((messageId: string) => {
+    forkThread(messageId);
+  }, [forkThread]);
+
+  const handleRetryCloudSync = useCallback((id: string) => {
+    void retryCloudSync(id);
+  }, [retryCloudSync]);
+
+  const handleRetryAssistantResponse = useCallback((id: string) => {
+    void retryAssistantResponse(id);
+  }, [retryAssistantResponse]);
+
+  const handleCopyOriginalMessage = useCallback((id: string) => {
+    void copyOriginalMessage(id);
+  }, [copyOriginalMessage]);
+
   const handleRegenerate = async (messageId: string) => {
     analytics.track('chat_message_regenerated', { messageId });
     // Reuse the same clientIdempotencyKey — never append another user message.
@@ -779,6 +836,9 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     if (messages.length === 0) return;
     setConversationCopying(true);
     const liveChips = composerChipDebugRef.current;
+    // Read the live composer state fresh here rather than subscribing at
+    // render time — this handler fires on a manual click, not per keystroke.
+    const composerState = store.getState().composer;
     const buildingOn = threadEntities.map((entity) => ({
       id: entity.id,
       name: entity.name,
@@ -790,10 +850,10 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     });
     const composerAndContext = buildComposerAndContextDebugSnapshot({
       chatFocus,
-      composerDraft,
-      composerEntityChips: liveChips?.certifiedEntities ?? composerVisibleMatches,
-      confirmingSlots: liveChips?.confirmingSlots ?? composerConfirmingSlots,
-      includedSlots: liveChips?.includedSlots ?? composerIncludedSlots,
+      composerDraft: composerState.draftText,
+      composerEntityChips: liveChips?.certifiedEntities ?? selectVisibleComposerMatches(store.getState()),
+      confirmingSlots: liveChips?.confirmingSlots ?? composerState.confirmingSlots,
+      includedSlots: liveChips?.includedSlots ?? composerState.includedSlots,
       lexicalPreviewChips: liveChips?.previewSpans ?? [],
       threadChips: buildingOn,
       selectedThreadChipId: focusedEntityId,
@@ -1239,15 +1299,15 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
               onRegenerate={handleRegenerate}
               onEdit={handleEdit}
               onDelete={handleDelete}
-              onFork={(messageId) => forkThread(messageId)}
+              onFork={handleForkMessage}
               onSourceClick={handleSourceClick}
               onFeedback={handleFeedback}
               onSuggestedAction={handleSuggestedAction}
               onPrefillComposer={prefillComposer}
               registerMessageRef={registerMessageRef}
-              onRetryCloudSync={(id) => void retryCloudSync(id)}
-              onRetryAssistantResponse={(id) => void retryAssistantResponse(id)}
-              onCopyOriginalMessage={(id) => void copyOriginalMessage(id)}
+              onRetryCloudSync={handleRetryCloudSync}
+              onRetryAssistantResponse={handleRetryAssistantResponse}
+              onCopyOriginalMessage={handleCopyOriginalMessage}
               onDismissDeliveryNotice={dismissDeliveryNotice}
               retryingKeys={retryingKeys}
             />
@@ -1280,7 +1340,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           <ChatFocusChipBar focus={chatFocus} onDismiss={() => dispatch(clearChatFocus())} />
         )}
 
-        {!composerDraft.trim() && (
+        {composerDraftIsEmpty && (
           <ThreadEntityChips
             messages={messages}
             variant="composer"

@@ -19,10 +19,11 @@ import {
   isReclassifyTarget,
 } from '../characters/reclassifyCharacterService';
 import { entityLearningService } from '../entityLearningService';
+import { organizationService } from '../organizationService';
 
 export type EntityReclassifyWriteResult = {
   summary: string;
-  sourceDomain: 'location' | 'character';
+  sourceDomain: 'location' | 'character' | 'omega_entity';
   sourceId: string;
   sourceName: string;
   target: string;
@@ -199,6 +200,37 @@ async function findCharacterByName(
   };
 }
 
+/**
+ * Fallback source for entities that were routed to the omega graph
+ * (`misclassifiedEntityRouter`) instead of `locations`/`characters` — e.g. a
+ * business name that got misclassified as a person mention. Without this,
+ * a correction like "East Los Productions is a group, not a person" finds
+ * nothing in either book and fails, even though the entity is tracked.
+ */
+async function findOmegaEntityByName(
+  userId: string,
+  name: string,
+): Promise<{ id: string; name: string; type: string; aliases: string[] } | null> {
+  const key = normalizeNameKey(name);
+  const { data, error } = await supabaseAdmin
+    .from('omega_entities')
+    .select('id, primary_name, type, aliases')
+    .eq('user_id', userId);
+  if (error || !data) return null;
+  const hit = data.find((row) => {
+    if (normalizeNameKey(String(row.primary_name ?? '')) === key) return true;
+    const aliases = Array.isArray(row.aliases) ? (row.aliases as unknown[]) : [];
+    return aliases.some((a) => typeof a === 'string' && normalizeNameKey(a) === key);
+  });
+  if (!hit) return null;
+  return {
+    id: hit.id as string,
+    name: hit.primary_name as string,
+    type: hit.type as string,
+    aliases: Array.isArray(hit.aliases) ? (hit.aliases as string[]) : [],
+  };
+}
+
 function bookLabel(target: string): string {
   switch (target) {
     case 'organization':
@@ -338,9 +370,46 @@ export async function writeEntityReclassifyFromChat(
     };
   }
 
-  // No location/character source found — if they asked for organization and
-  // only the name exists nowhere, suggest creating the group instead.
+  // Not in Places or Characters — check the omega graph before giving up.
+  // Entities that were routed away from Characters (misclassifiedEntityRouter)
+  // live only here, and previously this correction path couldn't see them at
+  // all, so "X is a group, not a person" would fail even though X exists.
   if (target === 'organization') {
+    const omegaEntity = await findOmegaEntityByName(userId, parsed.entityName);
+    if (omegaEntity) {
+      const org = await organizationService.createOrganization(userId, {
+        name: omegaEntity.name,
+        aliases: omegaEntity.aliases,
+        type: 'other',
+        user_relationship: 'referenced',
+        metadata: {
+          promoted_from_omega_entity_id: omegaEntity.id,
+          promoted_via: 'chat_correction',
+          promoted_at: new Date().toISOString(),
+        },
+      });
+      await supabaseAdmin
+        .from('omega_entities')
+        .update({
+          type: 'ORG',
+          metadata: { promoted_to_organization_id: org.id },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', omegaEntity.id)
+        .eq('user_id', userId);
+
+      return {
+        summary: `Created **${org.name}** in Groups from the existing "${omegaEntity.name}" mention.`,
+        sourceDomain: 'omega_entity',
+        sourceId: omegaEntity.id,
+        sourceName: omegaEntity.name,
+        target: 'organization',
+        targetId: org.id,
+        targetName: org.name,
+        mergedIntoExisting: false,
+      };
+    }
+
     throw new Error(
       `I couldn't find "${parsed.entityName}" as a place or person to move. If you want a new group, say “make a group for ${parsed.entityName}”.`,
     );

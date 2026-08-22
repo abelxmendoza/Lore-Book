@@ -5,6 +5,7 @@
  */
 
 import { supabaseAdmin } from '../supabaseClient';
+import { countCanonicalEventsForCharacter } from '../characters/canonicalCharacterEventCount';
 import { normalizeNameKey } from '../../utils/nameNormalization';
 import { resolveCharacterByName } from './foundationRecallDataService';
 
@@ -110,11 +111,7 @@ export async function getMemoryFormationStatus(
       detail: (memCount ?? 0) > 0 ? `✓ ${memCount} linked memory(ies)` : '✗ No linked memories yet',
     });
 
-    const { count: timelineCount } = await supabaseAdmin
-      .from('character_timeline_events')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('character_id', char.id);
+    const timelineCount = await countCanonicalEventsForCharacter(userId, char.id);
 
     checks.push({
       label: 'Timeline',

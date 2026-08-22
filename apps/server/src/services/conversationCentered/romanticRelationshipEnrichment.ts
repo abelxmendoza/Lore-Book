@@ -18,7 +18,7 @@ type CharacterIdentityRow = {
 };
 
 type SexValue = 'male' | 'female' | 'nonbinary' | 'unknown';
-type OrientationValue = 'gay' | 'lesbian' | 'bisexual' | 'heterosexual' | 'queer' | 'unknown';
+type OrientationValue = 'gay' | 'lesbian' | 'bisexual' | 'heterosexual' | 'queer' | 'pansexual' | 'asexual' | 'unknown';
 
 function metadataPartnerName(metadata: Record<string, unknown> | null | undefined): string | null {
   if (!metadata) return null;
@@ -38,10 +38,25 @@ function eligiblePartnerSexes(userSex: SexValue | null, orientation: Orientation
   if (!userSex || !orientation || userSex === 'unknown' || orientation === 'unknown' || userSex === 'nonbinary') {
     return null;
   }
-  if (orientation === 'bisexual' || orientation === 'queer') return new Set(['male', 'female', 'nonbinary']);
+  if (orientation === 'bisexual' || orientation === 'queer' || orientation === 'pansexual') {
+    return new Set(['male', 'female', 'nonbinary']);
+  }
   if (orientation === 'gay' || orientation === 'lesbian') return new Set([userSex]);
   if (orientation === 'heterosexual') return new Set(userSex === 'male' ? ['female'] : ['male']);
   return null;
+}
+
+function confirmedDatingPreference(meta: Record<string, unknown>): Set<SexValue> | null {
+  const pref = meta.dating_preference;
+  if (!pref || typeof pref !== 'object') return null;
+  const source = (pref as { source?: unknown }).source;
+  if (source !== 'explicit' && source !== 'user_confirmed') return null;
+  const sexes = (pref as { partner_sexes?: unknown }).partner_sexes;
+  if (!Array.isArray(sexes) || sexes.length === 0) return null;
+  const allowed = sexes.filter((value): value is SexValue =>
+    value === 'male' || value === 'female' || value === 'nonbinary',
+  );
+  return allowed.length > 0 ? new Set(allowed) : null;
 }
 
 /**
@@ -121,7 +136,7 @@ export async function enrichRomanticRelationshipsForUser(
   const selfMeta = ((selfRow?.metadata ?? {}) as Record<string, unknown>) || {};
   const userSex = explicitMetaString(selfMeta, 'sex') as SexValue | null;
   const userOrientation = explicitMetaString(selfMeta, 'sexual_orientation') as OrientationValue | null;
-  const eligibleSexes = eligiblePartnerSexes(userSex, userOrientation);
+  const eligibleSexes = confirmedDatingPreference(selfMeta) ?? eligiblePartnerSexes(userSex, userOrientation);
 
   return relationships
     .map((rel) => {
@@ -151,7 +166,7 @@ export async function enrichRomanticRelationshipsForUser(
           reviewed: orientationReviewed,
           eligible: orientationEligible,
           note: !eligibleSexes
-            ? 'Set your confirmed sex and orientation to filter Dating & Romance.'
+            ? 'Set your confirmed sex, orientation, or dating preference to filter Dating & Romance.'
             : !partnerSex
               ? 'Partner sex is unknown or unconfirmed; kept visible for review.'
               : orientationEligible

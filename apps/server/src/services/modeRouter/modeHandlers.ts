@@ -9,6 +9,12 @@ import { JOURNAL_COLS } from '../../db/journalEntryColumns';
 import { logger } from '../../logger';
 import { evaluateSentenceBleed } from '../characters/audit/characterIdentityGate';
 import type { StreamingChatResponse } from '../omegaChatService';
+import {
+  INGESTION_ACK_FALLBACK,
+  INGESTION_ACK_GUIDANCE,
+  LIFE_UPDATE_REFLECTION_GUIDANCE,
+  isMultiTransitionLifeUpdate,
+} from '../chat/verifiedMemoryLanguage';
 import { supabaseAdmin } from '../supabaseClient';
 
 import type { ChatMode } from './modeRouterService';
@@ -105,7 +111,7 @@ class ModeHandlers {
         return await this.handleRomanceQuery(userId, message);
 
       case 'PROJECT_QUERY':
-        return await this.handleProjectQuery(userId, message);
+        return await this.handleProjectQuery(userId, message, options?.threadId);
 
       case 'SKILL_QUERY':
         return await this.handleSkillQuery(userId, message);
@@ -481,8 +487,21 @@ class ModeHandlers {
     }
   }
 
-  private async handleProjectQuery(userId: string, message: string): Promise<ModeHandlerResponse> {
+  private async handleProjectQuery(userId: string, message: string, threadId?: string): Promise<ModeHandlerResponse> {
     try {
+      const { answerProjectStateRecall, isProjectStateRecallShape } = await import(
+        '../projects/projectStateRecallService'
+      );
+      if (isProjectStateRecallShape(message)) {
+        const state = await answerProjectStateRecall({ userId, message, threadId });
+        return {
+          content: state.content,
+          response_mode: 'PROJECT_STATE_RECALL',
+          confidence: state.confidence,
+          metadata: state.metadata,
+        };
+      }
+
       const [{ projectQueryRequestSchema }, { queryProjectsForUser }] = await Promise.all([
         import('@lorebook/api-contracts'),
         import('../projects/projectQueryService'),
@@ -1111,15 +1130,15 @@ class ModeHandlers {
 
       // Check if it's a dump (large multi-part share)
       const isDump = message.length > 500 || /(here's everything|here's what happened|dumping|let me tell you|here's the whole)/i.test(message);
+      const isLifeUpdate = isMultiTransitionLifeUpdate(message);
 
       // Use LLM for a warm, contextual acknowledgment
       try {
         const { openai } = await import('../../lib/openai');
         const { config } = await import('../../config');
-        const { INGESTION_ACK_GUIDANCE, INGESTION_ACK_FALLBACK } = await import(
-          '../chat/verifiedMemoryLanguage'
-        );
-        const basePrompt = isDump
+        const basePrompt = isLifeUpdate
+          ? `You are LoreBook, a personal lore and memory AI. ${LIFE_UPDATE_REFLECTION_GUIDANCE}`
+          : isDump
           ? `You are LoreBook, a personal lore and memory AI. The user just shared a detailed experience. ${INGESTION_ACK_GUIDANCE}`
           : `You are LoreBook, a personal lore and memory AI. The user just shared a moment or experience from their life. ${INGESTION_ACK_GUIDANCE}`;
         // Returning to an idle thread: orient quietly to the resumed context
@@ -1136,22 +1155,20 @@ class ModeHandlers {
         const ackText = completion.choices[0]?.message?.content?.trim() || INGESTION_ACK_FALLBACK;
         return {
           content: ackText,
-          response_mode: 'INGESTION_ACK',
+          response_mode: isLifeUpdate ? 'LIFE_UPDATE_REFLECTION' : 'INGESTION_ACK',
           confidence: 1.0,
-          metadata: { processing: 'async', is_dump: isDump },
+          metadata: { processing: 'async', is_dump: isDump, state_changes_reflected: isLifeUpdate },
         };
       } catch {
-        const { INGESTION_ACK_FALLBACK } = await import('../chat/verifiedMemoryLanguage');
         return {
           content: INGESTION_ACK_FALLBACK,
-          response_mode: 'INGESTION_ACK',
+          response_mode: isLifeUpdate ? 'LIFE_UPDATE_REFLECTION' : 'INGESTION_ACK',
           confidence: 0.9,
-          metadata: { processing: 'async', is_dump: isDump },
+          metadata: { processing: 'async', is_dump: isDump, state_changes_reflected: false },
         };
       }
     } catch (error) {
       logger.error({ err: error, userId }, 'Failed to handle experience ingestion mode');
-      const { INGESTION_ACK_FALLBACK } = await import('../chat/verifiedMemoryLanguage');
       return {
         content: INGESTION_ACK_FALLBACK,
         response_mode: 'INGESTION_ACK',

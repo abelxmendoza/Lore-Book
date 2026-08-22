@@ -32,6 +32,7 @@ import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { relationshipFoundationService } from '../relationshipFoundationService';
 import { eventRecoveryService } from '../eventRecoveryService';
+import type { WorkerRunMode } from '../ingestion/workerHighWaterMark';
 
 const DEBOUNCE_MS = Number(process.env.GRAPH_RECOVERY_DEBOUNCE_MS ?? 15_000);
 const MIN_INTERVAL_MS = Number(process.env.GRAPH_RECOVERY_MIN_INTERVAL_MS ?? 30 * 60_000);
@@ -110,7 +111,7 @@ class GraphRecoveryTrigger {
    * before/after count probes. Writes a diagnostics row only when the graph
    * actually changed.
    */
-  async runNow(userId: string): Promise<GraphRecoveryResult> {
+  async runNow(userId: string, options: { mode?: WorkerRunMode } = {}): Promise<GraphRecoveryResult> {
     const s = this.getState(userId);
     if (s.inFlight) {
       return this.lastRun.get(userId) ?? this.emptyResult(userId);
@@ -125,7 +126,9 @@ class GraphRecoveryTrigger {
     let error: string | undefined;
 
     try {
-      relStats = await relationshipFoundationService.recoverRelationshipGraph(userId);
+      relStats = await relationshipFoundationService.recoverRelationshipGraph(userId, {
+        mode: options.mode ?? 'delta',
+      });
     } catch (err) {
       status = 'partial';
       error = `relationship_recovery: ${(err as Error)?.message ?? 'failed'}`;

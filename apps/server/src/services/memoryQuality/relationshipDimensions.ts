@@ -50,6 +50,10 @@ const PATTERNS: Pattern[] = [
   { re: /\bI\s+(?:mentor|coached|taught)\s+([A-Z][\w'.-]+)\b/gi, dimension: 'mentee', conf: 0.86, personGroup: 1 },
   { re: /\b([A-Z][\w'.-]+)\s+(?:is|was)\s+my\s+(?:coworker|colleague|teammate)\b/gi, dimension: 'coworker', conf: 0.9, personGroup: 1 },
   { re: /\b(?:work|worked|working)\s+with\s+([A-Z][\w'.-]+)\b/gi, dimension: 'coworker', conf: 0.78, personGroup: 1 },
+  { re: /\b(?:he|she|they)\s+interviewed\s+me\b/gi, dimension: 'recruiter', conf: 0.84, personGroup: 0 },
+  { re: /\binterviewed\s+me\s+for\b/gi, dimension: 'recruiter', conf: 0.82, personGroup: 0 },
+  { re: /\bone of the managers\b/gi, dimension: 'manager', conf: 0.8, personGroup: 0 },
+  { re: /\bno longer working with me\b/gi, dimension: 'former_coworker', conf: 0.86, personGroup: 0, frequency: 'former' },
   { re: /\bformer\s+(?:coworker|colleague)\s+([A-Z][\w'.-]+)\b/gi, dimension: 'former_coworker', conf: 0.9, personGroup: 1, frequency: 'former' },
   { re: /\b([A-Z][\w'.-]+)\s+(?:used to|formerly)\s+work(?:ed)?\s+with\b/gi, dimension: 'former_coworker', conf: 0.86, personGroup: 1, frequency: 'former' },
   { re: /\bmy\s+friend\s+([A-Z][\w'.-]+)\b/gi, dimension: 'friend', conf: 0.9, personGroup: 1 },
@@ -84,10 +88,13 @@ export function extractRelationshipDimensions(text: string): RelationshipDimensi
     const flags = p.re.flags.includes('g') ? p.re.flags : `${p.re.flags}g`;
     const re = new RegExp(p.re.source, flags);
     for (const m of raw.matchAll(re)) {
-      let person = (m[p.personGroup] || '').trim();
+      let person = p.personGroup === 0 ? '' : (m[p.personGroup] || '').trim();
       // Family patterns may omit name (e.g. "my tía")
       if (!person && p.dimension === 'family') {
         person = m[0].replace(/\bmy\s+/i, '').trim().slice(0, 40);
+      }
+      if (!person && p.personGroup === 0) {
+        person = '(this person)';
       }
       if (!person || person.length < 2) continue;
       // Skip common false positives

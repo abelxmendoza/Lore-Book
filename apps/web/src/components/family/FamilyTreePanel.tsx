@@ -22,6 +22,8 @@ const FAMILY_RELATION_OPTIONS = [
   { value: 'child', label: 'Child' },
   { value: 'step_child', label: 'Step-child' },
   { value: 'grandchild', label: 'Grandchild' },
+  { value: 'grandson', label: 'Grandson' },
+  { value: 'granddaughter', label: 'Granddaughter' },
   { value: 'sibling', label: 'Sibling' },
   { value: 'half_sibling', label: 'Half-sibling' },
   { value: 'step_sibling', label: 'Step-sibling' },

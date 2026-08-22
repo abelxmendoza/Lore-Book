@@ -56,10 +56,12 @@ export type LoreBookParseResponse = {
 
 export async function fetchLoreBookParse(
   text: string,
-  threadId?: string
+  threadId?: string,
+  signal?: AbortSignal
 ): Promise<LoreBookParseResponse> {
   return fetchJson<LoreBookParseResponse>('/api/conversation/lorebook-parse', {
     method: 'POST',
     body: JSON.stringify({ text, threadId }),
+    signal,
   });
 }

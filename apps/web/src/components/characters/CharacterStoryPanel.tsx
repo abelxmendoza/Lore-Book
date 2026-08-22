@@ -412,12 +412,7 @@ export function CharacterStoryPanel({
   const handleRescan = () => {
     if (mockMode) return;
     setRebuilding(true);
-    fetchJson(`/api/conversation/characters/${characterId}/rebuild-timelines`, {
-      method: 'POST',
-      body: JSON.stringify({}),
-    })
-      .then(() => loadTimelines())
-      .finally(() => setRebuilding(false));
+    void loadTimelines().finally(() => setRebuilding(false));
   };
 
   const isBusy = loading || memoriesLoading;

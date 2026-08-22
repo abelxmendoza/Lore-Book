@@ -273,6 +273,57 @@ export const characterTitleService = {
     return displayTitleFromRow(updated);
   },
 
+  async removeAlias(userId: string, characterId: string, aliasId: string) {
+    const row = await loadCharacter(userId, characterId);
+    if (!row) return null;
+
+    const current = displayTitleFromRow(row);
+    const needle = aliasId.trim().toLowerCase();
+    const alias = current.aliases.find(
+      (a) => a.id.toLowerCase() === needle || a.value.trim().toLowerCase() === needle,
+    );
+    if (!alias) throw new Error('Alias not found');
+
+    const nextAliases = current.aliases.filter(
+      (a) => a.value.trim().toLowerCase() !== alias.value.trim().toLowerCase(),
+    );
+    const titleUsesAlias = current.primaryTitle
+      .toLowerCase()
+      .includes(alias.value.trim().toLowerCase());
+    let nextTitle: CharacterDisplayTitle = { ...current, aliases: nextAliases };
+    if (titleUsesAlias && current.stability !== 'locked') {
+      const rebuilt = buildDisplayTitleFromName(characterId, row.name, { stability: 'stable' });
+      nextTitle = {
+        ...(rebuilt.rejected ? current : rebuilt.displayTitle),
+        primaryTitle: rebuilt.rejected ? row.name : rebuilt.displayTitle.primaryTitle,
+        aliases: nextAliases,
+        stability: 'stable',
+      };
+    }
+
+    const meta = readMetadata(row);
+    const prominence = { ...((meta[ALIAS_KEY] ?? {}) as AliasProminenceMap) };
+    const aliasKey = alias.value.trim().toLowerCase();
+    for (const key of Object.keys(prominence)) {
+      if (key.toLowerCase() === aliasKey || prominence[key]?.value?.trim().toLowerCase() === aliasKey) {
+        delete prominence[key];
+      }
+    }
+
+    const updated = await persistTitleState(userId, row, nextTitle, { prominence });
+
+    void identityLedgerService.recordMutation({
+      userId,
+      entityId: characterId,
+      entityType: 'character',
+      mutationType: 'ALIAS_REMOVED',
+      previousValue: { alias: alias.value },
+      source: 'USER',
+    });
+
+    return displayTitleFromRow(updated);
+  },
+
   async promoteAlias(userId: string, characterId: string, aliasId: string) {
     const row = await loadCharacter(userId, characterId);
     if (!row) return null;

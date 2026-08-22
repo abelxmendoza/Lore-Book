@@ -154,8 +154,8 @@ async function main() {
 
   console.log('Deleting…');
 
-  // Event children first, then the events
-  for (const table of ['character_timeline_events', 'event_unit_links', 'event_mentions', 'event_impacts', 'event_causal_links']) {
+  // Event children first, then the events.
+  for (const table of ['event_unit_links', 'event_mentions', 'event_impacts', 'event_causal_links']) {
     await delByIds(`${table} (by event)`, table, 'event_id', eventIds);
   }
   await delByIds('resolved_events', 'resolved_events', 'id', eventIds);

@@ -23,7 +23,7 @@ export function MergeKeepSelectionBar({
 
   return (
     <div
-      className="fixed inset-x-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 bottom-0 sm:bottom-6 z-50 flex flex-col gap-3 rounded-2xl border border-primary/40 bg-gray-950/95 backdrop-blur px-4 sm:px-5 py-3 shadow-2xl max-w-lg"
+      className="fixed inset-x-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 bottom-20 sm:bottom-6 z-[60] flex flex-col gap-3 rounded-2xl border border-primary/40 bg-gray-950/95 backdrop-blur px-4 sm:px-5 py-3 shadow-2xl max-w-lg pointer-events-auto"
       style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
     >
       <div className="text-center sm:text-left">

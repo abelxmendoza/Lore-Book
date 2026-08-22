@@ -20,7 +20,7 @@ This is not a new AI system. It is a new continuity lens over existing infrastru
 | Entity system | `entities`, `entity_mentions` | person / place / org / event / thing |
 | Event causality | `event_causal_links` | 10 causal relationship types |
 | Event impact | `event_impacts` | How events affect the user |
-| Character timelines | `character_timeline_events` | Per-entity event history |
+| Character timelines | `resolved_events.people[]` + Canonical Temporal Model | Per-person chronology; `character_timeline_events` was dropped |
 | Continuity audit | `continuity_events` | System-level continuity state changes |
 | Ingestion pipeline | `ingestionPipelineClass.ts` | 12-step assembly; fires event assembly async |
 

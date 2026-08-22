@@ -155,3 +155,45 @@ baseline, so no separate active migration is required.
 
 Normal migration comparison is safe again. A local-only migration now means a
 genuinely pending migration rather than unexplained historical drift.
+
+## 2026-08-22 timestamp aliases
+
+Two security migrations are present in production under deployment-time ledger
+versions that differ from their canonical repository filenames:
+
+| Logical migration | Production ledger version | Canonical repository file |
+| --- | --- | --- |
+| `revoke_anon_security_definer_rpcs` | `20260822184817` | `supabase/migrations/20260820003718_revoke_anon_security_definer_rpcs.sql` |
+| `harden_export_views_and_epiphany_insert` | `20260822184825` | `supabase/migrations/20260820015515_harden_export_views_and_epiphany_insert.sql` |
+
+The SQL payloads are the same logical migrations. Treat these pairs as ledger
+aliases; do not add or run another copy of either migration. The Trust Floor's
+`check-migration-drift.mjs` compares the stable migration names, so these
+timestamp-only aliases do not require a reconcile migration and do not fail its
+migration-drift job.
+
+Timestamp-sensitive audits may still report these rows as “same name, different
+timestamp.” That report is expected for these two reviewed aliases only. It is
+not permission to run `supabase migration repair`, update the production ledger,
+or replay the SQL. Any future mismatch involving a different name or SQL payload
+must fail closed and receive a separate review.
+
+## Character Timeline DROP (closed 2026-08-21)
+
+Production applied `DROP TABLE IF EXISTS public.character_timeline_events CASCADE`
+and recorded it as:
+
+| Field | Value |
+| ----- | ----- |
+| version | `20260821194550` |
+| name | `drop_character_timeline_events` |
+
+The active repo file is `supabase/migrations/20260821194550_drop_character_timeline_events.sql`
+so ledger audit is an **exact** version match. Do not reintroduce
+`20260821140000_drop_character_timeline_events.sql`; that timestamp is retired
+authorship history, not the production ledger row.
+
+This DROP is closed infrastructure history. Do not treat it as an active
+release gate. Do not run `supabase db push` or re-apply the SQL because the
+filename moved. `DROP TABLE IF EXISTS` is idempotent if a stale environment
+still needs the production version recorded.

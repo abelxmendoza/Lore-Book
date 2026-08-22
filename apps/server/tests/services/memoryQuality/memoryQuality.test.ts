@@ -92,6 +92,19 @@ describe('relationship dimensions', () => {
     expect(hits.some((h) => /Priya/i.test(h.personHint) && h.dimension === 'coworker')).toBe(true);
     expect(hits.some((h) => /Sam/i.test(h.personHint) && h.dimension === 'friend')).toBe(false);
   });
+
+  it('captures interviewer and former-team facts without inventing a named person', () => {
+    const interviewed = extractRelationshipDimensions(
+      'he interviewed me for Vanguard Robotics and he was one of the managers and leaders in the lab',
+    );
+    expect(interviewed.some((h) => h.dimension === 'recruiter')).toBe(true);
+    expect(interviewed.some((h) => h.dimension === 'manager')).toBe(true);
+
+    const former = extractRelationshipDimensions(
+      'well him and the Vanguard Robotics team are no longer working with me now',
+    );
+    expect(former.some((h) => h.dimension === 'former_coworker')).toBe(true);
+  });
 });
 
 describe('progression + preference lifecycle', () => {
@@ -113,6 +126,13 @@ describe('progression + preference lifecycle', () => {
     expect(hits.some((h) => /punk/i.test(h.subject) && h.lifecycleKind === 'temporary')).toBe(true);
     expect(hits.some((h) => h.lifecycleKind === 'goal')).toBe(true);
     expect(hits.some((h) => h.lifecycleKind === 'identity')).toBe(true);
+  });
+
+  it('does not misclassify employment and current-focus state as a preference lifecycle', () => {
+    const hits = extractPreferenceLifecycle(
+      'I am unemployed now and no longer working at Vanguard Robotics but am building MemoVault.',
+    );
+    expect(hits).toEqual([]);
   });
 });
 

@@ -69,3 +69,23 @@ export function xStatusUrlFromId(sourceId: string | null | undefined): string | 
   if (!/^[0-9]{5,25}$/.test(id)) return null;
   return `https://x.com/i/web/status/${id}`;
 }
+
+/**
+ * Extract a numeric status snowflake from a validated X URL, then rebuild via
+ * xStatusUrlFromId so href never uses the raw DB/user URL (CodeQL barrier).
+ */
+export function xStatusIdFromUrl(raw: string | null | undefined): string | null {
+  if (!isSafeXUrl(raw)) return null;
+  try {
+    const path = new URL(raw.trim()).pathname;
+    const match = path.match(/\/(?:i\/web\/)?status\/([0-9]{5,25})(?:\/|$)/);
+    return match?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve a safe X status href from sourceId and/or a stored X URL. */
+export function xStatusHref(source: { sourceId?: string | null; url?: string | null }): string | null {
+  return xStatusUrlFromId(source.sourceId) ?? xStatusUrlFromId(xStatusIdFromUrl(source.url));
+}

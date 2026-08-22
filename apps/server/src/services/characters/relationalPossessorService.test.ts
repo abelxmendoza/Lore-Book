@@ -76,6 +76,13 @@ vi.mock('../../logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock('../lorebook/suggestions/applySuggestionCandidate', () => ({
+  applySuggestionCandidate: vi.fn(async (input: { onCreate?: () => Promise<void> }) => {
+    await input.onCreate?.();
+    return { outcome: 'CREATED' as const };
+  }),
+}));
+
 import { ensureRelationalPossessorAndLink } from './relationalPossessorService';
 
 describe('ensureRelationalPossessorAndLink', () => {

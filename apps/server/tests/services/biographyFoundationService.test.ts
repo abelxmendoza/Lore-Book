@@ -39,6 +39,27 @@ vi.mock('../../src/services/supabaseClient', () => ({
   },
 }));
 
+vi.mock('../../src/services/chronologyV2/stitchedTimelineService', () => ({
+  stitchedTimelineService: {
+    getStitchedTimeline: vi.fn(async () => ({ items: [], unresolved_items: [] })),
+  },
+}));
+
+vi.mock('../../src/services/characters/characterEntityTimelineService', () => ({
+  buildCanonicalCharacterTimeline: vi.fn(async () => ({
+    sharedExperiences: [],
+    lore: [],
+    unresolved: [],
+    summary: {
+      firstKnownOccurrenceAt: null,
+      lastKnownOccurrenceAt: null,
+      firstMentionedAt: null,
+      lastMentionedAt: null,
+    },
+  })),
+  emptyCharacterTimelineResult: vi.fn(),
+}));
+
 import { biographyFoundationService } from '../../src/services/biographyFoundationService';
 
 const USER_ID = 'user-1';
@@ -91,7 +112,7 @@ function baseTables(overrides: Partial<Record<string, TableResult>> = {}) {
       ],
       error: null,
     },
-    character_timeline_events: { data: [], error: null },
+    resolved_events: { data: [], error: null },
     quests: { data: [], error: null },
     ...overrides,
   };
@@ -204,5 +225,43 @@ describe('buildProvenance (via generateBiography output) — traceability (Sprin
     expect(provenance['identity.employment'].confidence).toBe('inferred');
     expect(provenance['identity.education'].confidence).toBe('inferred');
     expect(provenance['identity.location'].confidence).toBe('inferred');
+  });
+
+  it('uses temporal.occurred.start for life periods and does not promote unresolved recorded time', async () => {
+    const { stitchedTimelineService } = await import('../../src/services/chronologyV2/stitchedTimelineService');
+    vi.mocked(stitchedTimelineService.getStitchedTimeline).mockResolvedValueOnce({
+      items: [
+        {
+          title: 'Known occurrence',
+          occurrenceStatus: 'confirmed',
+          canonicalEventType: 'milestone',
+          sourceType: 'resolved_event',
+          occurredAt: null,
+          sortTime: '1970-01-01T00:00:00.000Z',
+          temporal: {
+            occurred: { start: '2024-06-15T00:00:00.000Z', status: 'anchored' },
+            recordedAt: '2026-08-21T12:00:00.000Z',
+          },
+        },
+        {
+          title: 'Unresolved occurrence',
+          occurrenceStatus: 'unresolved',
+          canonicalEventType: 'milestone',
+          sourceType: 'resolved_event',
+          occurredAt: '2026-08-21T00:00:00.000Z',
+          sortTime: '2026-08-21T00:00:00.000Z',
+          temporal: {
+            occurred: { start: null, status: 'unanchored' },
+            recordedAt: '2026-08-21T12:00:00.000Z',
+          },
+        },
+      ],
+    } as never);
+
+    const periods = await biographyFoundationService.identifyLifePeriods(USER_ID);
+    expect(periods).toHaveLength(1);
+    expect(periods[0]?.label).toBe('Jun 2024');
+    expect(periods[0]?.startDate).toBe('2024-06-01');
+    expect(periods[0]?.eventCount).toBe(1);
   });
 });

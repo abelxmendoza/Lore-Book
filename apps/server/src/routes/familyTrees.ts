@@ -6,7 +6,6 @@ import { Router } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../logger';
 import { familyTreeService } from '../services/familyTreeService';
-import { characterTimelineBuilder } from '../services/conversationCentered/characterTimelineBuilder';
 
 const router = Router();
 
@@ -40,7 +39,6 @@ router.post('/character/:id/rebuild', requireAuth, async (req: AuthenticatedRequ
   const userId = req.user!.id;
   const characterId = String(req.params.id);
   try {
-    await characterTimelineBuilder.rebuildTimelinesForCharacter(userId, characterId);
     const tree = await familyTreeService.getCharacterFamilyTree(userId, characterId, { rebuild: true });
     res.json({ success: true, tree: tree ?? { members: [], branches: [], self_id: characterId } });
   } catch (error) {

@@ -2,7 +2,7 @@
  * Household / residence inference — expanded with membership roles and head-of-household.
  */
 import { logger } from '../../logger';
-import { extractNamedPlacesFromText, formatPossessivePlace } from '../../utils/namedPlaceExtractor';
+import { extractNamedPlacesFromText, formatPossessivePlace, isValidPossessiveOwner } from '../../utils/namedPlaceExtractor';
 import { supabaseAdmin } from '../supabaseClient';
 import { organizationService } from '../organizationService';
 import { parseKinshipFromName } from './kinshipGlossary';
@@ -14,9 +14,9 @@ type HouseholdRole = 'resident' | 'visitor' | 'head_of_household';
 
 function inferHeadFromPossessive(context: string, placeName: string): string | undefined {
   const m = context.match(/\b([A-Za-zÀ-ÿ]+(?:'s|s)?)\s+(?:house|home|apartment|condo|casa|place|room|garage|backyard)\b/i);
-  if (m) return m[1].replace(/['']s?$/i, '');
+  if (m && isValidPossessiveOwner(m[1])) return m[1].replace(/['']s?$/i, '');
   const owner = placeName.split(/['']/)[0]?.trim();
-  return owner || undefined;
+  return owner && isValidPossessiveOwner(owner) ? owner : undefined;
 }
 
 export class HouseholdInferenceService {
@@ -26,12 +26,16 @@ export class HouseholdInferenceService {
     messageId: string,
     characterIds: string[]
   ): Promise<{ householdId?: string; locationName?: string }> {
+    // Test residence-type keywords against the candidate's own name, not the
+    // whole message — otherwise any stray "went home" elsewhere in a message
+    // lets every unrelated named phrase in it (an event, a club) pass as a
+    // household candidate.
     const places = extractNamedPlacesFromText(text).filter(
-      (p) => p.isNamed && (RESIDENCE_TYPES.test(p.name + ' ' + p.context) || LIVES_WITH.test(text))
+      (p) => p.isNamed && (RESIDENCE_TYPES.test(p.name) || LIVES_WITH.test(text))
     );
 
     const possessive = places.find(
-      (p) => /['']s?\s/i.test(p.context) || /house|home|casa|apartment|room/i.test(p.name)
+      (p) => /['']s?\s/i.test(p.name) || /house|home|casa|apartment|room/i.test(p.name)
     );
     if (!possessive && !LIVES_WITH.test(text)) return {};
 
@@ -70,21 +74,39 @@ export class HouseholdInferenceService {
 
     if (!householdId) {
       try {
-        const org = await organizationService.createOrganization(userId, {
+        const write = await (
+          await import('../lorebook/suggestions/applySuggestionCandidate')
+        ).applySuggestionCandidate({
+          userId,
+          domain: 'organizations',
           name: displayName,
-          type: 'family',
-          description: `Household at ${locationName}`,
-          metadata: {
-            inferred: true,
-            inference_source: 'household_residence',
-            source_message_id: messageId,
-            residence_name: locationName,
-            location_entity_id: locationEntityId,
-            head_of_household: headName,
-            confidence,
+          incomingType: 'family',
+          evidence: text,
+          extractor: 'household_inference',
+          source: 'kinship',
+          writePolicy: 'inference',
+          onCreate: async () => {
+            const org = await organizationService.createOrganization(userId, {
+              name: displayName,
+              type: 'family',
+              description: `Household at ${locationName}`,
+              metadata: {
+                inferred: true,
+                inference_source: 'household_residence',
+                source_message_id: messageId,
+                residence_name: locationName,
+                location_entity_id: locationEntityId,
+                head_of_household: headName,
+                confidence,
+              },
+            });
+            householdId = org.id;
           },
         });
-        householdId = org.id;
+        if (write.outcome === 'ATTACHED' && write.canonical?.id) {
+          householdId = write.canonical.id;
+        }
+        if (!householdId) return {};
       } catch (err) {
         logger.warn({ err, userId }, 'Household inference create failed');
         return {};

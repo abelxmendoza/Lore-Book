@@ -7,7 +7,6 @@ import { config } from '../../config';
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 
-import { characterTimelineBuilder } from './characterTimelineBuilder';
 import { romanticRelationshipDetector } from './romanticRelationshipDetector';
 
 export interface GymSocialInteraction {
@@ -143,18 +142,6 @@ If no social interactions found, return {"interactions": []}.`;
           }
 
           characterId = newCharacter.id;
-
-          // Add to character timeline
-          if (eventId) {
-            await characterTimelineBuilder.addEventToTimeline(
-              userId,
-              characterId,
-              eventId,
-              'shared_experience',
-              true, // user was present
-              'participant'
-            );
-          }
         }
 
         // Handle romantic relationship detection
@@ -190,18 +177,6 @@ If no social interactions found, return {"interactions": []}.`;
               }
             })
             .eq('id', characterId);
-
-          // Add to timeline
-          if (eventId) {
-            await characterTimelineBuilder.addEventToTimeline(
-              userId,
-              characterId,
-              eventId,
-              'shared_experience',
-              true,
-              'participant'
-            );
-          }
         }
       }
     } catch (error) {

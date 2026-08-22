@@ -318,6 +318,16 @@ export async function applyKinshipLabelToCharacter(
   const meta = (row.metadata as Record<string, unknown> | null) ?? {};
   if (meta.kinship_source === 'user' || meta.kinship_source === 'user_confirmed') return;
 
+  const existingArchetype = String(row.archetype ?? '').toLowerCase().split(',')[0]?.trim();
+  const romanticArchetypes = new Set([
+    'romantic',
+    'crush',
+    'unrequited_crush',
+    'romantic_interest',
+    'past_romantic',
+    'one_night_stand',
+  ]);
+
   const { decideRelationshipToYouFromKinship } = await import('./kinshipRelationshipToYou');
   const toYou = decideRelationshipToYouFromKinship({
     kinship: normalized,
@@ -326,6 +336,8 @@ export async function applyKinshipLabelToCharacter(
     metadata: meta,
     explicitClaim: options.explicitClaim,
   });
+  if (!toYou.apply) return;
+  if (!options.explicitClaim && romanticArchetypes.has(existingArchetype)) return;
 
   const nextMeta: Record<string, unknown> = {
     ...meta,
@@ -354,9 +366,7 @@ export async function applyKinshipLabelToCharacter(
     metadata: nextMeta,
     updated_at: new Date().toISOString(),
   };
-  if (!row.archetype && toYou.apply) patch.archetype = 'family';
-  else if (!row.archetype && meta.kinship_label) patch.archetype = 'family';
-  else if (!row.archetype) patch.archetype = 'family';
+  if (!row.archetype) patch.archetype = 'family';
 
   const { error } = await supabaseAdmin.from('characters').update(patch).eq('user_id', userId).eq('id', characterId);
   if (error) {
@@ -418,6 +428,8 @@ export const TREE_RELATION_GENERATION: Record<string, number> = {
   adopted_child: 1,
   godchild: 1,
   grandchild: 2,
+  grandson: 2,
+  granddaughter: 2,
   sibling: 0,
   twin: 0,
   half_sibling: 0,
@@ -478,6 +490,10 @@ export function kinshipStringToTreeRelation(kinship: string): string | null {
     niece: 'niece',
     nephew: 'nephew',
     grandchild: 'grandchild',
+    grandson: 'grandchild',
+    granddaughter: 'grandchild',
+    nieto: 'grandchild',
+    nieta: 'grandchild',
     spouse: 'spouse',
     husband: 'spouse',
     wife: 'spouse',

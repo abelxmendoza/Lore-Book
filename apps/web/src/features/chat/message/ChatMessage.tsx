@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Bot, User as UserIcon, Copy, Sparkles, ExternalLink, Check, Search, GitFork, CornerDownRight, UserCheck, BookOpen, AlertTriangle } from 'lucide-react';
 import { SystemNotice } from '../components/SystemNotice';
 import { describeMessageLifecycle } from '../types/messageLifecycle';
@@ -249,7 +249,7 @@ type ChatMessageProps = {
   retryInFlight?: boolean;
 };
 
-export const ChatMessage = ({
+export const ChatMessage = memo(function ChatMessage({
   message,
   showCognitiveTrace = false,
   animateEnter = false,
@@ -264,7 +264,7 @@ export const ChatMessage = ({
   onCopyOriginalMessage,
   onDismissDeliveryNotice,
   retryInFlight = false,
-}: ChatMessageProps) => {
+}: ChatMessageProps) {
   const [showActions, setShowActions] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showKnowledgeCorrection, setShowKnowledgeCorrection] = useState(false);
@@ -1180,4 +1180,4 @@ export const ChatMessage = ({
       )}
     </div>
   );
-};
+});

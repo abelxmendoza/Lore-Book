@@ -992,7 +992,7 @@ async function loadPersonCandidates(
   const characterId = entity.source === 'characters' ? entity.id : null;
   if (!characterId) return [];
 
-  const [memories, events, relationships, facts, character] = await Promise.all([
+  const [memories, relationships, facts, character] = await Promise.all([
     scope.traced(
       'character_memories',
       'memories for target character',
@@ -1004,19 +1004,6 @@ async function loadPersonCandidates(
           .eq('user_id', userId)
           .eq('character_id', characterId)
           .limit(8)
-    ),
-    scope.traced(
-      'character_timeline_events',
-      'events for target character',
-      `events:character:${characterId}`,
-      () =>
-        supabaseAdmin
-          .from('character_timeline_events')
-          .select('id, event_title, event_type, event_date, event_summary, confidence, metadata')
-          .eq('user_id', userId)
-          .eq('character_id', characterId)
-          .order('event_date', { ascending: false })
-          .limit(6)
     ),
     scope.traced(
       'character_relationships',
@@ -1116,23 +1103,6 @@ async function loadPersonCandidates(
     });
   }
 
-  for (const event of (events ?? []) as any[]) {
-    out.push({
-      id: `event:${event.id}`,
-      type: 'event',
-      title: event.event_title ?? event.event_type ?? `Event involving ${target}`,
-      content: String(event.event_summary ?? event.event_title ?? ''),
-      source: 'character_timeline_events',
-      date: event.event_date || null,
-      confidence: Number(event.confidence ?? 0.8),
-      relevance: 0.92,
-      importance: 0.75,
-      significance: Number((event.metadata as Record<string, unknown>)?.significance_score ?? 65) / 100,
-      relationshipDistance: 1,
-      reasons: ['timeline event for target character'],
-    });
-  }
-
   const relRows = (relationships ?? []) as any[];
   const relProjections = await Promise.all(
     relRows.map((rel) =>
@@ -1183,7 +1153,7 @@ async function loadPersonCandidates(
 /**
  * Organization/location equivalent of loadPersonCandidates' timeline block —
  * entity_timeline_events (entityTimelineBuilder.ts) is the org/location
- * analog of character_timeline_events, but had no reader anywhere in the
+ * analog of the retired Character compatibility table, but had no reader anywhere in the
  * response path until now.
  */
 async function loadEntityTimelineCandidates(
@@ -1520,7 +1490,7 @@ async function loadTextualCandidates(
     // Canonical timeline projector: same dedup (clusterDuplicateEvents) and
     // eligibility gating (evaluateTimelineEligibility) the Timeline/Swimlanes
     // UI page relies on, instead of chat running its own separate ad-hoc
-    // character_timeline_events + resolved_events queries with a flat
+    // resolved_events queries with a flat
     // id/text dedup and no eligibility gating.
     scope.traced(
       'stitched_timeline',
@@ -1626,7 +1596,7 @@ async function loadTextualCandidates(
     });
   }
 
-  // Single canonical source for character_timeline_events + resolved_events
+  // Single canonical source for resolved_events
   // (see stitched_timeline query above) — already deduped and eligibility-gated
   // by projectCanonicalTimeline, so no separate seenIds/occurredInWindow pass
   // is needed here the way the old two-table merge required.
@@ -2466,7 +2436,7 @@ export async function assembleWorkingMemory(
   const personEntityId =
     primaryEntity?.source === 'characters' && primaryEntity.id ? primaryEntity.id : null;
   // Org/location equivalent of isPersonish: entity_timeline_events is the
-  // org/location analog of character_timeline_events, and focus already
+  // org/location analog of the retired Character compatibility table, and focus already
   // sets primaryEntity.type to 'ORGANIZATION'/'PLACE' — see focusEntity above.
   const timelineEntityFocus: { entityType: 'organization' | 'location'; entityId: string } | null =
     primaryEntity?.type === 'ORGANIZATION' && primaryEntity.id

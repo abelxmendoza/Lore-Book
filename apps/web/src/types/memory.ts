@@ -124,7 +124,7 @@ export function memoryEntryToCard(entry: {
   const source = sourceMap[entry.source] || 'journal';
   const sourceIcons: Record<string, string> = {
     journal: '📖',
-    x: '🐦',
+    x: '𝕏',
     task: '✅',
     photo: '📷',
     calendar: '📅',
@@ -162,6 +162,7 @@ export function memoryEntryToCard(entry: {
     characters,
     content_type: entry.content_type,
     original_content: entry.original_content || undefined,
-    preserve_original_language: entry.preserve_original_language || false
+    preserve_original_language: entry.preserve_original_language || false,
+    metadata: entry.metadata,
   };
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { Badge } from '../ui/badge';
-import type { CharacterDisplayTitle } from '../../api/characterTitle';
+import { characterTitleApi, type CharacterDisplayTitle } from '../../api/characterTitle';
 import {
   getCharacterAliases,
   getCharacterDisplayTitle,
@@ -26,11 +26,13 @@ export function CharacterTitleSection({
   character,
   compact = false,
   omitTitle = false,
+  onUpdated,
 }: Props) {
   const [displayTitle, setDisplayTitle] = useState<CharacterDisplayTitle | null>(
     (character.metadata?.display_title as CharacterDisplayTitle | undefined) ?? null
   );
   const [subtitle, setSubtitle] = useState<string | null>(getCharacterSubtitle(character));
+  const [removingAlias, setRemovingAlias] = useState<string | null>(null);
 
   useEffect(() => {
     setSubtitle(getCharacterSubtitle(character));
@@ -41,15 +43,60 @@ export function CharacterTitleSection({
   const isContextual =
     displayTitle?.titleType === 'role_contextual' ||
     displayTitle?.titleType === 'unknown_contextual_reference';
-  const aliases = displayTitle?.aliases?.length
-    ? displayTitle.aliases
-    : getCharacterAliases(character).map((value, i) => ({
+  const aliases = getCharacterAliases(character).map((value, i) => {
+    const fromTitle = displayTitle?.aliases?.find(
+      (alias) => alias.value.trim().toLowerCase() === value.toLowerCase(),
+    );
+    return (
+      fromTitle ?? {
         id: `legacy-${i}`,
         value,
         aliasType: 'nickname',
         prominenceScore: 0,
         evidenceCount: 0,
-      }));
+      }
+    );
+  });
+
+  const removeAlias = async (alias: { id: string; value: string }) => {
+    if (!onUpdated || removingAlias) return;
+    const nextAliases = (character.alias ?? []).filter(
+      (value) => value.trim().toLowerCase() !== alias.value.trim().toLowerCase(),
+    );
+    const nextTitle = displayTitle
+      ? {
+          ...displayTitle,
+          aliases: (displayTitle.aliases ?? []).filter(
+            (item) => item.value.trim().toLowerCase() !== alias.value.trim().toLowerCase(),
+          ),
+        }
+      : null;
+    setDisplayTitle(nextTitle);
+    onUpdated({
+      alias: nextAliases,
+      metadata: {
+        ...((character.metadata ?? {}) as Record<string, unknown>),
+        ...(nextTitle ? { display_title: nextTitle } : {}),
+      },
+    });
+    if (character.id.startsWith('dummy-') || character.id.startsWith('temp-')) return;
+    setRemovingAlias(alias.value);
+    try {
+      const result = await characterTitleApi.removeAlias(character.id, alias.id || alias.value);
+      onUpdated({
+        alias: result.displayTitle.aliases.map((item) => item.value),
+        metadata: {
+          ...((character.metadata ?? {}) as Record<string, unknown>),
+          display_title: result.displayTitle,
+        },
+      });
+      setDisplayTitle(result.displayTitle);
+    } catch {
+      // Optimistic local update already applied; Info → Save names will persist.
+    } finally {
+      setRemovingAlias(null);
+    }
+  };
 
   const showTitleBlock = !omitTitle;
 
@@ -85,9 +132,20 @@ export function CharacterTitleSection({
             <Badge
               key={alias.id}
               variant="outline"
-              className={`${compact ? 'max-w-[12rem] truncate px-1.5 py-0 text-[10px]' : 'text-xs'}`}
+              className={`${compact ? 'max-w-[12rem] truncate px-1.5 py-0 text-[10px]' : 'text-xs'} inline-flex items-center gap-1`}
             >
-              {alias.value}
+              <span className="truncate">{alias.value}</span>
+              {onUpdated ? (
+                <button
+                  type="button"
+                  className="text-white/45 hover:text-white/85 disabled:opacity-40"
+                  aria-label={`Remove alias ${alias.value}`}
+                  disabled={removingAlias === alias.value}
+                  onClick={() => void removeAlias(alias)}
+                >
+                  ×
+                </button>
+              ) : null}
             </Badge>
           ))
         ) : !isContextual ? (

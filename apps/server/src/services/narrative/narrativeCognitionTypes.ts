@@ -41,6 +41,20 @@ export type PersonSalience = {
   trend: 'rising' | 'steady' | 'fading';
   lastUpdated: string;
   confidence: number;
+  /** Evidence for a change-over-time claim. Absent means trend is not provable. */
+  trendEvidence?: PersonActivityComparison;
+};
+
+/** Conversation activity in two non-overlapping windows. */
+export type PersonActivityComparison = {
+  recentMentions: number;
+  priorMentions: number;
+  recentThreadIds: string[];
+  priorThreadIds: string[];
+  recentLastSeen?: string;
+  priorLastSeen?: string;
+  recentWindowDays: number;
+  priorWindowDays: number;
 };
 
 export type ActiveArcKind =
@@ -175,6 +189,8 @@ export type NarrativeCognitionContext = {
   recencyByEntity: Map<string, string>;
   /** entityId → ISO timestamp the entity first entered the story. */
   firstSeenByEntity: Map<string, string>;
+  /** entityId -> activity comparison used for evidence-backed trend claims. */
+  activityByEntity?: Map<string, PersonActivityComparison>;
   /** "now" is injected so resolvers and tests are deterministic. */
   now: string;
   /** Goals across all statuses — "what changed" needs completed/abandoned too, not just active. */
@@ -189,4 +205,17 @@ export type CognitionAnswer = {
   confidence: number;
   /** Machine-readable trace of WHY — surfaced in metadata, never dumped in chat. */
   reasoning: string[];
+  /** Sources that make a recall-style answer reviewable in the chat UI. */
+  sources?: Array<{
+    type: 'event' | 'character' | 'knowledge';
+    id: string;
+    title: string;
+    snippet?: string;
+    date?: string;
+    relevanceScore?: number;
+    relevanceReasons?: string[];
+    usage?: 'supporting';
+  }>;
+  /** False means the answer is an explicit evidence insufficiency, not recall. */
+  grounded?: boolean;
 };

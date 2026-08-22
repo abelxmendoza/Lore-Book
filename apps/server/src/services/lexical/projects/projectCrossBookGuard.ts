@@ -5,6 +5,7 @@
 
 import { normalizeNameKey } from '../../../utils/nameNormalization';
 import { supabaseAdmin } from '../../supabaseClient';
+import { createTtlMemo } from '../../../lib/ttlMemo';
 import { glossaryAliases } from '../../ontology/glossary';
 import { KNOWN_PROJECT_ALIASES, type CrossBookIndex, type ProjectSuggestionOptions } from './projectSuggestionTypes';
 
@@ -127,7 +128,10 @@ export function createCrossBookIndex(partial: Partial<Record<keyof CrossBookInde
 }
 
 /** Load LoreBook entity indexes for cross-book project guard (async, best-effort). */
-export async function buildCrossBookIndexForUser(userId: string): Promise<CrossBookIndex> {
+const CROSS_BOOK_INDEX_TTL_MS = 15_000;
+const crossBookIndexMemo = createTtlMemo<CrossBookIndex>(CROSS_BOOK_INDEX_TTL_MS);
+
+async function loadCrossBookIndexForUser(userId: string): Promise<CrossBookIndex> {
   const characters: string[] = [];
   const places: string[] = [];
   const organizations: string[] = [];
@@ -206,16 +210,16 @@ export async function buildCrossBookIndexForUser(userId: string): Promise<CrossB
 
   try {
     const { data } = await supabaseAdmin
-      .from('character_timeline_events')
-      .select('event_title')
+      .from('resolved_events')
+      .select('title')
       .eq('user_id', userId)
       .limit(500);
     for (const row of data ?? []) {
-      const title = String(row.event_title ?? '').trim();
+      const title = String(row.title ?? '').trim();
       if (title) events.push(title);
     }
   } catch {
-    // timeline events optional
+    // resolved event titles optional
   }
 
   for (const { alias, entry } of glossaryAliases()) {
@@ -233,4 +237,15 @@ export async function buildCrossBookIndexForUser(userId: string): Promise<CrossB
     events,
     glossaryAliases: glossaryAliasNames,
   });
+}
+
+/** Cached for composer preview bursts — 5 DB queries per rebuild. */
+export async function buildCrossBookIndexForUser(userId: string): Promise<CrossBookIndex> {
+  if (process.env.VITEST) return loadCrossBookIndexForUser(userId);
+  return crossBookIndexMemo.getOrLoad(userId, () => loadCrossBookIndexForUser(userId));
+}
+
+/** Test helper — drop the per-user (or entire) cross-book index cache. */
+export function resetCrossBookIndexCache(userId?: string): void {
+  crossBookIndexMemo.invalidate(userId);
 }

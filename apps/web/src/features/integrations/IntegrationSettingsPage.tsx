@@ -1,5 +1,6 @@
 import { GithubPanel } from './GithubPanel';
 import { InstagramPanel } from './InstagramPanel';
+import { XConnectionPanel } from './XConnectionPanel';
 
 export function IntegrationSettingsPage() {
   return (
@@ -12,6 +13,7 @@ export function IntegrationSettingsPage() {
         </p>
       </div>
 
+      <XConnectionPanel />
       <GithubPanel />
       <InstagramPanel />
     </div>

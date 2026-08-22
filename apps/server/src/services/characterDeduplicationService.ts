@@ -18,6 +18,7 @@ import { jaroWinkler } from '../utils/jaroWinkler';
 
 import { filterScoringAliases } from './characters/aliasProvenanceValidation';
 import { classifyCharacterLabel } from './characters/characterLabelSemantics';
+import { canonicalEventIdsForCharacter } from './characters/resolvedEventPeopleRewrite';
 import { characterMergeService } from './characterMergeService';
 import { supabaseAdmin } from './supabaseClient';
 
@@ -175,12 +176,7 @@ class CharacterDeduplicationService {
   }
 
   private async eventIdSet(userId: string, characterId: string): Promise<Set<string>> {
-    const { data } = await supabaseAdmin
-      .from('character_timeline_events')
-      .select('event_id')
-      .eq('user_id', userId)
-      .eq('character_id', characterId);
-    return new Set((data ?? []).map(r => r.event_id).filter(Boolean));
+    return canonicalEventIdsForCharacter(userId, characterId);
   }
 
   boostConfidenceFromOverlap(base: number, overlap: DeduplicationOverlap): number {

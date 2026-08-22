@@ -8,7 +8,7 @@
  * history. This service reconnects the two: for each character lacking
  * provenance it searches the user's chat + conversation messages for
  * word-boundary mentions of the name (and aliases), preferring the user's own
- * messages ("what I said about them"), and writes a representative snippet plus
+ * messages ("what I said about them"), and writes the full source message plus
  * source message ids back onto the card.
  *
  * It is read-mostly and idempotent: cards that already carry provenance are
@@ -16,7 +16,7 @@
  *
  * Cost model — deterministic first, LLM optional:
  *   Tier 1 (always, free, no network to OpenAI): word-boundary matching over the
- *     FTS-indexed chat tables produces the snippet + source ids. This is the
+ *     FTS-indexed chat tables produces the full source message + source ids. This is the
  *     default and makes the feature fully self-sufficient.
  *   Tier 2 (opt-in via `enrich`, gated on a configured key): a SINGLE batched
  *     completion turns the deterministic evidence into a one-line "who is this
@@ -82,6 +82,9 @@ const EMPTY_RESCAN_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 const SNIPPET_WINDOW_BEFORE = 70;
 const SNIPPET_WINDOW_AFTER = 190;
 const SUMMARY_MAX = 220;
+/** Safety cap when persisting a full source message onto the card. */
+const FULL_SOURCE_MAX = 8000;
+const MESSAGE_ID_CHUNK = 100;
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -140,6 +143,13 @@ function extractSnippet(content: string, terms: string[]): string {
   return snippet;
 }
 
+/** Persist the whole source message so audit/UI can show what was actually said. */
+function fullSourceText(content: string): string {
+  const text = content.replace(/\s+/g, ' ').trim();
+  if (text.length <= FULL_SOURCE_MAX) return text;
+  return `${text.slice(0, FULL_SOURCE_MAX - 1)}…`;
+}
+
 /** PostgREST `.or()` ilike clause for the given terms (terms are simple names). */
 function ilikeOrClause(terms: string[]): string {
   return terms
@@ -151,6 +161,41 @@ function ilikeOrClause(terms: string[]): string {
 }
 
 class CharacterProvenanceBackfillService {
+  /** Load full message bodies for already-captured source ids (user-scoped). */
+  async fetchMessageContentsByIds(
+    userId: string,
+    ids: string[],
+  ): Promise<Map<string, string>> {
+    const byId = new Map<string, string>();
+    const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+    for (let i = 0; i < unique.length; i += MESSAGE_ID_CHUNK) {
+      const chunk = unique.slice(i, i + MESSAGE_ID_CHUNK);
+      const [chat, conv] = await Promise.all([
+        supabaseAdmin
+          .from('chat_messages')
+          .select('id, content')
+          .eq('user_id', userId)
+          .in('id', chunk),
+        supabaseAdmin
+          .from('conversation_messages')
+          .select('id, content')
+          .eq('user_id', userId)
+          .in('id', chunk),
+      ]);
+      if (chat.error) {
+        logger.warn({ error: chat.error, userId }, 'provenance hydrate: chat_messages fetch failed');
+      }
+      if (conv.error) {
+        logger.warn({ error: conv.error, userId }, 'provenance hydrate: conversation_messages fetch failed');
+      }
+      for (const row of [...(chat.data ?? []), ...(conv.data ?? [])]) {
+        const content = typeof row.content === 'string' ? row.content.trim() : '';
+        if (row.id && content) byId.set(String(row.id), content);
+      }
+    }
+    return byId;
+  }
+
   /** Fetch candidate messages mentioning any term from one message table. */
   private async fetchCandidates(
     table: 'chat_messages' | 'conversation_messages',
@@ -254,7 +299,7 @@ class CharacterProvenanceBackfillService {
         userMatches.find((m) => (m.content ?? '').length >= 40) ??
         userMatches[0] ??
         matches[0];
-      const summary = extractSnippet(snippetSource.content ?? '', terms);
+      const summary = fullSourceText(snippetSource.content ?? '');
 
       // Source ids: user messages first, then the rest, deduped and capped.
       const ordered = [...userMatches, ...matches.filter((m) => m.role !== 'user')];
@@ -396,6 +441,7 @@ export const characterProvenanceBackfillService = new CharacterProvenanceBackfil
 export {
   CharacterProvenanceBackfillService,
   extractSnippet,
+  fullSourceText,
   boundaryRegex,
   hasProvenance,
   recentlyAttemptedEmpty,

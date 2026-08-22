@@ -9,6 +9,8 @@ import { memoryService } from '../memoryService';
 import { organizationService } from '../organizationService';
 import { projectSuggestionService } from '../projects/projectSuggestionService';
 import { skillService } from '../skills/skillService';
+import { applySuggestionCandidate } from '../lorebook/suggestions/applySuggestionCandidate';
+import { withSuggestionWriteContext } from '../lorebook/suggestions/suggestionWriteContext';
 import { supabaseAdmin } from '../supabaseClient';
 import { normalizeNameKey } from '../../utils/nameNormalization';
 
@@ -145,34 +147,49 @@ class ResumeLorePopulationService {
     }
     const conflictedCompanies = conflictedCompanyKeys(result.roleConflicts);
 
+    await withSuggestionWriteContext(userId, async () => {
     // Employers as organizations
     for (const job of parsed.employment) {
       const conflicted = job.isCurrent && conflictedCompanies.has(normalizeNameKey(job.company));
       try {
-        await organizationService.createOrganization(userId, {
+        const write = await applySuggestionCandidate({
+          userId,
+          domain: 'organizations',
           name: job.company,
-          type: 'company',
-          group_type: 'company',
-          user_relationship: 'member',
-          description: job.description ?? `${job.title}${job.location ? ` · ${job.location}` : ''}`,
-          status: job.isCurrent && !conflicted ? 'active' : 'inactive',
-          metadata: {
-            ...meta,
-            section: 'employment',
-            job_title: job.title,
-            start_date: job.startDate,
-            end_date: job.endDate,
-            ...(conflicted
-              ? {
-                  pending_status_review: true,
-                  status_conflict: result.roleConflicts.find(
-                    (c) => normalizeNameKey(c.resumeCompany) === normalizeNameKey(job.company)
-                  ),
-                }
-              : {}),
+          incomingType: 'company',
+          evidence: [job.title, job.description, job.location].filter(Boolean).join(' · '),
+          extractor: 'resume_import',
+          source: 'resume',
+          writePolicy: 'trusted_import',
+          onCreate: async () => {
+            await organizationService.createOrganization(userId, {
+              name: job.company,
+              type: 'company',
+              group_type: 'company',
+              user_relationship: 'member',
+              description: job.description ?? `${job.title}${job.location ? ` · ${job.location}` : ''}`,
+              status: job.isCurrent && !conflicted ? 'active' : 'inactive',
+              metadata: {
+                ...meta,
+                section: 'employment',
+                job_title: job.title,
+                start_date: job.startDate,
+                end_date: job.endDate,
+                ...(conflicted
+                  ? {
+                      pending_status_review: true,
+                      status_conflict: result.roleConflicts.find(
+                        (c) => normalizeNameKey(c.resumeCompany) === normalizeNameKey(job.company)
+                      ),
+                    }
+                  : {}),
+              },
+            });
           },
         });
-        result.organizations++;
+        if (write.outcome === 'CREATED' || write.outcome === 'ATTACHED') {
+          result.organizations++;
+        }
       } catch (error) {
         logger.warn({ error, company: job.company }, 'resume lore: org create skipped');
       }
@@ -180,32 +197,38 @@ class ResumeLorePopulationService {
 
     // Skills
     const seenSkills = new Set<string>();
-    let existingSkills: string[] = [];
-    try {
-      const rows = await skillService.getSkills(userId);
-      existingSkills = rows.map((s) => s.skill_name.toLowerCase());
-    } catch {
-      existingSkills = [];
-    }
     for (const raw of parsed.skills) {
       const name = raw.trim();
       if (!name || seenSkills.has(name.toLowerCase())) continue;
-      if (existingSkills.includes(name.toLowerCase())) continue;
       seenSkills.add(name.toLowerCase());
       try {
-        await skillService.createSkill(userId, {
-          skill_name: name,
-          skill_category: skillCategory(name),
-          description: `From resume: ${context.fileName}`,
-          auto_detected: true,
-          confidence_score: 0.85,
-          metadata: { ...meta, section: 'skills' },
+        const write = await applySuggestionCandidate({
+          userId,
+          domain: 'skills',
+          name,
+          evidence: `From resume: ${context.fileName}`,
+          extractor: 'resume_import',
+          source: 'resume',
+          writePolicy: 'trusted_import',
+          onCreate: async () => {
+            await skillService.createSkill(userId, {
+              skill_name: name,
+              skill_category: skillCategory(name),
+              description: `From resume: ${context.fileName}`,
+              auto_detected: true,
+              confidence_score: 0.85,
+              metadata: { ...meta, section: 'skills' },
+            });
+          },
         });
-        result.skills++;
+        if (write.outcome === 'CREATED' || write.outcome === 'ATTACHED') {
+          result.skills++;
+        }
       } catch (error) {
         logger.warn({ error, skill: name }, 'resume lore: skill create skipped');
       }
     }
+    });
 
     // Projects → Projects book as review-first suggestions (rule: projects never
     // land in Characters/Places; they surface as pending Project cards).

@@ -26,6 +26,12 @@ vi.mock('../../../src/services/supabaseClient', () => ({
   supabaseAdmin: { from: (...args: unknown[]) => fromMock(...args) },
 }));
 
+vi.mock('../../../src/services/chronologyV2/stitchedTimelineService', () => ({
+  stitchedTimelineService: {
+    getStitchedTimeline: vi.fn(async () => ({ items: [], unresolved_items: [] })),
+  },
+}));
+
 const { getIdentitySnapshotMock, composeIdentityRecallMock, getNarrativeIdentityRecallMock } = vi.hoisted(() => ({
   getIdentitySnapshotMock: vi.fn(),
   composeIdentityRecallMock: vi.fn(),
@@ -43,6 +49,7 @@ vi.mock('../../../src/services/livingBiographyService', () => ({
 
 import { routeRecallQuery } from '../../../src/services/chat/recallQueryRouter';
 import { formatCharacterRosterForChat } from '../../../src/services/chat/foundationRecallDataService';
+import { stitchedTimelineService } from '../../../src/services/chronologyV2/stitchedTimelineService';
 
 const CHARACTERS = [
   { id: 'c1', name: 'Abel', alias: [], metadata: {}, importance_level: 'protagonist' },
@@ -91,11 +98,11 @@ describe('Sprint AF — foundation recall', () => {
         ],
         error: null,
       },
-      character_timeline_events: {
+      resolved_events: {
         data: [
-          { character_id: 'c2' },
-          { character_id: 'c3' },
-          { character_id: 'c3' },
+          { people: ['c2'] },
+          { people: ['c3'] },
+          { people: ['c3'] },
         ],
         error: null,
       },
@@ -236,7 +243,7 @@ describe('routeRecallQuery — character list intent (Sprint H fix)', () => {
         error: null,
       },
       character_memories: { data: [], error: null },
-      character_timeline_events: { data: [], error: null },
+      resolved_events: { data: [], error: null },
       character_relationships: { data: [], error: null },
       narrative_accounts: { data: { narrative_text: 'Some narrative.', metadata: {} }, error: null },
     };
@@ -286,6 +293,42 @@ describe('routeRecallQuery — character list intent (Sprint H fix)', () => {
     expect(getIdentitySnapshotMock).toHaveBeenCalledWith('user-1');
     expect(composeIdentityRecallMock).toHaveBeenCalled();
     expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it('uses temporal.occurred.start for timeline recall and labels unresolved dates', async () => {
+    vi.mocked(stitchedTimelineService.getStitchedTimeline).mockResolvedValueOnce({
+      items: [
+        {
+          title: 'Known occurrence',
+          body: 'Canonical start',
+          occurrenceStatus: 'confirmed',
+          occurredAt: null,
+          sortTime: '1970-01-01T00:00:00.000Z',
+          temporal: {
+            occurred: { start: '2024-06-15T00:00:00.000Z', status: 'anchored' },
+            recordedAt: '2026-08-21T12:00:00.000Z',
+          },
+        },
+        {
+          title: 'Unresolved occurrence',
+          body: 'Recording is not occurrence',
+          occurrenceStatus: 'unresolved',
+          occurredAt: '2026-08-21T00:00:00.000Z',
+          sortTime: '2026-08-21T00:00:00.000Z',
+          temporal: {
+            occurred: { start: null, status: 'unanchored' },
+            recordedAt: '2026-08-21T12:00:00.000Z',
+          },
+        },
+      ],
+    } as never);
+
+    const result = await routeRecallQuery('user-1', 'What happened recently?');
+    expect(result.intent).toBe('temporal');
+    expect(result.contextBlock).toContain('2024-06-15T00:00:00.000Z: Known occurrence');
+    expect(result.contextBlock).toContain('date unresolved: Unresolved occurrence');
+    expect(result.contextBlock).not.toContain('1970-01-01');
+    expect(result.contextBlock).not.toContain('2026-08-21T00:00:00.000Z: Unresolved');
   });
 
   it('degrades to the concise Living Biography projection instead of breaking chat', async () => {

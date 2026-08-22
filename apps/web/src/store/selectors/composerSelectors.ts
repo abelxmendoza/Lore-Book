@@ -4,6 +4,15 @@ import { composerMatchSlot } from '../slices/composerSlice';
 import type { RootState } from '../index';
 
 export const selectComposerDraft = (state: RootState) => state.composer.draftText;
+// A boolean transition (empty <-> non-empty) happens far less often than every
+// keystroke, so components that only need "is there a draft" (not its live
+// text) should read this instead of selectComposerDraft — it only triggers a
+// re-render when the draft crosses the empty/non-empty boundary, not on every
+// character typed.
+export const selectComposerDraftIsEmpty = createSelector(
+  selectComposerDraft,
+  (draftText) => draftText.trim().length === 0
+);
 export const selectComposerMatches = (state: RootState) => state.composer.matches;
 export const selectComposerIndexReady = (state: RootState) => state.composer.indexReady;
 

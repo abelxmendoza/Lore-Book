@@ -2,6 +2,18 @@ import { readdirSync } from 'node:fs';
 
 const CANONICAL_VERSION = /^\d{14}$/;
 
+/**
+ * Production `schema_migrations` versions that the repo must match exactly.
+ * Same-name/different-timestamp rows are historical drift; these entries are
+ * the closed production history after a migration was applied under a later
+ * timestamp than the original local filename.
+ */
+export const PRODUCTION_LEDGER_CANON = {
+  drop_character_timeline_events: '20260821194550',
+  revoke_anon_security_definer_rpcs: '20260820003718',
+  harden_export_views_and_epiphany_insert: '20260820015515',
+};
+
 export function parseLocalMigrationFilename(filename) {
   const match = filename.match(/^(\d+)_?(.*)\.sql$/i);
   if (!match) return null;
