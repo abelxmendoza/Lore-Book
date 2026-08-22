@@ -18,6 +18,7 @@
  */
 
 import { v4 as uuid } from 'uuid';
+import { applySummaryDiscipline } from './chat/summaryDiscipline';
 import { config } from '../config';
 import { openai } from '../lib/openai';
 import { logger } from '../logger';
@@ -563,7 +564,10 @@ Format:
           { role: 'user', content: userPrompt },
         ],
       });
-      return completion.choices[0]?.message?.content?.trim() ?? 'Biography unavailable.';
+      return applySummaryDiscipline(
+        completion.choices[0]?.message?.content?.trim() ?? 'Biography unavailable.',
+        factsBlock,
+      ).text;
     } catch (err) {
       logger.error({ err, userId }, 'LLM biography generation failed — using fact summary');
       return factsBlock;

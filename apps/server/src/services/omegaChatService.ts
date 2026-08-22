@@ -1087,6 +1087,10 @@ When updating relationship analytics or emotional signals from this thread, weig
     const timer = new StageTimer('chat.persist_early', { userId, sessionId });
     incMetric('messages_received');
 
+    const { isPureReadOnlyKnowledgeQuery } = await import('./chat/readOnlyQueryPolicy');
+    const readOnlyKnowledgeQuery =
+      !entityContext && !(images?.length) && isPureReadOnlyKnowledgeQuery(message);
+
     // Idempotent acceptance: same client key → reuse existing user message + job.
     if (clientIdempotencyKey) {
       try {
@@ -1102,7 +1106,7 @@ When updating relationship analytics or emotional signals from this thread, weig
           let ingestionJobId: string | undefined;
           let ingestionRecoveryRequired = false;
           let ingestionStatus: string | undefined;
-          if (!entityContext) {
+          if (!entityContext && !readOnlyKnowledgeQuery) {
             const enq = await ingestionQueue.enqueueDurable(
               {
                 userId,
@@ -1208,6 +1212,10 @@ When updating relationship analytics or emotional signals from this thread, weig
     }
 
     const metadata: Record<string, unknown> = {};
+    if (readOnlyKnowledgeQuery) {
+      metadata.read_only_query = true;
+      metadata.ingestion_suppressed_reason = 'explicit_knowledge_query';
+    }
     if (previewCorrections?.length) metadata.preview_corrections = previewCorrections;
     if (attachmentMeta?.length) {
       metadata.attachments = attachmentMeta;
@@ -1240,7 +1248,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         if (raced?.id) {
           incMetric('duplicate_sends_prevented');
           let ingestionJobId: string | undefined;
-          if (!entityContext) {
+          if (!entityContext && !readOnlyKnowledgeQuery) {
             const enq = await ingestionQueue.enqueueDurable(
               { userId, chatMessageId: raced.id, sessionId, conversationHistory },
               'NORMAL',
@@ -1267,6 +1275,11 @@ When updating relationship analytics or emotional signals from this thread, weig
 
     await bumpThreadActivity(userId, sessionId);
     timer.mark('session_touch');
+
+    if (readOnlyKnowledgeQuery) {
+      timer.flush({ path: 'read_only_knowledge_query' });
+      return { messageId, ingestionStatus: 'NOT_SCHEDULED' };
+    }
 
     // Image turns: defer ingestion until vision summary enriches content
     // with cast / location / conversation lore context.

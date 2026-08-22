@@ -639,13 +639,16 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
       }
     }
 
-    const persistAssistant = async (status: 'complete' | 'partial' | 'failed'): Promise<void> => {
+    const persistAssistant = async (
+      status: 'complete' | 'partial' | 'failed',
+      content: string = fullResponse,
+    ): Promise<void> => {
       if (!req.user?.id || !persistSessionId) return;
       assistantPersistResult = await finalizeAssistantMessage({
         userId: req.user.id,
         sessionId: persistSessionId,
         assistantRowId,
-        content: fullResponse,
+        content,
         metadata: buildAssistantPersistMetadata({
           sources: result.metadata.sources,
           connections: result.metadata.connections,
@@ -704,15 +707,20 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
           logger.debug({ err }, 'Failed to merge reply-derived entity mentions (non-blocking)');
         }
       }
-      await persistAssistant(clientGone ? 'partial' : 'complete');
-      if (streamResponseId && req.user?.id && persistSessionId) {
-        const { mergeOpenAiSessionState } = await import('../services/openaiPlatform/openaiSessionState');
-        await mergeOpenAiSessionState(req.user.id, persistSessionId, {
-          last_response_id: streamResponseId,
-        });
-      }
+      let visibleFinalContent = fullResponse;
       let responseCompilerMeta: Record<string, unknown> | undefined;
+      let visibleDoneFields: Record<string, unknown> = {
+        verified: false,
+        rewritten: false,
+        unsupportedCount: 0,
+        causalRewriteCount: 0,
+        embellishmentRewriteCount: 0,
+        epistemicRewriteCount: 0,
+      };
       if (fullResponse.length > 0 && req.user?.id) {
+        const { finalizeVisibleAssistantResponse, toChatStreamDoneFields } = await import(
+          '../services/chat/visibleResponseFinalizer'
+        );
         try {
           const { compileAssistantResponseWithCanon } = await import(
             '../services/responseCompiler/responseCompilerIntegration'
@@ -723,7 +731,13 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
             userMessage: message,
             userMessageId: result.metadata.messageId,
             conversationHistory,
+          }, { semantic: false });
+          const finalization = finalizeVisibleAssistantResponse({
+            draftContent: fullResponse,
+            compiled,
           });
+          visibleFinalContent = finalization.finalContent;
+          visibleDoneFields = toChatStreamDoneFields(finalization);
           responseCompilerMeta = {
             actionCandidates: compiled.actionCandidates,
             certaintyScore: compiled.certaintyScore,
@@ -732,10 +746,39 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
             unsupportedCount: compiled.unsupportedClaims.length,
             contradictionCount: compiled.contradictions.length,
             memoryCandidatesBlocked: compiled.memoryCandidatesBlocked.length,
+            summaryDiscipline: compiled.rulesFired.includes('summary_discipline'),
+            verified: finalization.verified,
+            rewritten: finalization.rewritten,
+            causalRewriteCount: finalization.causalRewriteCount,
+            embellishmentRewriteCount: finalization.embellishmentRewriteCount,
+            epistemicRewriteCount: finalization.epistemicRewriteCount,
           };
+          void compileAssistantResponseWithCanon({
+            userId: req.user.id,
+            rawResponse: visibleFinalContent,
+            userMessage: message,
+            userMessageId: result.metadata.messageId,
+            conversationHistory,
+          }, { semantic: true }).catch((err) => {
+            logger.debug({ err, userId: req.user?.id }, 'Deferred semantic compiler failed (non-blocking)');
+          });
         } catch (compileErr) {
           logger.warn({ err: compileErr, userId: req.user.id }, 'Response compiler failed (non-blocking)');
+          const finalization = finalizeVisibleAssistantResponse({
+            draftContent: fullResponse,
+            compiled: null,
+            verificationFailed: true,
+          });
+          visibleFinalContent = finalization.finalContent;
+          visibleDoneFields = toChatStreamDoneFields(finalization);
         }
+      }
+      await persistAssistant(clientGone ? 'partial' : 'complete', visibleFinalContent);
+      if (streamResponseId && req.user?.id && persistSessionId) {
+        const { mergeOpenAiSessionState } = await import('../services/openaiPlatform/openaiSessionState');
+        await mergeOpenAiSessionState(req.user.id, persistSessionId, {
+          last_response_id: streamResponseId,
+        });
       }
       // Emit one `message.cost` line for this message (LLM/embedding calls,
       // tokens, est. USD, duration) now that the answer stream is fully consumed.
@@ -756,6 +799,7 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
         if (!clientGone) {
           sseWrite({
             type: 'done',
+            ...visibleDoneFields,
             ...(streamTokenUsage ? { usage: streamTokenUsage } : {}),
             ...(responseCompilerMeta ? { responseCompiler: responseCompilerMeta } : {}),
             ...(costSummary ? { cost: costSummary } : {}),
