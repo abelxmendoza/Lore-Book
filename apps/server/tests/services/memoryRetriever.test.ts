@@ -24,6 +24,7 @@ vi.mock('../../src/services/supabaseClient', () => ({ supabaseAdmin: { from: (..
 vi.mock('../../src/engineRuntime/storage', () => ({ getEngineResults: (...a: unknown[]) => mockGetEngineResults(...a) }));
 vi.mock('../../src/services/temporal/userTimezoneService', () => ({
   getUserTimezone: (...a: unknown[]) => mockGetUserTimezone(...a),
+  isValidIanaTimezone: (tz: unknown): tz is string => typeof tz === 'string' && tz.length > 0,
 }));
 
 // Stub other deps used by retrieve/enhancedRetrieve to avoid import errors

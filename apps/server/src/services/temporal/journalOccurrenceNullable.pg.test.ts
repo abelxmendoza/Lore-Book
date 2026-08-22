@@ -11,9 +11,10 @@ const MIGRATION = resolve(
 );
 
 const user = process.env.USER || process.env.LOGNAME || 'postgres';
+const EXPLICIT_DATABASE_URL = process.env.JOURNAL_OCCURRENCE_TEST_DATABASE_URL;
 const DATABASE_URL =
-  process.env.JOURNAL_OCCURRENCE_TEST_DATABASE_URL ??
-  `postgres://${user}@127.0.0.1:5432/lorekeeper_occ_nullable_test`;
+  EXPLICIT_DATABASE_URL ?? `postgres://${user}@127.0.0.1:5432/lorekeeper_occ_nullable_test`;
+const RUN_ISOLATED_PG = Boolean(EXPLICIT_DATABASE_URL);
 
 const SCHEMA = 'occ_nullable_test';
 const USER_A = '00000000-0000-4000-8000-00000000000a';
@@ -31,7 +32,7 @@ const RECORDED_AUG = '2026-08-21T15:00:00.000Z';
 const OCCURRED_JULY = '2026-07-12T18:00:00.000Z';
 const OCCURRED_MAR = '2024-03-15T10:00:00.000Z';
 
-describe('nullable occurrence migration against isolated Homebrew Postgres', () => {
+describe.skipIf(!RUN_ISOLATED_PG)('nullable occurrence migration against isolated Homebrew Postgres', () => {
   let sql: ReturnType<typeof postgres>;
   let pgVersion = '';
   let timezone = '';
