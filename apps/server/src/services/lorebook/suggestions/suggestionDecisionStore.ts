@@ -150,70 +150,77 @@ export function resetSuggestionDecisionStoreLoadCount(): void {
   storeLoadCount = 0;
 }
 
-export async function loadSuggestionDecisionIndex(userId: string): Promise<SuggestionDecisionIndex> {
+export type SuggestionDecisionLoadResult = {
+  index: SuggestionDecisionIndex;
+  status: 'ok' | 'degraded';
+  successfulLoads: number;
+  failedLoads: number;
+};
+
+async function loadRows<T>(
+  label: string,
+  work: () => Promise<{ data: T[] | null; error: unknown }>,
+): Promise<{ rows: T[]; failed: boolean }> {
+  try {
+    const res = await work();
+    if (res.error) {
+      logger.debug({ err: res.error, label }, 'suggestion decision table load failed');
+      return { rows: [], failed: true };
+    }
+    return { rows: res.data ?? [], failed: false };
+  } catch (err) {
+    logger.debug({ err, label }, 'suggestion decision table load threw');
+    return { rows: [], failed: true };
+  }
+}
+
+export async function loadSuggestionDecisionResult(userId: string): Promise<SuggestionDecisionLoadResult> {
   const index = emptySuggestionDecisionIndex();
   index.loadCount = 1;
   storeLoadCount += 1;
 
   const [stats, mutations, groupRejected, deletions] = await Promise.all([
-    (async () => {
-      try {
-        const res = await supabaseAdmin
-          .from('suggestion_dismissal_stats')
-          .select('book_domain, normalized_name, is_permanent, last_dismissed_at, dismiss_count')
-          .eq('user_id', userId)
-          .eq('is_permanent', true)
-          .limit(400);
-        return res.data ?? [];
-      } catch {
-        return [];
-      }
-    })(),
-    (async () => {
-      try {
-        const res = await supabaseAdmin
-          .from('identity_mutations')
-          .select('id, user_id, entity_id, entity_type, mutation_type, previous_value, new_value, reason, confidence, source, metadata, created_at')
-          .eq('user_id', userId)
-          .in('mutation_type', [...LEARNING_TYPES])
-          .order('created_at', { ascending: false })
-          .limit(400);
-        return (res.data ?? []) as IdentityMutationRow[];
-      } catch {
-        return [] as IdentityMutationRow[];
-      }
-    })(),
-    (async () => {
-      try {
-        const res = await supabaseAdmin
-          .from('group_candidates')
-          .select('proposed_name, updated_at')
-          .eq('user_id', userId)
-          .eq('status', 'rejected')
-          .limit(200);
-        return res.data ?? [];
-      } catch {
-        return [];
-      }
-    })(),
-    (async () => {
-      try {
-        const res = await supabaseAdmin
-          .from('entity_deletion_events')
-          .select('entity_name, normalized_keys, deletion_kind, created_at')
-          .eq('user_id', userId)
-          .eq('entity_type', 'character')
-          .eq('deletion_kind', 'permanent')
-          .order('created_at', { ascending: false })
-          .limit(400);
-        return res.data ?? [];
-      } catch {
-        return [];
-      }
-    })(),
+    loadRows('suggestion_dismissal_stats', async () =>
+      supabaseAdmin
+        .from('suggestion_dismissal_stats')
+        .select('book_domain, normalized_name, is_permanent, last_dismissed_at, dismiss_count')
+        .eq('user_id', userId)
+        .eq('is_permanent', true)
+        .limit(400),
+    ),
+    loadRows('identity_mutations', async () =>
+      supabaseAdmin
+        .from('identity_mutations')
+        .select('id, user_id, entity_id, entity_type, mutation_type, previous_value, new_value, reason, confidence, source, metadata, created_at')
+        .eq('user_id', userId)
+        .in('mutation_type', [...LEARNING_TYPES])
+        .order('created_at', { ascending: false })
+        .limit(400),
+    ),
+    loadRows('group_candidates', async () =>
+      supabaseAdmin
+        .from('group_candidates')
+        .select('proposed_name, updated_at')
+        .eq('user_id', userId)
+        .eq('status', 'rejected')
+        .limit(200),
+    ),
+    loadRows('entity_deletion_events', async () =>
+      supabaseAdmin
+        .from('entity_deletion_events')
+        .select('entity_name, normalized_keys, deletion_kind, created_at')
+        .eq('user_id', userId)
+        .eq('entity_type', 'character')
+        .eq('deletion_kind', 'permanent')
+        .order('created_at', { ascending: false })
+        .limit(400),
+    ),
   ]);
 
-  for (const row of stats as Array<{ book_domain: string; normalized_name: string; last_dismissed_at?: string }>) {
+  const failedLoads = [stats, mutations, groupRejected, deletions].filter((part) => part.failed).length;
+  const successfulLoads = 4 - failedLoads;
+
+  for (const row of stats.rows as Array<{ book_domain: string; normalized_name: string; last_dismissed_at?: string }>) {
     addSuggestionDecision(index, {
       type: 'REJECTED_CANDIDATE',
       domain: row.book_domain as LoreBookDomain,
@@ -226,11 +233,11 @@ export async function loadSuggestionDecisionIndex(userId: string): Promise<Sugge
     });
   }
 
-  for (const row of mutations) {
+  for (const row of mutations.rows as IdentityMutationRow[]) {
     for (const decision of mutationToDecisions(row)) addSuggestionDecision(index, decision);
   }
 
-  for (const row of groupRejected as Array<{ proposed_name?: string; updated_at?: string }>) {
+  for (const row of groupRejected.rows as Array<{ proposed_name?: string; updated_at?: string }>) {
     const name = String(row.proposed_name ?? '').trim();
     if (!name) continue;
     addSuggestionDecision(index, {
@@ -245,7 +252,7 @@ export async function loadSuggestionDecisionIndex(userId: string): Promise<Sugge
     });
   }
 
-  for (const row of deletions as Array<{
+  for (const row of deletions.rows as Array<{
     entity_name?: string;
     normalized_keys?: string[];
     created_at?: string;
@@ -269,7 +276,15 @@ export async function loadSuggestionDecisionIndex(userId: string): Promise<Sugge
     }
   }
 
-  return index;
+  const status: 'ok' | 'degraded' = failedLoads > 0 && successfulLoads === 0 ? 'degraded' : 'ok';
+  if (status === 'degraded') {
+    logger.warn({ userId, failedLoads }, 'suggestion decision index degraded — machine CREATE blocked');
+  }
+  return { index, status, successfulLoads, failedLoads };
+}
+
+export async function loadSuggestionDecisionIndex(userId: string): Promise<SuggestionDecisionIndex> {
+  return (await loadSuggestionDecisionResult(userId)).index;
 }
 
 export async function recordRejectedCandidate(input: {
