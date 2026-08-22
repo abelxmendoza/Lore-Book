@@ -74,21 +74,39 @@ export class HouseholdInferenceService {
 
     if (!householdId) {
       try {
-        const org = await organizationService.createOrganization(userId, {
+        const write = await (
+          await import('../lorebook/suggestions/applySuggestionCandidate')
+        ).applySuggestionCandidate({
+          userId,
+          domain: 'organizations',
           name: displayName,
-          type: 'family',
-          description: `Household at ${locationName}`,
-          metadata: {
-            inferred: true,
-            inference_source: 'household_residence',
-            source_message_id: messageId,
-            residence_name: locationName,
-            location_entity_id: locationEntityId,
-            head_of_household: headName,
-            confidence,
+          incomingType: 'family',
+          evidence: text,
+          extractor: 'household_inference',
+          source: 'kinship',
+          writePolicy: 'inference',
+          onCreate: async () => {
+            const org = await organizationService.createOrganization(userId, {
+              name: displayName,
+              type: 'family',
+              description: `Household at ${locationName}`,
+              metadata: {
+                inferred: true,
+                inference_source: 'household_residence',
+                source_message_id: messageId,
+                residence_name: locationName,
+                location_entity_id: locationEntityId,
+                head_of_household: headName,
+                confidence,
+              },
+            });
+            householdId = org.id;
           },
         });
-        householdId = org.id;
+        if (write.outcome === 'ATTACHED' && write.canonical?.id) {
+          householdId = write.canonical.id;
+        }
+        if (!householdId) return {};
       } catch (err) {
         logger.warn({ err, userId }, 'Household inference create failed');
         return {};

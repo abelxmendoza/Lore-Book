@@ -24,6 +24,11 @@ import { supabaseAdmin } from './supabaseClient';
 import { characterRescanStateService } from './characters/audit/characterRescanStateService';
 import { characterCardRescanAuditService } from './characters/audit/characterCardRescanAuditService';
 import { isUserRejectedEntityCard } from './entityRejectionRegistry';
+import { applySuggestionCandidate } from './lorebook/suggestions/applySuggestionCandidate';
+import {
+  getSuggestionWriteContext,
+  withSuggestionWriteContext,
+} from './lorebook/suggestions/suggestionWriteContext';
 import type { EntityType } from '../types/omegaMemory';
 
 export type CharacterRescanSummary = {
@@ -218,6 +223,13 @@ class CharacterConversationRescanService {
     charactersSkipped: number;
     promotedNames: string[];
   }> {
+    const existing = getSuggestionWriteContext();
+    if (!existing || existing.userId !== userId) {
+      return withSuggestionWriteContext(userId, () =>
+        this.promotePersonsFromEpisodes(userId, episodes, knownPersonKeys),
+      );
+    }
+
     const mentionCounts = new Map<string, number>();
     const displayNameByKey = new Map<string, string>();
 
@@ -267,11 +279,28 @@ class CharacterConversationRescanService {
       })
       .map(([key]) => displayNameByKey.get(key) ?? key);
 
-    const candidates = ranked.map((name) => ({ name, type: 'PERSON' as EntityType }));
+    const createNames: string[] = [];
+    let charactersSkipped = 0;
+    for (const name of ranked) {
+      const write = await applySuggestionCandidate({
+        userId,
+        domain: 'characters',
+        name,
+        extractor: 'character_rescan',
+        source: 'character_rescan',
+        onCreate: async () => {
+          createNames.push(name);
+        },
+      });
+      if (write.outcome !== 'CREATED' && write.outcome !== 'ATTACHED') {
+        charactersSkipped += 1;
+      }
+    }
+
+    const candidates = createNames.map((name) => ({ name, type: 'PERSON' as EntityType }));
 
     let omegaResolved = 0;
     let charactersPromoted = 0;
-    let charactersSkipped = 0;
     const promotedNames: string[] = [];
 
     if (candidates.length > 0) {

@@ -266,19 +266,35 @@ class SocietyMappingService {
     const existing = await this.findOrgByName(userId, name);
     if (existing) return existing;
     try {
-      const org = await organizationService.createOrganization(userId, {
+      let createdId: string | null = null;
+      const write = await (
+        await import('../lorebook/suggestions/applySuggestionCandidate')
+      ).applySuggestionCandidate({
+        userId,
+        domain: 'organizations',
         name,
-        aliases: [],
-        group_type: 'company',
-        type: 'company',
-        membership_model: 'fuzzy',
-        user_relationship: 'member',
-        is_public_entity: false,
-        description: `Workplace linked automatically from a hiring/placement mention.`,
-        status: 'active',
-        metadata: { source: 'society_mapper', anchor: 'workplace' },
+        incomingType: 'company',
+        extractor: 'society_mapper',
+        source: 'society_mapper',
+        writePolicy: 'inference',
+        onCreate: async () => {
+          const org = await organizationService.createOrganization(userId, {
+            name,
+            aliases: [],
+            group_type: 'company',
+            type: 'company',
+            membership_model: 'fuzzy',
+            user_relationship: 'member',
+            is_public_entity: false,
+            description: `Workplace linked automatically from a hiring/placement mention.`,
+            status: 'active',
+            metadata: { source: 'society_mapper', anchor: 'workplace' },
+          });
+          createdId = org.id;
+        },
       });
-      return org.id;
+      if (write.outcome === 'ATTACHED') return write.canonical?.id ?? null;
+      return createdId;
     } catch {
       return null;
     }

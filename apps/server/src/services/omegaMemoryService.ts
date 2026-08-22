@@ -532,10 +532,46 @@ Never extract "LoreBook", "Lore Book", or "Lorekeeper" as entities — those ref
         );
       }
 
-      // Create if still unresolved
+      // Create if still unresolved — only when shared write authority allows it.
       if (!match) {
         if (bridged.useCore && bridged.productionDecision === 'skip') {
           continue;
+        }
+        const domain =
+          candidate.type === 'PERSON' || candidate.type === 'CHARACTER'
+            ? 'characters'
+            : candidate.type === 'LOCATION'
+              ? 'locations'
+              : candidate.type === 'ORG'
+                ? 'organizations'
+                : null;
+        if (domain) {
+          const { getSuggestionWriteContext } = await import('./lorebook/suggestions/suggestionWriteContext');
+          const shouldGate = !IS_TEST_ENV || Boolean(getSuggestionWriteContext());
+          if (shouldGate) {
+            const { applySuggestionCandidate } = await import('./lorebook/suggestions/applySuggestionCandidate');
+            const write = await applySuggestionCandidate({
+              userId,
+              domain,
+              name: candidate.name,
+              extractor: 'omega_resolve',
+              source: 'omega_resolve',
+              writePolicy: 'inference',
+            });
+            if (write.outcome === 'ATTACHED' && write.canonical?.id) {
+              match = pool.find((row) => row.id === write.canonical?.id) ?? null;
+              if (!match) {
+                const attached = [...typeEntities.values()].flat().find((row) => row.id === write.canonical?.id);
+                match = attached ?? null;
+              }
+            }
+            if (write.outcome !== 'CREATED') {
+              if (match) {
+                resolved.push(match);
+              }
+              continue;
+            }
+          }
         }
         try {
           match = await this.createEntity(userId, candidate.name, candidate.type, [], {
