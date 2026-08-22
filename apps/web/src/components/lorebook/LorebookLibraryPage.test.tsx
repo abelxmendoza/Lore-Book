@@ -119,6 +119,17 @@ describe('LorebookLibraryPage', () => {
     expect(screen.getAllByRole('button', { name: /^PDF$/i }).length).toBeGreaterThan(0);
   });
 
+  it('opens the reader from Read so Library can return here', () => {
+    render(
+      <MemoryRouter>
+        <LorebookLibraryPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: /^Read$/i })[0]);
+    expect(mockNavigate).toHaveBeenCalledWith(expect.stringMatching(/^\/lorebook\?book=/));
+  });
+
   it('navigates back to generate page', () => {
     render(
       <MemoryRouter>
