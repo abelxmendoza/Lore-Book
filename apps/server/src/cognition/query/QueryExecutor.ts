@@ -7,6 +7,7 @@
  */
 
 import { logger } from '../../logger';
+import { hasFoundationContent } from '../../services/chat/foundationContent';
 
 import type {
   Citation,
@@ -46,7 +47,7 @@ export class StructuredRecallExecutor implements QueryExecutor {
     const { routeRecallQuery } = await import('../../services/chat/recallQueryRouter');
     const routed = await routeRecallQuery(ctx.userId, ctx.message, ctx.conversationHistory);
 
-    const records: QueryRecord[] = routed.contextBlock?.trim()
+    const records: QueryRecord[] = hasFoundationContent(routed.contextBlock)
       ? [
           {
             type: 'foundation_context',

@@ -29,6 +29,13 @@ import {
   type IntentSource,
 } from './composerIntentFastPath';
 import { retrieveSemanticClaimCandidates } from './semanticClaimRetriever';
+import {
+  getTurnWorkingMemory,
+  invalidateTurnWorkingMemory,
+  setTurnWorkingMemory,
+  workingMemoryTurnKey,
+} from './turnWorkingMemoryCache';
+import { recordSkippedOperation } from '../../lib/messageCostTracker';
 
 export type WorkingMemoryIntent =
   | 'PERSON_QUERY'
@@ -2331,6 +2338,34 @@ async function loadSemanticClaimCandidates(
 }
 
 export async function assembleWorkingMemory(
+  input: {
+    question: string;
+    userId: string;
+    threadId?: string | null;
+    focus?: WorkingMemoryFocus | null;
+  },
+  options: AssembleOptions = {}
+): Promise<WorkingMemoryAssembly> {
+  const cacheKey = workingMemoryTurnKey({
+    userId: input.userId,
+    question: input.question,
+    threadId: input.threadId,
+    focusId: input.focus?.id ?? null,
+  });
+  const cached = getTurnWorkingMemory(cacheKey);
+  if (cached) {
+    recordSkippedOperation('working_memory_turn_cache');
+    return cached;
+  }
+
+  const pending = assembleWorkingMemoryUncached(input, options).finally(() => {
+    invalidateTurnWorkingMemory(cacheKey);
+  });
+  setTurnWorkingMemory(cacheKey, pending);
+  return pending;
+}
+
+async function assembleWorkingMemoryUncached(
   input: {
     question: string;
     userId: string;

@@ -31,6 +31,18 @@ import {
 } from './retellingRecallService';
 import { chooseRetrievalPath } from './retrievalStrategy';
 import {
+  RAG_ARC_COLS,
+  RAG_BIOMETRIC_COLS,
+  RAG_CHARACTER_COLS,
+  RAG_CORRECTION_COLS,
+  RAG_DEPRECATED_UNIT_COLS,
+  RAG_ENTITY_ATTR_COLS,
+  RAG_ERA_COLS,
+  RAG_ORG_COLS,
+  RAG_ROMANCE_COLS,
+  RAG_SAGA_COLS,
+} from './ragLoreProjections';
+import {
   assembleWorkingMemory,
   buildWorkingMemoryPacket,
   type WorkingMemoryAssembly,
@@ -45,19 +57,6 @@ export type RagFocus = {
 
 // ─── Fitness keyword gate ────────────────────────────────────────────────────
 const FITNESS_RE = /\b(workout|exercise|gym|ran|run|lifted|bench|squat|deadlift|calories|weight|lbs|kg|miles|steps|cardio|biometric|body fat|muscle)\b/i;
-
-// Every `characters` column EXCEPT the 1536-dim `embedding` vector (~6KB/row).
-// The RAG packet never reads the embedding (semantic match runs in the DB via the
-// HNSW index), so pulling it on this per-message, all-rows scan is pure egress
-// waste. Keep this in sync with the characters table if columns are added.
-const CHARACTER_COLS =
-  'id, user_id, name, alias, pronouns, archetype, role, status, first_appearance, ' +
-  'summary, tags, metadata, created_at, updated_at, embedding_model, embedding_version, ' +
-  'last_embedded_at, perception_count, first_perception_at, last_perception_at, ' +
-  'sensitivity_level, requires_extra_confirmation, first_name, last_name, is_nickname, ' +
-  'avatar_url, importance_level, importance_score, proximity_level, has_met, ' +
-  'relationship_depth, associated_with_character_ids, mentioned_by_character_ids, ' +
-  'context_of_mention, likelihood_to_meet';
 
 // ─── Public entry point ───────────────────────────────────────────────────────
 
@@ -124,7 +123,7 @@ export async function buildRAGPacket(
     // Characters
     try {
       const { data } = await supabaseAdmin
-        .from('characters').select(CHARACTER_COLS).eq('user_id', userId).order('created_at', { ascending: false });
+        .from('characters').select(RAG_CHARACTER_COLS).eq('user_id', userId).order('created_at', { ascending: false });
       allCharacters = (data as any[]) || [];
     } catch (e) { logger.debug({ e }, 'RAGBuilder: characters fetch failed'); }
 
@@ -133,10 +132,10 @@ export async function buildRAGPacket(
       const [locResult, chapResult, erasResult, sagasResult, arcsResult, orgsResult] = await Promise.all([
         locationService.listLocations(userId).catch((): any[] => []),
         chapterService.listChapters(userId).catch((): any[] => []),
-        supabaseAdmin.from('eras').select('*').eq('user_id', userId).order('start_date', { ascending: false }),
-        supabaseAdmin.from('sagas').select('*').eq('user_id', userId).order('start_date', { ascending: false }),
-        supabaseAdmin.from('arcs').select('*').eq('user_id', userId).order('start_date', { ascending: false }),
-        supabaseAdmin.from('organizations').select('id, name, aliases').eq('user_id', userId),
+        supabaseAdmin.from('eras').select(RAG_ERA_COLS).eq('user_id', userId).order('start_date', { ascending: false }),
+        supabaseAdmin.from('sagas').select(RAG_SAGA_COLS).eq('user_id', userId).order('start_date', { ascending: false }),
+        supabaseAdmin.from('arcs').select(RAG_ARC_COLS).eq('user_id', userId).order('start_date', { ascending: false }),
+        supabaseAdmin.from('organizations').select(RAG_ORG_COLS).eq('user_id', userId),
       ]);
       allLocations = locResult as any[];
       allChapters = chapResult as any[];
@@ -157,7 +156,7 @@ export async function buildRAGPacket(
       try {
         const charIds = allCharacters.map((c: any) => c.id);
         const { data: attrData } = await supabaseAdmin
-          .from('entity_attributes').select('*')
+          .from('entity_attributes').select(RAG_ENTITY_ATTR_COLS)
           .eq('user_id', userId).eq('entity_type', 'character').eq('is_current', true)
           .in('entity_id', charIds);
         for (const attr of ((attrData as any[]) || [])) {
@@ -194,7 +193,7 @@ export async function buildRAGPacket(
     // Romantic relationships — fetch + resolve partner names (batched, not N+1)
     try {
       const { data } = await supabaseAdmin
-        .from('romantic_relationships').select('*').eq('user_id', userId)
+        .from('romantic_relationships').select(RAG_ROMANCE_COLS).eq('user_id', userId)
         .order('created_at', { ascending: false }).limit(20);
       const raw = (data as any[]) || [];
       romanticRelationships = await resolveRelationshipNames(raw);
@@ -203,8 +202,8 @@ export async function buildRAGPacket(
     // Corrections + deprecated units
     try {
       const [corrResult, deprResult] = await Promise.all([
-        supabaseAdmin.from('correction_records').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(20),
-        supabaseAdmin.from('extracted_units').select('*').eq('user_id', userId).or('metadata->>deprecated.eq.true,superseded_at.not.is.null').order('created_at', { ascending: false }).limit(30),
+        supabaseAdmin.from('correction_records').select(RAG_CORRECTION_COLS).eq('user_id', userId).order('created_at', { ascending: false }).limit(20),
+        supabaseAdmin.from('extracted_units').select(RAG_DEPRECATED_UNIT_COLS).eq('user_id', userId).or('metadata->>deprecated.eq.true,superseded_at.not.is.null').order('created_at', { ascending: false }).limit(30),
       ]);
       corrections = ((corrResult as any).data as any[]) || [];
       deprecatedUnits = ((deprResult as any).data as any[]) || [];
@@ -216,7 +215,7 @@ export async function buildRAGPacket(
         const { workoutEventDetector } = await import('../conversationCentered/workoutEventDetector');
         workoutEvents = await workoutEventDetector.getWorkoutEvents(userId, 20, 0);
         const { data } = await supabaseAdmin
-          .from('biometric_measurements').select('*').eq('user_id', userId)
+          .from('biometric_measurements').select(RAG_BIOMETRIC_COLS).eq('user_id', userId)
           .order('measurement_date', { ascending: false }).limit(10);
         recentBiometrics = (data as any[]) || [];
       } catch (e) { logger.debug({ e }, 'RAGBuilder: fitness data fetch failed'); }
