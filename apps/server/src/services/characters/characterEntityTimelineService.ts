@@ -1,8 +1,8 @@
 /**
- * Character Timeline Authority Cutover
+ * Character Timeline Authority
  *
  * “When did something involving this person happen?” is answered only by
- * CanonicalTemporalModel → stitchedTimelineService.
+ * resolved_events.people[] → CanonicalTemporalModel → stitchedTimelineService.
  * Relationship state (“what is this person to me?”) stays on
  * character_relationship_history and is out of this tab.
  *

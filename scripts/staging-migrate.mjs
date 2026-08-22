@@ -107,13 +107,23 @@ psqlc(
   false,
 );
 
-const list = psqlc('SELECT version FROM supabase_migrations.schema_migrations ORDER BY version;');
-const applied = new Set(
-  (list.stdout || '')
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => /^\d+$/.test(l)),
+const list = psqlc(
+  "SELECT version || E'\\t' || coalesce(name, '') FROM supabase_migrations.schema_migrations ORDER BY version;",
 );
+const applied = new Set();
+const appliedNames = new Set();
+for (const line of (list.stdout || '').split('\n')) {
+  const trimmed = line.trim();
+  const tab = trimmed.indexOf('\t');
+  if (tab < 0) {
+    if (/^\d+$/.test(trimmed)) applied.add(trimmed);
+    continue;
+  }
+  const version = trimmed.slice(0, tab).trim();
+  const name = trimmed.slice(tab + 1).trim();
+  if (/^\d+$/.test(version)) applied.add(version);
+  if (name) appliedNames.add(name);
+}
 console.log('Already applied:', applied.size);
 
 const migDir = join(STAGING_ROOT, 'supabase/migrations');
@@ -149,7 +159,8 @@ const iterate = !missingCritical.length && !fullBacklog ? [] : targets.length ? 
 
 for (const file of files) {
   const ver = file.split('_')[0];
-  if (applied.has(ver)) {
+  const name = file.slice(ver.length + 1).replace(/\.sql$/, '');
+  if (applied.has(ver) || appliedNames.has(name)) {
     skip += 1;
     if (CRITICAL.includes(ver)) appliedCritical.push(file);
   }
@@ -158,7 +169,7 @@ for (const file of files) {
 for (const file of iterate) {
   const ver = file.split('_')[0];
   const name = file.slice(ver.length + 1).replace(/\.sql$/, '');
-  if (applied.has(ver)) {
+  if (applied.has(ver) || appliedNames.has(name)) {
     continue;
   }
 

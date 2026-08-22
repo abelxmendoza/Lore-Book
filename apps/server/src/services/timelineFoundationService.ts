@@ -24,7 +24,7 @@ type EventType =
   | 'activity'
   | 'living_situation';
 
-// Allowed values previously enforced by character_timeline_events check constraints
+// Participation kinds used with resolved_events.people[]
 type TimelineType = 'shared_experience' | 'lore' | 'mentioned_in';
 type EmotionalImpact = 'positive' | 'negative' | 'neutral' | 'mixed';
 
