@@ -1,9 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag, Zap, Flame, Wind, Moon, GitBranch, Star, Skull, HeartCrack, UserMinus, PawPrint } from 'lucide-react';
-import { FamilyTreeView, createMockUserFamilyTree, createMockFamilyTreeForCharacter } from '../family/FamilyTreeView';
-import { FamilyTreePanel } from '../family/FamilyTreePanel';
-import { FamilyTreeCopyAllButton } from '../family/FamilyTreeCopyAllButton';
-import { MyFamilyModal } from '../family/MyFamilyModal';
+import { createMockUserFamilyTree } from '../family/FamilyTreeView';
 import { CharacterProfileCard, type Character, type CharacterAttribute } from './CharacterProfileCard';
 import { MainCharacterProfileCard, buildSyntheticMainCharacter } from './MainCharacterProfileCard';
 import { MainCharacterDetailModal } from './MainCharacterDetailModal';
@@ -55,16 +52,40 @@ import {
 import { FocusedEntityChatLauncher } from '../chat/FocusedEntityChatLauncher';
 import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
 import { openFocusedEntityChat } from '../../lib/openFocusedEntityChat';
+import { openDatingRomanceCharacterChat } from '../../lib/datingRomanceChatFocus';
+import {
+  characterBelongsInFamilyBook,
+  familyTreeCardIds,
+  pinnedBookCategory,
+  ROMANTIC_OR_CRUSH_ARCHETYPES,
+} from '../../lib/characterBookCategory';
 import { DetectedCharacterSuggestions } from './DetectedCharacterSuggestions';
 import { CharacterMergePanel } from './CharacterMergePanel';
 import { CharacterAuditPanel } from './CharacterAuditPanel';
-import { OntologyCompliancePanel } from '../ontology/OntologyCompliancePanel';
 import { getMockCharacterSuggestionBookNames } from '../../mocks/characterSuggestions';
 import { isSelfCharacter } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
 import { impactOnUserWithPublicFigureCap, isPublicFigureCharacter } from '../../lib/publicFigure';
 import { CharacterAvatar } from './CharacterAvatar';
+import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { BookTrustSummary } from '../trust/BookTrustSummary';
+import type { FamilyTree } from '../../types/socialRoles';
+import {
+  characterCreatedAt,
+  characterFirstMentionedAt,
+  compareByTimestampAsc,
+  compareByTimestampDesc,
+  compareCharactersByName,
+  withCharacterTimelineDates,
+  formatCharacterDate,
+} from '../../lib/characterTimeline';
+import {
+  indexCharacterPresence,
+  closenessBandLabel,
+  formatPresenceLastSeen,
+  type CharacterPresence,
+  type CharacterPresencePhase,
+} from '../../lib/characterPresence';
 
 // ── Demo filter-field normalization ──────────────────────────────────────────
 // Every category tab (proximity, mentioned, etc.) must have matches in demo
@@ -2670,6 +2691,7 @@ export const dummyCharacters: Character[] = [
 ];
 
 const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
+const LIST_ITEMS_PER_PAGE = 40;
 
 type CharacterCategory =
   | 'all'
@@ -2730,6 +2752,9 @@ const relationshipSignalsFor = (char: Character): Set<string> => {
   addMany(metadata.group_types);
 
   if (displayNameHasFamilyTitle(char.name)) signals.add('family');
+  if (char.archetype && ROMANTIC_OR_CRUSH_ARCHETYPES.has(String(char.archetype).split(',')[0]?.trim().toLowerCase())) {
+    signals.add('romantic');
+  }
 
   // Deliberately exclude display name and aliases here. Stage names/handles can
   // contain kinship words ("Oscuri.dad", "Goth Tio", "Mom Jeans") without being
@@ -2792,7 +2817,29 @@ const relationshipSignalsFor = (char: Character): Set<string> => {
   return signals;
 };
 
-const characterMatchesRelationshipCategory = (char: Character, category: CharacterCategory): boolean => {
+const characterMatchesRelationshipCategory = (
+  char: Character,
+  category: CharacterCategory,
+  extras: { hasDatingRow?: boolean; onFamilyTree?: boolean } = {},
+): boolean => {
+  const pinned = pinnedBookCategory(char.metadata);
+  if (
+    pinned &&
+    (category === 'family' ||
+      category === 'friends' ||
+      category === 'romantic' ||
+      category === 'mentors' ||
+      category === 'professional' ||
+      category === 'creative' ||
+      category === 'exes' ||
+      category === 'enemies' ||
+      category === 'rivals' ||
+      category === 'estranged' ||
+      category === 'acquaintances')
+  ) {
+    if (category === 'family') return characterBelongsInFamilyBook(char, extras);
+    return pinned === category;
+  }
   const signals = relationshipSignalsFor(char);
   const met = char.status !== 'unmet';
   const romanceType = normalizeRomanceTypeKey(
@@ -2800,12 +2847,13 @@ const characterMatchesRelationshipCategory = (char: Character, category: Charact
   );
   switch (category) {
     case 'family':
-      return signals.has('family');
+      return characterBelongsInFamilyBook(char, extras);
     case 'friends':
       return met && (signals.has('friend') || signals.has('ally'));
     case 'romantic':
       return met && (
-        signals.has('romantic')
+        extras.hasDatingRow
+        || signals.has('romantic')
         || signals.has('past_romantic')
         || signals.has('dating')
         || signals.has('ex_girlfriend')
@@ -2846,7 +2894,29 @@ const characterMatchesRelationshipCategory = (char: Character, category: Charact
   }
 };
 type ImportanceFilter = 'all' | 'important' | 'high_impact' | 'archived' | 'pending_deletion' | 'protagonist' | 'major' | 'supporting' | 'minor' | 'background';
-type SortOrder = 'role' | 'impact' | 'standing';
+type SortOrder = 'name' | 'role' | 'impact' | 'standing' | 'created' | 'mentioned';
+
+const FLAT_SORT_HEADING: Record<Exclude<SortOrder, 'role'>, { label: string; iconClass: string }> = {
+  name: { label: 'A–Z', iconClass: 'text-white/70' },
+  created: { label: 'Newest cards first', iconClass: 'text-sky-400' },
+  mentioned: { label: 'First mentioned, earliest first', iconClass: 'text-emerald-400' },
+  impact: { label: 'People by impact on you', iconClass: 'text-purple-400' },
+  standing: { label: 'Your circle, closest first', iconClass: 'text-amber-400' },
+};
+
+const PRESENCE_PHASE_STYLE: Record<CharacterPresencePhase, { label: string; cls: string; iconClass: string }> = {
+  core: { label: 'Core', cls: 'text-purple-300 bg-purple-500/10', iconClass: 'text-purple-300' },
+  active: { label: 'Active', cls: 'text-cyan-300 bg-cyan-500/10', iconClass: 'text-cyan-300' },
+  fading: { label: 'Fading', cls: 'text-amber-300 bg-amber-500/10', iconClass: 'text-amber-300' },
+  dormant: { label: 'Dormant', cls: 'text-gray-400 bg-gray-500/10', iconClass: 'text-gray-400' },
+};
+
+const PRESENCE_PHASE_ICON: Record<CharacterPresencePhase, typeof Flame> = {
+  core: Flame,
+  active: Zap,
+  fading: Wind,
+  dormant: Moon,
+};
 
 const impactOnUser = impactOnUserWithPublicFigureCap;
 
@@ -2906,12 +2976,13 @@ export const CharacterBook = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<CharacterCategory>('all');
   const [importanceFilter, setImportanceFilter] = useState<ImportanceFilter>('all');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('role');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('name');
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
     minor: false,
     background: false
   });
   const [relationships, setRelationships] = useState<Map<string, RomanticRelationship>>(new Map());
+  const [familyTreeMemberIds, setFamilyTreeMemberIds] = useState<Set<string>>(new Set());
   
   // Seed demo characters once per fixture version. Bump DEMO_CHARACTERS_SEED_VERSION
   // when dummyCharacters presentation fields change so stale in-memory demo rows
@@ -3024,11 +3095,23 @@ export const CharacterBook = () => {
   ]);
 
   const characters = useMemo(() => {
-    const base = demoCharacterOverride ?? serverCharacters;
+    const base = (demoCharacterOverride ?? serverCharacters).map(withCharacterTimelineDates);
     const orgs = organizationsPayload?.organizations ?? [];
     if (!orgs.length) return base;
     return withPrimaryOrganizations(base, orgs);
   }, [demoCharacterOverride, serverCharacters, organizationsPayload?.organizations]);
+  const presenceById = useMemo(() => indexCharacterPresence(characters), [characters]);
+  const peopleOnYourMind = useMemo(() => {
+    const rows: { c: Character; presence: CharacterPresence }[] = [];
+    for (const c of characters) {
+      if (isSelfCharacter(c)) continue;
+      const presence = presenceById.get(c.id);
+      if (!presence || (presence.recency ?? 0) <= 0) continue;
+      rows.push({ c, presence });
+    }
+    rows.sort((a, b) => (b.presence.recency ?? 0) - (a.presence.recency ?? 0));
+    return rows.slice(0, 6);
+  }, [characters, presenceById]);
   const bookLoading = charactersLoading || loading;
 
   useEffect(() => {
@@ -3195,9 +3278,34 @@ export const CharacterBook = () => {
     }
   };
 
+  const loadFamilyTreeMemberIds = async () => {
+    try {
+      if (isMockDataEnabled) {
+        setFamilyTreeMemberIds(familyTreeCardIds(createMockUserFamilyTree()));
+        return;
+      }
+      const data = await fetchJson<{ success: boolean; tree: FamilyTree }>(
+        '/api/family-trees/mine',
+      );
+      setFamilyTreeMemberIds(data.success ? familyTreeCardIds(data.tree) : new Set());
+    } catch (error) {
+      console.error('Failed to load family tree roster:', error);
+      setFamilyTreeMemberIds(new Set());
+    }
+  };
+
   // Load romantic relationships on auth/mock changes; character list is RTK-driven.
   useEffect(() => {
     void loadRelationships();
+    void loadFamilyTreeMemberIds();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, isMockDataEnabled]);
+
+  useEffect(() => {
+    return onStoryDataUpdated(() => {
+      void loadFamilyTreeMemberIds();
+      void loadCharacters();
+    }, 'family');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, isMockDataEnabled]);
 
@@ -3276,8 +3384,6 @@ export const CharacterBook = () => {
   const [viewMode, setViewMode] = useState<CardViewMode>(() => {
     try { return (localStorage.getItem('lk_char_view') as CardViewMode) || 'grid'; } catch { return 'grid'; }
   });
-  const [showFamilyTree, setShowFamilyTree] = useState(false);
-  const [showMyFamily, setShowMyFamily] = useState(false);
   useEffect(() => {
     if (highlightedCharacterIds.length === 0) return;
     setRecentlyUpdatedIds(new Set(highlightedCharacterIds));
@@ -3369,7 +3475,10 @@ export const CharacterBook = () => {
               }
               return !isPublicFigure(char) && isCoParentRomanceType(linkedType);
             }
-            return !isPublicFigure(char) && characterMatchesRelationshipCategory(char, activeCategory);
+            return !isPublicFigure(char) && characterMatchesRelationshipCategory(char, activeCategory, {
+              hasDatingRow: Boolean(relationships.get(char.id)),
+              onFamilyTree: familyTreeMemberIds.has(char.id),
+            });
           case 'public_figure':
             return isPublicFigure(char);
           case 'mentioned':
@@ -3409,7 +3518,7 @@ export const CharacterBook = () => {
     }
     
     return filtered;
-  }, [characters, searchTerm, activeCategory, importanceFilter, relationships]);
+  }, [characters, searchTerm, activeCategory, importanceFilter, relationships, familyTreeMemberIds]);
 
   const mainCharacter = useMemo(() => {
     const self = characters.find(isSelfCharacter);
@@ -3425,7 +3534,28 @@ export const CharacterBook = () => {
       if (!groups[level]) groups[level] = [];
       groups[level].push(char);
     });
+    for (const level of Object.keys(groups)) {
+      groups[level].sort(compareCharactersByName);
+    }
     return groups;
+  }, [filteredCharacters]);
+
+  const charactersByName = useMemo(() => {
+    return [...filteredCharacters].sort(compareCharactersByName);
+  }, [filteredCharacters]);
+
+  const charactersByCreated = useMemo(() => {
+    return [...filteredCharacters].sort(
+      (a, b) => compareByTimestampDesc(characterCreatedAt(a), characterCreatedAt(b)) || compareCharactersByName(a, b),
+    );
+  }, [filteredCharacters]);
+
+  const charactersByMentioned = useMemo(() => {
+    return [...filteredCharacters].sort(
+      (a, b) =>
+        compareByTimestampAsc(characterFirstMentionedAt(a), characterFirstMentionedAt(b)) ||
+        compareCharactersByName(a, b),
+    );
   }, [filteredCharacters]);
 
   // Sorted by impact on you (for "By impact" view)
@@ -3448,11 +3578,22 @@ export const CharacterBook = () => {
 
   /** Same ordered set the grid shows — Copy all must match current filters + sort. */
   const clipboardCharacters = useMemo(() => {
+    if (sortOrder === 'name') return charactersByName;
+    if (sortOrder === 'created') return charactersByCreated;
+    if (sortOrder === 'mentioned') return charactersByMentioned;
     if (sortOrder === 'standing') return charactersByStanding;
     if (sortOrder === 'impact') return charactersByImpact;
     const order = ['protagonist', 'major', 'supporting', 'public_figure', 'minor', 'background'];
     return order.flatMap((level) => groupedByImportance[level] ?? []);
-  }, [sortOrder, charactersByStanding, charactersByImpact, groupedByImportance]);
+  }, [
+    sortOrder,
+    charactersByName,
+    charactersByCreated,
+    charactersByMentioned,
+    charactersByStanding,
+    charactersByImpact,
+    groupedByImportance,
+  ]);
 
   const clipboardText = useMemo(
     () =>
@@ -3476,16 +3617,20 @@ export const CharacterBook = () => {
     background: 'Background Characters'
   };
 
-  // Reset to page 1 when search, category, importance filter, or sort changes
+  // Reset to page 1 when search, category, importance filter, sort, or view changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, activeCategory, importanceFilter, sortOrder]);
+  }, [searchTerm, activeCategory, importanceFilter, sortOrder, viewMode]);
 
   // Calculate pagination — paginate the same ordered list the grid actually
-  // renders (clipboardCharacters already matches sortOrder: standing/impact/role).
-  const totalPages = Math.ceil(clipboardCharacters.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
+  // renders (clipboardCharacters already matches the active sort).
+  const pageSize = viewMode === 'list' ? LIST_ITEMS_PER_PAGE : ITEMS_PER_PAGE;
+  const totalPages = Math.max(1, Math.ceil(clipboardCharacters.length / pageSize));
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
   const paginatedCharacters = clipboardCharacters.slice(startIndex, endIndex);
 
   // Current page's characters re-grouped by importance level, for the "By role" view —
@@ -3559,6 +3704,19 @@ export const CharacterBook = () => {
       setFocusedChatBusy(true);
       setFocusedChatError(null);
       try {
+        const dating = selection.entity ? relationships.get(selection.entity.id) : undefined;
+        if (selection.entity && dating) {
+          openDatingRomanceCharacterChat({
+            entityId: selection.entity.id,
+            entityName: selection.entity.name,
+            relationshipId: dating.id,
+            baseline: {
+              affectionScore: Math.round((dating.affection_score ?? 0.5) * 100),
+              healthScore: Math.round((dating.relationship_health ?? 0.5) * 100),
+            },
+          });
+          return;
+        }
         openFocusedEntityChat(FOCUSED_ENTITY_CHAT_PRESETS.characters, selection);
       } catch (error) {
         setFocusedChatError(
@@ -3568,15 +3726,14 @@ export const CharacterBook = () => {
         setFocusedChatBusy(false);
       }
     },
-    [],
+    [relationships],
   );
 
   return (
     <div
-      className={`space-y-4 sm:space-y-6 ${selectionMode && selectedForMerge.size >= 2 ? 'pb-28 sm:pb-4' : ''}`}
+      className={`space-y-4 sm:space-y-6 ${selectionMode && selectedForMerge.size >= 2 ? 'pb-44 sm:pb-4' : ''}`}
       data-testid="character-book"
     >
-      <MyFamilyModal isOpen={showMyFamily} onClose={() => setShowMyFamily(false)} />
 
       {/* The user's own story context leads the Character Book before the cast. */}
       <div className="space-y-3 sm:space-y-4" data-testid="character-book-user-profile">
@@ -3636,8 +3793,6 @@ export const CharacterBook = () => {
         </div>
       )}
 
-      <OntologyCompliancePanel book="characters" />
-
       <CharacterAuditPanel
         demoMode={isMockDataEnabled}
         onChanged={() => {
@@ -3665,37 +3820,19 @@ export const CharacterBook = () => {
       />
 
       {/* People On Your Mind Lately */}
-      {(() => {
-        const displayNameForMindChip = (character: Character) => {
-          const structuredName = [character.first_name, character.last_name]
-            .filter((part): part is string => Boolean(part?.trim()))
-            .join(' ')
-            .trim();
-          return structuredName || character.name;
-        };
-
-        const recent = [...characters]
-          .filter(c => !isSelfCharacter(c))
-          .filter(c => (c.analytics?.recency_score ?? 0) > 0)
-          .sort((a, b) => (b.analytics?.recency_score ?? 0) - (a.analytics?.recency_score ?? 0))
-          .slice(0, 6);
-        if (recent.length === 0) return null;
-        return (
+      {peopleOnYourMind.length > 0 && (
           <div>
             <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-2.5">
               People On Your Mind Lately
             </p>
             <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-              {recent.map(c => {
-                const closeness = c.analytics?.closeness_score ?? 0;
-                const displayName = displayNameForMindChip(c);
-                const phase = (() => {
-                  const r = c.analytics?.recency_score ?? 0;
-                  if (closeness >= 70 && r >= 0.6) return { label: 'Core',    cls: 'text-purple-300', icon: <Flame className="h-2.5 w-2.5" /> };
-                  if (closeness >= 45 || r >= 0.4) return { label: 'Active',  cls: 'text-cyan-300',   icon: <Zap className="h-2.5 w-2.5" /> };
-                  if (closeness >= 20 || r >= 0.2) return { label: 'Fading',  cls: 'text-amber-300',  icon: <Wind className="h-2.5 w-2.5" /> };
-                  return                            { label: 'Dormant', cls: 'text-gray-400',   icon: <Moon className="h-2.5 w-2.5" /> };
-                })();
+              {peopleOnYourMind.map(({ c, presence }) => {
+                const displayName = [c.first_name, c.last_name]
+                  .filter((part): part is string => Boolean(part?.trim()))
+                  .join(' ')
+                  .trim() || c.name;
+                const phaseStyle = presence.phase ? PRESENCE_PHASE_STYLE[presence.phase] : null;
+                const PhaseIcon = presence.phase ? PRESENCE_PHASE_ICON[presence.phase] : null;
                 return (
                   <button
                     key={c.id}
@@ -3715,16 +3852,17 @@ export const CharacterBook = () => {
                       />
                     </div>
                     <span className="text-[10px] text-white/80 leading-tight line-clamp-2 w-full">{displayName}</span>
-                    <span className={`flex items-center gap-0.5 text-[9px] ${phase.cls}`}>
-                      {phase.icon}{phase.label}
-                    </span>
+                    {phaseStyle && PhaseIcon && (
+                      <span className={`flex items-center gap-0.5 text-[9px] ${phaseStyle.iconClass}`}>
+                        <PhaseIcon className="h-2.5 w-2.5" />{phaseStyle.label}
+                      </span>
+                    )}
                   </button>
                 );
               })}
             </div>
           </div>
-        );
-      })()}
+      )}
 
       {/* Search, filters and tabs sit directly above the grid they drive — the
           cast chrome above them is the page's opening read. */}
@@ -3774,6 +3912,9 @@ export const CharacterBook = () => {
               onChange={(e) => setSortOrder(e.target.value as SortOrder)}
               className="max-w-full bg-black/40 border border-border/50 text-white text-sm px-3 py-1.5 rounded-md"
             >
+              <option value="name">A–Z</option>
+              <option value="created">Newest cards</option>
+              <option value="mentioned">First mentioned</option>
               <option value="role">By role in story</option>
               <option value="impact">By impact on me</option>
               <option value="standing">By standing</option>
@@ -3986,28 +4127,6 @@ export const CharacterBook = () => {
             <BookTrustSummary domain="characters" className="mt-1" />
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {/* My Family — always available: self card, family tree, same-name confirmation */}
-            <button
-              type="button"
-              onClick={() => setShowMyFamily(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-primary/30 bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
-              title="My Family — your card, family tree, and same-name confirmation"
-            >
-              <Users className="h-3.5 w-3.5" />
-              My Family
-            </button>
-            {/* Family Tree toggle — only shown in family category */}
-            {activeCategory === 'family' && (
-              <button
-                type="button"
-                onClick={() => setShowFamilyTree(f => !f)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${showFamilyTree ? 'bg-pink-500/20 border-pink-500/40 text-pink-300' : 'bg-white/5 border-white/10 text-white/50 hover:text-white/70'}`}
-                title={showFamilyTree ? 'Switch to character grid' : 'View family tree'}
-              >
-                <GitBranch className="h-3.5 w-3.5" />
-                {showFamilyTree ? 'Grid' : 'Family Tree'}
-              </button>
-            )}
             <GridListViewToolbar
               viewMode={viewMode}
               onViewModeChange={setViewMode}
@@ -4067,87 +4186,6 @@ export const CharacterBook = () => {
             </>
           )}
         </div>
-      ) : activeCategory === 'family' && showFamilyTree ? (
-        /* ── Family Tree View ── */
-        <div className="space-y-4">
-          {/* Real users: conversation-inferred tree that grows as you mention family.
-              Demo mode: the curated mock trees. */}
-          {!isMockDataEnabled ? (
-            <FamilyTreePanel
-              scope="mine"
-              title="No family tree yet"
-              hint="Mention family members in chat (e.g. “my grandmother”, “my cousin Nico”) — LoreBook builds and grows your tree from your conversations, then fills in real names as you share them."
-              onMemberClick={(memberId, memberName) => {
-                const nameLc = memberName.toLowerCase();
-                const match = characters.find(c =>
-                  c.id === memberId ||
-                  c.name.toLowerCase().includes(nameLc) ||
-                  nameLc.includes(c.name.toLowerCase())
-                );
-                if (match) setSelectedCharacter(match);
-              }}
-            />
-          ) : (
-          <>
-          {/* User's own family tree */}
-          <div className="rounded-xl border border-pink-500/20 bg-pink-950/10 p-5">
-            <div className="mb-4 flex items-center justify-between gap-2">
-              <p className="text-[10px] font-semibold text-pink-400/70 uppercase tracking-widest flex items-center gap-2">
-                <Heart className="h-3.5 w-3.5" /> Your Family Tree
-              </p>
-              <FamilyTreeCopyAllButton
-                tree={createMockUserFamilyTree()}
-                title="Your family tree"
-                filters={['mode=demo', 'scope=mine']}
-                data-testid="character-book-family-copy-all"
-              />
-            </div>
-            <FamilyTreeView
-              tree={createMockUserFamilyTree()}
-              onMemberClick={(member) => {
-                const match = characters.find(c =>
-                  c.name.toLowerCase().includes(member.first_name?.toLowerCase() ?? member.name.toLowerCase()) ||
-                  member.name.toLowerCase().includes(c.name.toLowerCase())
-                );
-                if (match) setSelectedCharacter(match);
-              }}
-            />
-          </div>
-
-          {/* Individual trees for family members with their own data */}
-          {filteredCharacters
-            .filter(c => isMockDataEnabled && createMockFamilyTreeForCharacter(c.name) !== null)
-            .map(c => {
-              const tree = createMockFamilyTreeForCharacter(c.name);
-              if (!tree) return null;
-              return (
-                <div key={c.id} className="rounded-xl border border-white/10 bg-white/4 p-5">
-                  <div className="mb-4 flex items-center justify-between gap-2">
-                    <p className="text-[10px] font-semibold text-white/40 uppercase tracking-widest flex items-center gap-2">
-                      <GitBranch className="h-3.5 w-3.5" /> {c.name}&apos;s Family Tree
-                    </p>
-                    <FamilyTreeCopyAllButton
-                      tree={tree}
-                      title={`Family tree — ${c.name}`}
-                      filters={[`characterId=${c.id}`, 'mode=demo']}
-                    />
-                  </div>
-                  <FamilyTreeView
-                    tree={tree}
-                    compact={true}
-                    onMemberClick={(member) => {
-                      const match = characters.find(ch =>
-                        ch.name.toLowerCase().includes(member.first_name?.toLowerCase() ?? member.name.toLowerCase())
-                      );
-                      if (match) setSelectedCharacter(match);
-                    }}
-                  />
-                </div>
-              );
-            })}
-          </>
-          )}
-        </div>
       ) : viewMode === 'list' ? (
         /* ── List View ── */
         <div className="space-y-4">
@@ -4156,19 +4194,22 @@ export const CharacterBook = () => {
             user={user}
             onClick={() => setMainCharacterModalOpen(true)}
           />
-          <div className="rounded-xl border border-white/10 bg-black/30 overflow-hidden divide-y divide-white/6">
-          {filteredCharacters.map(c => {
-            const closeness = c.analytics?.closeness_score ?? 0;
-            const recency   = c.analytics?.recency_score   ?? 0;
-            const phase = closeness >= 70 && recency >= 0.6 ? { label: 'Core',    cls: 'text-purple-300 bg-purple-500/10', icon: <Flame className="h-2.5 w-2.5" /> }
-                        : closeness >= 45 || recency >= 0.4 ? { label: 'Active',  cls: 'text-cyan-300   bg-cyan-500/10',   icon: <Zap   className="h-2.5 w-2.5" /> }
-                        : closeness >= 20 || recency >= 0.2 ? { label: 'Fading',  cls: 'text-amber-300 bg-amber-500/10',   icon: <Wind  className="h-2.5 w-2.5" /> }
-                        :                                      { label: 'Dormant', cls: 'text-gray-400   bg-gray-500/10',   icon: <Moon  className="h-2.5 w-2.5" /> };
-            const closenessWidth = Math.min(100, closeness);
+          <div
+            className="rounded-xl border border-white/10 bg-black/30 overflow-hidden divide-y divide-white/6"
+            data-testid="character-book-list"
+          >
+          {paginatedCharacters.map(c => {
+            const presence = presenceById.get(c.id);
+            const closeness = presence?.closeness ?? null;
+            const lastSeen = formatPresenceLastSeen(presence?.lastSeenAt);
+            const band = closenessBandLabel(closeness);
+            const phaseStyle = presence?.phase ? PRESENCE_PHASE_STYLE[presence.phase] : null;
+            const PhaseIcon = presence?.phase ? PRESENCE_PHASE_ICON[presence.phase] : null;
             return (
               <button
                 key={c.id}
                 type="button"
+                data-testid="character-book-list-row"
                 onClick={() => selectionMode ? toggleSelectedForMerge(c.id) : setSelectedCharacter(c)}
                 className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left ${
                   selectedForMerge.has(c.id) ? 'bg-primary/10 ring-1 ring-primary/40' : ''
@@ -4202,27 +4243,76 @@ export const CharacterBook = () => {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-white/90 truncate">{c.name}</p>
                   {c.role && <p className="text-xs text-white/45 truncate">{c.role}</p>}
+                  {(c.created_at || c.first_appearance) && (
+                    <p className="text-[10px] text-white/35 truncate">
+                      {c.created_at ? `Added ${formatCharacterDate(c.created_at) ?? c.created_at}` : null}
+                      {c.created_at && c.first_appearance ? ' · ' : null}
+                      {c.first_appearance ? `First mentioned ${formatCharacterDate(c.first_appearance) ?? c.first_appearance}` : null}
+                    </p>
+                  )}
                 </div>
 
-                {/* Closeness bar */}
-                <div className="hidden sm:flex flex-col items-end gap-1 w-24 flex-shrink-0">
-                  <div className="w-full h-1 bg-white/8 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-primary/60 rounded-full"
-                      style={{ width: `${closenessWidth}%` }}
-                    />
+                {(closeness != null || lastSeen) && (
+                  <div className="hidden sm:flex flex-col items-end gap-0.5 w-28 flex-shrink-0">
+                    {closeness != null && (
+                      <>
+                        <div className="w-full h-1 bg-white/8 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary/60 rounded-full"
+                            style={{ width: `${Math.min(100, closeness)}%` }}
+                          />
+                        </div>
+                        <span className="text-[9px] text-white/40">{band}</span>
+                      </>
+                    )}
+                    {lastSeen && (
+                      <span className="text-[9px] text-white/30">Seen {lastSeen}</span>
+                    )}
                   </div>
-                  <span className="text-[9px] text-white/30 tabular-nums">{Math.round(closeness)} closeness</span>
-                </div>
+                )}
 
-                {/* Phase badge */}
-                <span className={`hidden sm:flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full ${phase.cls} flex-shrink-0`}>
-                  {phase.icon}{phase.label}
-                </span>
+                {phaseStyle && PhaseIcon && (
+                  <span className={`hidden sm:flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full ${phaseStyle.cls} flex-shrink-0`}>
+                    <PhaseIcon className="h-2.5 w-2.5" />{phaseStyle.label}
+                  </span>
+                )}
               </button>
             );
           })}
           </div>
+          {clipboardCharacters.length > 0 && (
+            <div className="flex items-center justify-between gap-3 px-1">
+              <span className="text-[10px] text-white/35 tabular-nums">
+                {startIndex + 1}–{Math.min(endIndex, clipboardCharacters.length)} of {clipboardCharacters.length}
+              </span>
+              {totalPages > 1 && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={goToPrevious}
+                    disabled={currentPage === 1}
+                    data-testid="character-book-page-previous"
+                    className="text-white/50 hover:text-white hover:bg-purple-500/10 disabled:opacity-30 text-xs h-8"
+                  >
+                    <ChevronLeft className="h-3 w-3 mr-1" />
+                    Previous
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={goToNext}
+                    disabled={currentPage === totalPages}
+                    data-testid="character-book-page-next"
+                    className="text-white/50 hover:text-white hover:bg-purple-500/10 disabled:opacity-30 text-xs h-8"
+                  >
+                    Next
+                    <ChevronRight className="h-3 w-3 ml-1" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <>
@@ -4257,14 +4347,14 @@ export const CharacterBook = () => {
                 />
               </div>
 
-              {/* Character Grid - By impact or grouped by role */}
+              {/* Character Grid - A–Z by default, or grouped by role */}
               <div className="flex-1 space-y-4 mb-4 sm:mb-6 min-h-0">
-                {sortOrder === 'standing' ? (
+                {sortOrder !== 'role' ? (
                   <div className="space-y-2">
                     <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                      <Zap className="h-4 w-4 text-amber-400" />
-                      Your circle, closest first
-                      <span className="text-xs font-normal text-white/40">({charactersByStanding.length})</span>
+                      <Zap className={`h-4 w-4 ${FLAT_SORT_HEADING[sortOrder].iconClass}`} />
+                      {FLAT_SORT_HEADING[sortOrder].label}
+                      <span className="text-xs font-normal text-white/40">({clipboardCharacters.length})</span>
                     </h4>
                     <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                       {paginatedCharacters.map((character, index) => {
@@ -4279,40 +4369,7 @@ export const CharacterBook = () => {
                                 character={character}
                                 attributes={characterAttributes[character.id] ?? []}
                                 relationship={relationships.get(character.id)}
-                                selectionMode={selectionMode}
-                                selected={selectedForMerge.has(character.id)}
-                                onToggleSelected={() => toggleSelectedForMerge(character.id)}
-                                onClick={() => openCharacterDetail(character)}
-                                onSetRoleClick={() => openCharacterDetail(character, { focusField: 'role' })}
-                              />
-                            </div>
-                          );
-                        } catch {
-                          return null;
-                        }
-                      })}
-                    </div>
-                  </div>
-                ) : sortOrder === 'impact' ? (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                      <Zap className="h-4 w-4 text-purple-400" />
-                      People by impact on you
-                      <span className="text-xs font-normal text-white/40">({charactersByImpact.length})</span>
-                    </h4>
-                    <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                      {paginatedCharacters.map((character, index) => {
-                        try {
-                          const isUpdated = character.id && recentlyUpdatedIds.has(character.id);
-                          return (
-                            <div
-                              key={character.id || `char-${index}`}
-                              className={isUpdated ? 'ring-2 ring-primary/70 rounded-lg transition-all duration-500' : ''}
-                            >
-                              <CharacterProfileCard
-                                character={character}
-                                attributes={characterAttributes[character.id] ?? []}
-                                relationship={relationships.get(character.id)}
+                                presence={presenceById.get(character.id)}
                                 selectionMode={selectionMode}
                                 selected={selectedForMerge.has(character.id)}
                                 onToggleSelected={() => toggleSelectedForMerge(character.id)}
@@ -4377,6 +4434,7 @@ export const CharacterBook = () => {
                                         character={character}
                                         attributes={characterAttributes[character.id] ?? []}
                                         relationship={relationships.get(character.id)}
+                                        presence={presenceById.get(character.id)}
                                         selectionMode={selectionMode}
                                         selected={selectedForMerge.has(character.id)}
                                         onToggleSelected={() => toggleSelectedForMerge(character.id)}
@@ -4495,6 +4553,7 @@ export const CharacterBook = () => {
             // Refresh book data without closing the detail modal.
             void loadCharacters();
             void loadRelationships();
+            void loadFamilyTreeMemberIds();
           }}
         />
       )}

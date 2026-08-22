@@ -1,15 +1,11 @@
 /**
- * One canonical index + one decision index per write operation.
- * Nested writers reuse the ALS store so N candidates cost 0 extra DB loads.
+ * One canonical index per write operation (rescan / ingest / extractor batch).
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { loadAttachCanonResult } from './suggestionAttachApply';
 import { emptySuggestionDecisionIndex, type SuggestionDecisionIndex } from './suggestionDecisionIndex';
-import {
-  loadSuggestionDecisionResult,
-  resetSuggestionDecisionStoreLoadCount,
-} from './suggestionDecisionStore';
+import { loadSuggestionDecisionIndex } from './suggestionDecisionStore';
 import { notSamePairKey } from './suggestionDecisionTypes';
 import type { AttachCanonIndex, CanonLoadStatus } from './suggestionAttachTypes';
 
@@ -17,7 +13,6 @@ export type SuggestionWriteContext = {
   userId: string;
   index: AttachCanonIndex;
   status: CanonLoadStatus;
-  decisionStatus: CanonLoadStatus;
   loadCount: number;
   extractor?: string;
   applyDomains?: string[];
@@ -26,8 +21,6 @@ export type SuggestionWriteContext = {
 
 const als = new AsyncLocalStorage<SuggestionWriteContext>();
 let testLoadCount = 0;
-let canonIoLoadCount = 0;
-let decisionIoLoadCount = 0;
 
 export function getSuggestionWriteContext(): SuggestionWriteContext | undefined {
   return als.getStore();
@@ -46,7 +39,6 @@ export async function ensureSuggestionWriteContext(
       userId,
       index: preload.index,
       status: preload.status,
-      decisionStatus: preload.decisionStatus ?? 'ok',
       loadCount: preload.loadCount ?? 1,
       extractor: preload.extractor,
       applyDomains: preload.applyDomains,
@@ -54,19 +46,11 @@ export async function ensureSuggestionWriteContext(
     };
   }
 
-  const [loaded, decisionLoaded] = await Promise.all([
+  const [loaded, decisions] = await Promise.all([
     loadAttachCanonResult(userId),
-    loadSuggestionDecisionResult(userId).catch(() => ({
-      index: emptySuggestionDecisionIndex(),
-      status: 'degraded' as const,
-      successfulLoads: 0,
-      failedLoads: 1,
-    })),
+    loadSuggestionDecisionIndex(userId).catch(() => emptySuggestionDecisionIndex()),
   ]);
   testLoadCount += 1;
-  canonIoLoadCount += 1;
-  decisionIoLoadCount += 1;
-  const decisions = decisionLoaded.index;
   for (const person of loaded.index.characters ?? []) {
     for (const other of person.distinctFrom ?? []) {
       decisions.notSamePairs.add(notSamePairKey(person.id, other));
@@ -76,7 +60,6 @@ export async function ensureSuggestionWriteContext(
     userId,
     index: loaded.index,
     status: loaded.status,
-    decisionStatus: decisionLoaded.status,
     loadCount: 1,
     extractor: preload?.extractor,
     applyDomains: preload?.applyDomains,
@@ -93,24 +76,11 @@ export async function withSuggestionWriteContext<T>(
   return als.run(ctx, () => fn(ctx));
 }
 
-/** Test helper — number of write-context constructions since last reset. */
+/** Test helper — number of actual canon loads since last reset. */
 export function suggestionWriteLoadCount(): number {
   return testLoadCount;
 }
 
-/** Test helper — actual canon DB loads (preload does not increment). */
-export function suggestionCanonIoLoadCount(): number {
-  return canonIoLoadCount;
-}
-
-/** Test helper — actual decision DB loads (preload does not increment). */
-export function suggestionDecisionIoLoadCount(): number {
-  return decisionIoLoadCount;
-}
-
 export function resetSuggestionWriteContextForTests(): void {
   testLoadCount = 0;
-  canonIoLoadCount = 0;
-  decisionIoLoadCount = 0;
-  resetSuggestionDecisionStoreLoadCount();
 }

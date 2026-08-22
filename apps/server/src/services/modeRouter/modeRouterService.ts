@@ -94,6 +94,30 @@ class ModeRouterService {
     const startTime = Date.now();
 
     try {
+      // Compound project-state questions must resolve a canonical project and
+      // retrieve its history before any generic/ingestion classifier can run.
+      // This intentionally precedes quickModeCheck: a question such as
+      // "What's the current state of LoreBook, and what should I do next?"
+      // contains no literal "project" noun and used to fall into ingestion.
+      const { isProjectStateRecallShape, resolveProjectStateTarget } = await import(
+        '../projects/projectStateRecallService'
+      );
+      if (isProjectStateRecallShape(message)) {
+        const project = await resolveProjectStateTarget(userId, message);
+        if (project) {
+          const result: ModeRoutingResult = {
+            mode: 'PROJECT_QUERY',
+            confidence: 0.99,
+            reasoning: `Grounded project-state recall detected for ${project.name}`,
+          };
+          logger.info(
+            { mode: result.mode, confidence: result.confidence, via: 'canonical-project', projectId: project.id, elapsed: Date.now() - startTime },
+            'Mode routed',
+          );
+          return result;
+        }
+      }
+
       // Step 1: Quick pattern checks (fast, <50ms)
       const quickCheck = this.quickModeCheck(message, conversationHistory);
       if (quickCheck.confidence > 0.8) {

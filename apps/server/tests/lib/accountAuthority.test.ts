@@ -18,6 +18,7 @@ import {
   serializeAccountAuthority,
   toPublicRole,
   PRIVILEGED_PLATFORM_ROLES,
+  canManuallyAddToDatingBook,
 } from '../../src/lib/accountAuthority';
 
 describe('accountAuthority', () => {
@@ -142,5 +143,13 @@ describe('accountAuthority', () => {
 
   it('privileged roles include owner admin developer', () => {
     expect(PRIVILEGED_PLATFORM_ROLES).toEqual(['owner', 'admin', 'developer']);
+  });
+
+  it('manual Dating & Romance adds are owner/admin only', () => {
+    expect(canManuallyAddToDatingBook({ role: 'owner', isFounderAccount: true })).toBe(true);
+    expect(canManuallyAddToDatingBook({ role: 'admin', isFounderAccount: false })).toBe(true);
+    expect(canManuallyAddToDatingBook({ role: 'developer', isFounderAccount: false })).toBe(false);
+    expect(canManuallyAddToDatingBook({ role: 'standard_user', isFounderAccount: false })).toBe(false);
+    expect(canManuallyAddToDatingBook({ role: 'beta_user', isFounderAccount: false })).toBe(false);
   });
 });

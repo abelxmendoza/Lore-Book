@@ -11,8 +11,8 @@ export function detectMilestone(event: ExternalEvent): string | null {
     return event.type;
   }
 
-  if (event.source === 'x' && event.type === 'post') {
-    return 'post';
+  if (event.source === 'x' && (event.type === 'post' || event.type === 'reply' || event.type === 'quote')) {
+    return event.type;
   }
 
   const text = event.text?.toLowerCase() ?? '';

@@ -1,8 +1,8 @@
 /**
- * Character Timeline Authority Cutover
+ * Character Timeline Authority
  *
  * “When did something involving this person happen?” is answered only by
- * CanonicalTemporalModel → stitchedTimelineService.
+ * resolved_events.people[] → CanonicalTemporalModel → stitchedTimelineService.
  * Relationship state (“what is this person to me?”) stays on
  * character_relationship_history and is out of this tab.
  *
@@ -118,6 +118,14 @@ export function emptyCharacterTimelineResult(): CharacterEntityTimelineResult {
     legacyOnly: [],
     summary: { ...EMPTY_ENTITY_TEMPORAL_SUMMARY },
   };
+}
+
+export class ResolvedEventsQueryError extends Error {
+  readonly code = 'RESOLVED_EVENTS_QUERY_FAILED';
+  constructor(readonly dataErrors: Array<{ source: string; message: string }>) {
+    super(dataErrors.map((entry) => `${entry.source}: ${entry.message}`).join('; ') || 'resolved_events query failed');
+    this.name = 'ResolvedEventsQueryError';
+  }
 }
 
 function parseMs(value: string | null | undefined): number | null {
@@ -377,6 +385,9 @@ export async function buildCanonicalCharacterTimeline(
   const stitched = await stitchedTimelineService.getStitchedTimeline(userId, {
     character_id: entityId,
   });
+  if (stitched.data_errors?.some((entry) => entry.source === 'resolved_events')) {
+    throw new ResolvedEventsQueryError(stitched.data_errors);
+  }
 
   return projectCharacterTimelineFromSources({
     entityId,

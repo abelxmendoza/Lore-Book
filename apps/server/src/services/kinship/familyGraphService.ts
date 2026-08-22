@@ -2,7 +2,11 @@
  * Family Graph Engine — relationship paths, inference, analytics, audit.
  */
 import { supabaseAdmin } from '../supabaseClient';
-import { familyTreeService, type FamilyTreeDTO } from '../familyTreeService';
+import {
+  familyTreeService,
+  isFamilyTreeEligibleCharacter,
+  type FamilyTreeDTO,
+} from '../familyTreeService';
 import { parseKinshipFromName } from './kinshipGlossary';
 
 export type FamilyEdgeType =
@@ -139,19 +143,21 @@ export class FamilyGraphService {
 
     const { data: chars } = await supabaseAdmin
       .from('characters')
-      .select('id, name, metadata, mention_count')
+      .select('id, name, alias, role, archetype, metadata, mention_count')
       .eq('user_id', userId);
 
     const nameById = new Map((chars ?? []).map((c) => [c.id as string, c.name as string]));
     const mentionById = new Map((chars ?? []).map((c) => [c.id as string, Number((c.metadata as Record<string, unknown>)?.mention_count ?? 0)]));
     const excludedIds = new Set(
       (chars ?? [])
-        .filter((c) => {
-          const flag = (c.metadata as Record<string, unknown> | null)?.family_excluded;
-          if (flag === true) return true;
-          if (flag && typeof flag === 'object' && (flag as { value?: unknown }).value === true) return true;
-          return false;
-        })
+        .filter((c) => !isFamilyTreeEligibleCharacter({
+          id: c.id as string,
+          name: String(c.name ?? ''),
+          alias: (c.alias as string[] | null) ?? null,
+          role: (c.role as string | null) ?? null,
+          archetype: (c.archetype as string | null) ?? null,
+          metadata: (c.metadata as Record<string, unknown> | null) ?? null,
+        }))
         .map((c) => c.id as string),
     );
 

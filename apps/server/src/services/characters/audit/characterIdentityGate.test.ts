@@ -12,6 +12,7 @@ import {
   evaluateSentenceBleed,
   arbitrateDomainStrong,
   hasPersonNameShape,
+  nameAdjacentDomain,
 } from './characterIdentityGate';
 import type { CharacterCardAuditInput } from './characterCardAuditTypes';
 
@@ -114,6 +115,22 @@ describe('domain arbitration — Character loses to stronger domains', () => {
       'The other show was the “Self Made” show that the band Undisputed World Champions was throwing with Trinidad.',
     );
     expect(result.status).toBe('wrong_domain_event');
+  });
+
+  it('does not route an occupation phrase ("X is a show promoter") to event', () => {
+    expect(nameAdjacentDomain('Ink', 'Ink is a show promoter for the label.')).toBeNull();
+    const result = audit('Ink', 'Ink is a show promoter for the label.');
+    expect(result.status).not.toBe('wrong_domain_event');
+  });
+
+  it('routes a business/brand suffix to organization, not person', () => {
+    const result = audit(
+      'East Los Productions',
+      'East Los Productions is throwing the show downtown.',
+    );
+    expect(result.status).toBe('wrong_domain_organization');
+    expect(result.wrongDomainTarget).toBe('organization');
+    expect(arbitrateDomainStrong('East Los Productions').domain).toBe('organization');
   });
 });
 

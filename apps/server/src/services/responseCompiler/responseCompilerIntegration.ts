@@ -1,4 +1,5 @@
 import { logger } from '../../logger';
+import { recordSkippedOperation } from '../../lib/messageCostTracker';
 import { loadUserCanonFacts } from './canonFactLoader';
 import { responseCompilerService } from './responseCompilerService';
 import type {
@@ -86,6 +87,7 @@ export function compileAssistantResponseAsync(opts: CompileAssistantResponseOpts
  */
 export async function compileAssistantResponseWithCanon(
   opts: CompileAssistantResponseOpts,
+  flags: { semantic?: boolean } = {},
 ): Promise<CompiledAssistantResponse> {
   let loadedCanon: ResponseCompileInput['canonFacts'] = [];
   if (opts.userId) {
@@ -96,12 +98,21 @@ export async function compileAssistantResponseWithCanon(
     }
   }
 
-  const compiled = await responseCompilerService.compileWithSemantics({
+  const input: ResponseCompileInput = {
     userId: opts.userId,
     rawResponse: opts.rawResponse,
     sourceMessages: buildWitnesses(opts.userMessage, opts.userMessageId, opts.conversationHistory),
     canonFacts: [...(loadedCanon ?? []), ...(opts.canonFacts ?? [])],
-  });
+  };
+
+  const useSemantic = flags.semantic !== false;
+  const compiled = useSemantic
+    ? await responseCompilerService.compileWithSemantics(input)
+    : responseCompilerService.compile(input);
+
+  if (!useSemantic) {
+    recordSkippedOperation('response_compiler_semantic_deferred');
+  }
 
   logger.debug(
     {
@@ -111,8 +122,9 @@ export async function compileAssistantResponseWithCanon(
       unsupported: compiled.unsupportedClaims.length,
       contradictions: compiled.contradictions.length,
       certaintyScore: compiled.certaintyScore,
+      semantic: useSemantic,
     },
-    'Response compiler (canon + semantic) completed',
+    'Response compiler (canon) completed',
   );
 
   return compiled;

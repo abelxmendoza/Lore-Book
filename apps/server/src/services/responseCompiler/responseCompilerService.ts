@@ -10,6 +10,7 @@ import { findLoreEvidence } from './loreClaimMatcher';
 import { extractResponseActions } from './responseActionExtractor';
 import { applySemanticMatches, findSemanticEvidence } from './semanticGroundingChecker';
 import { aggregateCertaintyScore } from './uncertaintyDetector';
+import { applySummaryDiscipline } from '../chat/summaryDiscipline';
 import type {
   CompiledAssistantResponse,
   CompilerRuleFired,
@@ -33,10 +34,18 @@ function buildVerifiedResponse(
   rawResponse: string,
   claims: GroundedClaim[],
   contradictions: CompiledAssistantResponse['contradictions'],
-): string {
-  if (contradictions.length === 0 && claims.every((c) => c.grounding !== 'unsupported')) {
-    return rawResponse;
-  }
+  sourceText: string,
+): {
+  text: string;
+  disciplineFired: boolean;
+  discipline: CompiledAssistantResponse['discipline'];
+} {
+  const disciplined = applySummaryDiscipline(rawResponse, sourceText);
+  const discipline = {
+    text: disciplined.text || rawResponse,
+    warnings: disciplined.warnings,
+  };
+  let text = discipline.text;
 
   const warnings: string[] = [];
   if (contradictions.length > 0) {
@@ -51,7 +60,10 @@ function buildVerifiedResponse(
     );
   }
 
-  return warnings.length > 0 ? `${rawResponse}\n\n${warnings.join(' ')}` : rawResponse;
+  if (warnings.length > 0) {
+    text = `${text}\n\n${warnings.join(' ')}`;
+  }
+  return { text, disciplineFired: disciplined.warnings.length > 0, discipline };
 }
 
 function groundingIcon(grounding: GroundedClaim['grounding']): '✓' | '~' | '?' | '⚠' {
@@ -95,6 +107,9 @@ class ResponseCompilerService {
 
     const partitions = partitionClaims(grounded);
     const certaintyScore = aggregateCertaintyScore(grounded.map((c) => c.certainty));
+    const sourceText = input.sourceMessages.map((m) => m.content).join('\n');
+    const verified = buildVerifiedResponse(input.rawResponse, grounded, contradictions, sourceText);
+    if (verified.disciplineFired) rulesFired.push('summary_discipline');
 
     return {
       rawResponse: input.rawResponse,
@@ -105,7 +120,8 @@ class ResponseCompilerService {
       certaintyScore,
       memoryCandidatesBlocked,
       rulesFired: [...new Set(rulesFired)],
-      verifiedResponse: buildVerifiedResponse(input.rawResponse, grounded, contradictions),
+      verifiedResponse: verified.text,
+      discipline: verified.discipline,
     };
   }
 
@@ -145,12 +161,20 @@ class ResponseCompilerService {
 
     if (!changed) return base;
 
+    const verified = buildVerifiedResponse(
+      base.rawResponse,
+      upgraded,
+      base.contradictions,
+      input.sourceMessages.map((m) => m.content).join('\n'),
+    );
+
     return {
       ...base,
       ...partitionClaims(upgraded),
       provenanceBindings: bindProvenance(upgraded),
       memoryCandidatesBlocked: filterMemoryWrites(upgraded),
-      verifiedResponse: buildVerifiedResponse(base.rawResponse, upgraded, base.contradictions),
+      verifiedResponse: verified.text,
+      discipline: verified.discipline,
     };
   }
 

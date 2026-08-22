@@ -144,6 +144,36 @@ describe('routeAgentResults', () => {
     expect(eaInsert?.row.status).toBe('pending');
   });
 
+  it('keeps both names from a natural-language same-entity correction', async () => {
+    await routeAgentResults({
+      userId: 'user-1',
+      messageId: 'msg-1',
+      runId: 'run-correction',
+      results: [
+        makeResult('IdentityAgent', [
+          makeAction({
+            type: 'propose_entity_merge',
+            routeTo: 'entity_authority',
+            payload: {
+              sourceName: 'Marcus Vale',
+              targetName: 'Vanguard Productions',
+              explicitUserCorrection: true,
+            },
+          }),
+        ]),
+      ],
+    });
+
+    const eaInsert = inserts.find((i) => i.table === 'entity_authority_decisions');
+    expect(eaInsert?.row).toMatchObject({
+      source_name: 'Marcus Vale',
+      target_name: 'Vanguard Productions',
+      decision: 'MERGE',
+      status: 'pending',
+      applied: false,
+    });
+  });
+
   it('marks correction proposals as routed without writing truth state', async () => {
     const results = await routeAgentResults({
       userId: 'user-1',

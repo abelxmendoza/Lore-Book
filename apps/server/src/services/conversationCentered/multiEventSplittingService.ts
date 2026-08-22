@@ -9,6 +9,11 @@ import { openai } from '../openaiClient';
 import { logger } from '../../logger';
 import type { ExtractedUnit } from '../../types/conversationCentered';
 
+type SplitExtractedUnit = Pick<
+  ExtractedUnit,
+  'type' | 'content' | 'confidence' | 'temporal_context' | 'entity_ids' | 'metadata'
+> & { id: string };
+
 
 export interface SplitEvent {
   id: string;
@@ -29,6 +34,16 @@ export interface EventSplittingResult {
   original_text: string;
   language_detected: string;
   spanish_terms?: string[];
+}
+
+export function classifySplitSemanticType(content: string): ExtractedUnit['type'] {
+  if (/\b(?:correction|actually|i was wrong|i remembered incorrectly|it wasn['’]?t|it was not|same entity as|are the same entity)\b/i.test(content)) {
+    return 'CORRECTION';
+  }
+  if (/\b(?:looking back|in hindsight|on reflection|i should have|i shouldn['’]?t have|i wish|i regret|i now realize)\b/i.test(content)) {
+    return 'THOUGHT';
+  }
+  return 'EXPERIENCE';
 }
 
 /**
@@ -244,10 +259,10 @@ Be precise with indices. Split by distinct experiences, not just sentences.`,
   convertToExtractedUnits(
     splitResult: EventSplittingResult,
     baseMetadata?: Record<string, any>
-  ): ExtractedUnit[] {
+  ): SplitExtractedUnit[] {
     return splitResult.events.map((event, index) => ({
       id: `unit-${Date.now()}-${index}`,
-      type: 'EXPERIENCE' as const,
+      type: classifySplitSemanticType(event.content),
       content: event.content,
       confidence: event.confidence,
       temporal_context: {
@@ -267,6 +282,7 @@ Be precise with indices. Split by distinct experiences, not just sentences.`,
         spanish_terms: splitResult.spanish_terms,
         language: splitResult.language_detected,
         split_from_multi_event: true,
+        semantic_segment_kind: classifySplitSemanticType(event.content),
       },
     }));
   }

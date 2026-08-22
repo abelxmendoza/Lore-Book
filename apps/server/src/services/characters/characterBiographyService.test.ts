@@ -70,4 +70,37 @@ describe('character biography after character_timeline_events drop', () => {
     expect(bio?.lastSeen).toBe('2026-07-12T19:30:00.000Z');
     expect(bio?.majorMoments).toContain('Dinner with Maya');
   });
+
+  it('first/last occurrence match Character Timeline, not card first_appearance or recording time', async () => {
+    tableResults.characters = {
+      data: {
+        name: 'Maya Chen',
+        summary: null,
+        created_at: '2026-08-21T12:00:00.000Z',
+        first_appearance: '1999-01-01T00:00:00.000Z',
+        metadata: {},
+      },
+      error: null,
+    };
+    buildCanonicalCharacterTimeline.mockResolvedValue({
+      sharedExperiences: [{ eventTitle: 'Met Maya Chen at Northwind Labs' }],
+      lore: [],
+      unresolved: [{ eventTitle: 'Something about Maya, no date' }],
+      legacyOnly: [],
+      summary: {
+        firstKnownOccurrenceAt: '2024-03-15T00:00:00.000Z',
+        lastKnownOccurrenceAt: '2025-08-01T00:00:00.000Z',
+        firstMentionedAt: '2026-08-21T12:00:00.000Z',
+        lastMentionedAt: '2026-08-21T12:00:00.000Z',
+        firstKnownAppearanceAt: '2024-03-15T00:00:00.000Z',
+        lastInteractionAt: '2025-08-01T00:00:00.000Z',
+      },
+    });
+
+    const bio = await buildCharacterBiography(USER, MAYA);
+    expect(bio?.firstSeen).toBe('2024-03-15T00:00:00.000Z');
+    expect(bio?.lastSeen).toBe('2025-08-01T00:00:00.000Z');
+    expect(bio?.firstSeen).not.toBe('1999-01-01T00:00:00.000Z');
+    expect(bio?.firstSeen).not.toBe('2026-08-21T12:00:00.000Z');
+  });
 });

@@ -254,6 +254,20 @@ describe('CharacterProfileCard', () => {
     expect(screen.queryByText('Family')).not.toBeInTheDocument();
   });
 
+  it('shows when the card was added and when they were first mentioned', () => {
+    render(
+      <CharacterProfileCard
+        character={{
+          ...baseCharacter,
+          created_at: '2026-08-01T12:00:00.000Z',
+          first_appearance: '2024-11-15',
+        }}
+      />,
+    );
+    expect(screen.getByTestId('character-card-created-at')).toHaveTextContent(/Added Aug 1, 2026/);
+    expect(screen.getByTestId('character-card-first-mentioned')).toHaveTextContent(/First mentioned Nov 15, 2024/);
+  });
+
   it('shows the primary role plus a +N count for multiple roles, like the archetype badge', () => {
     render(<CharacterProfileCard character={{ ...baseCharacter, role: 'dj, promoter, bartender' }} />);
     expect(screen.getByText('dj +2')).toBeInTheDocument();

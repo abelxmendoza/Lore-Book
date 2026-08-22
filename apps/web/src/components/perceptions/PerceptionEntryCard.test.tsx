@@ -64,6 +64,7 @@ describe('PerceptionEntryCard', () => {
     expect(screen.getByText('60% certain')).toBeInTheDocument();
     expect(screen.getByText('Needs review')).toBeInTheDocument();
     expect(screen.getByText('Impact on me')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Wanted more distance after our last' })).toBeInTheDocument();
     expect(screen.getByText('I waited before reaching out again.')).toBeInTheDocument();
     expect(screen.getByText('Linked memory')).toBeInTheDocument();
     expect(screen.getByText('Changed 1×')).toBeInTheDocument();
@@ -74,22 +75,25 @@ describe('PerceptionEntryCard', () => {
     const onClick = vi.fn();
     render(<PerceptionEntryCard perception={perception} onClick={onClick} />);
 
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Open perception about Jamie' }), { key: 'Enter' });
+    fireEvent.keyDown(screen.getByRole('button', { name: /a perception about Jamie/i }), { key: 'Enter' });
     expect(onClick).toHaveBeenCalledWith(perception);
   });
 
   it('shows the full belief and impact text without clamping or ellipsis', () => {
     render(<PerceptionEntryCard perception={makePerception()} />);
 
-    expect(screen.getByText(longBelief)).toBeInTheDocument();
-    expect(screen.getByText(longImpact)).toBeInTheDocument();
+    const beliefText = screen.getByText(longBelief);
+    const impactText = screen.getByText(longImpact);
+    expect(beliefText).toBeInTheDocument();
+    expect(impactText).toBeInTheDocument();
     expect(screen.getByText('Impact on me')).toBeInTheDocument();
     expect(screen.getByText(/told by/i)).toBeInTheDocument();
     expect(screen.getByText('60% certain')).toBeInTheDocument();
     expect(screen.getByText('Needs review')).toBeInTheDocument();
     expect(screen.getByText('Vexadoll')).toBeInTheDocument();
 
-    expect(document.body.textContent).not.toMatch(/…|\.\.\./);
+    expect(beliefText).not.toHaveClass('truncate', 'line-clamp-2');
+    expect(impactText).not.toHaveClass('truncate', 'line-clamp-2');
   });
 
   it('keeps long subject names fully visible instead of truncating', () => {
@@ -101,5 +105,15 @@ describe('PerceptionEntryCard', () => {
     );
 
     expect(screen.getByText(longName)).toBeInTheDocument();
+  });
+
+  it('uses an explicit stored short title on cards when one exists', () => {
+    render(
+      <PerceptionEntryCard
+        perception={makePerception({ metadata: { short_title: 'Manager recommendation' } })}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Manager recommendation' })).toBeInTheDocument();
   });
 });

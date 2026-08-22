@@ -18,6 +18,11 @@ const PRONOUN_CANDIDATES = new Set([
   'them', 'they', 'we', 'you', 'your', 'yours',
 ]);
 
+const NON_ENTITY_CANDIDATES = new Set([
+  'help', 'his', 'hers', 'thats', "that's", 'this', 'those', 'these', 'there',
+  'today', 'tomorrow', 'yesterday', 'later', 'looking back',
+]);
+
 function canonicalType(type: MessageEntityChip['type']): EntityType | null {
   if (type === 'character') return 'PERSON';
   if (type === 'location') return 'LOCATION';
@@ -45,6 +50,14 @@ function overlapsCanonicalName(candidate: string, canonical: string): boolean {
 export function mergeCanonicalEntityCandidates(
   extracted: CandidateEntity[],
   bookMatches: MessageEntityChip[],
+  options: {
+    authoritativeFocus?: {
+      id: string;
+      name: string;
+      type: MessageEntityChip['type'];
+      aliases?: string[];
+    };
+  } = {},
 ): CandidateEntity[] {
   const normalized = extracted.map((candidate) => {
     const type = String(candidate.type).toUpperCase();
@@ -54,10 +67,20 @@ export function mergeCanonicalEntityCandidates(
   });
   const accepted = normalized.filter((candidate) => {
     const key = normalizeDuplicateKey(candidate.name);
-    if (!key || PRONOUN_CANDIDATES.has(key)) return false;
+    if (!key || PRONOUN_CANDIDATES.has(key) || NON_ENTITY_CANDIDATES.has(key)) return false;
     const type = String(candidate.type).toUpperCase();
     if ((type === 'PERSON' || type === 'CHARACTER') && isPollutingPersonLabel(candidate.name)) return false;
     if (type === 'LOCATION' && isPollutingPlaceLabel(candidate.name)) return false;
+
+    const focus = options.authoritativeFocus;
+    if (focus) {
+      const focusType = canonicalType(focus.type);
+      const sameFocusKind = focusType === type || (focusType === 'PERSON' && type === 'CHARACTER');
+      const focusNames = [focus.name, ...(focus.aliases ?? [])];
+      if (sameFocusKind && focusNames.some((name) => overlapsCanonicalName(candidate.name, name) || overlapsCanonicalName(name, candidate.name))) {
+        return false;
+      }
+    }
 
     return !bookMatches.some((match) => {
       const matchType = canonicalType(match.type);

@@ -10,6 +10,7 @@ import {
   getLastEntityInteraction,
   getLastEntityMention,
   projectCharacterTimelineFromSources,
+  ResolvedEventsQueryError,
   sameTemporalIdentity,
 } from './characterEntityTimelineService';
 
@@ -498,5 +499,21 @@ describe('buildCanonicalCharacterTimeline tenant isolation', () => {
       character_id: JAMIE,
     });
     expect(supabaseAdmin.from).not.toHaveBeenCalled();
+  });
+
+  it('a resolved_events query failure is an error, not an empty/unresolved timeline', async () => {
+    vi.mocked(stitchedTimelineService.getStitchedTimeline).mockResolvedValue({
+      scope_type: 'global',
+      scope_id: '00000000-0000-0000-0000-000000000000',
+      scope_label: null,
+      items: [],
+      has_user_order: false,
+      unresolved_items: [],
+      data_errors: [{ source: 'resolved_events', message: "Could not find the 'start_time' column" }],
+    });
+
+    await expect(buildCanonicalCharacterTimeline('user-a', JAMIE, LA)).rejects.toBeInstanceOf(
+      ResolvedEventsQueryError,
+    );
   });
 });

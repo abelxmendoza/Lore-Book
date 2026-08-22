@@ -50,6 +50,12 @@ import { relationshipDriftDetector } from '../services/conversationCentered/rela
 import { relationshipTreeBuilder, type RelationshipCategory } from '../services/conversationCentered/relationshipTreeBuilder';
 import { romanticRelationshipAnalytics } from '../services/conversationCentered/romanticRelationshipAnalytics';
 import { enrichRomanticRelationshipsForUser } from '../services/conversationCentered/romanticRelationshipEnrichment';
+import {
+  addCharacterToDatingBook,
+  DatingBookAddError,
+  MANUAL_DATING_ADD_STATUSES,
+  MANUAL_DATING_ADD_TYPES,
+} from '../services/conversationCentered/addCharacterToDatingBook';
 import { romanticRelationshipDetector } from '../services/conversationCentered/romanticRelationshipDetector';
 import { romanticConversationRescanService } from '../services/romanticConversationRescanService';
 import { queryRomanceForUser } from '../services/romance/romanceQueryService';
@@ -111,6 +117,12 @@ const romanticRelationshipPatchSchema = z.object({
 const romanticRelationshipDeleteSchema = z.object({
   reason: z.string().max(500).optional(),
   reason_note: z.string().max(1000).optional(),
+}).strict();
+
+const addCharacterToDatingBookSchema = z.object({
+  character_id: z.string().uuid(),
+  relationship_type: z.enum(MANUAL_DATING_ADD_TYPES).optional(),
+  status: z.enum(MANUAL_DATING_ADD_STATUSES).optional(),
 }).strict();
 
 /**
@@ -3220,6 +3232,49 @@ router.get(
       hiddenCount: (enriched as unknown[]).length - visible.length,
     });
   })
+);
+
+/**
+ * POST /api/conversation/romantic-relationships
+ * Owner/admin only: add an existing Character Book person to Dating & Romance.
+ * Always writes to req.user.id — never accepts another account id.
+ */
+router.post(
+  '/romantic-relationships',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const parsed = addCharacterToDatingBookSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid Dating & Romance add',
+        details: parsed.error.flatten(),
+      });
+    }
+
+    try {
+      const result = await addCharacterToDatingBook({
+        userId: req.user!.id,
+        characterId: parsed.data.character_id,
+        relationshipType: parsed.data.relationship_type,
+        status: parsed.data.status,
+      });
+      res.status(result.created ? 201 : 200).json({
+        success: true,
+        created: result.created,
+        relationship: result.relationship,
+      });
+    } catch (error) {
+      if (error instanceof DatingBookAddError) {
+        return res.status(error.status).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        });
+      }
+      throw error;
+    }
+  }),
 );
 
 router.post(

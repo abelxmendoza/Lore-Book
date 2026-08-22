@@ -23,7 +23,7 @@ export const Footer = () => {
           <span className="hidden sm:inline" aria-hidden>
             •
           </span>
-          <a className="hover:text-white transition-colors" href="#ownership">
+          <a className="hover:text-white transition-colors" href="/home#ownership">
             Ownership
           </a>
         </div>

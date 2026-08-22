@@ -7,6 +7,14 @@
 import { logger } from '../../logger';
 import type { ExtractedUnitType, ExtractionResult } from '../../types/conversationCentered';
 import { completeFor } from '../llm';
+import { isPureInterrogative } from '../meaning/factualityResolutionService';
+
+const PURE_CONFIRMATION_RE =
+  /^(?:no[, ]+)?(?:(?:that's|thats|that is) )?(?:spot on|right|correct|accurate|exactly right|true|it)(?:[.! ]*)$/i;
+
+export function isPureConfirmation(text: string): boolean {
+  return PURE_CONFIRMATION_RE.test(text.trim());
+}
 
 const UNIT_PRIORITY: Record<ExtractedUnitType, number> = {
   CORRECTION: 0,
@@ -64,6 +72,14 @@ export class SemanticExtractionService {
     isAIMessage: boolean = false
   ): Promise<ExtractionResult> {
     try {
+      // Questions and conversational confirmations belong in the transcript,
+      // not in autobiographical semantic storage. In particular, "no, that's
+      // spot on" is agreement—not a CORRECTION merely because it starts "no".
+      if (!isAIMessage && (isPureInterrogative(normalizedText) || isPureConfirmation(normalizedText))) {
+        return {
+          units: [],
+        };
+      }
       // Try rule-based extraction first (free, fast)
       const ruleBasedUnits = this.ruleBasedExtraction(normalizedText);
       

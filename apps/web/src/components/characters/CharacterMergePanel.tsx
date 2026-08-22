@@ -25,6 +25,7 @@ import {
   useMergeCharactersMutation,
   useUpdateCharacterMutation,
 } from '../../store/api/entitiesApi';
+import { isFetchJsonError } from '../../store/api/baseApi';
 import { invalidateEntityTags } from '../../store/invalidateEntityCache';
 import type { Character } from './CharacterProfileCard';
 
@@ -62,7 +63,15 @@ type Props = {
 };
 
 function apiErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback;
+  if (isFetchJsonError(error) && error.message) return error.message;
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'object' && error !== null) {
+    const record = error as { message?: unknown; data?: { error?: unknown }; error?: unknown };
+    if (typeof record.message === 'string' && record.message.trim()) return record.message;
+    if (typeof record.data?.error === 'string' && record.data.error.trim()) return record.data.error;
+    if (typeof record.error === 'string' && record.error.trim()) return record.error;
+  }
+  return fallback;
 }
 
 export function mergeCharactersLocally(
@@ -951,6 +960,7 @@ export const CharacterMergePanel = ({
         selectedCount={selectedActiveCharacters.length}
         options={selectedActiveCharacters.map((character) => ({ id: character.id, name: character.name }))}
         busy={mergeBusy}
+        error={mergeError}
         onKeep={(targetId) => void mergeSelectedCharacters(targetId)}
       />
     </>

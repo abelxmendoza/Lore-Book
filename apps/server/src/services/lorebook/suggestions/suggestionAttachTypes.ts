@@ -23,6 +23,7 @@ export type AttachMatchBasis =
   | 'place_acronym'
   | 'first_name_only'
   | 'containment'
+  | 'unique_org_stem_with_full_identity_evidence'
   | 'fuzzy_similarity'
   | 'hierarchy_not_duplicate'
   | 'type_conflict_weak_identity'
