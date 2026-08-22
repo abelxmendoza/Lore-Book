@@ -18,6 +18,11 @@ import { buildDatingRomanceClipboardText } from '../../lib/datingRomanceClipboar
 import { clipboardFilterLines } from '../../lib/listClipboard';
 import { isIndividualPersonName } from '../../lib/personNameValidation';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import {
+  DATING_ROMANCE_KNOWLEDGE_SCOPE,
+  datingRomanceIntroducePrompt,
+  openDatingRomanceCharacterChat,
+} from '../../lib/datingRomanceChatFocus';
 import { 
   getMockRomanticRelationships, 
   getMockRomanticRelationshipsByFilter,
@@ -54,10 +59,14 @@ import { invalidateCache } from '../../lib/requestCache';
 import { CharacterDetailModal } from '../characters/CharacterDetailModal';
 import type { Character } from '../characters/CharacterProfileCard';
 import {
+  useAddCharacterToDatingBookMutation,
   useGetRomanticRelationshipsQuery,
   useLinkRomanticRelationshipToCharacterMutation,
   useRescanRomanticRelationshipsMutation,
 } from '../../store/api/entitiesApi';
+import { useAccountAuthority } from '../../hooks/useAccountAuthority';
+import { canManuallyAddDatingRomanceCharacters } from '../../lib/datingRomanceManualAdd';
+import { isDemoRuntimeActive } from '../../lib/demoRuntime';
 
 export type RomanticRelationship = {
   id: string;
@@ -202,9 +211,14 @@ export const LoveAndRelationshipsView = () => {
   const [viewMode, setViewMode] = useState<CardViewMode>(() =>
     readStoredCardViewMode(LOVE_VIEW_STORAGE_KEY, 'grid'),
   );
+  const { authority } = useAccountAuthority();
+  const canAddFromCharacterBook = canManuallyAddDatingRomanceCharacters(authority, {
+    demoMode: shouldUseMockData || isDemoRuntimeActive(),
+  });
   const romanticRelationshipsQuery = useGetRomanticRelationshipsQuery(undefined, { skip: shouldUseMockData });
   const [linkRomanticRelationshipToCharacter] = useLinkRomanticRelationshipToCharacterMutation();
   const [rescanRomanticRelationships] = useRescanRomanticRelationshipsMutation();
+  const [addCharacterToDatingBook] = useAddCharacterToDatingBookMutation();
   const relationshipsGridRef = useRef<HTMLDivElement>(null);
 
   const scrollToRelationship = useCallback((relationshipId: string) => {
@@ -402,6 +416,42 @@ export const LoveAndRelationshipsView = () => {
     }
   }, [shouldUseMockData]);
 
+  const addCharacterFromBook = useCallback(
+    async (character: RomanticInterestCharacterOption) => {
+      if (!canAddFromCharacterBook) {
+        setRomanticInterestError('Manual Dating & Romance adds are limited to the admin account.');
+        return;
+      }
+      setRomanticInterestBusy(true);
+      setRomanticInterestError(null);
+      try {
+        const result = await addCharacterToDatingBook({
+          character_id: character.id,
+          relationship_type: 'crush',
+          status: 'unrequited',
+        }).unwrap();
+        const relationshipId = typeof result.relationship?.id === 'string' ? result.relationship.id : null;
+        invalidateCache();
+        await loadCharacterNames();
+        await loadRelationships();
+        window.dispatchEvent(new CustomEvent('lk:romantic-relationships-updated'));
+        if (relationshipId) {
+          setHighlightedRelationshipId(relationshipId);
+          setActiveFilter('all');
+          scrollToRelationship(relationshipId);
+          window.setTimeout(() => setHighlightedRelationshipId(null), 4500);
+        }
+      } catch (error) {
+        setRomanticInterestError(
+          error instanceof Error ? error.message : 'Could not add that character to Dating & Romance.',
+        );
+      } finally {
+        setRomanticInterestBusy(false);
+      }
+    },
+    [addCharacterToDatingBook, canAddFromCharacterBook, scrollToRelationship],
+  );
+
   const openRomanticInterestChat = useCallback(
     async ({
       name,
@@ -414,33 +464,23 @@ export const LoveAndRelationshipsView = () => {
       setRomanticInterestError(null);
       try {
         if (character) {
-          // Existing Character Book entry — focus chat on the real character.
-          openChatWithFocus({
+          const existing = relationships.find(
+            (rel) => rel.character_id === character.id || (rel.person_type === 'character' && rel.person_id === character.id),
+          );
+          openDatingRomanceCharacterChat({
             entityId: character.id,
             entityName: character.name,
-            entityType: 'character',
-            sourceSurface: 'love',
-            sourceLabel: 'Dating & Romance',
-            knowledgeScope: 'romantic interest, shared history, feelings, and relationship context',
-            initialPrompt: `I want to talk about ${character.name} as a romantic interest. Help me capture who they are, how we know each other, and what I am feeling. Please do not assume that they feel the same way or invent details I have not shared.`,
-            arrivedAt: Date.now(),
+            relationshipId: existing?.id,
           });
         } else {
-          // Brand-new person — no character exists yet. Send the user to chat to
-          // introduce them (name, aliases, nicknames) so the normal chat-extraction
-          // pipeline creates and identifies the character organically, instead of
-          // pre-creating a bare card from a typed name alone.
           openChatWithFocus({
             entityId: `pending:romantic-interest:${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
             entityName: name,
             entityType: 'memory',
             sourceSurface: 'love',
             sourceLabel: 'Dating & Romance',
-            knowledgeScope: 'romantic interest, shared history, feelings, and relationship context',
-            initialPrompt:
-              `I want to tell you about ${name}, someone I'm romantically interested in. ` +
-              `Their name is ${name} — let me know any aliases or nicknames I call them too, ` +
-              `plus how we met and what I'm feeling, so you can get to know them.`,
+            knowledgeScope: DATING_ROMANCE_KNOWLEDGE_SCOPE,
+            initialPrompt: datingRomanceIntroducePrompt(name),
             arrivedAt: Date.now(),
           });
         }
@@ -452,7 +492,7 @@ export const LoveAndRelationshipsView = () => {
         setRomanticInterestBusy(false);
       }
     },
-    [],
+    [relationships],
   );
 
   // People with an active romantic interest shouldn't be offered again in the
@@ -940,6 +980,8 @@ export const LoveAndRelationshipsView = () => {
         busy={romanticInterestBusy}
         error={romanticInterestError}
         onContinue={openRomanticInterestChat}
+        allowDirectAdd={canAddFromCharacterBook}
+        onAddCharacter={addCharacterFromBook}
       />
 
       <DetectedCharacterSuggestions

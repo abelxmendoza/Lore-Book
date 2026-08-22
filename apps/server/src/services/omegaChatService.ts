@@ -6,6 +6,7 @@ import { config } from '../config';
 import { logger } from '../logger';
 import { openai } from '../lib/openai';
 import { hasTemporalSignal } from './chat/temporalSignal';
+import { isDatingRomanceChatFocus } from './chat/datingBookChatFocus';
 import { StageTimer } from '../lib/stageTimer';
 import type { MemoryEntry, ResolvedMemoryEntry } from '../types';
 import type { CurrentContext, SoulProfileContext } from '../types/currentContext';
@@ -837,8 +838,8 @@ class OmegaChatService {
       : '';
     const scopeLine = chatFocus.knowledgeScope ? ` Scope: ${chatFocus.knowledgeScope}.` : '';
     const loveNote =
-      chatFocus.sourceSurface === 'love'
-        ? ' Prioritize feelings, attachment, patterns, and relationship dynamics over general lore. Treat emotionally charged sharing as deepening this bond.'
+      isDatingRomanceChatFocus(chatFocus)
+        ? ' Prioritize feelings, attachment, patterns, and relationship dynamics over general lore. Treat emotionally charged sharing as deepening this bond. This person is in Dating & Romance — keep that romantic-interest frame even if the thread started from Character Book.'
         : '';
     const organizationNote =
       chatFocus.sourceSurface === 'organizations' || chatFocus.entityType === 'organization'

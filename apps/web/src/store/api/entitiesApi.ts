@@ -128,6 +128,12 @@ type RomanticRelationshipDeleteInput = {
   reason_note?: string;
 };
 
+type AddCharacterToDatingBookInput = {
+  character_id: string;
+  relationship_type?: string;
+  status?: string;
+};
+
 type RomanticRelationshipsResponse = {
   success: boolean;
   relationships: Array<Record<string, unknown>>;
@@ -259,6 +265,23 @@ export const entitiesApi = baseApi.injectEndpoints({
         relationships: res.relationships ?? [],
       }),
       providesTags: ['RomanticRelationship'],
+    }),
+
+    addCharacterToDatingBook: build.mutation<
+      { success: boolean; created: boolean; relationship: Record<string, unknown> },
+      AddCharacterToDatingBookInput
+    >({
+      query: (body) => ({
+        url: '/api/conversation/romantic-relationships',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['RomanticRelationship', 'Character'],
+      async onQueryStarted(_, { queryFulfilled }) {
+        await queryFulfilled;
+        invalidateCache('/api/conversation/romantic-relationships');
+        invalidateCache('/api/characters');
+      },
     }),
 
     assembleEventsFromChats: build.mutation<
@@ -571,6 +594,7 @@ export const {
   useGetGroupCandidatesQuery,
   useGetEventsQuery,
   useGetRomanticRelationshipsQuery,
+  useAddCharacterToDatingBookMutation,
   useAssembleEventsFromChatsMutation,
   useRescanRomanticRelationshipsMutation,
   useCalculateRomanticAffectionMutation,
