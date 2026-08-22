@@ -78,9 +78,8 @@ import { narrativeLifeEraService } from '../narrative/narrativeLifeEraService';
 import { assessAndPersistMilestone } from '../narrative/milestoneClassifier';
 import {
   attributeNamedEntities,
-  canonicalLocationsFromAttributions,
-  canonicalPeopleFromAttributions,
   mergeEntityAttributions,
+  participantArraysForEventWrite,
   readStoredAttributions,
   selectCanonicalLocations,
   selectCanonicalPeople,
@@ -1154,12 +1153,11 @@ export class EventAssemblyService {
         mergedText,
       ),
     );
-    const people = canonicalPeopleFromAttributions(mergedAttributions).length
-      ? canonicalPeopleFromAttributions(mergedAttributions)
-      : [...new Set(incoming.peopleIds)];
-    const locations = canonicalLocationsFromAttributions(mergedAttributions).length
-      ? canonicalLocationsFromAttributions(mergedAttributions)
-      : [...new Set(incoming.locationIds)];
+    const { people, locations } = participantArraysForEventWrite({
+      people: [...(existing.people ?? []), ...incoming.peopleIds],
+      locations: [...(existing.locations ?? []), ...incoming.locationIds],
+      attributions: mergedAttributions,
+    });
 
     const priorMetadata = (existing.metadata ?? {}) as Record<string, unknown>;
     const priorUnits = (priorMetadata.assembled_from_units as string[] | undefined) ?? [];
@@ -1299,6 +1297,11 @@ export class EventAssemblyService {
       readStoredAttributions(existingEvent.metadata),
       attributed.attributions,
     );
+    const { people, locations } = participantArraysForEventWrite({
+      people: [...(existingEvent.people ?? []), ...attributed.peopleIds],
+      locations: [...(existingEvent.locations ?? []), ...attributed.locationIds],
+      attributions: mergedAttributions,
+    });
 
     const { data: updatedEvent, error: updateError } = await supabaseAdmin
       .from('resolved_events')
@@ -1310,8 +1313,8 @@ export class EventAssemblyService {
           chooseTemporal(this.rowEvidence(existingEvent), this.whenToEvidence(when, timezone)),
         ),
         end_time: when?.end || existingEvent.end_time,
-        people: attributed.peopleIds,
-        locations: attributed.locationIds,
+        people,
+        locations,
         confidence: updatedConfidence,
         updated_at: new Date().toISOString(),
         metadata: {
