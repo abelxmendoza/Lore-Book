@@ -42,6 +42,7 @@ vi.mock('../../src/services/supabaseClient', () => ({
 const getUserTimezoneMock = vi.fn().mockResolvedValue('UTC');
 vi.mock('../../src/services/temporal/userTimezoneService', () => ({
   getUserTimezone: (...args: unknown[]) => getUserTimezoneMock(...args),
+  isValidIanaTimezone: (tz: unknown): tz is string => typeof tz === 'string' && tz.length > 0,
 }));
 
 import { assembleWorkingMemory, buildWorkingMemoryPacket } from '../../src/services/chat/workingMemoryAssembler';
