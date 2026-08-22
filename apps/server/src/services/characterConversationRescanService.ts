@@ -24,6 +24,7 @@ import { supabaseAdmin } from './supabaseClient';
 import { characterRescanStateService } from './characters/audit/characterRescanStateService';
 import { characterCardRescanAuditService } from './characters/audit/characterCardRescanAuditService';
 import { isUserRejectedEntityCard } from './entityRejectionRegistry';
+import { guardCharacterCandidate } from './lorebook/quality/characterCandidateGuard';
 import { applySuggestionCandidate } from './lorebook/suggestions/applySuggestionCandidate';
 import {
   getSuggestionWriteContext,
@@ -68,16 +69,18 @@ type EpisodeRow = { source: 'journal' | 'chat'; id: string; text: string; at: st
 
 const JUNK = new Set(['me', 'myself', 'you', 'i', 'we', 'they', 'someone', 'somebody', 'the', 'a', 'an']);
 
-function collectPersonMentions(text: string, userId?: string): string[] {
+export function collectPersonMentions(text: string, userId?: string): string[] {
   const names = new Set<string>();
   const add = (raw: string) => {
     const name = raw.trim().replace(/\s+/g, ' ');
     const key = normalizeNameKey(name);
     if (!name || key.length < 2 || JUNK.has(key)) return;
     if (!isIndividualPersonName(name)) return;
-    if (classifyMentionKind(name).kind !== 'person') return;
-    const classification = classifyEntity(name, text);
+    const mentionKind = classifyMentionKind(name, text).kind;
+    if (mentionKind !== 'person' && mentionKind !== 'unknown') return;
+    const classification = classifyEntity(name);
     if (!isCharacterEligible(classification.type) && !isUnknownEntity(classification.type)) return;
+    if (guardCharacterCandidate({ name, domain: 'characters', evidence: text })) return;
     names.add(name);
   };
 
