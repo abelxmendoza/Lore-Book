@@ -134,3 +134,31 @@ describe('Egress projection guard (match_journal_entries RPC shape)', () => {
     }
   });
 });
+
+describe('Egress projection guard (ragBuilder lore tables)', () => {
+  const src = readSrc('services/chat/ragBuilderService.ts');
+
+  it('does not select(*) on large lore tables in the chat hot path', () => {
+    for (const table of [
+      'eras',
+      'sagas',
+      'arcs',
+      'entity_attributes',
+      'romantic_relationships',
+      'correction_records',
+      'extracted_units',
+      'biometric_measurements',
+      'characters',
+      'locations',
+      'chapters',
+    ]) {
+      expect(countSelectStar(src, table), `${table} still has select('*')`).toBe(0);
+    }
+  });
+
+  it('character projection never includes the embedding vector', () => {
+    const colsSrc = readSrc('services/chat/ragLoreProjections.ts');
+    expect(colsSrc).toContain('RAG_CHARACTER_COLS');
+    expect(colsSrc).not.toMatch(/RAG_CHARACTER_COLS[\s\S]{0,400}\bembedding\b/);
+  });
+});

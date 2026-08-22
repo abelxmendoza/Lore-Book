@@ -21,6 +21,7 @@ import {
   classifyActorLabel,
   type ActorType,
 } from '../actors/actorLabelPolicy';
+import { isContextualTimingOnlyMention } from '../actors/contextualActorMention';
 import { isPollutingPersonLabel } from '../actors/entityLabelPollution';
 import {
   classifyMention,
@@ -385,7 +386,9 @@ export function deriveRosterEntries(
     });
   }
 
-  const entries = collapseRosterDuplicates([...byKey.values()]);
+  const collapsed = collapseRosterDuplicates([...byKey.values()]);
+  const texts = messages.map((row) => row.content ?? '');
+  const entries = collapsed.filter((entry) => !isContextualTimingOnlyMention(entry.name, texts));
   const maxMentions = entries.reduce((max, e) => Math.max(max, e.mentions), 0);
   for (const entry of entries) entry.role = rosterRole(entry.mentions, maxMentions);
   return entries.sort(

@@ -13,7 +13,9 @@ import type { ChatContextExtension } from '../types/timelineInsight';
 import { extractTags, shouldPersistMessage, isTrivialMessage } from '../utils/keywordDetector';
 import { messageReferencesMention } from '../utils/disambiguationUtils';
 import { classifyPostgresError, StorageBlockedError } from '../utils/postgresError';
+import { recordSkippedOperation, setTurnComplexityClass } from '../lib/messageCostTracker';
 import { isClosedScopeQuery, isFocusEntityRelevant } from '@lorebook/api-contracts';
+import { resolveDecoratorPlan } from './chat/decoratorRouting';
 import { resolveChatSubjectRetarget } from './chat/chatSubjectRetarget';
 import { enrichChatFocusWithDatingBook, isDatingRomanceChatFocus } from './chat/datingBookChatFocus';
 import { buildClientSourcesWithRejected, type RejectedEvidenceItem } from './chat/clientSourcesBuilder';
@@ -1478,6 +1480,8 @@ When updating relationship analytics or emotional signals from this thread, weig
   ): Promise<StreamingChatResponse> {
     // Caption text for persistence/ingestion; placeholder when image-only.
     message = resolveUserMessageText(message, images);
+    const decoratorPlan = resolveDecoratorPlan(message);
+    setTurnComplexityClass(decoratorPlan.complexity.class);
 
     // Use the UI thread as the session so messages, recall scoping, and
     // ingestion all stay attached to the thread the user is actually in.
@@ -2388,6 +2392,12 @@ When updating relationship analytics or emotional signals from this thread, weig
     // =====================================================
     let transitionAnalysis: TransitionAnalysis | null = null;
     let currentEmotionalState: EmotionalState | null = null;
+    const runTransitions = decoratorPlan.shouldRun('transition_analysis');
+    const runEmotion = decoratorPlan.shouldRun('emotional_state');
+    if (!runTransitions.run && !runEmotion.run) {
+      recordSkippedOperation('transition_analysis');
+      recordSkippedOperation('emotional_state');
+    } else {
     try {
       // Get previous emotional state from session context (if available)
       // For now, we'll detect it from conversation history
@@ -2405,16 +2415,22 @@ When updating relationship analytics or emotional signals from this thread, weig
         previousTopic: undefined, // Could be extracted from previous messages
       };
 
-      // Detect transitions
-      transitionAnalysis = await tangentTransitionDetector.detectTransitions(
-        message,
-        conversationContext
-      );
+      if (runTransitions.run) {
+        transitionAnalysis = await tangentTransitionDetector.detectTransitions(
+          message,
+          conversationContext
+        );
+      } else {
+        recordSkippedOperation('transition_analysis');
+      }
 
-      // Extract current emotional state
-      currentEmotionalState = await tangentTransitionDetector.extractEmotionalState(message);
+      if (runEmotion.run) {
+        currentEmotionalState = await tangentTransitionDetector.extractEmotionalState(message);
+      } else {
+        recordSkippedOperation('emotional_state');
+      }
 
-      if (transitionAnalysis.shouldAcknowledge) {
+      if (transitionAnalysis?.shouldAcknowledge) {
         logger.debug(
           {
             userId,
@@ -2427,6 +2443,7 @@ When updating relationship analytics or emotional signals from this thread, weig
       }
     } catch (error) {
       logger.debug({ error }, 'Transition detection failed, continuing without');
+    }
     }
 
     // =====================================================
@@ -3114,10 +3131,15 @@ When updating relationship analytics or emotional signals from this thread, weig
 
     // Detect memory suggestion (proactive memory capture)
     let memorySuggestion: MemorySuggestion | null = null;
-    try {
-      memorySuggestion = await this.detectMemorySuggestion(userId, message);
-    } catch (error) {
-      logger.debug({ error }, 'Failed to detect memory suggestion, continuing');
+    const memorySuggestionDecision = decoratorPlan.shouldRun('memory_suggestion');
+    if (!memorySuggestionDecision.run) {
+      recordSkippedOperation('memory_suggestion');
+    } else {
+      try {
+        memorySuggestion = await this.detectMemorySuggestion(userId, message);
+      } catch (error) {
+        logger.debug({ error }, 'Failed to detect memory suggestion, continuing');
+      }
     }
 
     // Ingest message with entity context (fire-and-forget)
@@ -3993,10 +4015,15 @@ When updating relationship analytics or emotional signals from this thread, weig
 
     // Detect memory suggestion (proactive memory capture)
     let memorySuggestion: MemorySuggestion | null = null;
-    try {
-      memorySuggestion = await this.detectMemorySuggestion(userId, message);
-    } catch (error) {
-      logger.debug({ error }, 'Failed to detect memory suggestion, continuing');
+    const memorySuggestionDecision = resolveDecoratorPlan(message).shouldRun('memory_suggestion');
+    if (!memorySuggestionDecision.run) {
+      recordSkippedOperation('memory_suggestion');
+    } else {
+      try {
+        memorySuggestion = await this.detectMemorySuggestion(userId, message);
+      } catch (error) {
+        logger.debug({ error }, 'Failed to detect memory suggestion, continuing');
+      }
     }
 
     // Detect groups in conversation (fire-and-forget). Routes through the

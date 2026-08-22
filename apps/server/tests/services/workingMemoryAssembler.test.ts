@@ -46,10 +46,12 @@ vi.mock('../../src/services/temporal/userTimezoneService', () => ({
 }));
 
 import { assembleWorkingMemory, buildWorkingMemoryPacket } from '../../src/services/chat/workingMemoryAssembler';
+import { invalidateTurnWorkingMemory } from '../../src/services/chat/turnWorkingMemoryCache';
 
 describe('Working Memory Assembler', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    invalidateTurnWorkingMemory();
     tableResults = {
       characters: {
         data: [
