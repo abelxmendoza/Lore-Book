@@ -1,4 +1,5 @@
 import { fetchLexicalPreview, type LexicalPreviewResponse } from '../api/lexicalPreview';
+import { composerIntelligenceMetrics } from './composerIntelligence';
 import { PreviewRateLimitGate } from './previewRateLimitGate';
 
 const resultCache = new Map<string, Promise<LexicalPreviewResponse>>();
@@ -61,6 +62,7 @@ export function fetchLexicalPreviewShared(
       if (inflight?.key === key) inflight = null;
       window.setTimeout(() => resultCache.delete(key), 4000);
     });
+  composerIntelligenceMetrics.noteRemoteLexicalPreview();
   resultCache.set(key, promise);
   return promise;
 }

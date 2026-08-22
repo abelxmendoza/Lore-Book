@@ -11,6 +11,11 @@ export function composerMatchSlot(match: Pick<CertifiedEntityMatch, 'type' | 'id
 export interface ComposerState {
   /** Current draft in the chat textarea (for diagnostics / cross-panel sync). */
   draftText: string;
+  /**
+   * Occupancy flag only. Full draft text must not ride the keystroke render path;
+   * ChatFirstInterface subscribes to this, not draftText.
+   */
+  hasDraft: boolean;
   /** Latest entity matches from certified index + typing analysis. */
   matches: CertifiedEntityMatch[];
   /** User-dismissed chips for the current draft (reappear on new typing). */
@@ -26,6 +31,7 @@ export interface ComposerState {
 
 const initialState: ComposerState = {
   draftText: '',
+  hasDraft: false,
   matches: [],
   dismissedSlots: [],
   confirmingSlots: [],
@@ -45,7 +51,19 @@ const composerSlice = createSlice({
   reducers: {
     setComposerDraft(state, action: PayloadAction<string>) {
       state.draftText = action.payload;
+      state.hasDraft = Boolean(action.payload.trim());
       if (!action.payload.trim()) {
+        state.matches = [];
+        state.dismissedSlots = [];
+        state.confirmingSlots = [];
+        state.includedSlots = [];
+      }
+    },
+    setComposerHasDraft(state, action: PayloadAction<boolean>) {
+      if (state.hasDraft === action.payload) return;
+      state.hasDraft = action.payload;
+      if (!action.payload) {
+        state.draftText = '';
         state.matches = [];
         state.dismissedSlots = [];
         state.confirmingSlots = [];
@@ -104,6 +122,7 @@ const composerSlice = createSlice({
     },
     clearComposerState(state) {
       state.draftText = '';
+      state.hasDraft = false;
       state.matches = [];
       state.dismissedSlots = [];
       state.confirmingSlots = [];
@@ -114,6 +133,7 @@ const composerSlice = createSlice({
 
 export const {
   setComposerDraft,
+  setComposerHasDraft,
   setComposerMatches,
   setComposerIndexReady,
   setComposerIndexError,

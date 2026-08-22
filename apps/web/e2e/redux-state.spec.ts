@@ -46,6 +46,7 @@ test.describe('Redux state management', () => {
   test.beforeEach(async ({ context }) => {
     await context.addInitScript(() => {
       window.localStorage.setItem('dev-notice-dismissed', 'true');
+      window.localStorage.setItem('lorebook.whatsNew.seenId', '*');
       window.localStorage.setItem('lorebook_use_mock_data', 'true');
       window.sessionStorage.setItem('lk_demo_runtime', 'true');
     });

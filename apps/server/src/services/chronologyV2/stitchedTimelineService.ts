@@ -24,6 +24,7 @@ import {
 } from './narrativeCohesion';
 import { projectCanonicalTimeline } from '../chronologyAuthority/canonicalTimelineProjector';
 import type { CanonicalTemporalModel } from '../temporal/canonicalTemporalModel';
+import { projectTemporalItem, type TemporalSurfaceProjection } from '../temporal/temporalSurfaceProjection';
 import {
   buildHistoricalNeighborhoods,
   type HistoricalNeighborhood,
@@ -97,6 +98,8 @@ export type StitchedTimelineItem = {
   temporal?: CanonicalTemporalModel;
   /** Event→organization roles. Presence is not membership. */
   organizationAttributions?: OrganizationAttribution[];
+  /** Shared Omni/Calendar projection. Occurrence meaning is fixed here. */
+  temporalProjection?: TemporalSurfaceProjection;
 };
 
 export type NarrativeChapterData = {
@@ -635,6 +638,17 @@ async function loadNarrativeArcEventIds(
   return [...ids];
 }
 
+function attachTemporalProjection(
+  items: StitchedTimelineItem[],
+  timezone: string,
+  now: Date,
+): StitchedTimelineItem[] {
+  return items.map((item) => ({
+    ...item,
+    temporalProjection: projectTemporalItem(item, timezone, now),
+  }));
+}
+
 export class StitchedTimelineService {
   async getStitchedTimeline(
     userId: string,
@@ -668,12 +682,16 @@ export class StitchedTimelineService {
        * (e.g. a chat turn) should pass an explicit cap to keep it cheap.
        */
       limit?: number;
+      /** IANA timezone for shared Omni/Calendar projection. Defaults to UTC. */
+      timezone?: string;
     } = {}
   ): Promise<StitchedTimelineResult> {
     const scopeType: ChronologyScopeType =
       opts.scope_type ?? (opts.life_arc_id ? 'life_arc' : 'global');
     const scopeId =
       scopeType === 'life_arc' && opts.life_arc_id ? opts.life_arc_id : GLOBAL_SCOPE_ID;
+    const timezone = opts.timezone ?? 'UTC';
+    const projectionNow = new Date();
 
     let startTime = opts.start_time;
     let endTime = opts.end_time;
@@ -1162,10 +1180,10 @@ export class StitchedTimelineService {
             scope_type: scopeType,
             scope_id: scopeId,
             scope_label: scopeLabel,
-            items: sortedScene,
+            items: attachTemporalProjection(sortedScene, timezone, projectionNow),
             has_user_order: sortedScene.some((i) => i.userSortIndex != null),
-            background: sortItems(gated.background),
-            unresolved_items: sortItems(unresolved),
+            background: attachTemporalProjection(sortItems(gated.background), timezone, projectionNow),
+            unresolved_items: attachTemporalProjection(sortItems(unresolved), timezone, projectionNow),
             evidence_hidden_count: evidenceHidden,
             excluded_count: gated.excludedCount,
             ...(chapter ? { chapter } : {}),
@@ -1194,15 +1212,17 @@ export class StitchedTimelineService {
         scope_type: scopeType,
         scope_id: scopeId,
         scope_label: scopeLabel,
-        items: capped,
+        items: attachTemporalProjection(capped, timezone, projectionNow),
         has_user_order: capped.some((i) => i.userSortIndex != null),
-        unresolved_items: unresolvedSorted,
+        unresolved_items: attachTemporalProjection(unresolvedSorted, timezone, projectionNow),
         evidence_hidden_count: evidenceHidden,
         excluded_count: excludedCount,
         ...(historicalNeighborhoods ? { historical_neighborhoods: historicalNeighborhoods } : {}),
         temporal_relations: temporalRelations,
         narrative_relations: narrativeRelations,
-        ...(chapterBackground.length ? { background: sortItems(chapterBackground) } : {}),
+        ...(chapterBackground.length
+          ? { background: attachTemporalProjection(sortItems(chapterBackground), timezone, projectionNow) }
+          : {}),
         ...(chapter ? { chapter } : {}),
         ...(mergeLog?.length ? { merge_log: mergeLog } : {}),
         ...(dataErrors.length ? { data_errors: dataErrors } : {}),

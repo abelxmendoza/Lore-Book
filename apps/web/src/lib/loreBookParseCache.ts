@@ -1,4 +1,5 @@
 import { fetchLoreBookParse, type LoreBookParseResponse } from '../api/loreBookParse';
+import { composerIntelligenceMetrics } from './composerIntelligence';
 import { PreviewRateLimitGate } from './previewRateLimitGate';
 
 const resultCache = new Map<string, Promise<LoreBookParseResponse>>();
@@ -63,6 +64,7 @@ export function fetchLoreBookParseShared(
       if (inflight?.key === key) inflight = null;
       window.setTimeout(() => resultCache.delete(key), 4000);
     });
+  composerIntelligenceMetrics.noteCanonReconstruction();
   resultCache.set(key, promise);
   return promise;
 }

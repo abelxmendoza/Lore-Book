@@ -13,6 +13,7 @@ test.describe('Journey C — Lorebook Generation', () => {
   test.beforeEach(async ({ page, context }) => {
     await context.addInitScript(() => {
       window.localStorage.setItem('dev-notice-dismissed', 'true');
+      window.localStorage.setItem('lorebook.whatsNew.seenId', '*');
     });
 
     await page.goto('/lorebook');

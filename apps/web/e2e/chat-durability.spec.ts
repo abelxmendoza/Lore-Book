@@ -6,6 +6,7 @@ test.describe('Chat durability — guest local persistence', () => {
   test.beforeEach(async ({ page, context }) => {
     await context.addInitScript(() => {
       window.localStorage.setItem('dev-notice-dismissed', 'true');
+      window.localStorage.setItem('lorebook.whatsNew.seenId', '*');
     });
     await page.goto('/chat');
     await page.waitForLoadState('domcontentloaded');
@@ -86,6 +87,7 @@ test.describe('Chat durability — UI smoke', () => {
   test.beforeEach(async ({ context, page }) => {
     await context.addInitScript(() => {
       window.localStorage.setItem('dev-notice-dismissed', 'true');
+      window.localStorage.setItem('lorebook.whatsNew.seenId', '*');
     });
     await page.goto('/chat');
     await page.waitForSelector('textarea[placeholder*="Type your message"], textarea[placeholder*="Message Lore Book"]', {

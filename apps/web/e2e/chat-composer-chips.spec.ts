@@ -97,6 +97,7 @@ test.describe('Composer entity chips while typing', () => {
     await page.addInitScript(
       ([storageKeys, session]) => {
         window.localStorage.setItem('dev-notice-dismissed', 'true');
+        window.localStorage.setItem('lorebook.whatsNew.seenId', '*');
         for (const key of storageKeys) {
           window.localStorage.setItem(key, JSON.stringify(session));
         }

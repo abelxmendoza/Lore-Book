@@ -10,6 +10,7 @@ import { Textarea } from '../../../components/ui/textarea';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
 import type { useEntityCorrectionState } from '../../../hooks/useEntityCorrectionState';
+import { composerIntelligenceMetrics } from '../../../lib/composerIntelligence';
 import { EntityClassificationPopover } from './EntityClassificationPopover';
 
 type EntityCorrectionState = ReturnType<typeof useEntityCorrectionState>;
@@ -141,6 +142,7 @@ export const EntityHighlightedComposer = ({
         onChange={(e) => {
           lastAutoGrownValueRef.current = e.target.value;
           onChange(e.target.value);
+          composerIntelligenceMetrics.noteLayoutGrow();
           // Grow immediately on this frame (before paint if possible).
           // Mark this value so the layout effect does not grow a second time.
           autoGrowTextarea(e.currentTarget);

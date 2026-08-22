@@ -36,7 +36,15 @@ import { OrganizationMemberRoleSelect } from '../ui/OrganizationMemberRoleSelect
 import { CreateGroupFromCharacterPanel } from './CreateGroupFromCharacterPanel';
 import { fetchCharacterLoreProfile, type CharacterLoreProfile } from '../../api/characterLoreProfile';
 import { formatEpistemicPercent } from '../../lib/epistemicLabels';
-import { onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
+import { onStoryDataUpdated, dispatchStoryDataUpdated, RELATIONSHIP_STORY_SCOPES } from '../../lib/storyRefresh';
+import {
+  describeCurrentRelationship,
+  isRelationshipLinkUuid,
+  listPreviousGroundedStates,
+  partitionConnectionsByDimension,
+  type RelationshipProjection,
+} from '../../lib/relationshipAuthority';
+import { RelationshipAuthorityCard } from './RelationshipAuthorityCard';
 import { UnknownField } from '../ui/UnknownField';
 import { InsufficientData } from '../ui/InsufficientData';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
@@ -384,6 +392,7 @@ export const CharacterDetailModal = ({
     loading: characterQueryLoading,
     error: characterQueryError,
     loadSections,
+    reload: reloadCharacterQuery,
   } = useCharacterQuery(character.id, {
     enabled: characterQueryEnabled,
     sections: 'core',
@@ -702,7 +711,24 @@ export const CharacterDetailModal = ({
     // but no listener is mounted for it right now to pick up the dispatch below.
     if (otherCharacterId && otherCharacterId !== character.id) invalidateCache(otherCharacterId);
     invalidateCache('/api/characters');
+    invalidateCache(`/api/characters/${character.id}/query`);
+    invalidateCache(`/api/characters/${character.id}/profile-bundle`);
+    if (otherCharacterId) {
+      invalidateCache(`/api/characters/${otherCharacterId}/query`);
+      invalidateCache(`/api/characters/${otherCharacterId}/profile-bundle`);
+    }
     invalidateCache('/api/conversation/romantic-relationships');
+  };
+
+  const refreshCanonicalRelationships = async (otherCharacterId?: string) => {
+    invalidateRelationshipViews(otherCharacterId);
+    if (characterQueryEnabled) {
+      await reloadCharacterQuery({ sections: 'relationships', silent: true });
+    }
+    dispatchStoryDataUpdated({
+      scopes: RELATIONSHIP_STORY_SCOPES,
+      characterIds: otherCharacterId ? [character.id, otherCharacterId] : [character.id],
+    });
   };
 
   const upsertLocalRelationship = (nextRelationship: Relationship) => {
@@ -735,15 +761,13 @@ export const CharacterDetailModal = ({
       }
     );
     upsertLocalRelationship(response.relationship);
-    invalidateRelationshipViews(targetCharacterId);
-    dispatchStoryDataUpdated({ scopes: ['characters'], characterIds: [character.id, targetCharacterId] });
+    await refreshCanonicalRelationships(targetCharacterId);
     // Manual "People in their world" add is recorded with user_confirmed + manual flags in backend.
     // This feeds entity authority, continuity, biography, and lorebook so the system learns the connection
     // as high-confidence ground truth for identity and long-term narrative.
     if (isMainCharacter && !isMockDataEnabled) {
       selfCharacterApi.ensureSelf().catch(() => {});
       selfCharacterApi.repairIdentity().catch(() => {});
-      dispatchStoryDataUpdated({ scopes: ['characters'], characterIds: [character.id, targetCharacterId] });
     }
   };
 
@@ -760,11 +784,7 @@ export const CharacterDetailModal = ({
       }
     );
     upsertLocalRelationship(response.relationship);
-    invalidateRelationshipViews(response.relationship.character_id);
-    dispatchStoryDataUpdated({
-      scopes: ['characters'],
-      characterIds: [character.id, response.relationship.character_id],
-    });
+    await refreshCanonicalRelationships(response.relationship.character_id);
     // Manual update learned by system (high authority for continuity/identity).
   };
 
@@ -783,19 +803,11 @@ export const CharacterDetailModal = ({
         relationship_count: relationships.length,
       };
     });
-    invalidateRelationshipViews(otherCharacterId);
-    dispatchStoryDataUpdated({
-      scopes: ['characters'],
-      characterIds: otherCharacterId ? [character.id, otherCharacterId] : [character.id],
-    });
+    await refreshCanonicalRelationships(otherCharacterId);
     // Delete from "People in their world" is a user correction — system treats removal as authoritative for graph/continuity.
     if (isMainCharacter && !isMockDataEnabled) {
       selfCharacterApi.ensureSelf().catch(() => {});
       selfCharacterApi.repairIdentity().catch(() => {});
-      dispatchStoryDataUpdated({
-        scopes: ['characters'],
-        characterIds: otherCharacterId ? [character.id, otherCharacterId] : [character.id],
-      });
     }
   };
 
@@ -2315,7 +2327,7 @@ export const CharacterDetailModal = ({
   useEffect(() => {
     if (!characterQueryEnabled || !character.id) return;
     if (activeTab === 'relationships' || activeTab === 'social') {
-      void loadSections('family');
+      void loadSections(['family', 'relationships']);
     } else if (activeTab === 'timeline') {
       void loadSections('timelines');
     } else if (activeTab === 'photos' || activeTab === 'messages') {
@@ -2478,7 +2490,10 @@ export const CharacterDetailModal = ({
     };
   }, [character.id, character.name, isMockDataEnabled, orgsReloadToken, profileBundle?.organizations]);
 
-  // ── Manual editing: memberships (Groups & Orgs book) ──
+  // ── Manual editing: connections (Character Book) + memberships (Groups & Orgs book) ──
+  const [connectionBusyId, setConnectionBusyId] = useState<string | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+
   const [orgAddOpen, setOrgAddOpen] = useState(false);
   const [orgOptions, setOrgOptions] = useState<Organization[]>([]);
   const [orgOptionsLoading, setOrgOptionsLoading] = useState(false);
@@ -2488,6 +2503,83 @@ export const CharacterDetailModal = ({
   const [orgMemberError, setOrgMemberError] = useState<string | null>(null);
   const [roleSavingOrgId, setRoleSavingOrgId] = useState<string | null>(null);
 
+  const changeConnection = async (
+    rel: { id?: string; character_id?: string; character_name?: string },
+    nextType: string,
+  ) => {
+    if (!rel.id || !isRelationshipLinkUuid(rel.id)) return;
+    setConnectionBusyId(rel.id);
+    setConnectionError(null);
+    try {
+      const res = await fetchJson<{ success: boolean; relationship: NonNullable<Character['relationships']>[number] }>(
+        `/api/relationships/character-links/${rel.id}`,
+        { method: 'PATCH', body: JSON.stringify({ relationship_type: nextType }) },
+      );
+      upsertLocalRelationship(res.relationship);
+      await refreshCanonicalRelationships(rel.character_id);
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : 'Could not change relationship.');
+    } finally {
+      setConnectionBusyId(null);
+    }
+  };
+
+  const endConnection = async (rel: { id?: string; character_id?: string; character_name?: string }) => {
+    if (!rel.id) return;
+    const who = rel.character_name ?? 'this person';
+    if (!window.confirm(`End the relationship with ${who}? History is kept.`)) return;
+    setConnectionBusyId(rel.id);
+    setConnectionError(null);
+    try {
+      if (isRelationshipLinkUuid(rel.id)) {
+        const res = await fetchJson<{
+          success: boolean;
+          relationship?: NonNullable<Character['relationships']>[number];
+        }>(`/api/relationships/character-links/${rel.id}/end`, { method: 'POST' });
+        if (res.relationship) upsertLocalRelationship(res.relationship);
+      } else {
+        await fetchJson(`/api/relationships/character-links/${rel.id}`, { method: 'DELETE' });
+        setEditedCharacter((prev) => ({
+          ...prev,
+          relationships: (prev.relationships ?? []).filter((r) => r.id !== rel.id),
+        }));
+      }
+      await refreshCanonicalRelationships(rel.character_id);
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : 'Could not end relationship.');
+    } finally {
+      setConnectionBusyId(null);
+    }
+  };
+
+  const correctConnection = async (rel: { id?: string; character_id?: string; character_name?: string }) => {
+    if (!rel.id) return;
+    const who = rel.character_name ?? 'this person';
+    if (
+      !window.confirm(
+        `Correct the relationship with ${who}? LoreBook will treat the current label as a mistake, not as something that happened.`,
+      )
+    )
+      return;
+    setConnectionBusyId(rel.id);
+    setConnectionError(null);
+    try {
+      if (isRelationshipLinkUuid(rel.id)) {
+        await fetchJson(`/api/relationships/character-links/${rel.id}/retract`, { method: 'POST' });
+      } else {
+        await fetchJson(`/api/relationships/character-links/${rel.id}`, { method: 'DELETE' });
+      }
+      setEditedCharacter((prev) => ({
+        ...prev,
+        relationships: (prev.relationships ?? []).filter((r) => r.id !== rel.id),
+      }));
+      await refreshCanonicalRelationships(rel.character_id);
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : 'Could not correct relationship.');
+    } finally {
+      setConnectionBusyId(null);
+    }
+  };
 
   const toggleOrgAdd = async () => {
     const next = !orgAddOpen;
@@ -2854,7 +2946,23 @@ export const CharacterDetailModal = ({
   // family, so a dog's card would show somebody's grandparents.
   const isPet = isPetCharacter(editedCharacter);
   const kinshipConnections = allConnections.filter(isKinshipConnection);
+  // Parents / children / pets get their own labelled lists, so keep them out of
+  // the flat list instead of listing every person twice.
+  const remainingConnections = allConnections.filter((rel) => !isKinshipConnection(rel));
+  const relationshipProjections = (characterQuery?.sections?.relationships ?? null) as
+    | Record<string, RelationshipProjection>
+    | null;
+  const partitionedConnections = partitionConnectionsByDimension(remainingConnections, relationshipProjections);
+  const socialConnections = partitionedConnections.social;
+  const familyDimensionConnections = partitionedConnections.family;
   const storyGroups = (isMockDataEnabled ? getMockOrganizations() : characterOrganizations);
+
+  const youRelationship = (editedCharacter.relationships ?? []).find(
+    (rel) => rel.character_name === 'You' || !rel.character_name,
+  );
+  const youProjection = youRelationship?.character_id
+    ? relationshipProjections?.[youRelationship.character_id]
+    : undefined;
 
   const resolvedRomanticRelationship = useMemo(() => {
     if (relationship) return relationship;
@@ -3756,9 +3864,26 @@ export const CharacterDetailModal = ({
                           );
                           return (
                             <>
-                              <p className="text-sm text-white">
-                                {toYou ? relationshipToYouLabel(toYou) : 'Not set yet'}
-                              </p>
+                              {youProjection ? (
+                                <div data-testid="relationship-to-you-authority">
+                                  <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">Current</span>
+                                  <p className="text-white font-medium mt-0.5" data-testid="relationship-current">
+                                    {describeCurrentRelationship(youProjection).headline}
+                                  </p>
+                                  {listPreviousGroundedStates(youProjection).length > 0 && (
+                                    <div className="mt-2">
+                                      <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">Previously</span>
+                                      <p className="text-white/75 text-sm mt-0.5" data-testid="relationship-previously">
+                                        {listPreviousGroundedStates(youProjection).join(' → ')}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-white">
+                                  {toYou ? relationshipToYouLabel(toYou) : 'Not set yet'}
+                                </p>
+                              )}
                               {youLink?.closeness_score != null && (
                                 <div>
                                   <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">Closeness</span>
@@ -3927,6 +4052,69 @@ export const CharacterDetailModal = ({
                   />
                 )}
 
+                {!isPet && familyDimensionConnections.length > 0 && (
+                  <div className="pt-8 border-t border-white/[0.06]" data-testid="family-relationship-section">
+                    <ConnectionSectionHeader icon={TreePine} title="Family relationship" />
+                    <div className="space-y-2">
+                      {familyDimensionConnections.map((rel) => (
+                        <Card
+                          key={rel.character_id ?? rel.id}
+                          className="bg-black/40 border-border/50 cursor-pointer hover:border-primary/50 hover:bg-black/60 transition-all"
+                          onClick={() => void openCharacterByRelationship(rel)}
+                        >
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-medium text-white">{rel.character_name}</p>
+                                <p className="text-sm text-white/70 mt-0.5" data-testid="family-relationship-type">
+                                  {rel.relationship_type}
+                                </p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Friends & Other Connections */}
+                {(
+                  <div className="pt-8 border-t border-white/[0.06]">
+                    <ConnectionSectionHeader icon={UserCircle} title="Friends & Other Connections" />
+                    {connectionError && (
+                      <p className="text-xs text-red-400 mb-2">{connectionError}</p>
+                    )}
+                    <div className="space-y-2">
+                      {socialConnections.map(({ edge: rel, projection }) => (
+                        <RelationshipAuthorityCard
+                          key={rel.character_id ?? rel.id}
+                          canonicalCharacterId={editedCharacter.id}
+                          model={{
+                            counterpartId: rel.character_id || rel.id || rel.character_name || 'unknown',
+                            name: rel.character_name || 'Unknown',
+                            summary: rel.summary,
+                            closenessScore: rel.closeness_score,
+                            linkId: rel.id,
+                            projection,
+                            sharedContext: rel.summary ?? null,
+                          }}
+                          busy={Boolean(rel.id && connectionBusyId === rel.id)}
+                          onOpen={() => void openCharacterByRelationship(rel)}
+                          onChange={(nextType) => void changeConnection(rel, nextType)}
+                          onEnd={() => void endConnection(rel)}
+                          onCorrect={() => void correctConnection(rel)}
+                        />
+                      ))}
+                      {socialConnections.length === 0 && (
+                        <div className="text-center py-8 text-white/40">
+                          <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                          <p>No connections tracked yet</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Wider network (inferred periphery — formerly its own tab) */}
                 {editedCharacter.id && (

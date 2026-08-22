@@ -4,6 +4,7 @@ describe('Search Feature', () => {
     cy.visit('/timeline?view=search', {
       onBeforeLoad: (win: Window) => {
         win.localStorage.setItem('dev-notice-dismissed', 'true');
+        win.localStorage.setItem('lorebook.whatsNew.seenId', '*');
         win.localStorage.setItem('VITE_USE_MOCK_DATA', 'true');
       },
     });

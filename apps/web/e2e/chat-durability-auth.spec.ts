@@ -113,6 +113,7 @@ test.describe('Chat durability — authenticated reload', () => {
     await context.addInitScript(
       ([storageKey, session]) => {
         window.localStorage.setItem('dev-notice-dismissed', 'true');
+        window.localStorage.setItem('lorebook.whatsNew.seenId', '*');
         window.localStorage.setItem(storageKey, JSON.stringify(session));
       },
       [STORAGE_KEY, sessionPayload] as const

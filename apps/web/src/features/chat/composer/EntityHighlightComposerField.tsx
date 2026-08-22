@@ -1,6 +1,7 @@
 import { useLayoutEffect, type CSSProperties, type KeyboardEvent, type RefObject } from 'react';
 import { Textarea } from '../../../components/ui/textarea';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
+import { composerIntelligenceMetrics } from '../../../lib/composerIntelligence';
 
 type EntityHighlightComposerFieldProps = {
   value: string;
@@ -56,6 +57,7 @@ export const EntityHighlightComposerField = ({
         value={value}
         onChange={(e) => {
           onChange(e.target.value);
+          composerIntelligenceMetrics.noteLayoutGrow();
           autoGrow(e.currentTarget);
         }}
         disabled={disabled}
