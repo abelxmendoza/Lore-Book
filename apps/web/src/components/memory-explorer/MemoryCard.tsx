@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Calendar, ChevronDown, ChevronUp, Tag, Users, Sparkles, Star } from 'lucide-react';
+import { Calendar, ChevronDown, ChevronUp, Tag, Users, Sparkles, Star, Twitter } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Card, CardContent } from '../ui/card';
 import { fetchJson } from '../../lib/api';
+import { xStatusHref } from '../../lib/safeUrl';
 import type { MemoryCard, LinkedMemory } from '../../types/memory';
 import { getDisplayTitle } from '../../utils/displayTitle';
 
@@ -119,21 +120,41 @@ export const MemoryCardComponent = ({
   };
 
   const moodColor = memory.mood ? moodColors[memory.mood.toLowerCase()] || 'bg-gray-500/20 text-gray-300 border-gray-500/30' : undefined;
+  const isX = memory.source === 'x';
+  const xHref = isX
+    ? xStatusHref({
+        sourceId: (memory.metadata as any)?.sourceId,
+        url: (memory.metadata as any)?.url,
+      })
+    : null;
 
   return (
     <Card
-      className="bg-black/50 border-border/60 hover:border-primary/50 transition-all cursor-pointer group"
+      className={`bg-black/50 border-border/60 hover:border-primary/50 transition-all cursor-pointer group ${
+        isX ? 'border-sky-500/35 bg-gradient-to-br from-sky-950/30 to-black/50 hover:border-sky-400/50' : ''
+      }`}
       onClick={() => onSelect?.(memory)}
     >
       <CardContent className="p-4 space-y-3">
         {/* Header */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <span className="text-lg">{memory.sourceIcon}</span>
+            {isX ? (
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/15 ring-1 ring-sky-400/30">
+                <Twitter className="h-3.5 w-3.5 text-sky-300" />
+              </span>
+            ) : (
+              <span className="text-lg">{memory.sourceIcon}</span>
+            )}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 text-xs text-white/50">
                 <Calendar className="h-3 w-3" />
                 <span className="truncate">{formatDate(memory.date)}</span>
+                {isX && (
+                  <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-300">
+                    X
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -173,6 +194,17 @@ export const MemoryCardComponent = ({
         <p className="text-sm text-white/70 line-clamp-3">
           {memory.content}
         </p>
+        {isX && xHref && (
+          <a
+            href={xHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 text-[11px] text-sky-400 hover:text-sky-300 hover:underline"
+          >
+            <Twitter className="h-3 w-3" /> Open original on X →
+          </a>
+        )}
 
         {/* Tags */}
         {memory.tags.length > 0 && (
