@@ -66,9 +66,15 @@ vi.mock('../../../src/services/lorebook/suggestions/applySuggestionCandidate', (
   }),
 }));
 
-vi.mock('../../../src/services/lorebook/parser/canonIndexBuilder', () => ({
-  buildCanonIndexForUser: vi.fn(async () => ({})),
-}));
+vi.mock('../../../src/services/lorebook/parser/canonIndexBuilder', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('../../../src/services/lorebook/parser/canonIndexBuilder')
+  >();
+  return {
+    ...actual,
+    buildCanonIndexForUser: vi.fn(async () => actual.buildEmptyCanonIndex()),
+  };
+});
 
 import {
   applyParseOperations,
