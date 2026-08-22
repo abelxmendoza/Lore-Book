@@ -72,7 +72,7 @@ export const BookCoverPage = ({
           onBackToLibrary();
         }}
         className={`absolute left-3 top-3 z-10 flex min-h-11 items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-medium shadow-lg backdrop-blur-sm transition-all sm:left-5 sm:top-5 ${t.btnBg} ${t.btnText}`}
-        aria-label="Back to LoreBooks Library"
+        aria-label="Back to LoreBook Library"
       >
         <ChevronLeft className="h-4 w-4 shrink-0" />
         <Library className="h-4 w-4 shrink-0" />
