@@ -2,6 +2,10 @@
 
 Date: 2026-06-15
 
+> **Historical snapshot (2026-06-15).** Character chronology since 2026-08-21 is
+> `resolved_events.people[]` → Canonical Temporal Model. `character_timeline_events`
+> no longer exists.
+
 Purpose: inventory every chronology-related system before Timeline Intelligence work. **Audit only — no implementation.**
 
 Related: `TEMPORAL_ARCHITECTURE.md`, `docs/graph-migration-plan.md`, `docs/episode-experience.md`
@@ -37,7 +41,7 @@ LoreBook has **at least six overlapping temporal stacks** serving different ques
 | **Stitched timeline** | Unified stream: journal moments + resolved events | `chronology_index` + `resolved_events` + `user_chronology_order` | `GET /api/chronology/stitched` | Omni Events tab, Life Log calendar day panel, `TimelineStitchedView` | **Active** | Duplicated in Life Log + Omni | **Yes — unified browse stream** |
 | **Calendar aggregation** | Month grid: occasions + events + moments | `life_arcs` (occasion), `resolved_events`, `chronology_index` | `GET /api/chronology/calendar?year=&month=` | Omni Calendar, Life Log Calendar | **Active** | **High duplication** with Life Log | **Yes — calendar projection** |
 | **Life arcs** | Named life periods on parallel tracks | `life_arcs`, `arc_memberships`, `arc_event_links`, `arc_relationships` | `GET/POST /api/life-arcs` | Omni Swimlanes, Story view, SagaScreen | **Active** | Overlaps 9-layer sagas/arcs | **Yes — narrative containers** |
-| **Character timeline events** | Per-person shared experience lane | `character_timeline_events` ← `resolved_events` | `GET /api/conversation/characters/:id/timelines` | CharacterTimelinePanel, org modals | **Active** | Projection of resolved_events | **Merge → graph view** |
+| **Character timeline** | Per-person shared experience lane | `resolved_events.people[]` + Canonical Temporal Model | `GET /api/conversation/characters/:id/timelines` | CharacterTimelinePanel | **Active** | `character_timeline_events` dropped 2026-08-21 | **Canonical** |
 | **Episodes (segmentation)** | Thread-local bounded scenes | Thread metadata / future `episodes` table | Not exposed yet | Thread intelligence (planned) | **Backend active** | Will supersede raw message browse | **Future canonical moment unit** |
 | **Thread metadata** | Thread summaries, key people/places/episodes | `conversation_sessions.metadata.threadMeta` | Thread routes + chat continuity | Chat header (planned) | **Active backend, weak UX** | Not a timeline store | **Container metadata** |
 | **User chronology order** | Drag-reorder overrides | `user_chronology_order` | `PUT /api/chronology/order` | TimelineStitchedView | **Active** | — | **Yes — user preference overlay** |
@@ -94,8 +98,7 @@ LoreBook has **at least six overlapping temporal stacks** serving different ques
 chat_messages (immutable evidence)
     │
     ├─► ingestion pipeline
-    │       ├─► resolved_events (+ meaning layers)
-    │       ├─► character_timeline_events (per-person projection)
+    │       ├─► resolved_events.people[] (Character Timeline)
     │       ├─► event_candidates (recurring patterns)
     │       └─► journal_entries / extracted_units
     │
@@ -139,7 +142,7 @@ LIFE STORY (projection, not stored blob)
 | Transformation | Path A | Path B | Path C |
 |---|---|---|---|
 | Journal → timeline item | `chronology_index` | Stitched `moment` kind | Universal search normalizer |
-| Chat → life happening | `resolved_events` | Stitched `event` kind | `character_timeline_events` |
+| Chat → life happening | `resolved_events` | Stitched `event` kind | Character Timeline via `people[]` |
 | Events → narrative period | `life_arcs` (inference) | 9-layer `timeline_arcs/sagas` | `chapters` table |
 | Recurring detection | `event_candidates` | Chronology V1 `patternDetector` | Analytics sagaEngine |
 | Day grouping | Calendar aggregation | dayOccasionService | EventsBook calendar local merge |
@@ -346,7 +349,7 @@ Sidebar:
 | Duplicate TimelineSearch (`timeline-v2/`) | **DELETE** |
 | Chronology V1 | **KEEP** — analysis worker only |
 | Python chronology client | **DELETE or wire** |
-| `character_timeline_events` table | **MERGE** → view over events + person edges |
+| `character_timeline_events` table | **DROPPED 2026-08-21** — Character Timeline reads `people[]` |
 | `event_candidates` | **KEEP** — Patterns layer |
 | LifeArcPanel (broken route) | **FIX or DELETE** |
 | `/api/life-arc/recent` | **WIRE or DELETE** |
