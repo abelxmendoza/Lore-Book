@@ -7,9 +7,58 @@ import { memoryReviewQueueService } from '../memoryReviewQueueService';
 import { omegaMemoryService } from '../omegaMemoryService';
 import { perspectiveService } from '../perspectiveService';
 import { supabaseAdmin } from '../supabaseClient';
+import { DRAFT_THREAD_TITLE } from '../../utils/threadTitleUtils';
 
 /** Reuse window for thread-less "quick chat" sessions before opening a new one. */
 const QUICK_CHAT_REUSE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Ensure a client-generated UI thread exists before any message references it.
+ * This closes the race between the optimistic create-thread request and the
+ * first chat request, while refusing to attach a message to another user's id.
+ */
+export async function ensureChatSession(userId: string, sessionId: string): Promise<string> {
+  const findSession = () => supabaseAdmin
+    .from('conversation_sessions')
+    .select('id, user_id')
+    .eq('id', sessionId)
+    .maybeSingle();
+
+  const { data: existing, error: lookupError } = await findSession();
+  if (lookupError) throw lookupError;
+  if (existing) {
+    if ((existing as { user_id: string }).user_id !== userId) {
+      throw new Error('Chat session is not available for this user.');
+    }
+    return sessionId;
+  }
+
+  const now = new Date().toISOString();
+  const { error: insertError } = await supabaseAdmin
+    .from('conversation_sessions')
+    .insert({
+      id: sessionId,
+      user_id: userId,
+      title: DRAFT_THREAD_TITLE,
+      started_at: now,
+      created_at: now,
+      updated_at: now,
+      metadata: {},
+    });
+
+  if (!insertError) return sessionId;
+
+  // The create-thread endpoint may have won the race after our lookup.
+  if ((insertError as { code?: string }).code === '23505') {
+    const { data: raced, error: racedLookupError } = await findSession();
+    if (!racedLookupError && (raced as { user_id?: string } | null)?.user_id === userId) {
+      return sessionId;
+    }
+  }
+
+  logger.error({ error: insertError, userId, sessionId }, 'Failed to ensure UI chat session');
+  throw new Error('Failed to start the selected chat session. Please try again.');
+}
 
 /**
  * Resolve a session for messages sent without a UI thread id.

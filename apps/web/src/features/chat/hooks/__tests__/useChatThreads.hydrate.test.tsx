@@ -41,6 +41,7 @@ vi.mock('../../services/threadPersistenceTracker', () => ({
 import { useAuth } from '../../../../lib/supabase';
 import { fetchJson } from '../../../../lib/api';
 import { renderUseChatThreads } from './chatTestUtils';
+import { persistAuthThreadCache } from '../../utils/threadLocalCache';
 
 const mockUseAuth = vi.mocked(useAuth);
 const mockFetchJson = vi.mocked(fetchJson);
@@ -251,5 +252,30 @@ describe('useChatThreads.hydrateThreadMessages', () => {
     await waitFor(() => {
       expect(result.current.threads.some((t) => t.id === 'thread-1')).toBe(true);
     });
+  });
+
+  it('reports an authenticated load error without declaring the list empty', async () => {
+    persistAuthThreadCache(
+      'user-hydrate-1',
+      [{
+        id: 'cached-thread',
+        title: 'Cached conversation',
+        messages: [msg('cached-u1', 'user', 'keep this conversation')],
+        updatedAt: '2026-06-02T00:00:00Z',
+      }],
+      'cached-thread',
+    );
+    mockFetchJson.mockRejectedValue(new Error('Network unavailable'));
+
+    const { result } = renderUseChatThreads();
+
+    await waitFor(() => expect(result.current.threadListState.status).toBe('error'));
+    expect(result.current.threads.map((thread) => thread.id)).toEqual(['cached-thread']);
+    expect(result.current.threadsReady).toBe(false);
+    expect(result.current.threadListState).toEqual({
+      status: 'error',
+      error: 'Network unavailable',
+    });
+    expect(localStorage.getItem('lorekeeper_chat_threads_user-hydrate-1')).toBeNull();
   });
 });

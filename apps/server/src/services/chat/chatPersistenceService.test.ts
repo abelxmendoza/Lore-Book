@@ -98,3 +98,48 @@ describe('getOrCreateChatSession', () => {
     await expect(getOrCreateChatSession('user-1')).rejects.toThrow(/chat session/i);
   });
 });
+
+describe('ensureChatSession', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
+
+  it('reuses an existing session owned by the user', async () => {
+    mockFrom.mockImplementation(() =>
+      builderResolving({ data: { id: 'thread-1', user_id: 'user-1' }, error: null }),
+    );
+
+    const { ensureChatSession } = await import('./chatPersistenceService');
+    await expect(ensureChatSession('user-1', 'thread-1')).resolves.toBe('thread-1');
+    expect(mockFrom).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates the UI session before the first message can reference it', async () => {
+    const calls: Array<{ method: string; args: unknown[] }> = [];
+    let query = 0;
+    mockFrom.mockImplementation(() => {
+      query += 1;
+      return builderResolving(
+        query === 1 ? { data: null, error: null } : { data: null, error: null },
+        calls,
+      );
+    });
+
+    const { ensureChatSession } = await import('./chatPersistenceService');
+    await expect(ensureChatSession('user-1', 'thread-new')).resolves.toBe('thread-new');
+    expect(calls).toContainEqual({
+      method: 'insert',
+      args: [expect.objectContaining({ id: 'thread-new', user_id: 'user-1' })],
+    });
+  });
+
+  it('refuses to attach a message to another user\'s session id', async () => {
+    mockFrom.mockImplementation(() =>
+      builderResolving({ data: { id: 'thread-1', user_id: 'user-2' }, error: null }),
+    );
+
+    const { ensureChatSession } = await import('./chatPersistenceService');
+    await expect(ensureChatSession('user-1', 'thread-1')).rejects.toThrow(/not available/i);
+  });
+});

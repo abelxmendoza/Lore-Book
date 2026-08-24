@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { MessageSquarePlus, MessageSquareText, Pencil, Trash2, PanelLeftClose, PanelLeft, X, Search, Brain, Sparkles, Loader2, ScanSearch } from 'lucide-react';
 import { cn } from '../../../lib/cn';
-import type { ChatThread } from '../hooks/useChatThreads';
+import type { ChatThread, ThreadListState } from '../hooks/useChatThreads';
 import { isGenericThreadTitle, resolveThreadDisplayTitle } from '../utils/threadTitleUtils';
 import { disambiguateThreadTitles } from '../utils/threadDedupeUtils';
 import { sortThreadsChronologically, threadActivityMs } from '../utils/sortThreadsChronologically';
@@ -27,6 +27,8 @@ type ChatThreadListProps = {
   loadingMoreThreads?: boolean;
   threadsTotal?: number | null;
   onLoadMoreThreads?: () => void;
+  threadListState?: ThreadListState;
+  onRetryThreads?: () => void;
   threadError?: string | null;
   onDismissThreadError?: () => void;
   /** Roster-scoped filter: only show threads featuring this cast member. */
@@ -412,6 +414,8 @@ export const ChatThreadList = ({
   loadingMoreThreads = false,
   threadsTotal = null,
   onLoadMoreThreads,
+  threadListState = { status: 'ready', error: null },
+  onRetryThreads,
   threadError = null,
   onDismissThreadError,
   castFilter,
@@ -786,6 +790,28 @@ export const ChatThreadList = ({
                 <MessageSquareText className="h-4 w-4" />
               </button>
             ))}
+          </div>
+        ) : threadListState.status === 'loading' && threads.length === 0 ? (
+          <div className="px-3 py-8 text-center" role="status">
+            <Loader2 className="h-6 w-6 animate-spin text-white/30 mx-auto mb-3" />
+            <p className="text-xs text-white/40">Loading conversations…</p>
+          </div>
+        ) : threadListState.status === 'error' && threads.length === 0 ? (
+          <div className="px-3 py-8 text-center" role="alert">
+            <MessageSquareText className="h-8 w-8 text-white/15 mx-auto mb-3" />
+            <p className="text-xs text-white/45">Unable to load conversations</p>
+            <p className="text-[10px] text-white/25 mt-1">
+              {sanitizeInlineError(threadListState.error) || 'Please try again.'}
+            </p>
+            {onRetryThreads && (
+              <button
+                type="button"
+                onClick={onRetryThreads}
+                className="mt-3 rounded-md border border-white/10 px-3 py-1.5 text-[11px] text-white/60 hover:bg-white/[0.06] hover:text-white"
+              >
+                Retry
+              </button>
+            )}
           </div>
         ) : displayThreads.length === 0 ? (
           <div className="px-3 py-8 text-center">

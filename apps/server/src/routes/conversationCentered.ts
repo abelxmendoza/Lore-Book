@@ -222,30 +222,47 @@ function metadataMessageCount(metadata: Record<string, unknown> | null | undefin
   return Array.isArray(msgs) ? msgs.length : 0;
 }
 
+const MESSAGE_COUNT_PAGE_SIZE = 1000;
+
+/**
+ * Count message rows for a page of sessions without issuing one request per
+ * thread. PostgREST caps response sizes, so keep paging until every matching
+ * row has been counted.
+ */
+async function loadMessageCountsFromTable(
+  table: 'chat_messages' | 'conversation_messages',
+  userId: string,
+  sessionIds: string[]
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  if (sessionIds.length === 0) return counts;
+
+  for (let offset = 0; ; offset += MESSAGE_COUNT_PAGE_SIZE) {
+    const { data, error } = await supabaseAdmin
+      .from(table)
+      .select('session_id')
+      .eq('user_id', userId)
+      .in('session_id', sessionIds)
+      .order('id', { ascending: true })
+      .range(offset, offset + MESSAGE_COUNT_PAGE_SIZE - 1);
+    if (error) throw error;
+
+    const rows = (data ?? []) as Array<{ session_id: string | null }>;
+    for (const row of rows) {
+      if (row.session_id) counts.set(row.session_id, (counts.get(row.session_id) ?? 0) + 1);
+    }
+    if (rows.length < MESSAGE_COUNT_PAGE_SIZE) break;
+  }
+
+  return counts;
+}
+
 /** Message counts per session — chat_messages is canonical, conversation_messages covers legacy threads. */
 async function loadThreadMessageCounts(userId: string, sessionIds: string[]): Promise<Map<string, number>> {
-  const counts = new Map<string, number>();
-  await Promise.all(
-    sessionIds.map(async (id) => {
-      const { count } = await supabaseAdmin
-        .from('chat_messages')
-        .select('id', { count: 'exact', head: true })
-        .eq('session_id', id)
-        .eq('user_id', userId);
-      counts.set(id, count ?? 0);
-    })
-  );
-  const emptyIds = sessionIds.filter((id) => (counts.get(id) ?? 0) === 0);
-  await Promise.all(
-    emptyIds.map(async (id) => {
-      const { count } = await supabaseAdmin
-        .from('conversation_messages')
-        .select('id', { count: 'exact', head: true })
-        .eq('session_id', id)
-        .eq('user_id', userId);
-      if ((count ?? 0) > 0) counts.set(id, count ?? 0);
-    })
-  );
+  const counts = await loadMessageCountsFromTable('chat_messages', userId, sessionIds);
+  const legacyIds = sessionIds.filter((id) => (counts.get(id) ?? 0) === 0);
+  const legacyCounts = await loadMessageCountsFromTable('conversation_messages', userId, legacyIds);
+  for (const [id, count] of legacyCounts) counts.set(id, count);
   return counts;
 }
 
@@ -300,41 +317,12 @@ router.get(
     const hasMore = rows.length > limit;
     const threads = hasMore ? rows.slice(0, limit) : rows;
 
-    const { getLinkedSessionIds } = await import('../services/conversationCentered/threadContentService');
-    const linkedIds = await getLinkedSessionIds(userId);
-    const existingIds = new Set(threads.map((t) => t.id));
-    const missingLinked = linkedIds.filter((id) => !existingIds.has(id));
-
-    let extraRows: ThreadListRow[] = [];
-    if (!cursorRaw && missingLinked.length > 0) {
-      const selectLinked = (columns: string) =>
-        supabaseAdmin
-          .from('conversation_sessions')
-          .select(columns)
-          .eq('user_id', userId)
-          .in('id', missingLinked.slice(0, 30));
-      let { data: linkedThreads, error: linkedError }: { data: unknown; error: { code?: string; message?: string } | null } =
-        await selectLinked(THREAD_LIST_COLUMNS);
-      if (linkedError && isUndefinedColumnError(linkedError)) {
-        ({ data: linkedThreads } = await selectLinked(THREAD_LIST_COLUMNS_LEGACY));
-      }
-      extraRows = ((linkedThreads as ThreadListRow[] | null) ?? []);
-    }
-
-    const merged = [...threads, ...extraRows].sort(
-      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-    );
-
     // Message counts let the client distinguish real conversations from empty drafts
     // without hydrating messages — a thread with messages must never be dedupe-dropped.
-    const messageCounts = await loadThreadMessageCounts(userId, merged.map((t) => t.id));
+    const messageCounts = await loadThreadMessageCounts(userId, threads.map((t) => t.id));
 
     // Cursor must reflect the true keyset boundary of the paginated query (`threads`),
-    // never `merged` — entity-linked orphan rows are stitched in from outside the
-    // keyset order and are often much older than the real page boundary. Deriving the
-    // cursor from `merged` could jump it back to one of those orphans, causing the next
-    // "Load more" page to skip every thread newer than it (they silently vanish from
-    // the list) or re-fetch ones already shown (they appear to duplicate/reorder).
+    // never any rows outside the keyset page.
     const last = threads[threads.length - 1];
     const nextCursor =
       hasMore && last
@@ -343,10 +331,10 @@ router.get(
 
     res.json({
       success: true,
-      total: totalCount ?? merged.length,
+      total: totalCount ?? threads.length,
       hasMore,
       nextCursor,
-      threads: merged.map((t) => ({
+      threads: threads.map((t) => ({
         id: t.id,
         title: t.title ?? DRAFT_THREAD_TITLE,
         subtitle: (t.metadata as Record<string, unknown>)?.subtitle as string | undefined,
@@ -707,7 +695,29 @@ router.post(
       .select('id, thread_number')
       .single();
 
-    if (error) throw error;
+    if (error) {
+      // The first chat request can ensure this client-generated session while
+      // the optimistic create-thread request is still in flight. Treat that
+      // ownership-checked duplicate as successful reconciliation.
+      if ((error as { code?: string }).code === '23505') {
+        const { data: raced } = await supabaseAdmin
+          .from('conversation_sessions')
+          .select('id, thread_number')
+          .eq('id', sessionId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (raced?.id) {
+          res.json({
+            success: true,
+            id: sessionId,
+            existing: true,
+            thread_number: (raced as { thread_number?: number | null }).thread_number ?? null,
+          });
+          return;
+        }
+      }
+      throw error;
+    }
     // thread_number is deferred until first user message (see migration
     // 20260712120000_defer_thread_number_until_first_message).
     res.json({

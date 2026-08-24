@@ -92,6 +92,8 @@ describe('Conversation threads API — message durability', () => {
     chain.order = vi.fn().mockReturnValue(chain);
     chain.limit = vi.fn().mockReturnValue(chain);
     chain.or = vi.fn().mockReturnValue(chain);
+    chain.in = vi.fn().mockReturnValue(chain);
+    chain.range = vi.fn().mockResolvedValue({ data: [], error: null });
     Object.assign(chain, {
       then(onFulfilled: (v: unknown) => unknown) {
         return Promise.resolve(
@@ -121,14 +123,65 @@ describe('Conversation threads API — message durability', () => {
     expect(typeof res.body.hasMore).toBe('boolean');
   });
 
-  it('nextCursor reflects the true page boundary, not an injected entity-linked orphan', async () => {
-    // Regression test for a bug where an old thread pulled in only because a
-    // character links back to it (getLinkedSessionIds) could become the LAST
-    // item of the merged (page + orphans) array. The cursor was derived from
-    // that merged array, so "Load more" would jump to the orphan's ancient
-    // timestamp and skip every real thread newer than it — threads vanished
-    // from the sidebar on scroll. The cursor must come from the keyset page
-    // alone (`threads`), never from the orphan-augmented `merged` list.
+  it('loads exact message counts in one batched read per message store', async () => {
+    const rows = [
+      {
+        id: 'aaaaaaaa-0000-4000-8000-000000000001',
+        title: 'Canonical thread',
+        updated_at: '2026-08-05T12:00:00.000Z',
+        metadata: {},
+      },
+      {
+        id: 'bbbbbbbb-0000-4000-8000-000000000002',
+        title: 'Legacy thread',
+        updated_at: '2026-08-05T11:00:00.000Z',
+        metadata: {},
+      },
+    ];
+
+    const sessionsChain: Record<string, unknown> = {};
+    sessionsChain.select = vi.fn().mockReturnValue(sessionsChain);
+    sessionsChain.eq = vi.fn().mockReturnValue(sessionsChain);
+    sessionsChain.order = vi.fn().mockReturnValue(sessionsChain);
+    sessionsChain.limit = vi.fn().mockReturnValue(sessionsChain);
+    sessionsChain.or = vi.fn().mockReturnValue(sessionsChain);
+    sessionsChain.then = (onFulfilled: (v: unknown) => unknown) =>
+      Promise.resolve(onFulfilled({ data: rows, count: rows.length, error: null }));
+
+    const messageChain = (data: Array<{ session_id: string }>) => {
+      const chain: Record<string, unknown> = {};
+      chain.select = vi.fn().mockReturnValue(chain);
+      chain.eq = vi.fn().mockReturnValue(chain);
+      chain.in = vi.fn().mockReturnValue(chain);
+      chain.order = vi.fn().mockReturnValue(chain);
+      chain.range = vi.fn().mockResolvedValue({ data, error: null });
+      return chain;
+    };
+    const chatChain = messageChain([
+      { session_id: rows[0].id },
+      { session_id: rows[0].id },
+    ]);
+    const legacyChain = messageChain([
+      { session_id: rows[1].id },
+      { session_id: rows[1].id },
+      { session_id: rows[1].id },
+    ]);
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'conversation_sessions') return sessionsChain;
+      if (table === 'chat_messages') return chatChain;
+      return legacyChain;
+    });
+
+    const res = await request(app).get('/api/conversation/threads?limit=30').expect(200);
+
+    expect(res.body.threads.map((thread: { message_count: number }) => thread.message_count)).toEqual([2, 3]);
+    expect(chatChain.range).toHaveBeenCalledTimes(1);
+    expect(legacyChain.range).toHaveBeenCalledTimes(1);
+    expect(legacyChain.in).toHaveBeenCalledWith('session_id', [rows[1].id]);
+  });
+
+  it('returns only the requested keyset page and derives its cursor from that page', async () => {
     const rowA = {
       id: 'aaaaaaaa-0000-4000-8000-000000000001',
       title: 'Newest thread',
@@ -141,31 +194,13 @@ describe('Conversation threads API — message durability', () => {
       updated_at: '2026-08-05T11:00:00.000Z',
       metadata: {},
     };
-    const orphan = {
-      id: 'cccccccc-0000-4000-8000-000000000003',
-      title: 'Ancient orphan thread linked from a character',
-      updated_at: '2020-01-01T00:00:00.000Z',
-      metadata: {},
-    };
-
-    mockGetLinkedSessionIds.mockResolvedValueOnce([orphan.id]);
-
     const sessionsChain: Record<string, unknown> = {};
-    let usedIn = false;
     sessionsChain.select = vi.fn().mockReturnValue(sessionsChain);
     sessionsChain.eq = vi.fn().mockReturnValue(sessionsChain);
     sessionsChain.order = vi.fn().mockReturnValue(sessionsChain);
     sessionsChain.limit = vi.fn().mockReturnValue(sessionsChain);
     sessionsChain.or = vi.fn().mockReturnValue(sessionsChain);
-    sessionsChain.in = vi.fn().mockImplementation(() => {
-      usedIn = true;
-      return sessionsChain;
-    });
     sessionsChain.then = (onFulfilled: (v: unknown) => unknown) => {
-      if (usedIn) {
-        usedIn = false;
-        return Promise.resolve(onFulfilled({ data: [orphan], count: 1, error: null }));
-      }
       // count query + keyset page query both land here — two rows for a
       // limit=1 request so hasMore is true and rowB is the lookahead.
       return Promise.resolve(onFulfilled({ data: [rowA, rowB], count: 2, error: null }));
@@ -174,8 +209,9 @@ describe('Conversation threads API — message durability', () => {
     const countChain: Record<string, unknown> = {};
     countChain.select = vi.fn().mockReturnValue(countChain);
     countChain.eq = vi.fn().mockReturnValue(countChain);
-    countChain.then = (onFulfilled: (v: unknown) => unknown) =>
-      Promise.resolve(onFulfilled({ count: 0, error: null }));
+    countChain.in = vi.fn().mockReturnValue(countChain);
+    countChain.order = vi.fn().mockReturnValue(countChain);
+    countChain.range = vi.fn().mockResolvedValue({ data: [], error: null });
 
     mockFrom.mockImplementation((table: string) =>
       table === 'conversation_sessions' ? sessionsChain : countChain
@@ -184,6 +220,9 @@ describe('Conversation threads API — message durability', () => {
     const res = await request(app).get('/api/conversation/threads?limit=1').expect(200);
 
     expect(res.body.hasMore).toBe(true);
+    expect(res.body.threads).toHaveLength(1);
+    expect(res.body.threads[0].id).toBe(rowA.id);
+    expect(mockGetLinkedSessionIds).not.toHaveBeenCalled();
     expect(res.body.nextCursor).toBeTruthy();
     const decoded = JSON.parse(Buffer.from(res.body.nextCursor, 'base64url').toString('utf8'));
     expect(decoded).toEqual({ updatedAt: rowA.updated_at, id: rowA.id });
@@ -204,5 +243,36 @@ describe('Conversation threads API — message durability', () => {
     const res = await request(app).get(`/api/conversation/threads/${SESSION_ID}/messages`);
 
     expect(res.status).toBeGreaterThanOrEqual(500);
+  });
+
+  it('reconciles a create-thread request when first-send session creation wins the race', async () => {
+    let call = 0;
+    mockFrom.mockImplementation(() => {
+      call += 1;
+      const chain: Record<string, unknown> = {};
+      chain.select = vi.fn().mockReturnValue(chain);
+      chain.eq = vi.fn().mockReturnValue(chain);
+      chain.insert = vi.fn().mockReturnValue(chain);
+      chain.maybeSingle = vi.fn().mockResolvedValue({
+        data: call === 3 ? { id: SESSION_ID, thread_number: null } : null,
+        error: null,
+      });
+      chain.single = vi.fn().mockResolvedValue({
+        data: null,
+        error: { code: '23505', message: 'duplicate key' },
+      });
+      return chain;
+    });
+
+    const res = await request(app)
+      .post('/api/conversation/threads')
+      .send({ id: SESSION_ID, title: 'Draft' })
+      .expect(200);
+
+    expect(res.body).toMatchObject({
+      success: true,
+      id: SESSION_ID,
+      existing: true,
+    });
   });
 });

@@ -107,6 +107,7 @@ import {
 } from './chat/chatAnalysisHelpers';
 import {
   getOrCreateChatSession as _getOrCreateChatSession,
+  ensureChatSession as _ensureChatSession,
   detectMemorySuggestion as _detectMemorySuggestion,
   ingestMessageWithContext as _ingestMessageWithContext,
 } from './chat/chatPersistenceService';
@@ -1492,7 +1493,9 @@ When updating relationship analytics or emotional signals from this thread, weig
 
     // Use the UI thread as the session so messages, recall scoping, and
     // ingestion all stay attached to the thread the user is actually in.
-    const sessionId = threadId ?? await this.getOrCreateChatSession(userId);
+    const sessionId = threadId
+      ? await _ensureChatSession(userId, threadId)
+      : await this.getOrCreateChatSession(userId);
 
     // Server-side roster: the thread's cast survives device switches (client
     // threadEntities only reflect messages hydrated on THIS device) and honors
@@ -3499,7 +3502,9 @@ When updating relationship analytics or emotional signals from this thread, weig
     soulProfileContext?: SoulProfileContext,
     threadId?: string
   ): Promise<OmegaChatResponse> {
-    const sessionId = threadId ?? await this.getOrCreateChatSession(userId);
+    const sessionId = threadId
+      ? await _ensureChatSession(userId, threadId)
+      : await this.getOrCreateChatSession(userId);
     const responseScope = await import('./responseScope');
     const activeContext = responseScope.deriveActiveContext(conversationHistory);
 

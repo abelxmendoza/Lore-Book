@@ -45,10 +45,12 @@ export const useConversationRuntime = () => {
     threads,
     threadsLoading,
     threadsReady,
+    threadListState,
     threadsHasMore,
     threadsTotal,
     threadsLoadingMore,
     loadMoreThreads,
+    loadThreads,
     currentThreadId,
     setCurrentThreadId,
     createThread,
@@ -175,6 +177,7 @@ export const useConversationRuntime = () => {
     setIsHydratingMessages(true);
     setHydrationError(null);
     runtimeDiagnostics.startTimer('hydration');
+    runtimeDiagnostics.record('THREAD_MESSAGES_FETCH_START', { threadId });
   }, []);
 
   const endHydration = useCallback((threadId: string, outcome: 'done' | 'error' | 'empty', error?: string) => {
@@ -183,10 +186,24 @@ export const useConversationRuntime = () => {
     setIsHydratingMessages(false);
     if (outcome === 'error') {
       setHydrationError(error || 'Could not load this conversation.');
+      runtimeDiagnostics.record('THREAD_MESSAGES_FETCH_ERROR', {
+        threadId,
+        meta: { error: error || 'Could not load this conversation.' },
+      });
     } else {
       setHydrationError(null);
+      runtimeDiagnostics.record('THREAD_MESSAGES_FETCH_SUCCESS', {
+        threadId,
+        meta: { outcome },
+      });
     }
   }, []);
+
+  useEffect(() => {
+    runtimeDiagnostics.record('ACTIVE_THREAD_CHANGED', {
+      threadId: threadIdParam ?? activeThreadId ?? currentThreadId ?? undefined,
+    });
+  }, [activeThreadId, currentThreadId, threadIdParam]);
 
   // ── URL-driven hydration (single path) ─────────────────────────────────────
   useEffect(() => {
@@ -669,10 +686,12 @@ export const useConversationRuntime = () => {
     threads,
     threadsLoading,
     threadsReady,
+    threadListState,
     threadsHasMore,
     threadsTotal,
     threadsLoadingMore,
     loadMoreThreads,
+    loadThreads,
     activeThreadId: threadIdParam ?? activeThreadId ?? currentThreadId,
     activeThread: threadIdParam ? getThread(threadIdParam) : null,
     activeMessages,

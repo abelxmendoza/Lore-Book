@@ -18,6 +18,8 @@ export type RuntimePhase =
   | 'hydration_start'
   | 'hydration_complete'
   | 'hydration_skip'         // hydratedByHandlerRef prevented a redundant load
+  | 'hydration_empty'
+  | 'hydration_error'
   | 'thread_switch'
   | 'thread_create'
   | 'thread_delete'
@@ -32,6 +34,15 @@ export type RuntimePhase =
   | 'backend_load_complete'
   | 'backend_load_fallback'  // backend unreachable, fell back to localStorage
   | 'backend_load_error'     // backend failed to load threads
+  | 'THREAD_LIST_FETCH_START'
+  | 'THREAD_LIST_FETCH_SUCCESS'
+  | 'THREAD_LIST_FETCH_ERROR'
+  | 'THREAD_LIST_HYDRATE_START'
+  | 'THREAD_LIST_HYDRATE_COMPLETE'
+  | 'THREAD_MESSAGES_FETCH_START'
+  | 'THREAD_MESSAGES_FETCH_SUCCESS'
+  | 'THREAD_MESSAGES_FETCH_ERROR'
+  | 'ACTIVE_THREAD_CHANGED'
   | 'save_error'             // debounced PATCH / flush save failed (often proxy artifact in dev)
   | 'stream_start'
   | 'stream_complete'

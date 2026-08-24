@@ -20,7 +20,7 @@ import { useNavigate } from 'react-router-dom';
 import { fetchCharacterList } from '../api/characterList';
 import { skillsApi } from '../api/skills';
 import { fetchWhatChanged } from '../api/whatChanged';
-import { useRecentChatThreads } from '../contexts/ChatThreadContext';
+import { useChatThreadContext, useRecentChatThreads } from '../contexts/ChatThreadContext';
 import { XConnectionPanel } from '../features/integrations/XConnectionPanel';
 import { useAccountAuthority } from '../hooks/useAccountAuthority';
 import { useQuestBoard } from '../hooks/useQuests';
@@ -308,6 +308,7 @@ export const HomeScreen = () => {
   const { user } = useAuth();
   const navigate  = useNavigate();
   const recentThreads = useRecentChatThreads(3);
+  const { threadListState } = useChatThreadContext();
   const isMock = useShouldUseMockData();
   // X panel on Home: demo mode always (panel self-mocks), real accounts only
   // with server-driven admin authority.
@@ -548,7 +549,15 @@ export const HomeScreen = () => {
                   <span className="text-xs text-white/30">{formatRelativeTime(thread.updatedAt)}</span>
                 </div>
               </button>
-            )) : (
+            )) : threadListState.status === 'loading' ? (
+              <div className="flex-1 rounded-xl border border-dashed border-white/8 px-3 py-4 text-center" role="status">
+                <p className="text-xs text-white/25">Loading conversations…</p>
+              </div>
+            ) : threadListState.status === 'error' ? (
+              <div className="flex-1 rounded-xl border border-dashed border-white/8 px-3 py-4 text-center" role="alert">
+                <p className="text-xs text-white/25">Conversations unavailable</p>
+              </div>
+            ) : (
               <div className="flex-1 rounded-xl border border-dashed border-white/8 px-3 py-4 text-center">
                 <p className="text-xs text-white/25">No conversations yet</p>
               </div>

@@ -233,4 +233,24 @@ describe('useChat — assistant bubble durability', () => {
       processing: 'failed',
     });
   });
+
+  it('finalizes a backgrounded stream through its send-time thread id', async () => {
+    mockStreamChat.mockImplementation(() => new Promise(() => {}));
+    const { result } = renderHook(() => useChat(), { wrapper });
+
+    act(() => {
+      void result.current.sendMessage('Keep this stream isolated');
+    });
+    await waitFor(() => expect(mockMutateThreadMessagesForThread.mock.calls.length).toBeGreaterThanOrEqual(2));
+    const callsBeforeHide = mockMutateThreadMessagesForThread.mock.calls.length;
+
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(mockMutateThreadMessagesForThread.mock.calls.length).toBe(callsBeforeHide + 1);
+    expect(mockMutateThreadMessagesForThread.mock.calls.at(-1)?.[0]).toBe('thread-chat-1');
+    expect(mockUpdateActiveMessages).not.toHaveBeenCalled();
+  });
 });

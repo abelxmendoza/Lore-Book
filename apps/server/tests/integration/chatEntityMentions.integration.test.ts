@@ -196,6 +196,7 @@ vi.mock('../../src/services/reinforcementLearning/chatPersonaRL', () => ({
 
 vi.mock('../../src/services/chat/chatPersistenceService', () => ({
   getOrCreateChatSession: vi.fn().mockResolvedValue('session-test'),
+  ensureChatSession: vi.fn().mockImplementation((_userId: string, sessionId: string) => Promise.resolve(sessionId)),
   detectMemorySuggestion: vi.fn().mockResolvedValue(null),
   ingestMessageWithContext: vi.fn().mockResolvedValue(undefined),
 }));
