@@ -1,4 +1,11 @@
 import Stripe from 'stripe';
+import type { Charge } from 'stripe/cjs/resources/Charges';
+import type { Event } from 'stripe/cjs/resources/Events';
+import type { Invoice } from 'stripe/cjs/resources/Invoices';
+import type { PaymentIntent } from 'stripe/cjs/resources/PaymentIntents';
+import type { SetupIntent } from 'stripe/cjs/resources/SetupIntents';
+import type { Subscription } from 'stripe/cjs/resources/Subscriptions';
+import type { SubscriptionItem } from 'stripe/cjs/resources/SubscriptionItems';
 
 import { config } from '../config';
 import { stripeGuard } from '../lib/externalCircuitBreaker';
@@ -7,10 +14,10 @@ import { logger } from '../logger';
 import { supabaseAdmin as supabase } from './supabaseClient';
 
 // Initialize Stripe client
-let stripe: Stripe | null = null;
+let stripe: Stripe.Stripe | null = null;
 if (config.stripeSecretKey) {
   stripe = new Stripe(config.stripeSecretKey, {
-    apiVersion: '2024-12-18.acacia' as any,
+    apiVersion: '2026-05-27.dahlia',
   });
 }
 
@@ -23,17 +30,17 @@ export type PlanType = 'free' | 'premium';
 
 /**
  * Read the current billing period from a Stripe subscription.
- * In recent Stripe API versions (and the stripe@20 SDK types) `current_period_*`
+ * In recent Stripe API versions `current_period_*`
  * moved from the subscription to the subscription item, so read from the item
  * first and fall back to the legacy top-level field. Returns ISO strings or null
  * (e.g. a trialing subscription may not have a period yet).
  */
-function readSubscriptionPeriod(subscription: Stripe.Subscription): {
+function readSubscriptionPeriod(subscription: Subscription): {
   startIso: string | null;
   endIso: string | null;
 } {
   const item = subscription.items?.data?.[0] as
-    | (Stripe.SubscriptionItem & { current_period_start?: number; current_period_end?: number })
+    | (SubscriptionItem & { current_period_start?: number; current_period_end?: number })
     | undefined;
   const legacy = subscription as unknown as { current_period_start?: number; current_period_end?: number };
   const start = item?.current_period_start ?? legacy.current_period_start;
@@ -62,6 +69,23 @@ export type CheckoutIntent = {
   intentType: 'payment' | 'setup' | null;
 };
 
+function expandableId(value: { id: string } | string | null | undefined): string | undefined {
+  return typeof value === 'string' ? value : value?.id;
+}
+
+/** Read Dahlia's nested subscription reference from an invoice. */
+export function readInvoiceSubscriptionId(invoice: Invoice): string | undefined {
+  return expandableId(invoice.parent?.subscription_details?.subscription);
+}
+
+/** Read the PaymentIntent attached through Dahlia's invoice-payments collection. */
+export function readInvoicePaymentIntentId(invoice: Invoice): string | undefined {
+  const paymentIntent = invoice.payments?.data.find(
+    (invoicePayment) => invoicePayment.payment.type === 'payment_intent'
+  )?.payment.payment_intent;
+  return expandableId(paymentIntent);
+}
+
 /** Ensure every user has a subscriptions row (trigger may have missed legacy accounts). */
 export async function ensureSubscriptionRow(userId: string): Promise<void> {
   const { error } = await supabase
@@ -77,16 +101,25 @@ export async function ensureSubscriptionRow(userId: string): Promise<void> {
 }
 
 /** Extract PaymentElement client secret from a Stripe subscription. */
-export function extractCheckoutIntent(subscription: Stripe.Subscription): CheckoutIntent {
-  const invoice = subscription.latest_invoice as Stripe.Invoice & {
-    payment_intent?: Stripe.PaymentIntent | string | null;
-  };
-  const paymentIntent =
-    typeof invoice?.payment_intent === 'object' ? invoice.payment_intent : null;
-  const setupIntent = subscription.pending_setup_intent as Stripe.SetupIntent | string | null;
+export function extractCheckoutIntent(subscription: Subscription): CheckoutIntent {
+  const invoice = typeof subscription.latest_invoice === 'object' ? subscription.latest_invoice : null;
+  const legacyInvoice = invoice as (Invoice & {
+    payment_intent?: PaymentIntent | string | null;
+  }) | null;
+  const invoicePayment = invoice?.payments?.data.find(
+    (payment) => payment.payment.type === 'payment_intent'
+  )?.payment.payment_intent;
+  const paymentIntent = typeof invoicePayment === 'object'
+    ? invoicePayment
+    : typeof legacyInvoice?.payment_intent === 'object'
+      ? legacyInvoice.payment_intent
+      : null;
+  const paymentClientSecret =
+    invoice?.confirmation_secret?.client_secret ?? paymentIntent?.client_secret ?? null;
+  const setupIntent = subscription.pending_setup_intent as SetupIntent | string | null;
   const setupObj = typeof setupIntent === 'object' ? setupIntent : null;
-  const clientSecret = paymentIntent?.client_secret ?? setupObj?.client_secret ?? null;
-  const intentType: CheckoutIntent['intentType'] = paymentIntent?.client_secret
+  const clientSecret = paymentClientSecret ?? setupObj?.client_secret ?? null;
+  const intentType: CheckoutIntent['intentType'] = paymentClientSecret
     ? 'payment'
     : setupObj?.client_secret
       ? 'setup'
@@ -133,7 +166,7 @@ export async function createSubscription(
   customerId: string,
   userId: string,
   trialDays: number = 7
-): Promise<Stripe.Subscription> {
+): Promise<Subscription> {
   if (!stripe || !config.subscriptionPriceId) {
     throw new Error('Stripe or subscription price ID is not configured');
   }
@@ -149,7 +182,7 @@ export async function createSubscription(
       trial_end: trialEnd,
       payment_behavior: 'default_incomplete',
       payment_settings: { save_default_payment_method: 'on_subscription' },
-      expand: ['latest_invoice.payment_intent', 'pending_setup_intent'],
+      expand: ['latest_invoice.confirmation_secret', 'pending_setup_intent'],
     })
   );
 
@@ -215,7 +248,7 @@ export async function reactivateSubscription(subscriptionId: string, userId: str
 /**
  * Get subscription details from Stripe
  */
-export async function getSubscription(subscriptionId: string): Promise<Stripe.Subscription | null> {
+export async function getSubscription(subscriptionId: string): Promise<Subscription | null> {
   if (!stripe) {
     return null;
   }
@@ -223,7 +256,7 @@ export async function getSubscription(subscriptionId: string): Promise<Stripe.Su
   try {
     return await withStripe(() =>
       stripe!.subscriptions.retrieve(subscriptionId, {
-        expand: ['latest_invoice.payment_intent', 'pending_setup_intent'],
+        expand: ['latest_invoice.confirmation_secret', 'pending_setup_intent'],
       })
     );
   } catch (error) {
@@ -337,14 +370,14 @@ async function getUserIdFromCustomer(customerId: string): Promise<string | null>
 /**
  * Handle Stripe webhook events
  */
-export async function handleWebhook(event: Stripe.Event): Promise<void> {
+export async function handleWebhook(event: Event): Promise<void> {
   if (!stripe) {
     throw new Error('Stripe is not configured');
   }
 
   switch (event.type) {
     case 'customer.subscription.created': {
-      const subscription = event.data.object as Stripe.Subscription;
+      const subscription = event.data.object as Subscription;
       await syncSubscriptionFromStripe(subscription);
       
       // Log subscription creation event
@@ -370,13 +403,13 @@ export async function handleWebhook(event: Stripe.Event): Promise<void> {
     }
 
     case 'customer.subscription.updated': {
-      const subscription = event.data.object as Stripe.Subscription;
+      const subscription = event.data.object as Subscription;
       await syncSubscriptionFromStripe(subscription);
       break;
     }
 
     case 'customer.subscription.deleted': {
-      const subscription = event.data.object as Stripe.Subscription;
+      const subscription = event.data.object as Subscription;
       await handleSubscriptionDeleted(subscription);
       
       // Log subscription deletion event
@@ -401,9 +434,11 @@ export async function handleWebhook(event: Stripe.Event): Promise<void> {
     }
 
     case 'invoice.payment_succeeded': {
-      const invoice = event.data.object as Stripe.Invoice;
-      if (invoice.subscription) {
-        const sub = await getSubscription(invoice.subscription as string);
+      const invoice = event.data.object as Invoice;
+      const subscriptionId = readInvoiceSubscriptionId(invoice);
+      const paymentIntentId = readInvoicePaymentIntentId(invoice);
+      if (subscriptionId) {
+        const sub = await getSubscription(subscriptionId);
         if (sub) {
           await syncSubscriptionFromStripe(sub);
         }
@@ -423,20 +458,22 @@ export async function handleWebhook(event: Stripe.Event): Promise<void> {
           invoice.currency || 'usd',
           'succeeded',
           invoice.id,
-          typeof invoice.payment_intent === 'string' ? invoice.payment_intent : invoice.payment_intent?.id,
-          { invoice_id: invoice.id, subscription_id: invoice.subscription }
+          paymentIntentId,
+          { invoice_id: invoice.id, subscription_id: subscriptionId }
         );
       }
       break;
     }
 
     case 'invoice.payment_failed': {
-      const invoice = event.data.object as Stripe.Invoice;
-      if (invoice.subscription) {
+      const invoice = event.data.object as Invoice;
+      const subscriptionId = readInvoiceSubscriptionId(invoice);
+      const paymentIntentId = readInvoicePaymentIntentId(invoice);
+      if (subscriptionId) {
         const { data } = await supabase
           .from('subscriptions')
           .select('user_id')
-          .eq('stripe_subscription_id', invoice.subscription)
+          .eq('stripe_subscription_id', subscriptionId)
           .single();
 
         if (data) {
@@ -461,15 +498,15 @@ export async function handleWebhook(event: Stripe.Event): Promise<void> {
           invoice.currency || 'usd',
           'failed',
           invoice.id,
-          typeof invoice.payment_intent === 'string' ? invoice.payment_intent : invoice.payment_intent?.id,
-          { invoice_id: invoice.id, subscription_id: invoice.subscription, attempt_count: invoice.attempt_count }
+          paymentIntentId,
+          { invoice_id: invoice.id, subscription_id: subscriptionId, attempt_count: invoice.attempt_count }
         );
       }
       break;
     }
 
     case 'charge.refunded': {
-      const charge = event.data.object as Stripe.Charge;
+      const charge = event.data.object as Charge;
       const customerId = typeof charge.customer === 'string' 
         ? charge.customer 
         : charge.customer?.id;
@@ -482,8 +519,8 @@ export async function handleWebhook(event: Stripe.Event): Promise<void> {
           charge.amount_refunded || 0,
           charge.currency || 'usd',
           'refunded',
-          charge.invoice as string | undefined,
-          charge.payment_intent as string | undefined,
+          undefined,
+          expandableId(charge.payment_intent),
           { charge_id: charge.id, refund_amount: charge.amount_refunded }
         );
       }
@@ -498,7 +535,7 @@ export async function handleWebhook(event: Stripe.Event): Promise<void> {
 /**
  * Sync subscription data from Stripe to database
  */
-async function syncSubscriptionFromStripe(subscription: Stripe.Subscription): Promise<void> {
+async function syncSubscriptionFromStripe(subscription: Subscription): Promise<void> {
   const customerId = typeof subscription.customer === 'string' 
     ? subscription.customer 
     : subscription.customer.id;
@@ -542,7 +579,7 @@ async function syncSubscriptionFromStripe(subscription: Stripe.Subscription): Pr
 /**
  * Handle subscription deletion
  */
-async function handleSubscriptionDeleted(subscription: Stripe.Subscription): Promise<void> {
+async function handleSubscriptionDeleted(subscription: Subscription): Promise<void> {
   const customerId = typeof subscription.customer === 'string' 
     ? subscription.customer 
     : subscription.customer.id;
@@ -572,7 +609,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription): Pro
 export function verifyWebhookSignature(
   payload: string | Buffer,
   signature: string
-): Stripe.Event | null {
+): Event | null {
   if (!stripe || !config.stripeWebhookSecret) {
     console.warn('Stripe webhook verification skipped: Stripe not configured');
     return null;

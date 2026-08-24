@@ -1,5 +1,6 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 
 interface ArcAppearance {
   arcName: string;
@@ -84,7 +85,7 @@ export const ArcAppearanceCard = ({ arcData }: ArcAppearanceCardProps) => {
                                 padding: '4px 8px',
                               }}
                               labelStyle={{ color: '#ffffff' }}
-                              formatter={(value: number) => [`${value} appearances`, '']}
+                              formatter={(value) => [`${value} appearances`, '']}
                             />
                             <Line
                               type="monotone"
@@ -129,4 +130,3 @@ export const ArcAppearanceCard = ({ arcData }: ArcAppearanceCardProps) => {
     </Card>
   );
 };
-

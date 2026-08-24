@@ -1,8 +1,6 @@
+@import 'tailwindcss';
 @import './theme.css';
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@config '../../tailwind.config.ts';
 
 /* Hide scrollbar while preserving scroll functionality */
 .scrollbar-none,
