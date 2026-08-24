@@ -223,8 +223,10 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     threadsHasMore,
     threadsTotal,
     threadsLoading,
+    threadListState,
     threadsLoadingMore,
     loadMoreThreads,
+    loadThreads,
     lastError,
     dismissThreadError,
     isHydratingMessages,
@@ -998,6 +1000,8 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
         threadsTotal={threadsTotal}
         loadingMoreThreads={threadsLoadingMore}
         onLoadMoreThreads={() => void loadMoreThreads()}
+        threadListState={threadListState}
+        onRetryThreads={() => void loadThreads()}
         threadError={lastError}
         onDismissThreadError={dismissThreadError}
       />

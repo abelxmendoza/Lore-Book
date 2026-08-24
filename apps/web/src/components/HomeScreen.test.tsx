@@ -40,6 +40,9 @@ vi.mock('./biography/LivingBiographyCard', () => ({
 
 vi.mock('../contexts/ChatThreadContext', () => ({
   useRecentChatThreads: vi.fn(() => []),
+  useChatThreadContext: vi.fn(() => ({
+    threadListState: { status: 'ready', error: null },
+  })),
 }));
 
 // HomeScreen consumes demo-mode state via useShouldUseMockData → MockDataContext

@@ -226,6 +226,7 @@ export const useChat = () => {
   const [sources, setSources] = useState<ChatSource[]>([]);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const streamingMessageIdRef = useRef<string | null>(null);
+  const streamingThreadIdRef = useRef<string | null>(null);
   /** Idempotency keys with an in-flight retry — blocks duplicate button clicks. */
   const retryInFlightRef = useRef<Set<string>>(new Set());
   const [retryingKeys, setRetryingKeys] = useState<Set<string>>(() => new Set());
@@ -311,8 +312,15 @@ export const useChat = () => {
   useEffect(() => {
     const finalizePartialStream = () => {
       const streamId = streamingMessageIdRef.current;
-      if (!streamId) return;
-      updateMessage(streamId, { isStreaming: false });
+      const streamThreadId = streamingThreadIdRef.current;
+      if (!streamId || !streamThreadId) return;
+      mutateThreadMessagesForThread(streamThreadId, (messages) =>
+        messages.map((message) =>
+          message.id === streamId ? { ...message, isStreaming: false } : message,
+        ),
+      );
+      streamingMessageIdRef.current = null;
+      streamingThreadIdRef.current = null;
       setStreamingMessageId(null);
       setLoading(false);
       if (progressIntervalRef.current) {
@@ -331,7 +339,7 @@ export const useChat = () => {
       window.removeEventListener('pagehide', onHide);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [updateMessage]);
+  }, [mutateThreadMessagesForThread]);
 
   // Send message
   const sendMessage = useCallback(async (messageText: string, options?: ChatSendOptions) => {
@@ -626,6 +634,8 @@ export const useChat = () => {
       };
       mutateThreadMessagesForThread(streamThreadId, (prev) => [...prev, assistantMessage]);
     }
+    streamingMessageIdRef.current = assistantMessageId;
+    streamingThreadIdRef.current = streamThreadId;
     setStreamingMessageId(assistantMessageId);
     
     // Enhanced loading stages with progress

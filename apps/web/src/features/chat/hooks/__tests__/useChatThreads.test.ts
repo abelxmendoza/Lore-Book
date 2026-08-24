@@ -117,6 +117,20 @@ describe('useChatThreads', () => {
     expect(mockFetchJson).not.toHaveBeenCalled();
   });
 
+  it('clears the prior account cache before loading a different authenticated user', async () => {
+    mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-a' }));
+    mockBackendThreadLoad([makeDbThread('thread-a', 'Account A')]);
+    const { result, rerender } = renderUseChatThreads();
+    await waitFor(() => expect(result.current.threads.map((thread) => thread.id)).toEqual(['thread-a']));
+
+    mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-b' }));
+    mockBackendThreadLoad([makeDbThread('thread-b', 'Account B')]);
+    rerender();
+
+    await waitFor(() => expect(result.current.threads.map((thread) => thread.id)).toEqual(['thread-b']));
+    expect(result.current.getThread('thread-a')).toBeUndefined();
+  });
+
   // ── Guest / localStorage path ─────────────────────────────────────────────
 
   it('loads threads from localStorage when not authenticated', async () => {
@@ -215,10 +229,13 @@ describe('useChatThreads', () => {
     });
   });
 
-  it('falls back to localStorage when backend load fails', async () => {
+  it('preserves the authenticated recovery cache when backend load fails', async () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
     const stored = [makeStoredThread('local-1', 'Local thread')];
-    localStorage.setItem('lorekeeper_chat_threads_user-1', JSON.stringify(stored));
+    localStorage.setItem(
+      authThreadCacheKey('user-1'),
+      JSON.stringify({ threads: stored, lastThreadId: 'local-1' }),
+    );
     mockFetchJson.mockImplementation(async (url: string) => {
       if (url.includes('health/repair')) return { repaired: 0 };
       if (url.includes('recover-orphans')) return { success: true };
@@ -233,8 +250,9 @@ describe('useChatThreads', () => {
     expect(result.current.threads).toHaveLength(1);
     expect(result.current.threads[0].id).toBe('local-1');
     expect(result.current.threadsReady).toBe(false); // backend never confirmed
+    expect(result.current.threadListState).toEqual({ status: 'error', error: 'Network error' });
     expect(runtimeDiagnostics.recordTimed).toHaveBeenCalledWith(
-      'backend_load_fallback',
+      'backend_load_error',
       'backend_load',
       expect.objectContaining({ meta: expect.objectContaining({ error: 'Network error' }) })
     );

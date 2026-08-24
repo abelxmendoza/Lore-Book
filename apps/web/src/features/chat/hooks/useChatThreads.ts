@@ -62,6 +62,11 @@ export type ChatThread = {
   threadNumber?: number | null;
 };
 
+export type ThreadListState =
+  | { status: 'loading'; error: null }
+  | { status: 'ready'; error: null }
+  | { status: 'error'; error: string };
+
 // ── Storage keys ─────────────────────────────────────────────────────────────
 const STORAGE_PREFIX = 'lorekeeper_chat_threads_';
 const LAST_THREAD_KEY = 'lorekeeper_chat_last_thread_';
@@ -135,10 +140,15 @@ export const useChatThreads = () => {
   const [threadsTotal, setThreadsTotal] = useState<number | null>(null);
   const [threadsLoadingMore, setThreadsLoadingMore] = useState(false);
   const threadsNextCursorRef = useRef<string | null>(null);
+  const loadedOwnerRef = useRef<string | null>(null);
   // threadsLoading: true until we've finished the FIRST authoritative load (backend or localStorage).
   const [threadsLoading, setThreadsLoading] = useState(true);
   // threadsReady: true after a successful backend load — used to gate "thread not found" redirects.
   const [threadsReady, setThreadsReady] = useState(false);
+  const [threadListState, setThreadListState] = useState<ThreadListState>({
+    status: 'loading',
+    error: null,
+  });
 
   const currentThreadIdRef = useRef<string | null>(null);
   const threadsRef = useRef<ChatThread[]>([]);
@@ -180,6 +190,7 @@ export const useChatThreads = () => {
   );
 
   const loadFromLocalStorage = useCallback(() => {
+    setThreadListState({ status: 'loading', error: null });
     try {
       const raw = localStorage.getItem(storageKey(userId));
       const parsed: ChatThread[] = raw ? JSON.parse(raw) : [];
@@ -197,6 +208,7 @@ export const useChatThreads = () => {
         )
       );
       setThreads(hydrated);
+      threadsRef.current = hydrated;
       for (const t of hydrated) threadPersistenceTracker.markRestoredFromLocal(t.id);
       const last = localStorage.getItem(lastThreadKey(userId));
       applyCurrentThreadId(last ?? null);
@@ -206,21 +218,29 @@ export const useChatThreads = () => {
           persistLocal(hydrated, last ?? null);
         }
       }
-    } catch {
+      setThreadListState({ status: 'ready', error: null });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Failed to load local conversations';
       setThreads([]);
+      threadsRef.current = [];
       applyCurrentThreadId(null);
+      setThreadListState({ status: 'error', error: errMsg });
     } finally {
       setThreadsLoading(false);
     }
-  }, [userId]);
+  }, [applyCurrentThreadId, persistLocal, userId]);
 
   // ── Backend helpers ─────────────────────────────────────────────────────────
 
   const loadFromBackend = useCallback(async (opts?: { quiet?: boolean }) => {
     const quiet = opts?.quiet === true;
     runtimeDiagnostics.record('backend_load_start');
+    runtimeDiagnostics.record('THREAD_LIST_FETCH_START', { meta: { quiet } });
     runtimeDiagnostics.startTimer('backend_load');
-    if (!quiet) setThreadsLoading(true);
+    if (!quiet) {
+      setThreadsLoading(true);
+      setThreadListState({ status: 'loading', error: null });
+    }
     try {
       // Cold boot repairs orphaned/drifted rows. Quiet focus refreshes skip this so
       // list order updates quickly without racing the open thread selection.
@@ -232,6 +252,9 @@ export const useChatThreads = () => {
       const data = await fetchThreadsPage({ limit: DEFAULT_THREAD_PAGE_LIMIT });
       const loaded = dedupeThreads((data.threads || []).map(dbRowToThread));
       const cached = userId ? readAuthThreadCache(userId) : null;
+      runtimeDiagnostics.record('THREAD_LIST_HYDRATE_START', {
+        meta: { serverCount: loaded.length, cachedCount: cached?.threads.length ?? 0, quiet },
+      });
       // Compute hydration synchronously from the canonical ref. React may defer
       // functional state updaters, so values needed below (cache + selection)
       // must not be assigned from inside setThreads.
@@ -246,6 +269,9 @@ export const useChatThreads = () => {
       );
       threadsRef.current = mergedThreads;
       setThreads(mergedThreads);
+      runtimeDiagnostics.record('THREAD_LIST_HYDRATE_COMPLETE', {
+        meta: { threadCount: mergedThreads.length, quiet },
+      });
       if (userId) persistAuthThreadCache(userId, mergedThreads, currentThreadIdRef.current);
       threadsNextCursorRef.current = data.nextCursor ?? null;
       setThreadsHasMore(data.hasMore ?? false);
@@ -275,26 +301,49 @@ export const useChatThreads = () => {
         }
       }
       setThreadsReady(true);
+      setThreadListState({ status: 'ready', error: null });
       dispatch(clearThreadError());
+      runtimeDiagnostics.record('THREAD_LIST_FETCH_SUCCESS', {
+        meta: { threadCount: loaded.length, quiet },
+      });
       runtimeDiagnostics.recordTimed('backend_load_complete', 'backend_load', {
         meta: { threadCount: loaded.length, quiet },
       });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      runtimeDiagnostics.recordTimed('backend_load_fallback', 'backend_load', {
+      runtimeDiagnostics.recordTimed('backend_load_error', 'backend_load', {
+        meta: { error: errMsg, quiet },
+      });
+      runtimeDiagnostics.record('THREAD_LIST_FETCH_ERROR', {
         meta: { error: errMsg, quiet },
       });
       threadPersistenceTracker.markOffline();
-      // Backend unreachable — fall back to localStorage.
-      // Log in dev so the developer knows (not an error in offline/guest flow).
+      // Authenticated recovery uses a separate cache from guest persistence.
+      // Preserve live/cache state on failure; an unavailable server is not proof
+      // that the canonical thread list is empty.
       if (config.env.isDevelopment) {
-        console.warn('[useChatThreads] Backend unreachable, falling back to localStorage:', errMsg);
+        console.warn('[useChatThreads] Backend thread load failed:', errMsg);
       }
-      if (!quiet) loadFromLocalStorage();
+      if (!quiet) {
+        const cached = userId ? readAuthThreadCache(userId) : null;
+        if (threadsRef.current.length === 0 && cached?.threads.length) {
+          const recovered = sortThreadsByActivity(dedupeThreads(cached.threads));
+          threadsRef.current = recovered;
+          setThreads(recovered);
+          const last = cached.lastThreadId;
+          if (last && recovered.some((thread) => thread.id === last)) {
+            applyCurrentThreadId(last);
+          }
+        }
+        setThreadListState({ status: 'error', error: errMsg });
+        if (!getBackendUnavailable() || !isBackendConnectionError(errMsg)) {
+          dispatch(setThreadError(errMsg));
+        }
+      }
     } finally {
       if (!quiet) setThreadsLoading(false);
     }
-  }, [userId, loadFromLocalStorage, dispatch]);
+  }, [applyCurrentThreadId, dispatch, userId]);
 
   const loadMoreThreads = useCallback(async () => {
     if (isDemoChatMockup() || !isAuthenticated || threadsLoadingMore || !threadsHasMore) return;
@@ -329,12 +378,23 @@ export const useChatThreads = () => {
   // ── Boot: wait for auth to resolve, then load from the right source ─────────
   useEffect(() => {
     if (authLoading) return;
+    const ownerKey = isAuthenticated ? `auth:${userId}` : `local:${userId ?? 'guest'}`;
+    if (loadedOwnerRef.current !== ownerKey) {
+      loadedOwnerRef.current = ownerKey;
+      threadsRef.current = [];
+      setThreads([]);
+      setThreadsReady(false);
+      setThreadsHasMore(false);
+      setThreadsTotal(null);
+      threadsNextCursorRef.current = null;
+      applyCurrentThreadId(null);
+    }
     if (isAuthenticated) {
-      loadFromBackend();
+      void loadFromBackend();
     } else {
       loadFromLocalStorage();
     }
-  }, [isAuthenticated, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [applyCurrentThreadId, authLoading, isAuthenticated, loadFromBackend, loadFromLocalStorage, userId]);
 
   // Re-fetch the server list when returning to the tab / sibling tab activity so
   // mobile and desktop stay aligned without a full remount.
@@ -863,6 +923,7 @@ export const useChatThreads = () => {
     threads,
     threadsLoading,
     threadsReady,
+    threadListState,
     threadsHasMore,
     threadsTotal,
     threadsLoadingMore,
