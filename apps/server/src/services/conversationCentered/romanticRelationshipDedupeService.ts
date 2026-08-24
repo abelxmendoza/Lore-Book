@@ -17,6 +17,11 @@ import { supabaseAdmin } from '../supabaseClient';
 import { logger } from '../../logger';
 import { isRelationshipRoleLabel } from './romanticEligibility';
 import { isIndividualPersonName } from '../../utils/personNameValidation';
+import {
+  belongsOnDatingSurface,
+  characterBookRomanceKind,
+  datingRowDefaultsForRomanceKind,
+} from './characterBookRomanceMembership';
 
 type RomanticRow = {
   id: string;
@@ -80,11 +85,20 @@ class RomanticRelationshipDedupeService {
     // Build a card name/alias -> id index for linking.
     const { data: cards } = await supabaseAdmin
       .from('characters')
-      .select('id, name, alias')
+      .select('id, name, alias, role, archetype, metadata, status')
       .eq('user_id', userId)
       .neq('status', 'archived');
     const cardByName = new Map<string, string>();
-    for (const c of (cards ?? []) as { id: string; name: string; alias: string[] | null }[]) {
+    type CardRow = {
+      id: string;
+      name: string;
+      alias: string[] | null;
+      role?: string | null;
+      archetype?: string | null;
+      metadata?: Record<string, unknown> | null;
+      status?: string | null;
+    };
+    for (const c of (cards ?? []) as CardRow[]) {
       if (c.name?.trim()) cardByName.set(normalizeName(c.name), c.id);
       for (const a of c.alias ?? []) {
         if (typeof a === 'string' && a.trim()) cardByName.set(normalizeName(a), c.id);
@@ -204,6 +218,45 @@ class RomanticRelationshipDedupeService {
         .in('id', losers.map((l) => l.id))
         .eq('user_id', userId);
       if (!delErr) report.merged += losers.length;
+    }
+
+    // 4) Character Book Romantic / Exes / Married / Divorced / Co-parents
+    //    people must have a Dating & Romance row.
+    const linkedCharacterIds = new Set(
+      rows.filter((r) => r.person_type === 'character').map((r) => r.person_id),
+    );
+    const now = new Date().toISOString();
+    for (const c of (cards ?? []) as CardRow[]) {
+      if (linkedCharacterIds.has(c.id)) continue;
+      if (!belongsOnDatingSurface(c)) continue;
+      const kind = characterBookRomanceKind(c);
+      if (!kind) continue;
+      const defaults = datingRowDefaultsForRomanceKind(kind);
+      const { data: created, error: insertErr } = await supabaseAdmin
+        .from('romantic_relationships')
+        .insert({
+          user_id: userId,
+          person_id: c.id,
+          person_type: 'character',
+          relationship_type: defaults.relationship_type,
+          status: defaults.status,
+          is_current: defaults.is_current,
+          exclusivity_status: 'unknown',
+          metadata: {
+            user_confirmed_romantic: true,
+            correction_source: 'character_book',
+            added_via: 'character_book_romance_tab',
+            added_at: now,
+            romance_kind: kind,
+            evidence: [`${c.name} is on the Character Book ${kind === 'ex' ? 'Exes' : 'Romantic'} tab.`],
+          },
+        })
+        .select('id')
+        .maybeSingle();
+      if (!insertErr && created?.id) {
+        report.linked += 1;
+        linkedCharacterIds.add(c.id);
+      }
     }
 
     return report;

@@ -12,6 +12,7 @@
 
 import { supabaseAdmin } from '../supabaseClient';
 import { logger } from '../../logger';
+import { belongsOnDatingSurface } from './characterBookRomanceMembership';
 
 export type DatingEligibilityReason =
   | 'eligible_explicit_romantic_evidence'
@@ -430,7 +431,7 @@ export async function loadDatingEligibilityForRows(
 
   const [{ data: chars }, { data: omegas }, orgLabels] = await Promise.all([
     charIds.length
-      ? supabaseAdmin.from('characters').select('id, name, alias, role, archetype, metadata').eq('user_id', userId).in('id', charIds)
+      ? supabaseAdmin.from('characters').select('id, name, alias, role, archetype, metadata, status').eq('user_id', userId).in('id', charIds)
       : Promise.resolve({ data: [] as any[] }),
     omegaIds.length
       ? supabaseAdmin.from('omega_entities').select('id, primary_name, aliases, type').eq('user_id', userId).in('id', omegaIds)
@@ -453,7 +454,9 @@ export async function loadDatingEligibilityForRows(
         ? [evidenceRaw]
         : [];
     const userConfirmed =
-      meta.user_confirmed_romantic === true || meta.correction_source === 'user';
+      meta.user_confirmed_romantic === true
+      || meta.correction_source === 'user'
+      || meta.added_via === 'character_book_romance_tab';
 
     let input: DatingEligibilityInput | null = null;
     if (row.person_type === 'character') {
@@ -467,7 +470,16 @@ export async function loadDatingEligibilityForRows(
           relationLabels: [c.role, c.archetype, (c.metadata as any)?.relationship_to_user, (c.metadata as any)?.relationship].filter(Boolean),
           aliases: Array.isArray(c.alias) ? c.alias : [],
           evidenceSnippets: snippets,
-          userConfirmedRomantic: userConfirmed,
+          userConfirmedRomantic:
+            userConfirmed
+            || belongsOnDatingSurface({
+              name: c.name,
+              alias: Array.isArray(c.alias) ? c.alias : [],
+              role: c.role,
+              archetype: c.archetype,
+              metadata: (c.metadata as Record<string, unknown> | null) ?? null,
+              status: c.status,
+            }),
         };
       }
     } else {

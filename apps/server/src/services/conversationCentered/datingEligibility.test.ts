@@ -121,6 +121,13 @@ describe('dating eligibility — gates', () => {
     expect(r.reviewRequired).toBe(true);
   });
 
+  it('Character Book romantic-tab people are visible even without chat snippets', () => {
+    const r = evaluateDatingEligibility(
+      person('Kiley Tafur', { userConfirmedRomantic: true }),
+    );
+    expect(r.visibleInDatingBook).toBe(true);
+  });
+
   it('explicit user correction wins for persons but never for non-persons', () => {
     const confirmed = evaluateDatingEligibility(
       person('Marisol', { userConfirmedRomantic: true }),
