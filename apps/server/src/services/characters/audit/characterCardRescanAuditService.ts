@@ -8,6 +8,7 @@ import { normalizeNameKey } from '../../../utils/nameNormalization';
 import { characterDeletionService } from '../../characterDeletionService';
 import { characterMergeService } from '../../characterMergeService';
 import { supabaseAdmin } from '../../supabaseClient';
+import { assertCharacterStatusTransition } from '../characterLifecycle';
 import { characterCardAuditService } from './characterCardAuditService';
 import { characterRescanStateService } from './characterRescanStateService';
 import { isWrongDomainStatus } from './characterCardAuditTypes';
@@ -371,6 +372,34 @@ class CharacterCardRescanAuditService {
         return { success: false, error: 'update_failed' };
       }
       return { success: true };
+    }
+
+    // Review-queue characters sit at 'archived'; permanent delete requires
+    // 'pending_deletion' first (same rule the manual merge-panel flow goes
+    // through via PATCH /api/characters/:id).
+    const { data: current, error: statusFetchErr } = await supabaseAdmin
+      .from('characters')
+      .select('status')
+      .eq('id', characterId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (statusFetchErr || !current) {
+      logger.warn({ statusFetchErr, userId, characterId }, 'card review delete: character not found');
+      return { success: false, error: 'character_not_found' };
+    }
+    const transition = assertCharacterStatusTransition(current.status, 'pending_deletion');
+    if (!transition.ok) {
+      logger.warn({ userId, characterId, from: current.status }, transition.message);
+      return { success: false, error: transition.message };
+    }
+    const { error: queueErr } = await supabaseAdmin
+      .from('characters')
+      .update({ status: 'pending_deletion', updated_at: new Date().toISOString() })
+      .eq('id', characterId)
+      .eq('user_id', userId);
+    if (queueErr) {
+      logger.warn({ queueErr, userId, characterId }, 'card review delete: queue for deletion failed');
+      return { success: false, error: 'queue_failed' };
     }
 
     await characterDeletionService.deleteCharacter(userId, characterId, {
