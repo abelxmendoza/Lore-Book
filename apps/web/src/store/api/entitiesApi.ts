@@ -139,12 +139,6 @@ type RomanticRelationshipsResponse = {
   relationships: Array<Record<string, unknown>>;
 };
 
-type AddCharacterToDatingBookInput = {
-  character_id: string;
-  relationship_type?: string;
-  status?: string;
-};
-
 type OrganizationUpdateInput = {
   id: string;
   values: Record<string, unknown>;

@@ -131,6 +131,7 @@ export default defineConfig({
     dedupe: ['react', 'react-dom', 'zod'],
     alias: {
       '@': path.resolve(__dirname, './src'),
+      zod: path.resolve(__dirname, './node_modules/zod'),
       '@lorekeeper/ontology': ontologyRoot,
       '@lorebook/api-contracts': contractsEntry,
     },
