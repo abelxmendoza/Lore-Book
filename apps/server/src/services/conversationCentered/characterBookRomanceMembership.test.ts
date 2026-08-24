@@ -30,11 +30,11 @@ describe('characterBookRomanceKind', () => {
   });
 
   it('does not send family members to Dating & Romance', () => {
-    expect(characterBookRomanceKind({ name: 'Tío Juan', archetype: 'romantic' })).toBeNull();
+    expect(characterBookRomanceKind({ name: 'Uncle Marco', archetype: 'romantic' })).toBeNull();
     expect(
       characterBookRomanceKind({
-        name: 'Juan',
-        alias: ['Tío Juan'],
+        name: 'Marco',
+        alias: ['Uncle Marco'],
         archetype: 'romantic',
       }),
     ).toBeNull();
