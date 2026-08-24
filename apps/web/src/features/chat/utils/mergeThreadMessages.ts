@@ -82,6 +82,23 @@ function toRow(m: Message) {
  * pass and renders as a second bubble — the classic "two bubbles, the last one
  * has the response".
  */
+function contentLength(m: Message): number {
+  return m.content?.trim().length ?? 0;
+}
+
+/**
+ * Same durable id: keep the richer assistant body. An empty/truncated server
+ * placeholder must never replace a locally completed (or partial) reply.
+ * Server still wins when it is at least as long — that covers post-processed
+ * durable text without letting a failed finalize erase the answer.
+ */
+function pickIdMatchedContent(local: Message, server: Message): { preferred: Message; fallback: Message } {
+  if (local.role === 'assistant' && contentLength(local) > contentLength(server)) {
+    return { preferred: local, fallback: server };
+  }
+  return { preferred: server, fallback: local };
+}
+
 function reconcileById(local: Message[], server: Message[]): Message[] {
   const serverById = new Map<string, Message>();
   for (const m of server) {
@@ -92,8 +109,10 @@ function reconcileById(local: Message[], server: Message[]): Message[] {
   return local.map((m) => {
     const twin = sourceRank(m.id) === 1 ? serverById.get(m.id) : undefined;
     if (!twin) return m;
+    const { preferred, fallback } = pickIdMatchedContent(m, twin);
     return {
-      ...mergeProtocolFields(twin, m),
+      ...mergeProtocolFields(preferred, fallback),
+      id: twin.id,
       persistStatus: mergePersistStatus(twin.persistStatus, m.persistStatus),
       isStreaming: false,
     };
@@ -107,9 +126,13 @@ function reconcileById(local: Message[], server: Message[]): Message[] {
  */
 export function mergeThreadMessages(local: Message[], server: Message[]): Message[] {
   const reconciledLocal = reconcileById(local, server);
+  const collapsedIds = new Set(
+    reconciledLocal.filter((m) => sourceRank(m.id) === 1).map((m) => m.id),
+  );
+  const extraServer = server.filter((m) => !collapsedIds.has(m.id));
   const byFingerprint = new Map<string, ReturnType<typeof toRow>>();
 
-  for (const m of [...reconciledLocal, ...server]) {
+  for (const m of [...reconciledLocal, ...extraServer]) {
     if (!m.content?.trim() && !m.isStreaming) continue;
     // Streaming assistant rows are owned exclusively by the placeholder pass
     // below so they can never be added twice (fingerprint + streaming key).

@@ -129,6 +129,51 @@ describe('useChatThreads.hydrateThreadMessages', () => {
     expect(thread?.messages.find((m) => m.role === 'assistant')?.content).toContain('LifeLedger');
   });
 
+  it('does not erase a local assistant when the server returns an empty same-id placeholder', async () => {
+    mockFetchJson.mockImplementation(async (url: string) => {
+      if (url.includes('/messages')) {
+        return {
+          success: true,
+          messages: [
+            { id: 'db-u1', role: 'user', content: 'Who is Jerry?', created_at: '2026-06-01T00:00:00Z' },
+            { id: 'db-a1', role: 'assistant', content: '', created_at: '2026-06-01T00:00:01Z' },
+          ],
+        };
+      }
+      if (url.includes('/threads/recover-orphans')) return { success: true };
+      if (url.includes('health/repair')) return { repaired: 0 };
+      if (url.includes('/threads?')) {
+        return {
+          success: true,
+          threads: [{ id: 'thread-1', title: 'T', updated_at: new Date().toISOString(), metadata: {} }],
+          total: 1,
+          hasMore: false,
+        };
+      }
+      if (url.includes('/ensure-visible')) return { success: true };
+      return { success: true };
+    });
+
+    const { result } = renderUseChatThreads();
+    await waitFor(() => expect(result.current.threadsReady).toBe(true));
+
+    act(() => {
+      result.current.updateThread('thread-1', {
+        messages: [
+          msg('db-u1', 'user', 'Who is Jerry?'),
+          msg('db-a1', 'assistant', 'Jerry is from the LifeLedger era.'),
+        ],
+      });
+    });
+
+    await act(async () => {
+      await result.current.hydrateThreadMessages('thread-1');
+    });
+
+    const assistant = result.current.getThread('thread-1')?.messages.find((m) => m.role === 'assistant');
+    expect(assistant?.content).toContain('LifeLedger');
+  });
+
   it('returns existing thread on hydrate fetch failure when local messages exist', async () => {
     mockFetchJson.mockImplementation(async (url: string) => {
       if (url.includes('/messages')) throw new Error('Network error');

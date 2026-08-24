@@ -581,12 +581,28 @@ export const useChatThreads = () => {
           messages = mergeThreadMessages(cacheMessages, messages);
         }
 
+        const assistantChars = (rows: typeof messages) =>
+          rows
+            .filter((row) => row.role === 'assistant')
+            .reduce((sum, row) => sum + (row.content?.trim().length ?? 0), 0);
+
         // If server snapshot is still missing assistant replies, keep local cache entirely.
         if (
           countMissingAssistantTurns(messages) > countMissingAssistantTurns(localMessages) &&
           localMessages.length > 0
         ) {
           messages = mergeThreadMessages(localMessages, messages);
+        }
+        // A truncated/empty durable row must not erase a longer local reply.
+        if (assistantChars(messages) < assistantChars(localMessages) && localMessages.length > 0) {
+          messages = mergeThreadMessages(localMessages, messages);
+        }
+        if (assistantChars(messages) < assistantChars(cacheMessages) && cacheMessages.length > 0) {
+          messages = mergeThreadMessages(cacheMessages, messages);
+        }
+
+        if (messages.length === 0 && (localMessages.length > 0 || cacheMessages.length > 0)) {
+          messages = mergeThreadMessages(localMessages, cacheMessages);
         }
 
         if (messages.length === 0) {

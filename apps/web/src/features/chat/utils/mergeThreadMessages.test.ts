@@ -131,6 +131,30 @@ describe('mergeThreadMessages', () => {
     expect(merged[0].staleProjectionHints).toEqual(staleProjectionHints);
   });
 
+  it('does not replace a completed local assistant with an empty same-id server placeholder', () => {
+    const local = [
+      msg('user-1', 'user', 'Who is Jerry?'),
+      msg('db-a1', 'assistant', 'Jerry is from the LifeLedger era.'),
+    ];
+    const server = [
+      msg('db-u1', 'user', 'Who is Jerry?'),
+      msg('db-a1', 'assistant', ''),
+    ];
+    const merged = mergeThreadMessages(local, server);
+    const assistants = merged.filter((m) => m.role === 'assistant');
+    expect(assistants).toHaveLength(1);
+    expect(assistants[0].content).toContain('LifeLedger');
+    expect(assistants[0].id).toBe('db-a1');
+  });
+
+  it('does not replace a longer local assistant with a shorter failed-finalize row', () => {
+    const local = [msg('db-a1', 'assistant', 'A full streamed reply that the user already saw.')];
+    const server = [msg('db-a1', 'assistant', 'Response interrupted before it started.')];
+    const merged = mergeThreadMessages(local, server);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].content).toContain('full streamed reply');
+  });
+
   it('collapses an optimistic row whose id matches the durable row even when content was reformatted', () => {
     // The optimistic bubble adopted the real DB id on persist, but the server
     // stored a post-processed version of the text. Identity is the id, so this
@@ -156,7 +180,8 @@ describe('mergeThreadMessages', () => {
     const server = [msg('db-a1', 'assistant', 'durable text')];
     const merged = mergeThreadMessages(local, server);
     expect(merged).toHaveLength(1);
-    expect(merged[0].content).toBe('durable text');
+    // Local body is longer — keep it so a truncated durable row cannot erase the reply.
+    expect(merged[0].content).toBe('streamed text');
     expect(merged[0].mentionedEntities).toEqual(entities);
   });
 

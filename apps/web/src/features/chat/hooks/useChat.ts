@@ -318,7 +318,13 @@ export const useChat = () => {
       if (!streamId || !streamThreadId) return;
       mutateThreadMessagesForThread(streamThreadId, (messages) =>
         messages.map((message) =>
-          message.id === streamId ? { ...message, isStreaming: false } : message,
+          message.id === streamId
+            ? {
+                ...message,
+                isStreaming: false,
+                persistStatus: message.content?.trim() ? (message.persistStatus ?? 'pending') : message.persistStatus,
+              }
+            : message,
         ),
       );
       streamingMessageIdRef.current = null;
