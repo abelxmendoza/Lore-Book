@@ -68,7 +68,6 @@ import { isSelfCharacter } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
 import { impactOnUserWithPublicFigureCap, isPublicFigureCharacter } from '../../lib/publicFigure';
 import { CharacterAvatar } from './CharacterAvatar';
-import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { BookTrustSummary } from '../trust/BookTrustSummary';
 import type { FamilyTree } from '../../types/socialRoles';
 import {
