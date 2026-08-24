@@ -72,9 +72,14 @@ function wrap(ui: React.ReactElement) {
 }
 
 describe('HomeScreen', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     localStorage.clear();
+    const { useChatThreadContext, useRecentChatThreads } = await import('../contexts/ChatThreadContext');
+    vi.mocked(useRecentChatThreads).mockReturnValue([]);
+    vi.mocked(useChatThreadContext).mockReturnValue({
+      threadListState: { status: 'ready', error: null },
+    } as never);
   });
 
   it('renders without crashing', async () => {
@@ -216,5 +221,35 @@ describe('HomeScreen', () => {
     await waitFor(() => {
       expect(screen.queryByText(/syncs add on their own/i)).not.toBeInTheDocument();
     });
+  });
+
+  it('does not claim there are no conversations while the thread list is loading', async () => {
+    const { useChatThreadContext, useRecentChatThreads } = await import('../contexts/ChatThreadContext');
+    vi.mocked(useRecentChatThreads).mockReturnValue([]);
+    vi.mocked(useChatThreadContext).mockReturnValue({
+      threadListState: { status: 'loading', error: null },
+    } as never);
+    vi.mocked((await import('../lib/api')).fetchJson).mockResolvedValue({ characters: [] });
+
+    wrap(<HomeScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Loading conversations…')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('No conversations yet')).not.toBeInTheDocument();
+  });
+
+  it('shows an unavailable state instead of empty when thread list fetch fails', async () => {
+    const { useChatThreadContext, useRecentChatThreads } = await import('../contexts/ChatThreadContext');
+    vi.mocked(useRecentChatThreads).mockReturnValue([]);
+    vi.mocked(useChatThreadContext).mockReturnValue({
+      threadListState: { status: 'error', error: 'Network unavailable' },
+    } as never);
+    vi.mocked((await import('../lib/api')).fetchJson).mockResolvedValue({ characters: [] });
+
+    wrap(<HomeScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Conversations unavailable')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('No conversations yet')).not.toBeInTheDocument();
   });
 });

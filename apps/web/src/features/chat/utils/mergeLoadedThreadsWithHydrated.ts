@@ -44,7 +44,10 @@ function shouldKeepPendingLocal(
   const hasContent = (thread.messages?.length ?? 0) > 0 || (thread.messageCount ?? 0) > 0;
   if (hasContent) {
     if (isGenuinelyPending(thread.id)) return true;
-    if (!pageWasFull) return true;
+    // A short page is the complete server list. Absence means deleted / never
+    // persisted — not "paginated out". Keeping these rows lets the recovery
+    // cache override an authoritative empty or short response.
+    if (!pageWasFull) return false;
     const threadMs = Date.parse(thread.updatedAt);
     return Number.isFinite(threadMs) && Number.isFinite(loadedOldestMs) && threadMs < loadedOldestMs;
   }

@@ -131,6 +131,76 @@ describe('useChatThreads', () => {
     expect(result.current.getThread('thread-a')).toBeUndefined();
   });
 
+  it('ignores a stale account-A thread list after switching to account B', async () => {
+    let releaseA: (value: unknown) => void = () => {};
+    const hungA = new Promise((resolve) => {
+      releaseA = resolve;
+    });
+    let servingAccount: 'a' | 'b' = 'a';
+
+    mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-stale-a' }));
+    mockFetchJson.mockImplementation(async (url: string) => {
+      if (url.includes('health/repair')) return { repaired: 0 };
+      if (url.includes('recover-orphans')) return { success: true };
+      if (url.includes('/threads?')) {
+        if (servingAccount === 'a') {
+          await hungA;
+          return {
+            success: true,
+            threads: [makeDbThread('thread-a', 'Account A')],
+            total: 1,
+            hasMore: false,
+            nextCursor: null,
+          };
+        }
+        return {
+          success: true,
+          threads: [makeDbThread('thread-b', 'Account B')],
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        };
+      }
+      return { success: true };
+    });
+
+    const { result, rerender } = renderUseChatThreads();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    servingAccount = 'b';
+    mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-stale-b' }));
+    rerender();
+
+    await waitFor(() => expect(result.current.threads.map((thread) => thread.id)).toEqual(['thread-b']));
+
+    await act(async () => {
+      releaseA(null);
+    });
+
+    expect(result.current.threads.map((thread) => thread.id)).toEqual(['thread-b']);
+    expect(result.current.getThread('thread-a')).toBeUndefined();
+  });
+
+  it('does not resurrect cached threads over an authoritative empty server list', async () => {
+    mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-empty' }));
+    localStorage.setItem(
+      authThreadCacheKey('user-empty'),
+      JSON.stringify({
+        threads: [makeStoredThread('cached-old', 'Should not survive')],
+        lastThreadId: 'cached-old',
+      }),
+    );
+    mockBackendThreadLoad([]);
+
+    const { result } = renderUseChatThreads();
+    await waitFor(() => expect(result.current.threadListState.status).toBe('ready'));
+
+    expect(result.current.threads).toHaveLength(0);
+    expect(result.current.threadsReady).toBe(true);
+  });
+
   // ── Guest / localStorage path ─────────────────────────────────────────────
 
   it('loads threads from localStorage when not authenticated', async () => {
@@ -144,6 +214,8 @@ describe('useChatThreads', () => {
 
     expect(result.current.threads).toHaveLength(1);
     expect(result.current.threads[0].id).toBe('thread-1');
+    expect(result.current.threadsReady).toBe(true);
+    expect(result.current.threadListState.status).toBe('ready');
     expect(mockFetchJson).not.toHaveBeenCalled();
   });
 

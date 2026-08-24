@@ -229,6 +229,8 @@ export const useChat = () => {
   const streamingThreadIdRef = useRef<string | null>(null);
   /** Idempotency keys with an in-flight retry — blocks duplicate button clicks. */
   const retryInFlightRef = useRef<Set<string>>(new Set());
+  /** Synchronous send lock — `loading` state lags one tick and can admit a double send. */
+  const sendLockRef = useRef(false);
   const [retryingKeys, setRetryingKeys] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
@@ -321,6 +323,7 @@ export const useChat = () => {
       );
       streamingMessageIdRef.current = null;
       streamingThreadIdRef.current = null;
+      sendLockRef.current = false;
       setStreamingMessageId(null);
       setLoading(false);
       if (progressIntervalRef.current) {
@@ -345,13 +348,24 @@ export const useChat = () => {
   const sendMessage = useCallback(async (messageText: string, options?: ChatSendOptions) => {
     const hasImages = (options?.images?.length ?? 0) > 0;
     const resolvedText = messageText.trim() || (hasImages ? IMAGE_ATTACHED_PLACEHOLDER : '');
-    if ((!resolvedText && !hasImages) || loading) return;
+    if ((!resolvedText && !hasImages) || sendLockRef.current || loading) return;
+
+    // Pin pre-send notices to the URL thread. The active-thread adapter can
+    // lag a tick behind a switch and drop the notice into the wrong pane.
+    const noticeThreadId = urlThreadId ?? null;
+    const postNotice = (message: Message) => {
+      if (noticeThreadId) {
+        mutateThreadMessagesForThread(noticeThreadId, (prev) => [...prev, message]);
+        return;
+      }
+      addMessage(message);
+    };
 
     // While a prior 429 window is open, do not create another failed cloud-sync
     // attempt — that only re-arms the cooldown and leaves another Retry ghost.
     const sendCooldownSec = chatSendCooldownRemainingSec();
     if (sendCooldownSec > 0 && !options?.retry) {
-      addMessage({
+      postNotice({
         id: `rate-limit-${Date.now()}`,
         role: 'assistant',
         content: chatSendCooldownNotice(sendCooldownSec),
@@ -363,7 +377,7 @@ export const useChat = () => {
     }
 
     if (isGuest && !canSendChatMessage()) {
-      addMessage({
+      postNotice({
         id: `limit-${Date.now()}`,
         role: 'assistant',
         content: `You've reached the guest chat limit (${guestState?.chatLimit ?? GUEST_CHAT_LIMIT} messages). Sign up to continue chatting and unlock unlimited access to all features!`,
@@ -379,7 +393,7 @@ export const useChat = () => {
     // Block unauthenticated users (non-guest) before hitting the backend
     if (!user && !isGuest) {
       const isDemo = getGlobalMockDataEnabled();
-      addMessage({
+      postNotice({
         id: `authwall-${Date.now()}`,
         role: 'assistant',
         content: isDemo
@@ -404,7 +418,7 @@ export const useChat = () => {
               content: result.content || 'Command executed.',
               timestamp: new Date()
             };
-            addMessage(commandMessage);
+            postNotice(commandMessage);
             return;
           }
         }
@@ -435,6 +449,7 @@ export const useChat = () => {
 
     if (retryInFlightRef.current.has(clientIdempotencyKey)) return;
     retryInFlightRef.current.add(clientIdempotencyKey);
+    sendLockRef.current = true;
     setRetryingKeys((prev) => new Set(prev).add(clientIdempotencyKey));
 
     const safetyAttempt: StorySafetyAttempt = {
@@ -475,6 +490,7 @@ export const useChat = () => {
         messages.find((m) => m.id === retry.existingUserMessageId);
       if (!existing || existing.role !== 'user') {
         retryInFlightRef.current.delete(clientIdempotencyKey);
+        sendLockRef.current = false;
         setRetryingKeys((prev) => {
           const next = new Set(prev);
           next.delete(clientIdempotencyKey);
@@ -1049,6 +1065,8 @@ export const useChat = () => {
           setTimeout(() => {
             setLoading(false);
             setStreamingMessageId(null);
+            streamingThreadIdRef.current = null;
+            sendLockRef.current = false;
             setLoadingStage('analyzing');
             setLoadingProgress(0);
           }, 300);
@@ -1283,6 +1301,8 @@ export const useChat = () => {
       }
       setLoading(false);
       setStreamingMessageId(null);
+      streamingThreadIdRef.current = null;
+      sendLockRef.current = false;
 
       const errMsg = error instanceof Error ? error.message : 'Unknown error';
       const useDemoFallback =
@@ -1363,6 +1383,7 @@ export const useChat = () => {
       }
     } finally {
       retryInFlightRef.current.delete(clientIdempotencyKey);
+      sendLockRef.current = false;
       setRetryingKeys((prev) => {
         const next = new Set(prev);
         next.delete(clientIdempotencyKey);

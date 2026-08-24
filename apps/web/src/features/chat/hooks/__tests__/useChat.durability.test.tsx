@@ -6,6 +6,7 @@ const mockMutateThreadMessagesForThread = vi.fn();
 const mockHydrateThreadMessages = vi.fn();
 const mockGetThread = vi.fn();
 const mockUpdateActiveMessages = vi.fn();
+const mockCooldownRemaining = vi.fn(() => 0);
 
 vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),
@@ -86,6 +87,11 @@ vi.mock('../../../../lib/api', () => ({
   fetchJson: vi.fn().mockResolvedValue({ mood: 0 }),
 }));
 
+vi.mock('../../../../lib/chatSendRateLimit', async (orig) => ({
+  ...(await orig<typeof import('../../../../lib/chatSendRateLimit')>()),
+  chatSendCooldownRemainingSec: (...args: unknown[]) => mockCooldownRemaining(...args),
+}));
+
 import { useChat } from '../useChat';
 import { createElement, type ReactNode } from 'react';
 import { Provider } from 'react-redux';
@@ -112,6 +118,7 @@ describe('useChat — assistant bubble durability', () => {
         updater(prev);
       }
     );
+    mockCooldownRemaining.mockReturnValue(0);
   });
 
   it('reconciles assistant id from stream metadata and hydrates after complete', async () => {
@@ -252,5 +259,37 @@ describe('useChat — assistant bubble durability', () => {
     expect(mockMutateThreadMessagesForThread.mock.calls.length).toBe(callsBeforeHide + 1);
     expect(mockMutateThreadMessagesForThread.mock.calls.at(-1)?.[0]).toBe('thread-chat-1');
     expect(mockUpdateActiveMessages).not.toHaveBeenCalled();
+  });
+
+  it('rejects a second send while the first stream is still in flight', async () => {
+    mockStreamChat.mockImplementation(() => new Promise(() => {}));
+    const { result } = renderHook(() => useChat(), { wrapper });
+
+    await act(async () => {
+      void result.current.sendMessage('first turn');
+    });
+    await waitFor(() => expect(mockStreamChat).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await result.current.sendMessage('second turn');
+    });
+
+    expect(mockStreamChat).toHaveBeenCalledTimes(1);
+  });
+
+  it('pins a send cooldown notice to the originating URL thread', async () => {
+    mockCooldownRemaining.mockReturnValue(12);
+    const { result } = renderHook(() => useChat(), { wrapper });
+
+    await act(async () => {
+      await result.current.sendMessage('Do not leak this notice');
+    });
+
+    expect(mockMutateThreadMessagesForThread).toHaveBeenCalledWith(
+      'thread-chat-1',
+      expect.any(Function),
+    );
+    expect(mockUpdateActiveMessages).not.toHaveBeenCalled();
+    expect(mockStreamChat).not.toHaveBeenCalled();
   });
 });

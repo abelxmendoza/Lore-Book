@@ -2,13 +2,14 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '../../../lib/supabase';
 import { config } from '../../../config/env';
 import { demoThreadStorageUserId, isDemoRuntimeActive } from '../../../lib/demoRuntime';
-import { store } from '../../../store';
+import type { AppDispatch } from '../../../store';
 import { chatApi } from '../../../store/api/chatApi';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
 import {
   setCurrentThreadId as setCurrentThreadIdAction,
   setThreadError,
   clearThreadError,
+  resetChatUi,
 } from '../../../store/slices/chatSlice';
 import { selectCurrentThreadId, selectThreadError } from '../../../store/selectors';
 import { mutationErrorMessage, mutationErrorStatus } from '../../../store/rtkMutationUtils';
@@ -109,8 +110,11 @@ function dedupeThreads(threads: ChatThread[]): ChatThread[] {
   return dedupeConversationThreads(threads);
 }
 
-async function fetchThreadsPage(args: { limit?: number; cursor?: string | null }) {
-  const result = await store.dispatch(
+async function fetchThreadsPage(
+  dispatch: AppDispatch,
+  args: { limit?: number; cursor?: string | null },
+) {
+  const result = await dispatch(
     chatApi.endpoints.getThreads.initiate(args, { forceRefetch: true })
   );
   if (result.error) {
@@ -141,6 +145,9 @@ export const useChatThreads = () => {
   const [threadsLoadingMore, setThreadsLoadingMore] = useState(false);
   const threadsNextCursorRef = useRef<string | null>(null);
   const loadedOwnerRef = useRef<string | null>(null);
+  // Bumped on identity change and every backend list fetch so a stale User A
+  // response cannot land in User B's store (or a superseded quiet refresh).
+  const loadGenerationRef = useRef(0);
   // threadsLoading: true until we've finished the FIRST authoritative load (backend or localStorage).
   const [threadsLoading, setThreadsLoading] = useState(true);
   // threadsReady: true after a successful backend load — used to gate "thread not found" redirects.
@@ -212,12 +219,11 @@ export const useChatThreads = () => {
       for (const t of hydrated) threadPersistenceTracker.markRestoredFromLocal(t.id);
       const last = localStorage.getItem(lastThreadKey(userId));
       applyCurrentThreadId(last ?? null);
-      if (isDemoChatMockup()) {
-        setThreadsReady(true);
-        if (!raw && hydrated.length > 0) {
-          persistLocal(hydrated, last ?? null);
-        }
+      if (isDemoChatMockup() && !raw && hydrated.length > 0) {
+        persistLocal(hydrated, last ?? null);
       }
+      // Guest localStorage is the authoritative source for this identity.
+      setThreadsReady(true);
       setThreadListState({ status: 'ready', error: null });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : 'Failed to load local conversations';
@@ -234,6 +240,7 @@ export const useChatThreads = () => {
 
   const loadFromBackend = useCallback(async (opts?: { quiet?: boolean }) => {
     const quiet = opts?.quiet === true;
+    const generation = ++loadGenerationRef.current;
     runtimeDiagnostics.record('backend_load_start');
     runtimeDiagnostics.record('THREAD_LIST_FETCH_START', { meta: { quiet } });
     runtimeDiagnostics.startTimer('backend_load');
@@ -245,11 +252,14 @@ export const useChatThreads = () => {
       // Cold boot repairs orphaned/drifted rows. Quiet focus refreshes skip this so
       // list order updates quickly without racing the open thread selection.
       if (!quiet) {
-        await store.dispatch(chatApi.endpoints.repairChatHealth.initiate()).unwrap().catch(() => {});
-        await store.dispatch(chatApi.endpoints.recoverThreadOrphans.initiate()).unwrap().catch(() => {});
+        await dispatch(chatApi.endpoints.repairChatHealth.initiate()).unwrap().catch(() => {});
+        if (generation !== loadGenerationRef.current) return;
+        await dispatch(chatApi.endpoints.recoverThreadOrphans.initiate()).unwrap().catch(() => {});
+        if (generation !== loadGenerationRef.current) return;
       }
 
-      const data = await fetchThreadsPage({ limit: DEFAULT_THREAD_PAGE_LIMIT });
+      const data = await fetchThreadsPage(dispatch, { limit: DEFAULT_THREAD_PAGE_LIMIT });
+      if (generation !== loadGenerationRef.current) return;
       const loaded = dedupeThreads((data.threads || []).map(dbRowToThread));
       const cached = userId ? readAuthThreadCache(userId) : null;
       runtimeDiagnostics.record('THREAD_LIST_HYDRATE_START', {
@@ -281,8 +291,9 @@ export const useChatThreads = () => {
       for (const t of loaded) {
         const rawTitle = (data.threads || []).find((row: any) => row.id === t.id)?.title;
         if (isGenericThreadTitle(rawTitle) && !isGenericThreadTitle(t.title) && t.messages.length > 0) {
-          void store
-            .dispatch(chatApi.endpoints.patchThreadTitle.initiate({ threadId: t.id, title: t.title }))
+          void dispatch(
+            chatApi.endpoints.patchThreadTitle.initiate({ threadId: t.id, title: t.title }),
+          )
             .unwrap()
             .catch(() => {});
         }
@@ -310,6 +321,7 @@ export const useChatThreads = () => {
         meta: { threadCount: loaded.length, quiet },
       });
     } catch (err: unknown) {
+      if (generation !== loadGenerationRef.current) return;
       const errMsg = err instanceof Error ? err.message : String(err);
       runtimeDiagnostics.recordTimed('backend_load_error', 'backend_load', {
         meta: { error: errMsg, quiet },
@@ -341,7 +353,10 @@ export const useChatThreads = () => {
         }
       }
     } finally {
-      if (!quiet) setThreadsLoading(false);
+      // Quiet refreshes that superseded a cold load must still clear the spinner.
+      if (generation === loadGenerationRef.current) {
+        setThreadsLoading(false);
+      }
     }
   }, [applyCurrentThreadId, dispatch, userId]);
 
@@ -352,7 +367,7 @@ export const useChatThreads = () => {
 
     setThreadsLoadingMore(true);
     try {
-      const data = await fetchThreadsPage({ limit: 30, cursor });
+      const data = await fetchThreadsPage(dispatch, { limit: 30, cursor });
       const page = dedupeThreads((data.threads || []).map(dbRowToThread));
       setThreads((prev) => {
         const seen = new Set(prev.map((t) => t.id));
@@ -381,20 +396,26 @@ export const useChatThreads = () => {
     const ownerKey = isAuthenticated ? `auth:${userId}` : `local:${userId ?? 'guest'}`;
     if (loadedOwnerRef.current !== ownerKey) {
       loadedOwnerRef.current = ownerKey;
+      loadGenerationRef.current += 1;
+      createdThisSessionRef.current = new Set();
       threadsRef.current = [];
+      currentThreadIdRef.current = null;
       setThreads([]);
       setThreadsReady(false);
       setThreadsHasMore(false);
       setThreadsTotal(null);
       threadsNextCursorRef.current = null;
-      applyCurrentThreadId(null);
+      setThreadsLoading(true);
+      setThreadListState({ status: 'loading', error: null });
+      dispatch(resetChatUi());
+      dispatch(chatApi.util.resetApiState());
     }
     if (isAuthenticated) {
       void loadFromBackend();
     } else {
       loadFromLocalStorage();
     }
-  }, [applyCurrentThreadId, authLoading, isAuthenticated, loadFromBackend, loadFromLocalStorage, userId]);
+  }, [applyCurrentThreadId, authLoading, dispatch, isAuthenticated, loadFromBackend, loadFromLocalStorage, userId]);
 
   // Re-fetch the server list when returning to the tab / sibling tab activity so
   // mobile and desktop stay aligned without a full remount.
@@ -469,8 +490,7 @@ export const useChatThreads = () => {
     if (isAuthenticated && !isDemoChatMockup()) {
       threadPersistenceTracker.markPersistPending(id, 0);
       localStorage.setItem(lastThreadKey(userId), id);
-      void store
-        .dispatch(chatApi.endpoints.createThread.initiate({ id, title: DRAFT_THREAD_TITLE }))
+      void dispatch(chatApi.endpoints.createThread.initiate({ id, title: DRAFT_THREAD_TITLE }))
         .unwrap()
         .then((res: { success?: boolean; id?: string; thread_number?: number | null }) => {
           threadPersistenceTracker.markPersisted(id);
@@ -490,7 +510,7 @@ export const useChatThreads = () => {
       threadPersistenceTracker.markLocalOnly(id);
     }
     return id;
-  }, [isAuthenticated, userId, persistLocal]);
+  }, [applyCurrentThreadId, dispatch, isAuthenticated, persistLocal, userId]);
 
   const getThread = useCallback(
     (id: string) => threadsRef.current.find((t) => t.id === id),
@@ -500,13 +520,14 @@ export const useChatThreads = () => {
   const hydrateThreadMessages = useCallback(
     async (id: string): Promise<ChatThread | null> => {
       const existing = threadsRef.current.find((t) => t.id === id);
+      const ownerAtStart = loadedOwnerRef.current;
       if (isDemoChatMockup()) {
         return existing ?? null;
       }
       let ensuredMeta: { title?: string; subtitle?: string; updatedAt?: string } = {};
       try {
-        const ensured = await store
-          .dispatch(chatApi.endpoints.ensureThreadVisible.initiate(id))
+        const ensured = await dispatch(
+          chatApi.endpoints.ensureThreadVisible.initiate(id))
           .unwrap();
         if (ensured.success && ensured.thread) {
           ensuredMeta = {
@@ -525,8 +546,8 @@ export const useChatThreads = () => {
         let lastErr: unknown;
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
-            return await store
-              .dispatch(chatApi.endpoints.getThreadMessages.initiate(id, { forceRefetch: true }))
+            return await dispatch(
+              chatApi.endpoints.getThreadMessages.initiate(id, { forceRefetch: true }))
               .unwrap();
           } catch (err) {
             lastErr = err;
@@ -545,7 +566,10 @@ export const useChatThreads = () => {
 
       try {
         const result = await loadMessages();
-        if (!result.success) return null;
+        if (loadedOwnerRef.current !== ownerAtStart) return existing ?? null;
+        if (!result.success) {
+          throw new Error('Failed to load conversation');
+        }
 
         let messages = (result.messages || []).map(dbMessageToMessage);
         const localMessages = existing?.messages ?? [];
@@ -632,13 +656,17 @@ export const useChatThreads = () => {
 
         return hydratedThread;
       } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : String(err);
+        if (loadedOwnerRef.current !== ownerAtStart) return existing ?? null;
+        const errMsg = mutationErrorMessage(err);
         runtimeDiagnostics.record('backend_load_error', { threadId: id, meta: { op: 'hydrate_thread_messages', error: errMsg } });
         if (existing?.messages.length) return existing;
-        return null;
+        // 404 is an authoritative miss. Any other failure must not be treated
+        // as "thread is empty / gone" — that redirected users to a false empty.
+        if (mutationErrorStatus(err) === 404) return null;
+        throw err instanceof Error ? err : new Error(errMsg);
       }
     },
-    [userId]
+    [dispatch, userId]
   );
 
   const switchThread = useCallback(
@@ -704,8 +732,7 @@ export const useChatThreads = () => {
 
       if (isAuthenticated && !isDemoChatMockup()) {
         if (payload.title !== undefined) {
-          void store
-            .dispatch(
+          void dispatch(
               chatApi.endpoints.updateThread.initiate({
                 threadId: id,
                 body: { title: payload.title },
@@ -717,15 +744,13 @@ export const useChatThreads = () => {
               runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'update_title', error: errMsg } });
             });
         } else if (derivedTitle) {
-          void store
-            .dispatch(chatApi.endpoints.patchThreadTitle.initiate({ threadId: id, title: derivedTitle }))
+          void dispatch(chatApi.endpoints.patchThreadTitle.initiate({ threadId: id, title: derivedTitle }))
             .unwrap()
             .catch(() => {});
         }
         // subtitle is NOT sent here — server already persisted it via the title service
         if (touchActivity) {
-          void store
-            .dispatch(
+          void dispatch(
               chatApi.endpoints.updateThread.initiate({
                 threadId: id,
                 body: { touchActivity: true },
@@ -739,7 +764,7 @@ export const useChatThreads = () => {
         }
       }
     },
-    [isAuthenticated, persistLocal, userId]
+    [dispatch, isAuthenticated, persistLocal, userId]
   );
 
   /** Functional message update — avoids stale reads when multiple messages append in one turn. */
@@ -794,8 +819,7 @@ export const useChatThreads = () => {
       });
 
       if (isAuthenticated && !isDemoChatMockup() && touchActivity) {
-        void store
-          .dispatch(
+        void dispatch(
             chatApi.endpoints.updateThread.initiate({
               threadId: id,
               body: { touchActivity: true },
@@ -808,7 +832,7 @@ export const useChatThreads = () => {
           });
       }
     },
-    [isAuthenticated, persistLocal, userId]
+    [dispatch, isAuthenticated, persistLocal, userId]
   );
 
   /**
@@ -824,8 +848,7 @@ export const useChatThreads = () => {
         prev.map((t) => (t.id === id ? { ...t, title: unique } : t))
       );
       if (isAuthenticated && !isDemoChatMockup()) {
-        void store
-          .dispatch(chatApi.endpoints.patchThreadTitle.initiate({ threadId: id, title: unique }))
+        void dispatch(chatApi.endpoints.patchThreadTitle.initiate({ threadId: id, title: unique }))
           .unwrap()
           .catch((err: unknown) => {
             const errMsg = mutationErrorMessage(err);
@@ -855,8 +878,7 @@ export const useChatThreads = () => {
       }
       threadPersistenceTracker.remove(id);
       if (isAuthenticated && !isDemoChatMockup()) {
-        void store
-          .dispatch(chatApi.endpoints.deleteThread.initiate(id))
+        void dispatch(chatApi.endpoints.deleteThread.initiate(id))
           .unwrap()
           .catch((err: unknown) => {
             const errMsg = mutationErrorMessage(err);

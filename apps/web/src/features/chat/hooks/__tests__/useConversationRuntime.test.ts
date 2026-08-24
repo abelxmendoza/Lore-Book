@@ -86,6 +86,7 @@ function makeContextStore(
     threads,
     threadsLoading: opts.loading ?? false,
     threadsReady: opts.ready ?? true,
+    threadListState: { status: opts.loading ? 'loading' : 'ready', error: null } as const,
     currentThreadId: opts.currentThreadId ?? null,
     activeThreadId,
     activeMessages,
@@ -228,6 +229,32 @@ describe('useConversationRuntime', () => {
     });
 
     expect(store.setActiveThreadId).not.toHaveBeenCalled();
+  });
+
+  it('does not redirect to empty chat when message hydrate fails', async () => {
+    const store = makeContextStore({
+      threads: [makeThread('t1', [])],
+      ready: true,
+    });
+    store.hydrateThreadMessages.mockRejectedValue(new Error('Network unavailable'));
+    mockUseChatThreadContext.mockReturnValue(store);
+
+    renderHook(() => useConversationRuntime(), {
+      wrapper: makeWrapper('/chat/t1'),
+    });
+
+    await waitFor(() => {
+      expect(store.hydrateThreadMessages).toHaveBeenCalledWith('t1');
+    });
+    expect(runtimeDiagnostics.record).toHaveBeenCalledWith(
+      'hydration_error',
+      expect.objectContaining({
+        threadId: 't1',
+        meta: { error: 'Network unavailable' },
+      }),
+    );
+    expect(store.setActiveThreadId).toHaveBeenCalledWith('t1');
+    expect(store.setActiveThreadId).not.toHaveBeenCalledWith(null);
   });
 
   it('skips URL hydration when handler already loaded the thread', async () => {

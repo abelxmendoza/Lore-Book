@@ -29,6 +29,11 @@ empty_thread_counts AS (
    AND message.user_id = thread.user_id
   WHERE message.id IS NULL
 ),
+null_session_counts AS (
+  SELECT count(*)::bigint AS null_session_messages
+  FROM public.chat_messages
+  WHERE session_id IS NULL
+),
 duplicate_thread_ids AS (
   SELECT count(*)::bigint AS duplicate_thread_id_groups
   FROM (
@@ -37,6 +42,22 @@ duplicate_thread_ids AS (
     GROUP BY id
     HAVING count(*) > 1
   ) duplicates
+),
+fk_state AS (
+  SELECT
+    EXISTS (
+      SELECT 1
+      FROM pg_constraint
+      WHERE conname = 'chat_messages_session_id_fkey'
+        AND conrelid = 'public.chat_messages'::regclass
+    ) AS session_fk_present,
+    EXISTS (
+      SELECT 1
+      FROM pg_constraint
+      WHERE conname = 'chat_messages_session_id_fkey'
+        AND conrelid = 'public.chat_messages'::regclass
+        AND NOT convalidated
+    ) AS session_fk_not_validated
 )
 SELECT *
 FROM thread_counts
@@ -44,4 +65,6 @@ CROSS JOIN message_counts
 CROSS JOIN orphan_counts
 CROSS JOIN wrong_owner_counts
 CROSS JOIN empty_thread_counts
-CROSS JOIN duplicate_thread_ids;
+CROSS JOIN null_session_counts
+CROSS JOIN duplicate_thread_ids
+CROSS JOIN fk_state;

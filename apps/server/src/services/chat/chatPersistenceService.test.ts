@@ -142,4 +142,40 @@ describe('ensureChatSession', () => {
     const { ensureChatSession } = await import('./chatPersistenceService');
     await expect(ensureChatSession('user-1', 'thread-1')).rejects.toThrow(/not available/i);
   });
+
+  it('reconciles a concurrent create that wins with the same owner', async () => {
+    const calls: Array<{ method: string; args: unknown[] }> = [];
+    let query = 0;
+    mockFrom.mockImplementation(() => {
+      query += 1;
+      return builderResolving(
+        query === 1
+          ? { data: null, error: null }
+          : query === 2
+            ? { data: null, error: { code: '23505' } }
+            : { data: { id: 'thread-1', user_id: 'user-1' }, error: null },
+        calls,
+      );
+    });
+
+    const { ensureChatSession } = await import('./chatPersistenceService');
+    await expect(ensureChatSession('user-1', 'thread-1')).resolves.toBe('thread-1');
+  });
+
+  it('rejects a concurrent create that belongs to another user', async () => {
+    let query = 0;
+    mockFrom.mockImplementation(() => {
+      query += 1;
+      return builderResolving(
+        query === 1
+          ? { data: null, error: null }
+          : query === 2
+            ? { data: null, error: { code: '23505' } }
+            : { data: { id: 'thread-1', user_id: 'user-2' }, error: null },
+      );
+    });
+
+    const { ensureChatSession } = await import('./chatPersistenceService');
+    await expect(ensureChatSession('user-1', 'thread-1')).rejects.toThrow(/not available/i);
+  });
 });

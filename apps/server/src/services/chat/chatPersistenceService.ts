@@ -51,12 +51,18 @@ export async function ensureChatSession(userId: string, sessionId: string): Prom
   // The create-thread endpoint may have won the race after our lookup.
   if ((insertError as { code?: string }).code === '23505') {
     const { data: raced, error: racedLookupError } = await findSession();
-    if (!racedLookupError && (raced as { user_id?: string } | null)?.user_id === userId) {
-      return sessionId;
+    if (!racedLookupError && raced) {
+      if ((raced as { user_id?: string }).user_id === userId) {
+        return sessionId;
+      }
+      throw new Error('Chat session is not available for this user.');
     }
   }
 
-  logger.error({ error: insertError, userId, sessionId }, 'Failed to ensure UI chat session');
+  logger.error(
+    { errCode: (insertError as { code?: string }).code ?? 'unknown' },
+    'Failed to ensure UI chat session',
+  );
   throw new Error('Failed to start the selected chat session. Please try again.');
 }
 

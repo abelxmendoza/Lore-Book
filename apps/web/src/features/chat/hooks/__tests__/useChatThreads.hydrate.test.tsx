@@ -163,6 +163,57 @@ describe('useChatThreads.hydrateThreadMessages', () => {
     expect(hydrated?.messages).toHaveLength(2);
   });
 
+  it('throws on hydrate fetch failure when the thread has no local messages', async () => {
+    mockFetchJson.mockImplementation(async (url: string) => {
+      if (url.includes('/messages')) {
+        throw Object.assign(new Error('Network error'), { status: 503 });
+      }
+      if (url.includes('/threads/recover-orphans')) return { success: true };
+      if (url.includes('health/repair')) return { repaired: 0 };
+      if (url.includes('/threads?')) {
+        return {
+          success: true,
+          threads: [{ id: 'thread-1', title: 'T', updated_at: new Date().toISOString(), metadata: {} }],
+          total: 1,
+          hasMore: false,
+        };
+      }
+      if (url.includes('/ensure-visible')) return { success: true };
+      return { success: true };
+    });
+
+    const { result } = renderUseChatThreads();
+    await waitFor(() => expect(result.current.threadsReady).toBe(true));
+
+    await act(async () => {
+      await expect(result.current.hydrateThreadMessages('thread-1')).rejects.toThrow(/Network error|Request failed/);
+    });
+  });
+
+  it('returns null for an authoritative 404 so a missing URL can redirect', async () => {
+    mockFetchJson.mockImplementation(async (url: string) => {
+      if (url.includes('/messages')) {
+        throw Object.assign(new Error('Thread not found'), { status: 404 });
+      }
+      if (url.includes('/threads/recover-orphans')) return { success: true };
+      if (url.includes('health/repair')) return { repaired: 0 };
+      if (url.includes('/threads?')) {
+        return { success: true, threads: [], total: 0, hasMore: false };
+      }
+      if (url.includes('/ensure-visible')) return { success: true };
+      return { success: true };
+    });
+
+    const { result } = renderUseChatThreads();
+    await waitFor(() => expect(result.current.threadsReady).toBe(true));
+
+    let hydrated: Awaited<ReturnType<typeof result.current.hydrateThreadMessages>> = undefined as never;
+    await act(async () => {
+      hydrated = await result.current.hydrateThreadMessages('missing-thread');
+    });
+    expect(hydrated).toBeNull();
+  });
+
   it('hydrates mentionedEntities from assistant message metadata', async () => {
     mockFetchJson.mockImplementation(async (url: string, opts?: RequestInit & { method?: string }) => {
       const method = opts?.method;

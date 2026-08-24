@@ -176,7 +176,7 @@ describe('mergeLoadedThreadsWithHydrated', () => {
     }
   });
 
-  it('keeps a cached thread with messages absent from a page that was not even full (nothing could be paginated out)', () => {
+  it('drops a cached thread with messages absent from a page that was not even full (nothing could be paginated out)', () => {
     const loaded = [thread('server-a', [], '2026-06-01T00:00:00Z')]; // far short of the 30 limit
     const notOnServerYet = thread(
       'small-page-real',
@@ -186,6 +186,18 @@ describe('mergeLoadedThreadsWithHydrated', () => {
 
     const merged = mergeLoadedThreadsWithHydrated(loaded, [notOnServerYet], 30);
 
-    expect(merged.map((t) => t.id)).toContain('small-page-real');
+    expect(merged.map((t) => t.id)).toEqual(['server-a']);
+  });
+
+  it('drops cached conversations when the server returns an authoritative empty page', () => {
+    const cached = thread(
+      'cached-real',
+      [{ id: 'm1', role: 'user', content: 'hi', timestamp: new Date('2026-08-01T00:00:00Z') }],
+      '2026-08-01T00:00:00Z'
+    );
+
+    const merged = mergeLoadedThreadsWithHydrated([], [cached], 30);
+
+    expect(merged).toEqual([]);
   });
 });
