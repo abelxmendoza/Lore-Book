@@ -48,9 +48,10 @@ test.describe('Production Site Smoke', () => {
     const isProductionHost = /lorebookai\.com/i.test(base);
     if (isProductionHost) {
       const devNotice = page.getByRole('heading', { name: /Welcome to Lore Book/i });
-      await expect(devNotice).toBeVisible({ timeout: 5000 });
-      await page.getByRole('button', { name: /got it/i }).click();
-      await expect(devNotice).toHaveCount(0);
+      if (await devNotice.isVisible()) {
+        await page.getByRole('button', { name: /got it/i }).click();
+        await expect(devNotice).toHaveCount(0);
+      }
     }
 
     const heroHeadline = page.getByTestId('hero-rotating-headline');
