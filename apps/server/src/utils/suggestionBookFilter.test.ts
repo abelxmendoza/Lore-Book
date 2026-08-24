@@ -27,4 +27,11 @@ describe('suggestionBookFilter', () => {
     expect(resolveBookNameMatch('Dana Onboarding', exactKeys, entries).status).toBe('similar');
     expect(resolveBookNameMatch('Jordan Lee', exactKeys, entries).status).toBe('new');
   });
+
+  it('classifies a spoken nickname as similar to the canonical first name', () => {
+    const { exactKeys, entries } = collectNameKeys(['Kiley Tafur', 'Kiley']);
+    const match = resolveBookNameMatch('Killa', exactKeys, entries);
+    expect(match.status).toBe('similar');
+    expect(match.matchedName).toMatch(/Kiley/);
+  });
 });

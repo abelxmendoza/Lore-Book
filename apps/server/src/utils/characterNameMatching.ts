@@ -248,6 +248,71 @@ export type NameMatchResult = {
 
 const FUZZY_THRESHOLD = 0.85;
 const STRONG_FUZZY_THRESHOLD = 0.93;
+/** Longest-first diminutive endings: Kiley→kil, Killa→kil, Billy→bil. */
+const DIMINUTIVE_SUFFIXES = ['ey', 'ie', 'ya', 'ee', 'y', 'i', 'a', 'o'] as const;
+
+function firstNameToken(name: string): string {
+  return name.trim().split(/\s+/).filter(Boolean)[0] ?? '';
+}
+
+function collapseDuplicateLetters(value: string): string {
+  return value.replace(/(.)\1+/g, '$1');
+}
+
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const row = new Array<number>(n + 1);
+  for (let j = 0; j <= n; j++) row[j] = j;
+  for (let i = 1; i <= m; i++) {
+    let prev = i - 1;
+    row[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cur = row[j];
+      row[j] = a[i - 1] === b[j - 1] ? prev : 1 + Math.min(prev, row[j], row[j - 1]);
+      prev = cur;
+    }
+  }
+  return row[n];
+}
+
+function nicknameStem(token: string): string {
+  const collapsed = collapseDuplicateLetters(token);
+  for (const suffix of DIMINUTIVE_SUFFIXES) {
+    if (collapsed.length - suffix.length >= 3 && collapsed.endsWith(suffix)) {
+      return collapsed.slice(0, -suffix.length);
+    }
+  }
+  return collapsed;
+}
+
+function sharedPrefixLength(a: string, b: string): number {
+  const limit = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < limit && a[i] === b[i]) i += 1;
+  return i;
+}
+
+/**
+ * Catch spoken nicknames that Jaro-Winkler misses (Kiley ↔ Killa) without
+ * collapsing distinct short names (Mark ↔ Mary, John ↔ Jane).
+ */
+export function areNicknameVariants(a: string, b: string): boolean {
+  const left = firstNameToken(a);
+  const right = firstNameToken(b);
+  if (!left || !right || left === right) return left.length >= 4 && left === right;
+  if (left.length < 4 || right.length < 4) return false;
+
+  const stemA = nicknameStem(left);
+  const stemB = nicknameStem(right);
+  if (stemA.length < 3 || stemB.length < 3) return false;
+  if (stemA === stemB) return true;
+  if (Math.min(left.length, right.length) < 5) return false;
+  return sharedPrefixLength(stemA, stemB) >= 3 && levenshtein(stemA, stemB) <= 1;
+}
 
 /**
  * Title-aware name match between two person labels.
@@ -327,6 +392,10 @@ export function matchCharacterNames(a: string, b: string): NameMatchResult {
     if (jw >= FUZZY_THRESHOLD && Math.abs(left.length - right.length) <= 2) {
       return { matches: true, confidence: jw, method: 'fuzzy' };
     }
+  }
+
+  if (areNicknameVariants(left, right)) {
+    return { matches: true, confidence: 0.9, method: 'fuzzy', reason: 'nickname_variant' };
   }
 
   return { matches: false, confidence: 0, method: 'none' };

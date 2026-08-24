@@ -6,6 +6,7 @@ import {
   isRelationalPlaceholder,
   formatNicknameName,
   weakGivenNameKeys,
+  areNicknameVariants,
 } from './characterNameMatching';
 
 describe('relational placeholders', () => {
@@ -71,5 +72,20 @@ describe('stage-name profile helpers', () => {
   it('exposes the real first name as a weak dedup key', () => {
     expect(weakGivenNameKeys({ nickname: 'Obscurio', givenName: 'Juan' }).has('juan')).toBe(true);
     expect(weakGivenNameKeys(null).size).toBe(0);
+  });
+});
+
+describe('nickname variants', () => {
+  it('matches Kiley ↔ Killa even when Killa is missing from aliases', () => {
+    expect(areNicknameVariants('kiley', 'killa')).toBe(true);
+    expect(matchCharacterNames('Killa', 'Kiley Tafur').matches).toBe(true);
+    expect(matchCharacterNames('Killa', 'Kiley Tafur').reason).toBe('nickname_variant');
+  });
+
+  it('does not collapse distinct short names', () => {
+    expect(areNicknameVariants('mark', 'mary')).toBe(false);
+    expect(areNicknameVariants('john', 'jane')).toBe(false);
+    expect(areNicknameVariants('kelly', 'killa')).toBe(false);
+    expect(areNicknameVariants('mia', 'mila')).toBe(false);
   });
 });

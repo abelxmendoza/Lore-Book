@@ -39,3 +39,9 @@ describe('isValidAliasForCharacter — possessive/punctuation-only variants', ()
     expect(filterValidAliases('Tio Ralph', ["Tio Ralph's", 'Ralph'])).toEqual(['Ralph']);
   });
 });
+
+describe('isValidAliasForCharacter — spoken nicknames', () => {
+  it('allows Killa as a nickname for Kiley Tafur', () => {
+    expect(isValidAliasForCharacter('Kiley Tafur', 'Killa')).toBe(true);
+  });
+});

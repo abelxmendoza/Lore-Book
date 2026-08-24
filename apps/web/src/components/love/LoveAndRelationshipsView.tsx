@@ -208,6 +208,7 @@ export const LoveAndRelationshipsView = () => {
   const [characterModalInitialTab, setCharacterModalInitialTab] = useState<'info' | 'timeline'>('info');
   const [linkBusyId, setLinkBusyId] = useState<string | null>(null);
   const [relationshipError, setRelationshipError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<CardViewMode>(() =>
     readStoredCardViewMode(LOVE_VIEW_STORAGE_KEY, 'grid'),
   );
@@ -253,8 +254,63 @@ export const LoveAndRelationshipsView = () => {
   }, [shouldUseMockData, scrollToRelationship]);
 
   useEffect(() => {
-    loadRelationships();
-  }, [activeFilter, shouldUseMockData]);
+    if (!shouldUseMockData) return;
+    const mockRelationships = getMockRomanticRelationshipsByFilter(
+      activeFilter === 'rankings' ? 'all' : activeFilter
+    );
+    setRelationships(mockRelationships as RomanticRelationship[]);
+    setLoadError(null);
+    setLoading(false);
+  }, [shouldUseMockData, activeFilter]);
+
+  useEffect(() => {
+    if (shouldUseMockData) return;
+    if (romanticRelationshipsQuery.isLoading && !romanticRelationshipsQuery.data) {
+      setLoading(true);
+      return;
+    }
+    if (romanticRelationshipsQuery.isError) {
+      const err = romanticRelationshipsQuery.error;
+      const message =
+        err && typeof err === 'object' && 'message' in err && typeof (err as { message?: unknown }).message === 'string'
+          ? (err as { message: string }).message
+          : 'Could not load Dating & Romance.';
+      setRelationships([]);
+      setLoadError(message);
+      setLoading(false);
+      return;
+    }
+    const payload = romanticRelationshipsQuery.data;
+    if (!payload) return;
+    try {
+      const withNames = (payload.relationships || []).filter((rel) =>
+        isIndividualPersonName((rel as RomanticRelationship).person_name)
+      ) as RomanticRelationship[];
+      setRelationships(withNames);
+      setLoadError(null);
+    } catch (error) {
+      console.error('Failed to apply romantic relationships:', error);
+      setRelationships([]);
+      setLoadError('Could not display Dating & Romance.');
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    shouldUseMockData,
+    romanticRelationshipsQuery.data,
+    romanticRelationshipsQuery.isError,
+    romanticRelationshipsQuery.isLoading,
+    romanticRelationshipsQuery.error,
+  ]);
+
+  useEffect(() => {
+    if (!loading) return;
+    const timer = window.setTimeout(() => {
+      setLoading(false);
+      setLoadError((prev) => prev ?? 'Dating & Romance is taking too long to load. Retry.');
+    }, 12_000);
+    return () => window.clearTimeout(timer);
+  }, [loading]);
 
   useEffect(() => {
     if (!shouldUseMockData) return;
@@ -536,39 +592,34 @@ export const LoveAndRelationshipsView = () => {
   }, [existingCharacters, relationships, activeRomanticKeys]);
 
   const loadRelationships = async () => {
-    setLoading(true);
     try {
-      // Use mock data if enabled
       if (shouldUseMockData) {
         const mockRelationships = getMockRomanticRelationshipsByFilter(
           activeFilter === 'rankings' ? 'all' : activeFilter
         );
         setRelationships(mockRelationships as RomanticRelationship[]);
+        setLoadError(null);
         setLoading(false);
         return;
       }
 
-      const data = await romanticRelationshipsQuery.refetch().unwrap() as {
-        success: boolean;
-        relationships: RomanticRelationship[];
-      };
-
-      if (data.success) {
-        const withNames = data.relationships.filter(
-          (rel) => isIndividualPersonName(rel.person_name)
-        );
-        setRelationships(withNames);
-      }
+      const data = await romanticRelationshipsQuery.refetch().unwrap();
+      const withNames = (data.relationships || []).filter((rel) =>
+        isIndividualPersonName((rel as RomanticRelationship).person_name)
+      ) as RomanticRelationship[];
+      setRelationships(withNames);
+      setLoadError(null);
     } catch (error) {
       console.error('Failed to load relationships:', error);
-      // Fallback to mock data on error if mock data is enabled
       if (shouldUseMockData) {
         const mockRelationships = getMockRomanticRelationshipsByFilter(
           activeFilter === 'rankings' ? 'all' : activeFilter
         );
         setRelationships(mockRelationships as RomanticRelationship[]);
+        setLoadError(null);
       } else {
         setRelationships([]);
+        setLoadError(error instanceof Error ? error.message : 'Could not load Dating & Romance.');
       }
     } finally {
       setLoading(false);
@@ -915,6 +966,31 @@ export const LoveAndRelationshipsView = () => {
     );
   }
 
+  if (loadError && relationships.length === 0) {
+    return (
+      <div className="space-y-6" data-testid="love-relationships-view">
+        <Card className="border-pink-500/30 bg-gradient-to-br from-pink-950/20 to-purple-950/20">
+          <CardContent className="p-8 text-center">
+            <Heart className="w-12 h-12 mx-auto mb-4 text-pink-400/50" />
+            <p className="text-white/80 mb-2">Couldn’t load your love story.</p>
+            <p className="text-xs text-white/45 mb-4">{loadError}</p>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setLoading(true);
+                setLoadError(null);
+                void loadRelationships();
+              }}
+            >
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6" data-testid="love-relationships-view">
       {/* Hero Section */}
@@ -987,6 +1063,15 @@ export const LoveAndRelationshipsView = () => {
       <DetectedCharacterSuggestions
         variant="romantic"
         demoMode={shouldUseMockData}
+        existingBookEntries={
+          shouldUseMockData
+            ? getMockCharacterSuggestionBookNames('romantic').map((name) => ({ name }))
+            : existingCharacters.map((character) => ({
+                id: character.id,
+                name: character.name,
+                aliases: character.aliases ?? [],
+              }))
+        }
         existingCharacterNames={
           shouldUseMockData
             ? getMockCharacterSuggestionBookNames('romantic')

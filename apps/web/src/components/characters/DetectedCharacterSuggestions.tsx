@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Sparkles, Plus, X, ChevronDown, ChevronUp, RefreshCw, User, Check, Loader2, AlertTriangle } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Sparkles, Plus, ChevronDown, ChevronUp, RefreshCw, User, Check, Loader2, AlertTriangle, Copy, ChevronRight } from 'lucide-react';
 import {
   characterSuggestionsApi,
   type CharacterCardReviewSuggestion,
   type CharacterSuggestion,
 } from '../../api/entitySuggestions';
 import { suggestionDismissApi } from '../../api/suggestionDismiss';
+import { characterTitleApi } from '../../api/characterTitle';
 import { suggestionRescanApi } from '../../api/suggestionRescan';
 import { appendLorebookParseToast } from '../../lib/suggestionRescanToast';
 import { apiCache } from '../../lib/cache';
@@ -22,6 +23,13 @@ import { RomanticAddCelebration } from '../love/RomanticAddCelebration';
 import { useSuggestionPanelDismissal } from '../../hooks/useSuggestionPanelDismissal';
 import { SuggestionPanelEmptyState } from '../suggestions/SuggestionPanelEmptyState';
 import { openCharacterBookModal } from '../../lib/openCharacterBookModal';
+import { buildCharacterSuggestionsClipboardText } from '../../lib/characterSuggestionsClipboard';
+import { copyTextToClipboard } from '../../lib/listClipboard';
+import { cn } from '../../lib/cn';
+import {
+  CharacterSuggestionDetailModal,
+  CHARACTER_SUGGESTION_SOURCE_LABEL,
+} from './CharacterSuggestionDetailModal';
 
 export type CharacterSuggestionAddedPayload = CharacterSuggestion & {
   matchedCharacterId?: string;
@@ -42,12 +50,6 @@ type Props = {
   existingBookEntries?: Array<{ id: string; name: string; aliases?: string[] }>;
   /** Dating & Romance uses romantic-only individual suggestions. */
   variant?: 'general' | 'romantic';
-};
-
-const SOURCE_LABEL: Record<CharacterSuggestion['source'], string> = {
-  omega_entity: 'Detected person',
-  entity_question: 'Needs confirmation',
-  chat_extract: 'From recent chats',
 };
 
 const keyFor = (s: CharacterSuggestion) => s.id;
@@ -75,7 +77,14 @@ export const DetectedCharacterSuggestions = ({
   const [error, setError] = useState<string | null>(null);
   const [rescanning, setRescanning] = useState(false);
   const [rescanNotice, setRescanNotice] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [openSuggestion, setOpenSuggestion] = useState<CharacterSuggestion | null>(null);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { dataUpdatedAt } = useGetCharactersBookQuery(undefined, { skip: showDemo });
+
+  useEffect(() => () => {
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+  }, []);
 
   const fetchSuggestions = useCallback(async (opts?: { rescan?: boolean }) => {
     if (showDemo) {
@@ -154,6 +163,18 @@ export const DetectedCharacterSuggestions = ({
     variant === 'romantic'
       ? 'Romantic interests detected in your chats'
       : 'People detected in your chats';
+  const copyAllLabel =
+    variant === 'romantic' ? 'Copy all suggested romantic interests' : 'Copy all suggested people';
+
+  const handleCopyAll = async () => {
+    const ok = await copyTextToClipboard(
+      buildCharacterSuggestionsClipboardText(visible, { title: panelTitle }),
+    );
+    if (!ok) return;
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
+  };
 
   const handleRescan = async () => {
     if (showDemo) {
@@ -234,25 +255,64 @@ export const DetectedCharacterSuggestions = ({
     }
   };
 
+  const mergeSuggestionIntoCharacter = useCallback(async (
+    s: CharacterSuggestion,
+    target: { id: string; name: string },
+  ) => {
+    const k = keyFor(s);
+    if (!target.id) return;
+    if (showDemo) {
+      setDismissed(prev => new Set(prev).add(k));
+      setOpenSuggestion(null);
+      setRescanNotice(`“${s.name}” would be saved as a nickname for ${target.name}.`);
+      await onCharacterAdded?.({ ...s, matchedCharacterId: target.id, deduplicated: true });
+      return;
+    }
+    setAdding(k);
+    setError(null);
+    try {
+      await characterTitleApi.addAlias(target.id, { value: s.name, aliasType: 'nickname' });
+      setDismissed(prev => new Set(prev).add(k));
+      setOpenSuggestion(null);
+      setRescanNotice(`“${s.name}” saved as a nickname for ${target.name}.`);
+      openCharacterBookModal({ characterId: target.id });
+      await onCharacterAdded?.({
+        ...s,
+        matchedCharacterId: target.id,
+        deduplicated: true,
+      });
+    } catch (err) {
+      window.dispatchEvent(
+        new CustomEvent('lk:suggest-merge:characters', {
+          detail: { targetId: target.id, suggestionName: s.name },
+        })
+      );
+      const raw = err instanceof Error ? err.message : 'Could not save nickname';
+      setError(`Couldn’t attach “${s.name}” to ${target.name}: ${raw}`);
+    } finally {
+      setAdding(null);
+    }
+  }, [onCharacterAdded, showDemo]);
+
   const handleAdd = async (s: CharacterSuggestion) => {
     const k = keyFor(s);
     if (isSimilarSuggestion(s)) {
       const targetId = suggestionMatchedId(s);
-      setDismissed(prev => new Set(prev).add(k));
+      const matchedName = suggestionMatchedName(s);
       if (targetId) {
-        window.dispatchEvent(
-          new CustomEvent('lk:suggest-merge:characters', {
-            detail: { targetId, suggestionName: s.name },
-          })
-        );
+        await mergeSuggestionIntoCharacter(s, { id: targetId, name: matchedName || s.name });
+        return;
       }
+      setOpenSuggestion(null);
+      setDismissed(prev => new Set(prev).add(k));
       setRescanNotice(
-        suggestionMatchedName(s)
-          ? `Use the merge panel below to combine “${s.name}” with ${suggestionMatchedName(s)}.`
-          : 'Use the merge panel below to combine possible duplicates.'
+        matchedName
+          ? `“${s.name}” looks like ${matchedName} — merge them instead of adding a second person.`
+          : 'This looks like someone already in your Character Book — merge instead of adding a second person.'
       );
       return;
     }
+    setOpenSuggestion(null);
     setAdding(k);
     setError(null);
     let addResult: Awaited<ReturnType<typeof characterSuggestionsApi.add>> | undefined;
@@ -334,6 +394,7 @@ export const DetectedCharacterSuggestions = ({
     reason?: import('../../api/suggestionDismiss').DismissSuggestionReason,
   ) => {
     const k = keyFor(s);
+    setOpenSuggestion((current) => (current && keyFor(current) === k ? null : current));
     setDismissed(prev => new Set(prev).add(k));
     if (showDemo) return;
     try {
@@ -396,24 +457,28 @@ export const DetectedCharacterSuggestions = ({
         />
       )}
     <div className="rounded-lg border border-amber-500/30 bg-gradient-to-br from-amber-950/30 via-black/40 to-black/40 overflow-hidden">
-      <div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-2.5">
-        <div className="flex items-center gap-2 min-w-0">
-          <Sparkles className="h-4 w-4 text-amber-400 flex-shrink-0" />
-          <h3 className="text-sm sm:text-base font-semibold text-white truncate">
-            {panelTitle}
-          </h3>
-          {!loading && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-200 font-mono">
-              {panelItemCount}
-            </span>
-          )}
-          {showDemo && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-yellow-500/15 text-yellow-200/90 border border-yellow-500/25">
-              Demo
-            </span>
-          )}
+      <div className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3 sm:px-4">
+        <div className="flex min-w-0 flex-1 items-start gap-2">
+          <Sparkles className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-400" />
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm sm:text-base font-semibold text-white leading-snug text-pretty break-words">
+              {panelTitle}
+            </h3>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              {!loading && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-200 font-mono">
+                  {panelItemCount}
+                </span>
+              )}
+              {showDemo && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-yellow-500/15 text-yellow-200/90 border border-yellow-500/25">
+                  Demo
+                </span>
+              )}
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="flex shrink-0 items-center gap-1 self-end sm:self-start">
           <button
             type="button"
             onClick={() => void handleRescan()}
@@ -434,6 +499,24 @@ export const DetectedCharacterSuggestions = ({
           >
             <RefreshCw className={`h-4 w-4 ${rescanning ? 'animate-spin' : ''}`} />
           </button>
+          {visible.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleCopyAll()}
+              data-testid="character-suggestions-copy-all"
+              className={cn(
+                'inline-flex h-8 items-center gap-1 rounded-md border px-2 text-[11px] font-medium touch-manipulation',
+                copied
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+                  : 'border-amber-500/25 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20',
+              )}
+              title={`${copyAllLabel} as plain text`}
+              aria-label={copyAllLabel}
+            >
+              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              <span>{copied ? 'Copied' : 'Copy all'}</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setCollapsed(c => !c)}
@@ -552,18 +635,26 @@ export const DetectedCharacterSuggestions = ({
                 >
                   {variant === 'romantic' ? (
                     <>
-                      <div className="flex items-start gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setOpenSuggestion(s)}
+                        aria-label={`Open ${s.name} suggestion`}
+                        className="flex w-full items-start gap-2 rounded-md text-left hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-400/40"
+                      >
                         <User className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-300/80" />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-white">{s.name}</p>
+                          <p className="flex items-center gap-1 text-sm font-medium text-white">
+                            <span className="min-w-0 truncate">{s.name}</span>
+                            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/30" />
+                          </p>
                           {s.context && (
                             <p className="mt-0.5 line-clamp-2 text-[10px] text-white/45 sm:text-[11px]">{s.context}</p>
                           )}
                         </div>
-                      </div>
+                      </button>
                       <div className="flex flex-wrap gap-1.5">
                         <span className="rounded border border-amber-500/20 bg-amber-500/15 px-1.5 py-0.5 text-[9px] text-amber-200/80">
-                          {SOURCE_LABEL[s.source]}
+                          {CHARACTER_SUGGESTION_SOURCE_LABEL[s.source]}
                         </span>
                         <SuggestionMergeHint item={s} bookLabel="Character Book" />
                         {s.mentionCount > 1 && (
@@ -606,13 +697,23 @@ export const DetectedCharacterSuggestions = ({
                     <>
                   <User className="h-4 w-4 text-amber-300/80 mt-0.5 flex-shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-white truncate">{s.name}</p>
-                    {s.context && (
-                      <p className="text-[11px] text-white/45 line-clamp-2 mt-0.5">{s.context}</p>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => setOpenSuggestion(s)}
+                      aria-label={`Open ${s.name} suggestion`}
+                      className="w-full rounded-md text-left hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40"
+                    >
+                      <p className="flex items-center gap-1 text-sm font-medium text-white">
+                        <span className="min-w-0 truncate">{s.name}</span>
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/30" />
+                      </p>
+                      {s.context && (
+                        <p className="text-[11px] text-white/45 line-clamp-2 mt-0.5">{s.context}</p>
+                      )}
+                    </button>
                     <div className="flex flex-wrap gap-1.5 mt-1.5">
                       <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-200/80 border border-amber-500/20">
-                        {SOURCE_LABEL[s.source]}
+                        {CHARACTER_SUGGESTION_SOURCE_LABEL[s.source]}
                       </span>
                       <SuggestionMergeHint item={s} bookLabel="Character Book" />
                       {s.mentionCount > 1 && (
@@ -664,6 +765,18 @@ export const DetectedCharacterSuggestions = ({
         </div>
       )}
     </div>
+      {openSuggestion && (
+        <CharacterSuggestionDetailModal
+          suggestion={openSuggestion}
+          variant={variant}
+          adding={adding === keyFor(openSuggestion)}
+          bookEntries={bookEntries}
+          onClose={() => setOpenSuggestion(null)}
+          onAdd={(s) => void handleAdd(s)}
+          onMerge={(s, target) => void mergeSuggestionIntoCharacter(s, target)}
+          onDismiss={(s, reason) => void handleDismiss(s, reason)}
+        />
+      )}
     </>
   );
 };

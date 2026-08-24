@@ -2,6 +2,7 @@
  * Shared helpers: skip entity suggestions when a name already exists in a book.
  */
 
+import { matchCharacterNames } from './characterNameMatching';
 import {
   containmentIsPossessive,
   normalizeNameKey,
@@ -93,6 +94,12 @@ export function resolveBookNameMatch(
     const shorter = norm.length <= entry.norm.length ? norm : entry.norm;
     const longer = norm.length > entry.norm.length ? norm : entry.norm;
     if (containmentIsPossessive(shorter, longer)) continue;
+    return { status: 'similar', matchedName: entry.label, matchedId: entry.id };
+  }
+
+  for (const entry of entries) {
+    const fuzzy = matchCharacterNames(candidate, entry.label);
+    if (!fuzzy.matches) continue;
     return { status: 'similar', matchedName: entry.label, matchedId: entry.id };
   }
 

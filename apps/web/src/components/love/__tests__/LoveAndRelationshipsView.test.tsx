@@ -328,7 +328,8 @@ describe('LoveAndRelationshipsView', () => {
     await user.click(screen.getByRole('button', { name: /list view/i }));
 
     expect(localStorage.getItem('lk_dating_romance_view')).toBe('list');
-    expect(screen.getByRole('button', { name: /copy all/i })).toBeEnabled();
+    expect(screen.getByTitle(/copy the current filtered list/i)).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Copy all suggested romantic interests' })).toBeEnabled();
     expect(screen.getByTestId('relationship-card-rel-001')).toBeInTheDocument();
   });
 });

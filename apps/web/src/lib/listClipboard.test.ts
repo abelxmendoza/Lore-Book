@@ -11,6 +11,7 @@ import {
 import { buildLocationBookClipboardText } from './locationBookClipboard';
 import { buildCharacterConsolidateClipboardText } from './characterConsolidateClipboard';
 import { buildLocationDuplicatesClipboardText } from './locationDuplicatesClipboard';
+import { buildCharacterSuggestionsClipboardText } from './characterSuggestionsClipboard';
 import { buildLocationSuggestionsClipboardText } from './locationSuggestionsClipboard';
 import { buildOrganizationBookClipboardText } from './organizationBookClipboard';
 import { buildPhotoAlbumClipboardText } from './photoAlbumClipboard';
@@ -451,6 +452,39 @@ describe('buildProjectSuggestionsClipboardText', () => {
   it('renders an empty-list placeholder when there are no suggestions', () => {
     const text = buildProjectSuggestionsClipboardText([]);
     expect(text).toContain('Suggested Projects (0 items)');
+    expect(text).toContain('(empty)');
+  });
+});
+
+describe('buildCharacterSuggestionsClipboardText', () => {
+  it('includes romantic interest names, source, mentions, and context', () => {
+    const text = buildCharacterSuggestionsClipboardText(
+      [
+        {
+          id: 'sug:character:priya',
+          name: 'Priya',
+          mentionCount: 4,
+          confidence: 0.84,
+          source: 'chat_extract',
+          archetype: 'romantic',
+          relationship: 'romantic',
+          context: 'Coffee with Priya turned into a four-hour talk.',
+        },
+      ],
+      { title: 'Romantic interests detected in your chats' },
+    );
+
+    expect(text).toContain('Romantic interests detected in your chats (1 item)');
+    expect(text).toContain('1. Priya');
+    expect(text).toContain('Source: From recent chats');
+    expect(text).toContain('Mentions: 4');
+    expect(text).toContain('Confidence: 84%');
+    expect(text).toContain('Coffee with Priya turned into a four-hour talk.');
+  });
+
+  it('renders an empty-list placeholder when there are no suggestions', () => {
+    const text = buildCharacterSuggestionsClipboardText([]);
+    expect(text).toContain('People detected in your chats (0 items)');
     expect(text).toContain('(empty)');
   });
 });
