@@ -8,6 +8,33 @@ import { supabaseAdmin } from '../supabaseClient';
 
 import { PARTICIPATION_EVIDENCE_RULES } from './participationClaimGuard';
 
+/**
+ * Retrieval Compression (Blueprint 21 Phase 3) — never let raw ids, scores,
+ * confidence percentages, or internal counts sit directly adjacent to
+ * quotable content, where the model is likely to echo them verbatim into an
+ * answer. Kept as small, independently testable exports rather than inline
+ * template expressions.
+ */
+export const RETRIEVAL_ANTI_ECHO_INSTRUCTION =
+  "Everything below is your own internal reference data — ids, scores, confidence percentages, counts, and cluster/algorithm labels are indexing metadata for you, not something to say to the user. Never quote a bracketed tag, a raw count, or an internal label back to them; answer in natural language grounded in the substance. Only surface structural detail if they explicitly ask for provenance or debug info.";
+
+export function formatSkillReferenceLine(skill: { id: string; name: string; category: string }): string {
+  return `- ${skill.name} (${skill.category}) — internal ref: skill:${skill.id}`;
+}
+
+export function formatWorkingMemoryCitation(entry: {
+  title?: string;
+  content?: string;
+  source?: string;
+  confidence?: number | string;
+  score?: number | string;
+}): string {
+  const source = entry.source ?? 'working_memory';
+  const confidence = entry.confidence ?? 'n/a';
+  const score = entry.score ?? 'n/a';
+  return `• ${entry.title}: ${entry.content} (internal only — do not repeat: src=${source}, conf=${confidence}, wma_score=${score})`;
+}
+
 export function buildSystemPrompt(
   orchestratorSummary: any,
   connections: string[],
@@ -47,6 +74,8 @@ export function buildSystemPrompt(
     cognitivePlanBlock?: string | null;
     /** Epistemic calibration — what level of claim the evidence justifies. */
     epistemicBlock?: string | null;
+    /** Response Planner — post-retrieval focus/avoid directive (Blueprint 21 Phase 1). Never shown as chain-of-thought. */
+    answerPlanBlock?: string | null;
   },
   entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
   entityAnalytics?: any,
@@ -616,6 +645,8 @@ ${personaBlend ? `**ACTIVE CONFIGURATION** (selected for this message):
 
 **YOUR KNOWLEDGE BASE - YOU KNOW EVERYTHING ABOUT THE USER'S LORE:**
 
+${RETRIEVAL_ANTI_ECHO_INSTRUCTION}
+
 **CHARACTERS (${loreData?.allCharacters?.length || orchestratorSummary.characters.length} total):**
 ${charactersKnowledge || 'No characters tracked yet.'}
 
@@ -789,8 +820,8 @@ When discussing workouts or fitness, reference their workout history, progress, 
 
 ` : ''}
 
-${loreData?.confirmedSkills && loreData.confirmedSkills.length > 0 ? `**CONFIRMED SKILLS (indexed by id — reference these when user mentions capabilities):**
-${loreData.confirmedSkills.slice(0, 20).map((s) => `- [skill:${s.id}] ${s.name} (${s.category})`).join('\n')}
+${loreData?.confirmedSkills && loreData.confirmedSkills.length > 0 ? `**CONFIRMED SKILLS (reference these by name when user mentions capabilities; internal ref numbers are for matching only, never say them aloud):**
+${loreData.confirmedSkills.slice(0, 20).map((s) => formatSkillReferenceLine(s)).join('\n')}
 When the user mentions a skill above, tie your reply to their tracked skill card by name. Do not invent skills not listed unless they are clearly new.` : ''}
 
 ${loreData?.topInterests && loreData.topInterests.length > 0 ? `**INTERESTS & PASSIONS (${loreData.topInterests.length} tracked):**
@@ -865,6 +896,9 @@ ${loreData.cognitivePlanBlock}
 ` : ''}${loreData?.epistemicBlock ? `**EPISTEMIC CALIBRATION** (match your wording to what the evidence justifies — never overstate):
 ${loreData.epistemicBlock}
 
+` : ''}${loreData?.answerPlanBlock ? `**RESPONSE FOCUS** (decided after retrieval, from what actually survived — follow it; do not restate this plan to the user):
+${loreData.answerPlanBlock}
+
 ` : ''}${loreData?.activeThreadsBlock ? `**ACTIVE NARRATIVE THREADS** (what is unfolding — knowledge answers "what is true", threads answer "what is happening"):
 ${loreData.activeThreadsBlock}
 
@@ -915,7 +949,7 @@ ${strategicGuidance ? `${strategicGuidance}\n\n` : ''}
 **Recent Timeline Entries** (${orchestratorSummary.timeline.events.length} total entries):
 ${timelineSummary || 'No previous entries yet.'}
 
-${(loreData as any)?.retellingRecallBlock ? `${(loreData as any).retellingRecallBlock}\n\n` : ''}${(loreData as any)?.foundationRecallBlock ? `**WORKING MEMORY** (authoritative selected context for this question — prioritize these scored items and do not invent outside them):\n${(loreData as any).foundationRecallBlock}\n\n` : ''}${(loreData as any)?.storyContextBlock ? `${(loreData as any).storyContextBlock}\n\n` : (loreData as any)?.lifeArcSynthesisBlock ? `${(loreData as any).lifeArcSynthesisBlock}\n\n` : ''}${(loreData as any)?.foundationRelationships?.length > 0 ? `**KNOWN RELATIONSHIPS FROM WORKING MEMORY:**\n${(loreData as any).foundationRelationships.slice(0, 5).map((r: any) => `• ${r.title ?? r.relationship_type}: ${r.content ?? ''} [source=${r.source ?? 'working_memory'} | confidence=${r.confidence ?? 'n/a'} | score=${r.score ?? 'n/a'}]`).join('\n')}\n\n` : ''}${(loreData as any)?.foundationTimeline?.length > 0 ? `**TIMELINE FROM WORKING MEMORY:**\n${(loreData as any).foundationTimeline.slice(0, 5).map((e: any) => `• ${e.title ?? e.event_title}: ${e.content ?? e.event_summary ?? ''} [source=${e.source ?? 'working_memory'} | confidence=${e.confidence ?? 'n/a'} | score=${e.score ?? 'n/a'}]`).join('\n')}\n\n` : ''}${(loreData as any)?.entityDossierBlock ? `**ENTITY DOSSIER** (verified facts about the people/places just mentioned — treat these as ground truth, never contradict them):\n${(loreData as any).entityDossierBlock}\n\n` : ''}${(loreData as any)?.entityArcNarrativeBlock ? `**ENTITY CONTINUITY ARC** (loaded from complete DB record — use this, not random excerpts below):\n${(loreData as any).entityArcNarrativeBlock}\n\n` : ''}**Available Sources** (${sources.length} total - reference these in your response):
+${(loreData as any)?.retellingRecallBlock ? `${(loreData as any).retellingRecallBlock}\n\n` : ''}${(loreData as any)?.foundationRecallBlock ? `**WORKING MEMORY** (authoritative selected context for this question — prioritize these scored items and do not invent outside them):\n${(loreData as any).foundationRecallBlock}\n\n` : ''}${(loreData as any)?.storyContextBlock ? `${(loreData as any).storyContextBlock}\n\n` : (loreData as any)?.lifeArcSynthesisBlock ? `${(loreData as any).lifeArcSynthesisBlock}\n\n` : ''}${(loreData as any)?.foundationRelationships?.length > 0 ? `**KNOWN RELATIONSHIPS FROM WORKING MEMORY:**\n${(loreData as any).foundationRelationships.slice(0, 5).map((r: any) => formatWorkingMemoryCitation({ title: r.title ?? r.relationship_type, content: r.content ?? '', source: r.source, confidence: r.confidence, score: r.score })).join('\n')}\n\n` : ''}${(loreData as any)?.foundationTimeline?.length > 0 ? `**TIMELINE FROM WORKING MEMORY:**\n${(loreData as any).foundationTimeline.slice(0, 5).map((e: any) => formatWorkingMemoryCitation({ title: e.title ?? e.event_title, content: e.content ?? e.event_summary ?? '', source: e.source, confidence: e.confidence, score: e.score })).join('\n')}\n\n` : ''}${(loreData as any)?.entityDossierBlock ? `**ENTITY DOSSIER** (verified facts about the people/places just mentioned — treat these as ground truth, never contradict them):\n${(loreData as any).entityDossierBlock}\n\n` : ''}${(loreData as any)?.entityArcNarrativeBlock ? `**ENTITY CONTINUITY ARC** (loaded from complete DB record — use this, not random excerpts below):\n${(loreData as any).entityArcNarrativeBlock}\n\n` : ''}**Available Sources** (${sources.length} total - reference these in your response):
 ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ? ` (${new Date(s.date).toLocaleDateString()})` : ''}${s.snippet ? ` - ${s.snippet.substring(0, 50)}` : ''}`).join('\n')}
 
 **NARRATIVE INTEGRITY RULES (CRITICAL)**:

@@ -7,7 +7,17 @@ export type CognitiveStageName =
   | 'GOVERNANCE'
   | 'COGNITIVE_UPDATE'
   | 'ORCHESTRATION'
-  | 'PROJECTION_UPDATE';
+  | 'PROJECTION_UPDATE'
+  // Response-generation reasoning core (Blueprint 21 Phase 1) — keyed by the
+  // same chatMessageId as the ingestion stages above, so one trace answers
+  // both "what we learned" and "how we reasoned about answering".
+  | 'GOAL_TRACKING'
+  | 'RETRIEVAL_AUDIT'
+  | 'RESPONSE_PLANNING'
+  // Blueprint 21 Phase 2
+  | 'DISCOURSE_RESOLUTION'
+  | 'MEMORY_TIER_GATE'
+  | 'MILESTONE_DETECTION';
 
 export type CognitiveStageStatus = 'PASS' | 'WARN' | 'FAIL' | 'SKIPPED';
 

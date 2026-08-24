@@ -691,6 +691,12 @@ export function scoreContext(
   // Continuity That Feels Alive — already 0–3 bounded; never drop.
   filtered.continuityAliveBlock = loreData.continuityAliveBlock;
   filtered.continuityAliveTrace = loreData.continuityAliveTrace;
+  // Cognitive/response planning directives — short, already computed once per
+  // turn from audited evidence; re-scoring or dropping them here would let
+  // this layer silently override a decision the pipeline already made.
+  filtered.cognitivePlanBlock = loreData.cognitivePlanBlock;
+  filtered.epistemicBlock = loreData.epistemicBlock;
+  filtered.answerPlanBlock = loreData.answerPlanBlock;
   filtered.confirmedSkills = loreData.confirmedSkills;
   // Romantic advisor context only when romanticRelationships scored INCLUDE.
   // Unconditional pass previously steered vents toward active crush partners.

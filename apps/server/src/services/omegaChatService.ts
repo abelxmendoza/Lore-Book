@@ -20,6 +20,7 @@ import { resolveChatSubjectRetarget } from './chat/chatSubjectRetarget';
 import { enrichChatFocusWithDatingBook, isDatingRomanceChatFocus } from './chat/datingBookChatFocus';
 import { buildClientSourcesWithRejected, type RejectedEvidenceItem } from './chat/clientSourcesBuilder';
 import { BIOGRAPHY_RE } from './chat/recallIntentPatterns';
+import { cognitiveObservatory } from './cognitiveObservatory';
 
 import {
   isBeliefChallengeAllowed,
@@ -516,6 +517,9 @@ class OmegaChatService {
     scopePlan?: import('./responseScope').ResponseScopePlan,
     currentMessageId?: string,
     chatFocus?: ChatFocusPayload,
+    goal?: import('./conversationReasoning').ConversationGoalState | null,
+    resolvedTurnState?: { originalMessageText?: string } | null,
+    discourseResolution?: import('./conversationReasoning').DiscourseResolution | null,
   ) {
     return _buildRAGPacket(
       userId,
@@ -527,6 +531,9 @@ class OmegaChatService {
       chatFocus
         ? { id: chatFocus.entityId, name: chatFocus.entityName, type: chatFocus.entityType }
         : undefined,
+      goal,
+      resolvedTurnState,
+      discourseResolution,
     );
   }
 
@@ -1778,7 +1785,7 @@ When updating relationship analytics or emotional signals from this thread, weig
       const { loadLastResolvedTurnState } = await import('./responseScope/retryContinuity');
       retryState = await loadLastResolvedTurnState(userId, sessionId);
     }
-    const effectiveMessage = retryState?.originalMessageText ?? message;
+    let effectiveMessage = retryState?.originalMessageText ?? message;
     const retryOriginalMessageText = retryState?.originalMessageText;
 
     // Active context: what this thread is currently about. Context-free
@@ -1793,6 +1800,51 @@ When updating relationship analytics or emotional signals from this thread, weig
           userTurnsSinceAnchor: 0,
         }
       : responseScope.deriveActiveContext(conversationHistory);
+
+    // Discourse Reasoner (Blueprint 21 Phase 2): resolves "that"/"it"/"she"/
+    // "our first breakthrough" to a specific referent BEFORE scope planning —
+    // an entity referent rewrites effectiveMessage; an exchange/topic referent
+    // (the blueprint's own "that conversation" example) is threaded as data
+    // into retrieval instead, since substituting a multi-word topic phrase in
+    // place of a bare pronoun is grammatically unsafe. Non-fatal.
+    let discourseResolution: import('./conversationReasoning').DiscourseResolution = { kind: 'unresolved' };
+    try {
+      const conversationReasoning = await import('./conversationReasoning');
+      discourseResolution = conversationReasoning.resolveDiscourseReferents({
+        message: effectiveMessage,
+        history: conversationHistory,
+        activeContext,
+      });
+      if (
+        discourseResolution.kind === 'entity' &&
+        discourseResolution.confidence >= conversationReasoning.DISCOURSE_ENTITY_REWRITE_MIN_CONFIDENCE
+      ) {
+        effectiveMessage = conversationReasoning.applyEntityReferentRewrite(effectiveMessage, discourseResolution);
+      }
+      if (entryId) {
+        cognitiveObservatory.recordStage({
+          userId,
+          sourceId: entryId,
+          trace: {
+            stage: 'DISCOURSE_RESOLUTION',
+            status: discourseResolution.kind !== 'unresolved' ? 'PASS' : 'SKIPPED',
+            startedAt: new Date().toISOString(),
+            durationMs: 0,
+            counts: { inputs: 1, outputs: discourseResolution.kind !== 'unresolved' ? 1 : 0 },
+            decisions: [`kind:${discourseResolution.kind}`],
+            downstreamEffects:
+              discourseResolution.kind === 'entity'
+                ? ['EFFECTIVE_MESSAGE_REWRITTEN']
+                : discourseResolution.kind === 'exchange'
+                  ? ['RETRIEVAL_QUERY_AUGMENTED']
+                  : [],
+          },
+        });
+      }
+    } catch (e) {
+      logger.debug({ e, userId }, 'DiscourseReasoner: resolution failed, continuing unresolved');
+    }
+
     const scopePlan = responseScope.planResponseScope(effectiveMessage, { activeContext });
     if (subjectRetarget.subjectName) {
       const key = subjectRetarget.subjectName.toLowerCase();
@@ -1803,6 +1855,81 @@ When updating relationship analytics or emotional signals from this thread, weig
         });
       }
     }
+
+    // Conversation Goal Tracker (Blueprint 21 Phase 1): persists WHY the user
+    // is talking to LoreBook, stable across incidental topic/entity changes —
+    // a different axis from activeContext above (topic/entity, stateless).
+    // Non-fatal: a tracker failure must never break the response.
+    let conversationGoal: import('./conversationReasoning').ConversationGoalState | null = null;
+    try {
+      const conversationReasoning = await import('./conversationReasoning');
+      const priorGoal = await conversationReasoning.loadConversationGoal(sessionId);
+      const resolved = conversationReasoning.resolveConversationGoal({
+        message: effectiveMessage,
+        current: priorGoal,
+        isCorrection: scopePlan.isCorrection,
+        isRetry: Boolean(retryState),
+      });
+      conversationGoal = resolved.next;
+      if (resolved.changed) {
+        await conversationReasoning.persistConversationGoal(sessionId, resolved.next);
+      }
+      if (entryId) {
+        cognitiveObservatory.recordStage({
+          userId,
+          sourceId: entryId,
+          trace: {
+            stage: 'GOAL_TRACKING',
+            status: 'PASS',
+            startedAt: new Date().toISOString(),
+            durationMs: 0,
+            counts: { inputs: 1, outputs: 1 },
+            decisions: [`goal:${resolved.next.goal}`, `changed:${resolved.changed}`, resolved.reason],
+            downstreamEffects: ['RESPONSE_PLANNING_INPUT_READY'],
+          },
+        });
+      }
+    } catch (e) {
+      logger.debug({ e, userId, sessionId }, 'ConversationGoalTracker: resolution failed, continuing without a tracked goal');
+    }
+
+    // Conversation Milestones (Blueprint 21 Phase 2): detect-and-persist only
+    // — moments where the user marks the conversation-with-the-app itself as
+    // meaningful ("you finally remembered"). Never touches effectiveMessage
+    // or response content. Non-fatal.
+    try {
+      const conversationReasoning = await import('./conversationReasoning');
+      const detected = conversationReasoning.detectConversationMilestone(effectiveMessage);
+      if (detected && detected.score >= conversationReasoning.MILESTONE_MIN_COMPOSITE) {
+        await conversationReasoning.appendConversationMilestone(sessionId, {
+          id: randomUUID(),
+          detectedAt: new Date().toISOString(),
+          turnIndex: conversationHistory.length,
+          milestoneType: detected.type,
+          messageExcerpt: effectiveMessage.slice(0, 120),
+          triggerPhrase: detected.triggerPhrase,
+          score: detected.score,
+        });
+      }
+      if (entryId) {
+        cognitiveObservatory.recordStage({
+          userId,
+          sourceId: entryId,
+          trace: {
+            stage: 'MILESTONE_DETECTION',
+            status: detected ? 'PASS' : 'SKIPPED',
+            startedAt: new Date().toISOString(),
+            durationMs: 0,
+            counts: { inputs: 1, outputs: detected ? 1 : 0 },
+            decisions: detected ? [`type:${detected.type}`, `score:${detected.score.toFixed(2)}`] : ['no_milestone_pattern'],
+            downstreamEffects: detected ? ['MILESTONE_LOG_APPENDED'] : [],
+          },
+        });
+      }
+    } catch (e) {
+      logger.debug({ e, userId, sessionId }, 'MilestoneDetector: detection failed, continuing');
+    }
+
     const scopeGuard = (content: string): string => {
       const guarded = responseScope.enforceChatScope(content, scopePlan);
       if (guarded.violations.length > 0) {
@@ -2041,6 +2168,52 @@ When updating relationship analytics or emotional signals from this thread, weig
             modeExtras(),
           );
         }
+      } else if (conversationHistory.length > 0) {
+        // Conversational Memory tier gate (Blueprint 21 Phase 2): the regex
+        // gate above only catches recall-*phrased* questions ("what did I
+        // just tell you"). This covers the wider, more common case — an
+        // ordinary follow-up with no recall wording at all ("wait, how old
+        // is she?"). Deliberately evaluated only after the regex gate
+        // declines, so that gate keeps first-claim priority. Non-fatal.
+        try {
+          const { evaluateConversationTierGate } = await import('./conversationReasoning');
+          const tier = evaluateConversationTierGate({ message: effectiveMessage, activeContext, conversationHistory });
+          if (tier.shortCircuit) {
+            const thread = await buildThreadRecall(userId, message, {
+              conversationHistory: conversationHistory.map((m) => ({ role: m.role, content: m.content })),
+              threadId: threadId ?? currentContext?.threadId,
+            });
+            if (thread.hasContent) {
+              if (entryId) {
+                cognitiveObservatory.recordStage({
+                  userId,
+                  sourceId: entryId,
+                  trace: {
+                    stage: 'MEMORY_TIER_GATE',
+                    status: 'PASS',
+                    startedAt: new Date().toISOString(),
+                    durationMs: 0,
+                    counts: { inputs: 1, outputs: 1 },
+                    decisions: [`overlap:${tier.overlap.toFixed(2)}`, tier.reason],
+                    downstreamEffects: ['RETRIEVAL_SKIPPED'],
+                  },
+                });
+              }
+              return formatModeResponse(
+                {
+                  content: scopeGuard(thread.content),
+                  response_mode: 'THREAD_RECALL',
+                  confidence: tier.confidence,
+                  metadata: { recall_intent: 'thread', thread_first: true, tier_gate: true },
+                },
+                'FOUNDATION_RECALL',
+                modeExtras(),
+              );
+            }
+          }
+        } catch (e) {
+          logger.debug({ e, userId }, 'MemoryTierGate: evaluation failed, continuing');
+        }
       }
 
       if (!workingMemoryPrimary && (testingMode === 'recall_check' || testingMode === 'system_state' || testingMode === 'general_diagnostic')) {
@@ -2275,9 +2448,19 @@ When updating relationship analytics or emotional signals from this thread, weig
     // Build RAG packet with error handling
     let ragPacket;
     const ragStart = Date.now();
-    const ragCacheHit = ragPacketCacheService.getCachedPacket(userId, message) !== null;
+    const ragCacheHit = ragPacketCacheService.getCachedPacket(userId, effectiveMessage) !== null;
     try {
-      ragPacket = await this.buildRAGPacket(userId, message, currentContext, scopePlan, entryId, chatFocus);
+      ragPacket = await this.buildRAGPacket(
+        userId,
+        effectiveMessage,
+        currentContext,
+        scopePlan,
+        entryId,
+        chatFocus,
+        conversationGoal,
+        retryState ? { originalMessageText: retryState.originalMessageText } : null,
+        discourseResolution,
+      );
     } catch (error) {
       logger.error({ error }, 'Failed to build RAG packet, using minimal context');
       ragPacket = {
@@ -2294,8 +2477,48 @@ When updating relationship analytics or emotional signals from this thread, weig
         allPeoplePlaces: []
       };
     }
-    
+
     const { orchestratorSummary, hqiResults, sources, extractedDates } = ragPacket;
+
+    // Retrieval Auditor / Response Planner observatory trace (Blueprint 21
+    // Phase 1) — both actually ran inside buildRAGPacket/ragBuilderService;
+    // this just surfaces their results. Non-fatal, never blocks the reply.
+    if (entryId) {
+      try {
+        const auditTrace = (ragPacket as { retrievalTrace?: { auditedByGoalTracker?: unknown[]; retrievalAuditDiscarded?: number } }).retrievalTrace;
+        const discarded = auditTrace?.retrievalAuditDiscarded ?? 0;
+        const auditedCount = auditTrace?.auditedByGoalTracker?.length ?? 0;
+        cognitiveObservatory.recordStage({
+          userId,
+          sourceId: entryId,
+          trace: {
+            stage: 'RETRIEVAL_AUDIT',
+            status: auditedCount > 0 && discarded / auditedCount > 0.5 ? 'WARN' : 'PASS',
+            startedAt: new Date().toISOString(),
+            durationMs: 0,
+            counts: { inputs: auditedCount, outputs: auditedCount - discarded, discarded },
+            decisions: [`audited:${auditedCount}`, `discarded:${discarded}`],
+            downstreamEffects: ['RESPONSE_PLANNING_INPUT_READY'],
+          },
+        });
+        const answerPlanBlock = (ragPacket as { answerPlanBlock?: string | null }).answerPlanBlock ?? null;
+        cognitiveObservatory.recordStage({
+          userId,
+          sourceId: entryId,
+          trace: {
+            stage: 'RESPONSE_PLANNING',
+            status: answerPlanBlock ? 'PASS' : 'SKIPPED',
+            startedAt: new Date().toISOString(),
+            durationMs: 0,
+            counts: { inputs: auditedCount, outputs: answerPlanBlock ? 1 : 0 },
+            decisions: answerPlanBlock ? [answerPlanBlock.slice(0, 200)] : ['no_plan_built'],
+            downstreamEffects: ['SYSTEM_PROMPT_COMPOSITION'],
+          },
+        });
+      } catch (e) {
+        logger.debug({ e, userId }, 'Reasoning-core observatory trace failed');
+      }
+    }
 
     // Essence + identity-core profiles are independent userId-only loads — fetch
     // them concurrently instead of back to back. Each degrades gracefully.
@@ -2636,6 +2859,7 @@ When updating relationship analytics or emotional signals from this thread, weig
       activeThreadsBlock: (ragPacket as { activeThreadsBlock?: string | null }).activeThreadsBlock ?? null,
       cognitivePlanBlock: (ragPacket as { cognitivePlanBlock?: string | null }).cognitivePlanBlock ?? null,
       epistemicBlock: (ragPacket as { epistemicBlock?: string | null }).epistemicBlock ?? null,
+      answerPlanBlock: (ragPacket as { answerPlanBlock?: string | null }).answerPlanBlock ?? null,
       continuityAliveTrace: (ragPacket as { continuityAliveTrace?: unknown }).continuityAliveTrace ?? null,
       confirmedSkills: (ragPacket as any).confirmedSkills ?? [],
       entityDossierBlock: (ragPacket as { entityDossierBlock?: string | null }).entityDossierBlock ?? null,
@@ -3278,7 +3502,64 @@ When updating relationship analytics or emotional signals from this thread, weig
     const sessionId = threadId ?? await this.getOrCreateChatSession(userId);
     const responseScope = await import('./responseScope');
     const activeContext = responseScope.deriveActiveContext(conversationHistory);
+
+    // Discourse Reasoner (Blueprint 21 Phase 2) — mirrors chatStream()'s
+    // wiring; this non-streaming fallback has no retry mechanism of its own.
+    let discourseResolution: import('./conversationReasoning').DiscourseResolution = { kind: 'unresolved' };
+    try {
+      const conversationReasoning = await import('./conversationReasoning');
+      discourseResolution = conversationReasoning.resolveDiscourseReferents({ message, history: conversationHistory, activeContext });
+      if (
+        discourseResolution.kind === 'entity' &&
+        discourseResolution.confidence >= conversationReasoning.DISCOURSE_ENTITY_REWRITE_MIN_CONFIDENCE
+      ) {
+        message = conversationReasoning.applyEntityReferentRewrite(message, discourseResolution);
+      }
+    } catch (e) {
+      logger.debug({ e, userId }, 'DiscourseReasoner: resolution failed (non-stream), continuing unresolved');
+    }
+
     const scopePlan = responseScope.planResponseScope(message, { activeContext });
+
+    // Conversation Goal Tracker (Blueprint 21 Phase 1) — mirrors chatStream()'s
+    // wiring; this non-streaming fallback has no retry mechanism of its own.
+    let conversationGoal: import('./conversationReasoning').ConversationGoalState | null = null;
+    try {
+      const conversationReasoning = await import('./conversationReasoning');
+      const priorGoal = await conversationReasoning.loadConversationGoal(sessionId);
+      const resolved = conversationReasoning.resolveConversationGoal({
+        message,
+        current: priorGoal,
+        isCorrection: scopePlan.isCorrection,
+        isRetry: false,
+      });
+      conversationGoal = resolved.next;
+      if (resolved.changed) {
+        await conversationReasoning.persistConversationGoal(sessionId, resolved.next);
+      }
+    } catch (e) {
+      logger.debug({ e, userId, sessionId }, 'ConversationGoalTracker: resolution failed (non-stream), continuing without a tracked goal');
+    }
+
+    // Conversation Milestones (Blueprint 21 Phase 2) — mirrors chatStream()'s
+    // functional wiring; Observatory recording skipped here as in Phase 1.
+    try {
+      const conversationReasoning = await import('./conversationReasoning');
+      const detected = conversationReasoning.detectConversationMilestone(message);
+      if (detected && detected.score >= conversationReasoning.MILESTONE_MIN_COMPOSITE) {
+        await conversationReasoning.appendConversationMilestone(sessionId, {
+          id: randomUUID(),
+          detectedAt: new Date().toISOString(),
+          turnIndex: conversationHistory.length,
+          milestoneType: detected.type,
+          messageExcerpt: message.slice(0, 120),
+          triggerPhrase: detected.triggerPhrase,
+          score: detected.score,
+        });
+      }
+    } catch (e) {
+      logger.debug({ e, userId, sessionId }, 'MilestoneDetector: detection failed (non-stream), continuing');
+    }
 
     let entryId: string | undefined;
     let interpretationPromise: Promise<import('./pipeline/loreInterpretationPipeline').LoreInterpretationResult | undefined> | undefined;
@@ -3374,7 +3655,7 @@ When updating relationship analytics or emotional signals from this thread, weig
     }
 
     // Build RAG packet
-    const ragPacket = await this.buildRAGPacket(userId, message, currentContext, scopePlan, entryId);
+    const ragPacket = await this.buildRAGPacket(userId, message, currentContext, scopePlan, entryId, undefined, conversationGoal, null, discourseResolution);
     const { orchestratorSummary, hqiResults, sources, extractedDates } = ragPacket;
 
     // Essence + identity-core profiles are independent userId-only loads — fetch
@@ -3649,6 +3930,7 @@ When updating relationship analytics or emotional signals from this thread, weig
       activeThreadsBlock: (ragPacket as { activeThreadsBlock?: string | null }).activeThreadsBlock ?? null,
       cognitivePlanBlock: (ragPacket as { cognitivePlanBlock?: string | null }).cognitivePlanBlock ?? null,
       epistemicBlock: (ragPacket as { epistemicBlock?: string | null }).epistemicBlock ?? null,
+      answerPlanBlock: (ragPacket as { answerPlanBlock?: string | null }).answerPlanBlock ?? null,
       continuityAliveTrace: (ragPacket as { continuityAliveTrace?: unknown }).continuityAliveTrace ?? null,
       confirmedSkills: (ragPacket as any).confirmedSkills ?? [],
       entityDossierBlock: (ragPacket as { entityDossierBlock?: string | null }).entityDossierBlock ?? null,

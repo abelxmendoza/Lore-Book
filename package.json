@@ -39,6 +39,7 @@
     "test:story-ingestion-regressions": "node scripts/story-ingestion-regressions.mjs",
     "test:memory-quality": "node scripts/memory-quality.mjs",
     "test:continuity-quality": "node scripts/continuity-quality.mjs",
+    "test:reasoning-core-quality": "node scripts/reasoning-core-quality.mjs",
     "test:return-points": "node scripts/return-points.mjs",
     "test:session-delta": "node scripts/session-delta.mjs",
     "test:environment-safety": "node scripts/environment-safety.mjs",

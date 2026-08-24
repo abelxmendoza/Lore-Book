@@ -1,6 +1,10 @@
 import { logger } from '../../logger';
 import type { ResolvedMemoryEntry } from '../../types';
 import type { CurrentContext } from '../../types/currentContext';
+import type { DiscourseResolution } from '../conversationReasoning/discourseReasonerTypes';
+import { auditWorkingMemoryAssembly, type AuditedItem } from '../conversationReasoning/retrievalAuditor';
+import { planAnswer, formatAnswerPlanBlock } from '../conversationReasoning/responsePlanner';
+import type { ConversationGoalState } from '../conversationReasoning/goalTrackerTypes';
 import { formatSelfRomanticIdentityLines } from '../identity/selfRomanticIdentity';
 import { chapterService } from '../chapterService';
 import { hqiService } from '../hqiService';
@@ -55,6 +59,8 @@ export type RagFocus = {
   type: 'character' | 'location' | 'organization' | string;
 };
 
+type RetryStateInput = { originalMessageText?: string } | null;
+
 // ─── Fitness keyword gate ────────────────────────────────────────────────────
 const FITNESS_RE = /\b(workout|exercise|gym|ran|run|lifted|bench|squat|deadlift|calories|weight|lbs|kg|miles|steps|cardio|biometric|body fat|muscle)\b/i;
 
@@ -72,6 +78,12 @@ export async function buildRAGPacket(
   scopePlan?: import('../responseScope').ResponseScopePlan,
   currentMessageId?: string,
   focus?: RagFocus | null,
+  /** Conversation Goal Tracker's current state (Blueprint 21 Phase 1) — read-only input to the Response Planner. */
+  goal?: ConversationGoalState | null,
+  /** Loaded retry state, when this turn is a retry — lets the Response Planner avoid repeating a failed framing. */
+  resolvedTurnState?: RetryStateInput,
+  /** Discourse Reasoner's resolution (Blueprint 21 Phase 2) — an 'exchange' referent augments the retrieval query below; an 'entity' referent has already rewritten `message` upstream. */
+  discourseResolution?: DiscourseResolution | null,
 ) {
   // Full-packet cache hit — skip everything
   // Retellings deliberately bypass the message-text cache: an identical new
@@ -270,6 +282,7 @@ export async function buildRAGPacket(
   let workingMemoryPacket: ReturnType<typeof buildWorkingMemoryPacket> | null = null;
   const workingMemorySources: ChatSource[] = [];
   const retrievalPaths: string[] = [];
+  let retrievalAudit: { audited: AuditedItem[]; discarded: number } = { audited: [], discarded: 0 };
 
   try {
     const { loadLivingMemoryPreferences } = await import('../preferences/livingMemoryPreferences');
@@ -277,19 +290,42 @@ export async function buildRAGPacket(
     if (!livingMemory.useLivingMemory) {
       logger.debug({ userId }, 'RAGBuilder: Living Memory use disabled — skipping WMA');
     } else {
+      // Discourse Reasoner (Blueprint 21 Phase 2): an 'exchange' referent
+      // ("that conversation", "our first breakthrough") points at a prior
+      // TOPIC, not a single entity — a bare "that" contributes zero query
+      // signal on its own (evidenceContract.ts's STOPWORDS already excludes
+      // it), so augment the retrieval question with the resolved topic
+      // instead of rewriting `message` itself (unsafe for a multi-word phrase).
+      const retrievalQuestion =
+        discourseResolution?.kind === 'exchange'
+          ? [message, discourseResolution.topicSummary, ...discourseResolution.involvedEntities]
+              .filter(Boolean)
+              .join(' ')
+          : message;
       workingMemory = await assembleWorkingMemory({
         userId,
-        question: message,
+        question: retrievalQuestion,
         threadId: (currentContext as { threadId?: string } | undefined)?.threadId,
         focus: focus
           ? { id: focus.id, name: focus.name, type: focus.type }
           : undefined,
       });
       const { planResponseScope, applyScopePlanToAssembly } = await import('../responseScope');
-      workingMemory = applyScopePlanToAssembly(
-        workingMemory,
-        scopePlan ?? planResponseScope(message),
-      );
+      const effectiveScopePlan = scopePlan ?? planResponseScope(message);
+      workingMemory = applyScopePlanToAssembly(workingMemory, effectiveScopePlan);
+
+      // Retrieval Auditor (Blueprint 21 Phase 1): per-item justification pass
+      // over the domain-filtered assembly, right before it's flattened into
+      // prompt prose. Reuses the evidence-contract scorer already used for
+      // the legacy sources[] array below — no new scoring heuristic.
+      try {
+        const auditResult = auditWorkingMemoryAssembly(workingMemory, message, effectiveScopePlan);
+        workingMemory = auditResult.assembly;
+        retrievalAudit = { audited: auditResult.audited, discarded: auditResult.discarded };
+      } catch (e) {
+        logger.debug({ e }, 'RAGBuilder: retrieval audit failed');
+      }
+
       workingMemoryPacket = buildWorkingMemoryPacket(workingMemory);
       foundationRecallBlock = workingMemoryPacket.text;
       foundationRelationships = workingMemory.relationships;
@@ -662,6 +698,7 @@ export async function buildRAGPacket(
   const cognitivePlan = planCognition(message, { wmaIntent: classifyIntentForAudit(message) });
   const cognitivePlanBlock = formatCognitivePlanBlock(cognitivePlan);
   let epistemicBlock: string | null = null;
+  let answerPlanBlock: string | null = null;
 
   // ── Active Narrative Threads (what is unfolding, not what happened) ──────
   // Derived fresh from life_arcs + recent moments/scenes; failure is non-fatal.
@@ -839,6 +876,20 @@ export async function buildRAGPacket(
       epistemicBlock = formatEpistemicBlock(assessment);
     } catch (e) { logger.debug({ e }, 'RAGBuilder: epistemic calibration failed'); }
 
+    // Response Planner (Blueprint 21 Phase 1): deterministic post-retrieval
+    // focus/avoid plan, built from signals already resolved above (cognitive
+    // strategy, audited working memory, scope/correction state, goal).
+    try {
+      const plan = planAnswer({
+        goal: goal ?? null,
+        cognitivePlan,
+        auditedAssembly: workingMemory,
+        scopePlan,
+        retryState: resolvedTurnState,
+      });
+      answerPlanBlock = plan ? formatAnswerPlanBlock(plan) : null;
+    } catch (e) { logger.debug({ e }, 'RAGBuilder: response planner failed'); }
+
     if (scopePlan.intent === 'work' && scopePlan.responseMode !== 'audit' && scopePlan.responseMode !== 'debug_inspector') {
       const allowedCharacterIds = new Set(
         sources.filter((source) => source.type === 'character').map((source) => source.id),
@@ -899,6 +950,7 @@ export async function buildRAGPacket(
     cognitivePlan,
     cognitivePlanBlock,
     epistemicBlock,
+    answerPlanBlock,
     continuityAliveTrace,
     // Entity dossier: verified facts + recurring moments for mentioned entities
     entityDossierBlock,
@@ -931,6 +983,8 @@ export async function buildRAGPacket(
       ].filter(Boolean),
       queryCount: workingMemory?.timing?.queryCount ?? 0,
       rejectedEvidence,
+      auditedByGoalTracker: retrievalAudit.audited,
+      retrievalAuditDiscarded: retrievalAudit.discarded,
     },
     lifeArcSynthesisBlock,
     lifeArcSynthesis,
