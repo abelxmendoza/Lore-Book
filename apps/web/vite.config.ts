@@ -188,7 +188,7 @@ export default defineConfig({
   },
   build: {
     // Production optimizations
-    minify: process.env.NODE_ENV === 'production' ? 'esbuild' : false,
+    minify: process.env.NODE_ENV === 'production' ? 'oxc' : false,
     sourcemap: process.env.NODE_ENV !== 'production', // Disable source maps in production for security
     rollupOptions: {
       output: {
