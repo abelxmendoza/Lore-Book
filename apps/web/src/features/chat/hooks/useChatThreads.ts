@@ -35,6 +35,7 @@ import {
 } from '../utils/threadDedupeUtils';
 import {
   mergeLoadedThreadsWithHydrated,
+  pickListUpdatedAt,
   DEFAULT_THREAD_PAGE_LIMIT,
 } from '../utils/mergeLoadedThreadsWithHydrated';
 import { mergeThreadMessages, countMissingAssistantTurns } from '../utils/mergeThreadMessages';
@@ -609,7 +610,6 @@ export const useChatThreads = () => {
           let emptyThread: ChatThread | null = null;
           setThreads((prev) => {
             const row = prev.find((t) => t.id === id);
-            const serverUpdatedAt = ensuredMeta.updatedAt;
             emptyThread = {
               id,
               title: ensuredMeta.title || row?.title || existing?.title || DRAFT_THREAD_TITLE,
@@ -619,12 +619,10 @@ export const useChatThreads = () => {
               // Clear list-API messageCount so the UI does not spin on
               // "Finding connections" forever when the server snapshot is empty.
               messageCount: 0,
-              updatedAt:
-                serverUpdatedAt ??
-                row?.updatedAt ??
-                existing?.updatedAt ??
-                cachedThread?.updatedAt ??
-                new Date().toISOString(),
+              updatedAt: pickListUpdatedAt(
+                ensuredMeta.updatedAt,
+                row?.updatedAt ?? existing?.updatedAt ?? cachedThread?.updatedAt
+              ),
               threadNumber: result.thread_number ?? row?.threadNumber ?? existing?.threadNumber,
             };
             const next = sortThreadsByActivity(
@@ -642,12 +640,6 @@ export const useChatThreads = () => {
         let hydratedThread: ChatThread | null = null;
         setThreads((prev) => {
           const row = prev.find((t) => t.id === id);
-          const serverUpdatedAt =
-            ensuredMeta.updatedAt ??
-            row?.updatedAt ??
-            existing?.updatedAt ??
-            cachedThread?.updatedAt ??
-            new Date().toISOString();
           hydratedThread = {
             id,
             title: ensuredMeta.title || row?.title || existing?.title || 'Restored chat',
@@ -655,8 +647,12 @@ export const useChatThreads = () => {
             dominantEntities: row?.dominantEntities ?? existing?.dominantEntities,
             messages,
             messageCount: messages.length,
-            // Never invent list order from message clocks — that diverges devices.
-            updatedAt: serverUpdatedAt,
+            // Server activity time across devices; keep a just-bumped local stamp
+            // so opening / hydrating cannot drop an in-flight send down the list.
+            updatedAt: pickListUpdatedAt(
+              ensuredMeta.updatedAt,
+              row?.updatedAt ?? existing?.updatedAt ?? cachedThread?.updatedAt
+            ),
             threadNumber: result.thread_number ?? row?.threadNumber ?? existing?.threadNumber,
           };
 

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   mergeLoadedThreadsWithHydrated,
   resolveThreadUpdatedAt,
+  pickListUpdatedAt,
   LOCAL_ACTIVITY_GRACE_MS,
 } from './mergeLoadedThreadsWithHydrated';
 import { threadPersistenceTracker } from '../services/threadPersistenceTracker';
@@ -34,6 +35,27 @@ describe('resolveThreadUpdatedAt', () => {
     const local = new Date(now - LOCAL_ACTIVITY_GRACE_MS - 1).toISOString();
     const server = '2026-06-02T00:00:00Z';
     expect(resolveThreadUpdatedAt(server, local, now)).toBe(server);
+  });
+});
+
+describe('pickListUpdatedAt', () => {
+  it('keeps a just-bumped local stamp when ensure-visible is lagging', () => {
+    const now = Date.parse('2026-06-02T12:00:10Z');
+    const local = '2026-06-02T12:00:05Z';
+    const server = '2026-06-02T11:59:00Z';
+    expect(pickListUpdatedAt(server, local, now)).toBe(local);
+  });
+
+  it('follows the other device once the local bump is stale', () => {
+    const now = Date.parse('2026-06-02T12:02:00Z');
+    const local = new Date(now - LOCAL_ACTIVITY_GRACE_MS - 1).toISOString();
+    const server = '2026-06-02T12:00:00Z';
+    expect(pickListUpdatedAt(server, local, now)).toBe(server);
+  });
+
+  it('does not invent a timestamp when only one side has activity time', () => {
+    expect(pickListUpdatedAt('2026-06-01T00:00:00Z', null)).toBe('2026-06-01T00:00:00Z');
+    expect(pickListUpdatedAt(undefined, '2026-06-01T00:00:00Z')).toBe('2026-06-01T00:00:00Z');
   });
 });
 
@@ -199,5 +221,25 @@ describe('mergeLoadedThreadsWithHydrated', () => {
     const merged = mergeLoadedThreadsWithHydrated([], [cached], 30);
 
     expect(merged).toEqual([]);
+  });
+
+  it('login / other-device reload follows server order, not a stale cache bump', () => {
+    // Device (or last session) thought "phone" was newest. Server says "desktop"
+    // was touched later — login and a second device must agree on that order.
+    const cachedPhone = thread(
+      'phone',
+      [{ id: 'm1', role: 'user', content: 'hi', timestamp: new Date('2026-06-10T00:00:00Z') }],
+      '2026-06-10T00:00:00Z'
+    );
+    const cachedDesktop = thread('desktop', [], '2026-06-04T00:00:00Z');
+    const loaded = [
+      thread('phone', [], '2026-06-01T00:00:00Z'),
+      thread('desktop', [], '2026-06-05T00:00:00Z'),
+    ];
+
+    const merged = mergeLoadedThreadsWithHydrated(loaded, [cachedPhone, cachedDesktop]);
+
+    expect(merged.map((t) => t.id)).toEqual(['desktop', 'phone']);
+    expect(merged.find((t) => t.id === 'phone')?.messages).toHaveLength(1);
   });
 });

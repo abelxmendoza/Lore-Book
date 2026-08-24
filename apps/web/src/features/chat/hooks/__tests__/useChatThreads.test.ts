@@ -183,6 +183,124 @@ describe('useChatThreads', () => {
     expect(result.current.getThread('thread-a')).toBeUndefined();
   });
 
+  it('does not carry guest threads into the authenticated list and follows server order', async () => {
+    mockUseAuth.mockReturnValue(makeAuthState());
+    localStorage.setItem(
+      'lorekeeper_chat_threads_guest',
+      JSON.stringify([
+        {
+          id: 'guest-new',
+          title: 'Guest new',
+          messages: [makeMessage('g1', 'guest new chat')],
+          updatedAt: '2026-08-01T00:00:00Z',
+        },
+        {
+          id: 'guest-old',
+          title: 'Guest old',
+          messages: [makeMessage('g2', 'guest old chat')],
+          updatedAt: '2026-01-01T00:00:00Z',
+        },
+      ])
+    );
+
+    const { result, rerender } = renderUseChatThreads();
+    await waitFor(() =>
+      expect(result.current.threads.map((thread) => thread.id)).toEqual(['guest-new', 'guest-old'])
+    );
+
+    mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-login' }));
+    mockBackendThreadLoad([
+      makeDbThread('auth-older', 'Older', [], '2026-06-01T00:00:00Z'),
+      makeDbThread('auth-newer', 'Newer', [], '2026-07-01T00:00:00Z'),
+    ]);
+    rerender();
+
+    await waitFor(() =>
+      expect(result.current.threads.map((thread) => thread.id)).toEqual(['auth-newer', 'auth-older'])
+    );
+    expect(result.current.getThread('guest-new')).toBeUndefined();
+    expect(result.current.getThread('guest-old')).toBeUndefined();
+    const guestStored = JSON.parse(localStorage.getItem('lorekeeper_chat_threads_guest') || '[]') as Array<{ id: string }>;
+    expect(guestStored.map((thread) => thread.id)).toEqual(['guest-new', 'guest-old']);
+  });
+
+  it('does not carry authenticated threads into guest storage on logout and keeps guest order', async () => {
+    localStorage.setItem(
+      'lorekeeper_chat_threads_guest',
+      JSON.stringify([
+        {
+          id: 'guest-newer',
+          title: 'G1',
+          messages: [makeMessage('g1', 'guest newer chat')],
+          updatedAt: '2026-07-01T00:00:00Z',
+        },
+        {
+          id: 'guest-older',
+          title: 'G2',
+          messages: [makeMessage('g2', 'guest older chat')],
+          updatedAt: '2026-01-01T00:00:00Z',
+        },
+      ])
+    );
+    mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-logout' }));
+    mockBackendThreadLoad([
+      makeDbThread('auth-hot', 'Auth hot', [], '2026-08-01T00:00:00Z'),
+      makeDbThread('auth-cold', 'Auth cold', [], '2026-02-01T00:00:00Z'),
+    ]);
+
+    const { result, rerender } = renderUseChatThreads();
+    await waitFor(() =>
+      expect(result.current.threads.map((thread) => thread.id)).toEqual(['auth-hot', 'auth-cold'])
+    );
+
+    mockUseAuth.mockReturnValue(makeAuthState());
+    rerender();
+
+    await waitFor(() =>
+      expect(result.current.threads.map((thread) => thread.id)).toEqual(['guest-newer', 'guest-older'])
+    );
+    expect(result.current.getThread('auth-hot')).toBeUndefined();
+    expect(result.current.getThread('auth-cold')).toBeUndefined();
+    const guestStored = JSON.parse(localStorage.getItem('lorekeeper_chat_threads_guest') || '[]') as Array<{ id: string }>;
+    expect(guestStored.map((thread) => thread.id)).toEqual(['guest-newer', 'guest-older']);
+    expect(localStorage.getItem(authThreadCacheKey('user-logout'))).toContain('auth-hot');
+  });
+
+  it('follows server order on login even when the recovery cache has a stale local bump', async () => {
+    mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-device' }));
+    localStorage.setItem(
+      authThreadCacheKey('user-device'),
+      JSON.stringify({
+        threads: [
+          {
+            id: 'phone',
+            title: 'Phone',
+            messages: [makeMessage('cached-phone', 'from phone')],
+            updatedAt: '2026-06-10T00:00:00Z',
+          },
+          {
+            id: 'desktop',
+            title: 'Desktop',
+            messages: [makeMessage('cached-desktop', 'from desktop')],
+            updatedAt: '2026-06-04T00:00:00Z',
+          },
+        ],
+        lastThreadId: 'phone',
+      })
+    );
+    mockBackendThreadLoad([
+      makeDbThread('phone', 'Phone', [], '2026-06-01T00:00:00Z'),
+      makeDbThread('desktop', 'Desktop', [], '2026-06-05T00:00:00Z'),
+    ]);
+
+    const { result } = renderUseChatThreads();
+    await waitFor(() => expect(result.current.threadsReady).toBe(true));
+
+    expect(result.current.threads.map((thread) => thread.id)).toEqual(['desktop', 'phone']);
+    expect(result.current.getThread('phone')?.messages[0]?.content).toBe('from phone');
+    expect(result.current.getThread('desktop')?.messages[0]?.content).toBe('from desktop');
+  });
+
   it('does not resurrect cached threads over an authoritative empty server list', async () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-empty' }));
     localStorage.setItem(

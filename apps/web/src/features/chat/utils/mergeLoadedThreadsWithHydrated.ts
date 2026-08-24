@@ -76,6 +76,23 @@ export function resolveThreadUpdatedAt(
 }
 
 /**
+ * List-order timestamp for hydrate / open. Opening a thread must not invent
+ * activity from message clocks, and must not clobber a just-bumped local
+ * `updatedAt` with a lagging ensure-visible stamp. After the grace window,
+ * server time wins so login / logout / another device cannot pin a stale bump.
+ */
+export function pickListUpdatedAt(
+  serverUpdatedAt: string | undefined | null,
+  localUpdatedAt: string | undefined | null,
+  nowMs: number = Date.now()
+): string {
+  if (serverUpdatedAt && localUpdatedAt) {
+    return resolveThreadUpdatedAt(serverUpdatedAt, localUpdatedAt, nowMs);
+  }
+  return serverUpdatedAt || localUpdatedAt || new Date(nowMs).toISOString();
+}
+
+/**
  * Merge the authoritative server thread list with in-memory state.
  *
  * Ordering follows server `updatedAt` across devices, with a short grace window
