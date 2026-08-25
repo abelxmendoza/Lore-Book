@@ -203,9 +203,10 @@ describe('LoveAndRelationshipsView', () => {
       expect(screen.getByRole('tab', { name: /^married$/i })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: /^divorced$/i })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: /co-parents/i })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /^exes$/i })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: /rankings/i })).toBeInTheDocument();
     });
-    
+
     // Find tabs by role to avoid multiple matches
     const allTabs = screen.getAllByText(/all/i);
     const activeTabs = screen.getAllByText(/active/i);
@@ -215,8 +216,9 @@ describe('LoveAndRelationshipsView', () => {
     const marriedTabs = screen.getAllByText(/married/i);
     const divorcedTabs = screen.getAllByText(/divorced/i);
     const coParentsTabs = screen.getAllByText(/co-parents/i);
+    const exesTabs = screen.getAllByText(/^exes$/i);
     const rankingsTabs = screen.getAllByText(/rankings/i);
-    
+
     // Check that at least one tab exists for each filter
     expect(allTabs.length).toBeGreaterThan(0);
     expect(activeTabs.length).toBeGreaterThan(0);
@@ -226,6 +228,7 @@ describe('LoveAndRelationshipsView', () => {
     expect(marriedTabs.length).toBeGreaterThan(0);
     expect(divorcedTabs.length).toBeGreaterThan(0);
     expect(coParentsTabs.length).toBeGreaterThan(0);
+    expect(exesTabs.length).toBeGreaterThan(0);
     expect(rankingsTabs.length).toBeGreaterThan(0);
   });
 

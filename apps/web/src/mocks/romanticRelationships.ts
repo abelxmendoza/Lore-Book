@@ -1261,7 +1261,7 @@ export function getMockRomanticRelationships(): MockRomanticRelationship[] {
  * Get mock relationships by filter
  */
 export function getMockRomanticRelationshipsByFilter(
-  filter: 'all' | 'active' | 'past' | 'no_contact' | 'reconnection' | 'situationships' | 'dating' | 'crushes' | 'married' | 'divorced' | 'co_parents' | 'high_risk' | 'rankings'
+  filter: 'all' | 'active' | 'past' | 'no_contact' | 'reconnection' | 'situationships' | 'dating' | 'crushes' | 'married' | 'divorced' | 'co_parents' | 'exes' | 'high_risk' | 'rankings'
 ): MockRomanticRelationship[] {
   const all = getMockRomanticRelationships();
   
@@ -1286,6 +1286,8 @@ export function getMockRomanticRelationshipsByFilter(
       return all.filter(isDivorcedMockRelationship);
     case 'co_parents':
       return all.filter(isCoParentMockRelationship);
+    case 'exes':
+      return all.filter(isExMockRelationship);
     case 'high_risk':
       return all.filter(isHighRiskMockRelationship);
     default:
@@ -1338,6 +1340,15 @@ function isDivorcedMockRelationship(relationship: MockRomanticRelationship): boo
 
 function isCoParentMockRelationship(relationship: MockRomanticRelationship): boolean {
   return CO_PARENT_TYPES.has(normalizedMockType(relationship));
+}
+
+function isExMockRelationship(relationship: MockRomanticRelationship): boolean {
+  const type = normalizedMockType(relationship);
+  return (
+    type.startsWith('ex_') ||
+    isDivorcedMockRelationship(relationship) ||
+    (isEndedMockRelationship(relationship) && (DATING_TYPES.has(type) || isMarriedMockRelationship(relationship)))
+  );
 }
 
 function isNoContactMockRelationship(relationship: MockRomanticRelationship): boolean {

@@ -137,6 +137,7 @@ type FilterType =
   | 'married'
   | 'divorced'
   | 'co_parents'
+  | 'exes'
   | 'high_risk'
   | 'rankings';
 
@@ -169,6 +170,14 @@ const isDivorcedRelationship = (relationship: RomanticRelationship) =>
   isDivorcedRomanceType(relationship.relationship_type);
 const isCoParentRelationship = (relationship: RomanticRelationship) =>
   isCoParentRomanceType(relationship.relationship_type);
+// Mirrors Character Book's "exes" category: an explicit ex_* type, a divorce,
+// or a substantive relationship type (dating/married/etc., not just a crush
+// or a no-contact ghost/block) that has since ended.
+const isExRelationship = (relationship: RomanticRelationship) =>
+  relationshipType(relationship).startsWith('ex_') ||
+  isDivorcedRelationship(relationship) ||
+  (isEndedRelationship(relationship) &&
+    (DATING_TYPES.has(relationshipType(relationship)) || isMarriedRelationship(relationship)));
 const isNoContactRelationship = (relationship: RomanticRelationship) =>
   NO_CONTACT_STATUSES.has(relationshipStatus(relationship));
 const hasReconnectionPotential = (relationship: RomanticRelationship) =>
@@ -782,6 +791,7 @@ export const LoveAndRelationshipsView = () => {
   const marriedRelationships = filteredRelationships.filter(isMarriedRelationship);
   const divorcedRelationships = filteredRelationships.filter(isDivorcedRelationship);
   const coParentRelationships = filteredRelationships.filter(isCoParentRelationship);
+  const exRelationships = filteredRelationships.filter(isExRelationship);
   const oneSidedCrushes = crushes.filter((relationship) =>
     ['user_interest_only', 'other_interest_only'].includes(romanceReciprocity(relationship)),
   );
@@ -817,6 +827,8 @@ export const LoveAndRelationshipsView = () => {
         return divorcedRelationships;
       case 'co_parents':
         return coParentRelationships;
+      case 'exes':
+        return exRelationships;
       case 'high_risk':
         return highRiskRelationships;
       case 'rankings':
@@ -1180,7 +1192,13 @@ export const LoveAndRelationshipsView = () => {
             <span className="hidden sm:inline">Co-parents</span>
             <span className="sm:hidden">Kids</span>
           </TabsTrigger>
-          <TabsTrigger 
+          <TabsTrigger
+            value="exes"
+            className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-slate-500/20 data-[state=active]:text-slate-300 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0 min-w-[65px] sm:min-w-0"
+          >
+            <span>Exes</span>
+          </TabsTrigger>
+          <TabsTrigger
             value="crushes"
             className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-pink-500/20 data-[state=active]:text-pink-400 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0 min-w-[70px] sm:min-w-0"
           >
@@ -1287,6 +1305,10 @@ export const LoveAndRelationshipsView = () => {
           {activeFilter === 'co_parents' &&
             coParentRelationships.length > 0 &&
             renderRelationshipCollection(coParentRelationships)}
+
+          {activeFilter === 'exes' &&
+            exRelationships.length > 0 &&
+            renderRelationshipCollection(exRelationships)}
 
           {/* No Contact Section */}
           {activeFilter === 'no_contact' && noContactRelationships.length > 0 && (
