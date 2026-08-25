@@ -839,6 +839,76 @@ describe('Working Memory Assembler', () => {
     expect(selectedText).toMatch(/Thursday Crew went on a retreat/i);
   });
 
+  it('scopes community candidates to the focused organization, not every org/community the user has', async () => {
+    // Regression test: loadCommunityCandidates previously ignored chat focus
+    // entirely and pulled the user's top orgs + social_communities generically,
+    // so a chat focused on one org could surface unrelated orgs/communities.
+    tableResults.organizations = {
+      data: [
+        {
+          id: 'org-thursday-crew',
+          name: 'The Thursday Crew',
+          description: 'A weekly hangout crew.',
+          type: 'group',
+          group_type: 'crew',
+          status: 'active',
+          importance_score: 0.8,
+          metadata: {},
+          updated_at: '2026-06-10T00:00:00Z',
+        },
+        {
+          id: 'org-unrelated',
+          name: 'Totally Unrelated Org',
+          description: 'Should not appear when focused on The Thursday Crew.',
+          type: 'group',
+          group_type: 'club',
+          status: 'active',
+          importance_score: 0.9,
+          metadata: {},
+          updated_at: '2026-06-12T00:00:00Z',
+        },
+      ],
+      error: null,
+    };
+    tableResults.organization_members = {
+      data: [
+        { id: 'mem-1', organization_id: 'org-thursday-crew', character_id: 'char-sol', character_name: 'Sam Chen', status: 'active' },
+        { id: 'mem-2', organization_id: 'org-thursday-crew', character_id: 'char-abuela', character_name: 'Grandma Rose', status: 'active' },
+      ],
+      error: null,
+    };
+    tableResults.social_communities = {
+      data: [
+        {
+          id: 'sc-unrelated',
+          theme: 'Unrelated social cluster',
+          members: ['Someone Else'],
+          cohesion: 0.9,
+          size: 5,
+          metadata: {},
+          updated_at: '2026-06-12T00:00:00Z',
+        },
+      ],
+      error: null,
+    };
+
+    const result = await assembleWorkingMemory({
+      userId: 'user-1',
+      question: "What's been happening with the group?",
+      focus: {
+        id: 'org-thursday-crew',
+        name: 'The Thursday Crew',
+        type: 'organization',
+      },
+    });
+
+    const communityText = result.communities.map((item) => `${item.title} ${item.content}`).join('\n');
+    expect(communityText).toMatch(/Thursday Crew/i);
+    expect(communityText).toMatch(/Sam Chen/i);
+    expect(communityText).not.toMatch(/Totally Unrelated Org/i);
+    expect(communityText).not.toMatch(/Unrelated social cluster/i);
+  });
+
   it('surfaces entity_timeline_events rows when focus is a location', async () => {
     tableResults.entity_timeline_events = {
       data: [

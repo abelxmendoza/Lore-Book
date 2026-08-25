@@ -36,6 +36,7 @@ import {
   workingMemoryTurnKey,
 } from './turnWorkingMemoryCache';
 import { recordSkippedOperation } from '../../lib/messageCostTracker';
+import { organizationService } from '../organizationService';
 
 export type WorkingMemoryIntent =
   | 'PERSON_QUERY'
@@ -1884,11 +1885,77 @@ async function loadGoalCandidates(
 async function loadCommunityCandidates(
   scope: WmaRequestScope,
   userId: string,
-  intent: WorkingMemoryIntent
+  intent: WorkingMemoryIntent,
+  focusOrgId?: string
 ): Promise<Candidate[]> {
   if (intent !== 'COMMUNITY_QUERY' && intent !== 'LIFE_REVIEW' && intent !== 'IDENTITY_QUERY') {
     return [];
   }
+
+  if (focusOrgId) {
+    // social_communities has no FK to organizations, so it can't be scoped to
+    // one org — pulling it here would surface communities unrelated to the
+    // org the user is actually focused on. Scope to just that org + its real
+    // roster (organization_members, which does carry organization_id).
+    const [organization, members] = await Promise.all([
+      scope.traced(
+        'organizations',
+        'focused organization',
+        `organizations:focus:${focusOrgId}`,
+        () =>
+          supabaseAdmin
+            .from('organizations')
+            .select('id, name, description, type, group_type, status, importance_score, metadata, updated_at')
+            .eq('user_id', userId)
+            .eq('id', focusOrgId)
+            .maybeSingle()
+      ),
+      organizationService.getMembers(focusOrgId),
+    ]);
+
+    const out: Candidate[] = [];
+    const org = organization as any;
+    if (org) {
+      const name = String(org.name ?? 'Organization');
+      const orgKind = org.group_type ?? org.type;
+      out.push({
+        id: `community:org:${org.id}`,
+        type: 'community',
+        title: `${name}${orgKind ? ` (${orgKind})` : ''}`,
+        content: String(org.description ?? name),
+        source: 'organizations',
+        date: org.updated_at ?? null,
+        confidence: 0.85,
+        relevance: 0.95,
+        importance: Number(org.importance_score ?? 0.7),
+        significance: 0.65,
+        relationshipDistance: 0.4,
+        reasons: ['focused organization'],
+        metadata: { entityId: org.id },
+      });
+    }
+    const activeMembers = members.filter((m) => m.status === 'active');
+    if (activeMembers.length > 0) {
+      const names = activeMembers.slice(0, 12).map((m) => m.character_name).join(', ');
+      out.push({
+        id: `community:org:${focusOrgId}:roster`,
+        type: 'community',
+        title: 'Members',
+        content: names,
+        source: 'organization_members',
+        date: null,
+        confidence: 0.85,
+        relevance: 0.85,
+        importance: 0.6,
+        significance: 0.55,
+        relationshipDistance: 0.5,
+        reasons: ['organization roster, scoped to focused org'],
+        metadata: { entityId: focusOrgId, memberCount: activeMembers.length },
+      });
+    }
+    return out;
+  }
+
   const [communities, organizations] = await Promise.all([
     scope.traced(
       'social_communities',
@@ -2493,7 +2560,14 @@ async function assembleWorkingMemoryUncached(
         : Promise.resolve([] as Candidate[]),
       !temporalQuery ? loadGoalCandidates(scope, input.userId, target, intent, input.question) : Promise.resolve([] as Candidate[]),
       !temporalQuery ? loadSkillCandidates(scope, input.userId, target, intent) : Promise.resolve([] as Candidate[]),
-      !temporalQuery ? loadCommunityCandidates(scope, input.userId, intent) : Promise.resolve([] as Candidate[]),
+      !temporalQuery
+        ? loadCommunityCandidates(
+            scope,
+            input.userId,
+            intent,
+            timelineEntityFocus?.entityType === 'organization' ? timelineEntityFocus.entityId : undefined
+          )
+        : Promise.resolve([] as Candidate[]),
       !temporalQuery ? loadProjectCandidates(scope, input.userId, target, intent) : Promise.resolve([] as Candidate[]),
       // Real public.episodes rows (segmented scenes with source_message_ids).
       loadPersistedEpisodeCandidates(
