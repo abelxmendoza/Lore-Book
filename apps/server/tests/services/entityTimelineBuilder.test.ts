@@ -362,14 +362,41 @@ describe('EntityTimelineBuilder — episode-as-source-row folding (location only
     });
   });
 
-  it('organizations do not fold episodes (no per-episode org data)', async () => {
+  it('organizations fold primary-entity-linked episodes too, in addition to thread-level content', async () => {
+    // Roster-overlap resolution (episodePersistenceService.resolveOrganizationForParticipants)
+    // now lets an episode's primary_entity_type be 'organization' — the episode fold
+    // path generalized from location-only to `this.kind`, so orgs get it too.
     state.responses['organization_members'] = [{ data: [], error: null }];
     state.responses['conversation_sessions'] = [{ data: [], error: null }];
+    state.responses['episodes'] = [
+      {
+        data: [{ id: 'episode-2', title: 'The Thursday Crew meetup', start_at: '2026-04-02T00:00:00Z' }],
+        error: null,
+      },
+    ];
 
     const builder = new EntityTimelineBuilder('organization');
     await builder.rebuildTimelinesForEntity(USER_ID, 'org-1');
 
-    expect(state.calls.some((c) => c.table === 'episodes')).toBe(false);
+    const episodesCall = state.calls.find(
+      (c) => c.table === 'episodes' && c.method === 'eq' && c.args[0] === 'primary_entity_id'
+    );
+    expect(episodesCall).toBeTruthy();
+    expect(episodesCall!.args).toEqual(['primary_entity_id', 'org-1']);
+
+    const upserts = upsertCallsFor('entity_timeline_events');
+    const episodeUpsert = upserts.find(
+      (u) => (u.args[0] as Record<string, unknown>).source_episode_id === 'episode-2'
+    );
+    expect(episodeUpsert).toBeTruthy();
+    expect(episodeUpsert!.args[0]).toMatchObject({
+      entity_type: 'organization',
+      entity_id: 'org-1',
+      event_id: null,
+      source_episode_id: 'episode-2',
+      timeline_type: 'lore',
+      event_title: 'The Thursday Crew meetup',
+    });
   });
 });
 
