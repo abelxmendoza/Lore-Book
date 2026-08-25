@@ -273,6 +273,22 @@ export function inferEdges(members: FamilyMember[]): Array<{ from: string; to: s
     }
   }
 
+  // Self's spouse → step-children. "step_child" already means "not self's
+  // biological/legal child" — which, in a two-parent household, points at
+  // the spouse being the child's actual parent. Not every married pair
+  // shares every child (blended families), so this must not be inferred
+  // for a plain "child" relation (self's own — the spouse may or may not
+  // co-parent them, and there's no signal either way): only step_child
+  // gives an explicit, evidenced connection to draw.
+  const selfSpouse = gen0.find((m) => m.relation === 'spouse');
+  if (selfSpouse) {
+    for (const child of children) {
+      if (child.relation === 'step_child') {
+        edges.push({ from: selfSpouse.id, to: child.id });
+      }
+    }
+  }
+
   // Children → Grandchildren (side match)
   for (const child of children.filter(
     (m) =>

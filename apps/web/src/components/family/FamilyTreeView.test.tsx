@@ -102,6 +102,42 @@ describe('inferEdges — explicit parent links', () => {
     expect(edges).toContainEqual({ from: 'mother', to: 'marcus' });
     expect(edges).not.toContainEqual({ from: 'uncle', to: 'marcus' });
   });
+
+  // Married pairs don't always share every child (blended families) — a
+  // step_child is explicitly NOT self's biological/legal child, which means
+  // self's spouse is the one who actually is. Both edges should show: self's
+  // step-relationship, and the spouse's real parent-child connection.
+  it('draws an edge from self\'s spouse to a step-child (the spouse\'s actual child)', () => {
+    const members: FamilyMember[] = [
+      m({ id: 'me', generation: 0, is_self: true }),
+      m({ id: 'spouse', generation: 0, relation: 'spouse' }),
+      m({ id: 'kid', generation: 1, relation: 'step_child' }),
+    ];
+    const edges = inferEdges(members);
+    expect(edges).toContainEqual({ from: 'spouse', to: 'kid' });
+    expect(edges).toContainEqual({ from: 'me', to: 'kid' });
+  });
+
+  it('does not assume self\'s spouse shares self\'s own (non-step) child', () => {
+    const members: FamilyMember[] = [
+      m({ id: 'me', generation: 0, is_self: true }),
+      m({ id: 'spouse', generation: 0, relation: 'spouse' }),
+      m({ id: 'kid', generation: 1, relation: 'child' }),
+    ];
+    const edges = inferEdges(members);
+    expect(edges).toContainEqual({ from: 'me', to: 'kid' });
+    expect(edges).not.toContainEqual({ from: 'spouse', to: 'kid' });
+  });
+
+  it('does not draw a spouse edge to a step-child when self has no spouse in the tree', () => {
+    const members: FamilyMember[] = [
+      m({ id: 'me', generation: 0, is_self: true }),
+      m({ id: 'kid', generation: 1, relation: 'step_child' }),
+    ];
+    const edges = inferEdges(members);
+    expect(edges).toContainEqual({ from: 'me', to: 'kid' });
+    expect(edges.filter((e) => e.to === 'kid')).toHaveLength(1);
+  });
 });
 
 describe('FamilyTreeView — edit affordances', () => {
