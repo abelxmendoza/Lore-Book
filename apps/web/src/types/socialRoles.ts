@@ -51,6 +51,8 @@ export interface FamilyMember {
   has_card?: boolean;
   /** Explicit parent this node connects to (user-asserted). Empty = inferred. */
   parent_id?: string;
+  /** Id of this person's spouse/partner in the tree, when a spouse_of edge links them. */
+  paired_with_id?: string;
   /** Set when the node may not belong (stage name, public figure, unclear kin). */
   needs_review?: boolean;
   review_reason?: string;

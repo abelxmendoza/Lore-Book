@@ -111,9 +111,10 @@ router.patch('/member/:characterId/relationship', requireAuth, async (req: Authe
   const relation = typeof req.body?.relation === 'string' ? req.body.relation.trim() : '';
   const connectsToId = typeof req.body?.connectsToId === 'string' ? req.body.connectsToId.trim() || undefined : undefined;
   const side = ['maternal', 'paternal', 'both', 'other'].includes(req.body?.side) ? req.body.side : undefined;
+  const spouseId = typeof req.body?.spouseId === 'string' ? req.body.spouseId.trim() || undefined : undefined;
   if (!relation) return res.status(400).json({ success: false, error: 'relation is required' });
   try {
-    const ok = await familyTreeService.setMemberRelationship(userId, characterId, { relation, connectsToId, side });
+    const ok = await familyTreeService.setMemberRelationship(userId, characterId, { relation, connectsToId, side, spouseId });
     if (!ok) return res.status(404).json({ success: false, error: 'Could not set relationship' });
     res.json({ success: true });
   } catch (error) {

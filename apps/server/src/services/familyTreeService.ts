@@ -1085,7 +1085,15 @@ class FamilyTreeService {
   async setMemberRelationship(
     userId: string,
     characterId: string,
-    input: { relation: string; connectsToId?: string; side?: 'maternal' | 'paternal' | 'both' | 'other' },
+    input: {
+      relation: string;
+      connectsToId?: string;
+      side?: 'maternal' | 'paternal' | 'both' | 'other';
+      /** Person this member is married to / partnered with. Writes a spouse_of
+       *  edge so tree layout pairs them without depending on a formal marriage
+       *  ever having been mentioned in conversation. */
+      spouseId?: string;
+    },
   ): Promise<boolean> {
     if (isSyntheticNodeId(characterId)) return false;
     const relation = normalizeTreeRelation(input.relation ?? '');
@@ -1139,13 +1147,24 @@ class FamilyTreeService {
       await this.syncSiblingsUnderParent(userId, connectsToId);
     }
 
+    // A node can't be married to itself, a synthetic placeholder, or the
+    // protagonist's own card. Same-family-name gate isn't needed here since
+    // the picker is already scoped to real, non-self members client-side.
+    const spouseId =
+      input.spouseId && input.spouseId !== characterId && !isSyntheticNodeId(input.spouseId)
+        ? input.spouseId
+        : null;
+    if (spouseId) {
+      await this.upsertFamilyEdge(userId, characterId, spouseId, 'spouse_of');
+    }
+
     const { identityLedgerService } = await import('./identity/identityLedgerService');
     await identityLedgerService.recordMutation({
       userId,
       entityId: characterId,
       entityType: 'character',
       mutationType: 'RELATIONSHIP_CREATED',
-      newValue: { relation, side: input.side ?? null, connects_to_id: connectsToId },
+      newValue: { relation, side: input.side ?? null, connects_to_id: connectsToId, spouse_id: spouseId },
       reason: `Set family relationship to ${relation}`,
       source: 'USER',
       metadata: { operation_type: 'family_rearrange', user_asserted: true },

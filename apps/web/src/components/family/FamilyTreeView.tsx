@@ -460,7 +460,10 @@ const NodeWithActions = ({
           aria-label={`Edit ${member.name}`}
           data-testid={`node-menu-${member.id}`}
           onClick={() => setOpen((o) => !o)}
-          className="absolute -top-1 -left-1 flex h-5 w-5 items-center justify-center rounded-full border border-white/20 bg-black/70 text-white/70 opacity-0 transition group-hover/node:opacity-100 hover:text-white focus:opacity-100"
+          // opacity-40 baseline (not opacity-0) so this is tappable on touch
+          // devices, which never trigger the hover state that used to be the
+          // only way to reveal it.
+          className="absolute -top-1 -left-1 flex h-5 w-5 items-center justify-center rounded-full border border-white/20 bg-black/70 text-white/70 opacity-40 transition group-hover/node:opacity-100 hover:text-white hover:opacity-100 focus:opacity-100 active:opacity-100"
         >
           <MoreVertical className="h-3 w-3" />
         </button>
