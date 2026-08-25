@@ -35,7 +35,8 @@ export type AttributeType =
   | 'personality_trait'      // outgoing, introverted, aggressive, kind, etc.
   | 'health_condition'        // physical or mental health issues
   | 'relationship_status'    // single, dating, married, divorced, etc.
-  | 'living_situation';      // lives_with_family, alone, roommate, etc.
+  | 'living_situation'       // lives_with_family, alone, roommate, etc.
+  | 'age';                   // age in years, as stated in the text (e.g. "78")
 
 export type DetectedAttribute = {
   id?: string;
@@ -321,6 +322,7 @@ Detect attributes:
 - "health_condition": Physical or mental health issues (e.g., "depression", "anxiety", "diabetes", "chronic_pain")
 - "relationship_status": Relationship situation (e.g., "single", "dating", "married", "divorced", "separated")
 - "living_situation": Living arrangements (e.g., "lives_with_family", "alone", "roommate", "with_partner")
+- "age": Person's age in years, as a plain number (e.g., "78", "45") — from direct statements like "Abuela is 78", "my uncle just turned 45", "I'm 22". Do not infer an age from context (school grade, generation, etc.) — only extract when a number of years is explicitly stated.
 
 IMPORTANT:
 - Extract behavioral patterns from descriptive text (e.g., "always drinking" → lifestyle_pattern: "drinking_problem")

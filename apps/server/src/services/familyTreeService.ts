@@ -71,6 +71,17 @@ export interface FamilyMemberDTO {
    *  side alone is ambiguous when multiple same-side relatives share a
    *  generation, e.g. an uncle and a mother). */
   paired_with_id?: string;
+  /** User-dragged left-right position within this member's generation row
+   *  (see reorderMembers). Lower sorts first. Only present once the user has
+   *  manually reordered that row at least once — otherwise the automatic
+   *  sort (see sortFamilyMembersForDisplay) decides order. */
+  family_display_order?: number;
+  /** User explicitly removed this member's inferred/asserted parent connector
+   *  line (see disconnectParentConnector) — distinct from parent_id being
+   *  unset, which just means "let LoreBook infer." This means "don't infer
+   *  one either." Drives the frontend to suppress every connector-line rule
+   *  that would otherwise point at this member. */
+  disconnected_parent?: boolean;
 }
 
 export interface FamilyBranchDTO {
@@ -1105,7 +1116,15 @@ class FamilyTreeService {
   async setMemberRelationship(
     userId: string,
     characterId: string,
-    input: { relation: string; connectsToId?: string; side?: 'maternal' | 'paternal' | 'both' | 'other' },
+    input: {
+      relation: string;
+      connectsToId?: string;
+      side?: 'maternal' | 'paternal' | 'both' | 'other';
+      /** Person this member is married to / partnered with. Writes a spouse_of
+       *  edge so tree layout pairs them without depending on a formal marriage
+       *  ever having been mentioned in conversation. */
+      spouseId?: string;
+    },
   ): Promise<boolean> {
     if (isSyntheticNodeId(characterId)) return false;
     const relation = normalizeTreeRelation(input.relation ?? '');
@@ -1128,6 +1147,9 @@ class FamilyTreeService {
 
     const metadata = { ...((character.metadata as Record<string, unknown>) ?? {}) };
     delete metadata.family_excluded; // correcting the relation re-includes them
+    // Any explicit edit here supersedes a prior "no connector" state -- the
+    // user is actively setting this member's placement again.
+    delete metadata.parent_connector_removed;
     metadata.family_override = {
       relation,
       side: input.side ?? null,
@@ -1159,18 +1181,112 @@ class FamilyTreeService {
       await this.syncSiblingsUnderParent(userId, connectsToId);
     }
 
+    // A node can't be married to itself, a synthetic placeholder, or the
+    // protagonist's own card. The connect-drag / relationship-editor callers
+    // already scope their pickers to real, non-self members.
+    const spouseId =
+      input.spouseId && input.spouseId !== characterId && !isSyntheticNodeId(input.spouseId)
+        ? input.spouseId
+        : null;
+    if (spouseId) {
+      await this.upsertFamilyEdge(userId, characterId, spouseId, 'spouse_of');
+    }
+
     const { identityLedgerService } = await import('./identity/identityLedgerService');
     await identityLedgerService.recordMutation({
       userId,
       entityId: characterId,
       entityType: 'character',
       mutationType: 'RELATIONSHIP_CREATED',
-      newValue: { relation, side: input.side ?? null, connects_to_id: connectsToId },
+      newValue: { relation, side: input.side ?? null, connects_to_id: connectsToId, spouse_id: spouseId },
       reason: `Set family relationship to ${relation}`,
       source: 'USER',
       metadata: { operation_type: 'family_rearrange', user_asserted: true },
     });
     return true;
+  }
+
+  /**
+   * Remove a member's parent connector line -- both any explicit
+   * connects_to_id override AND future auto-inference. Distinct from just
+   * clearing connects_to_id (which falls back to "let LoreBook infer",
+   * likely redrawing the same line): this is an explicit "no, there's no
+   * connector here" that the frontend's inferEdges must respect. Does not
+   * touch relation/side/spouse -- only the structural connector line.
+   */
+  async disconnectParentConnector(userId: string, characterId: string): Promise<boolean> {
+    if (isSyntheticNodeId(characterId)) return false;
+    const { data: character } = await supabaseAdmin
+      .from('characters')
+      .select('id, metadata')
+      .eq('id', characterId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!character) return false;
+
+    const metadata = { ...((character.metadata as Record<string, unknown>) ?? {}) };
+    metadata.parent_connector_removed = true;
+    const existingOverride = (metadata.family_override as Record<string, unknown> | undefined) ?? undefined;
+    if (existingOverride) {
+      metadata.family_override = { ...existingOverride, connects_to_id: null };
+    }
+    const { error } = await supabaseAdmin
+      .from('characters')
+      .update({ metadata })
+      .eq('id', characterId)
+      .eq('user_id', userId);
+    if (error) {
+      logger.error({ error, userId, characterId }, 'Failed to disconnect family parent connector');
+      return false;
+    }
+
+    const { identityLedgerService } = await import('./identity/identityLedgerService');
+    await identityLedgerService.recordMutation({
+      userId,
+      entityId: characterId,
+      entityType: 'character',
+      mutationType: 'RELATIONSHIP_CREATED',
+      newValue: { parent_connector_removed: true },
+      reason: 'Disconnected family tree parent connector',
+      source: 'USER',
+      metadata: { operation_type: 'family_rearrange', user_asserted: true },
+    });
+    return true;
+  }
+
+  /**
+   * Persist a drag-to-reorder within one generation row. `orderedIds` is the
+   * full left-to-right order the user dropped that row into — every id in it
+   * gets a sequential family_display_order (see sortFamilyMembersForDisplay),
+   * overwriting whatever order that row had before. Ids that don't resolve to
+   * a real character owned by this user are silently skipped (a synthetic
+   * placeholder can't carry a stored order).
+   */
+  async reorderMembers(userId: string, orderedIds: string[]): Promise<boolean> {
+    const realIds = orderedIds.filter((id) => id && !isSyntheticNodeId(id));
+    if (realIds.length === 0) return false;
+
+    const { data: rows } = await supabaseAdmin
+      .from('characters')
+      .select('id, metadata')
+      .eq('user_id', userId)
+      .in('id', realIds);
+    const byId = new Map((rows ?? []).map((r) => [r.id, r]));
+
+    let wrote = false;
+    for (let i = 0; i < realIds.length; i++) {
+      const id = realIds[i];
+      const row = byId.get(id);
+      if (!row) continue;
+      const metadata = { ...((row.metadata as Record<string, unknown>) ?? {}), family_display_order: i };
+      const { error } = await supabaseAdmin.from('characters').update({ metadata }).eq('id', id).eq('user_id', userId);
+      if (error) {
+        logger.error({ error, userId, characterId: id }, 'Failed to save family tree row order');
+        continue;
+      }
+      wrote = true;
+    }
+    return wrote;
   }
 
   /** Add an existing character card to a family tree centered on `anchorId`. */
@@ -1694,6 +1810,7 @@ class FamilyTreeService {
           is_account_self: Boolean(accountSelfId && m.id === accountSelfId),
           first_name: row?.first_name ?? m.first_name,
           last_name: row?.last_name ?? m.last_name,
+          disconnected_parent: Boolean((row?.metadata as Record<string, unknown> | undefined)?.parent_connector_removed),
         };
         // Prefer the durable character card name when the tree node is still a
         // bare kinship word ("Mom" / "Dad") so the UI can show Mom (Elena Chen).
@@ -1809,6 +1926,18 @@ export function buildTreeFromEdges(
       addAdj(e.toId, e.fromId, e.type, 'backward', e.evidence);
     }
 
+    // Prefer edges with a real generational assertion (grandparent_of, uncle_of,
+    // ...) over generic/unrecognized bucket types (family, related_to, a raw
+    // co-mention type, ...), which silently fall back to a same-generation
+    // delta of {forward: 0, backward: 0} below. Without this, when the same
+    // two people have more than one edge between them, whichever one a DB
+    // query happens to return first wins the "first visit" BFS below -- so an
+    // untyped co-mention row can silently outrank a correctly-typed kinship
+    // edge and place someone (e.g. an uncle) at the wrong generation.
+    for (const list of adj.values()) {
+      list.sort((a, b) => (GEN_DELTA[a.type.toLowerCase()] ? 0 : 1) - (GEN_DELTA[b.type.toLowerCase()] ? 0 : 1));
+    }
+
     /** Resolve a node's sex from known metadata, else a best-effort name guess. */
     const resolveSex = (id: string): InferredSex | null =>
       sexHints.get(id) ?? sexFromFirstName(names.get(id) ?? '') ?? null;
@@ -1850,6 +1979,11 @@ export function buildTreeFromEdges(
       for (const { neighbor, type, direction, evidence } of adj.get(current) ?? []) {
         if (opts.restrictIds && !opts.restrictIds.has(neighbor)) continue;
         const deltas = GEN_DELTA[type.toLowerCase()] ?? { forward: 0, backward: 0 };
+        // direction is recorded on each adjacency entry at construction time
+        // (see addAdj above) rather than re-derived here — re-deriving it by
+        // matching *any* edge between the node pair (even type-aware) is
+        // strictly redundant once direction is already known unambiguously,
+        // and re-introduces the exact class of bug this was fixed for.
         const delta = direction === 'forward' ? deltas.forward : deltas.backward;
 
         const nextGen = currentGen + delta;

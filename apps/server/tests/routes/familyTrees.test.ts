@@ -9,6 +9,7 @@ const m = vi.hoisted(() => ({
   keepMember: vi.fn(),
   deleteMember: vi.fn(),
   setMemberRelationship: vi.fn(),
+  disconnectParentConnector: vi.fn(),
   addExistingFamilyMember: vi.fn(),
   ensureMemberCard: vi.fn(),
   reorderMembers: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock('../../src/services/familyTreeService', () => ({
     keepMember: (...a: unknown[]) => m.keepMember(...a),
     deleteMember: (...a: unknown[]) => m.deleteMember(...a),
     setMemberRelationship: (...a: unknown[]) => m.setMemberRelationship(...a),
+    disconnectParentConnector: (...a: unknown[]) => m.disconnectParentConnector(...a),
     addExistingFamilyMember: (...a: unknown[]) => m.addExistingFamilyMember(...a),
     ensureMemberCard: (...a: unknown[]) => m.ensureMemberCard(...a),
     reorderMembers: (...a: unknown[]) => m.reorderMembers(...a),
@@ -111,6 +113,21 @@ describe('family-tree member mutation routes', () => {
     it('400 when relation is missing', async () => {
       await request(app()).patch('/api/family-trees/member/char-1/relationship').send({}).expect(400);
       expect(m.setMemberRelationship).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /member/:id/disconnect-parent', () => {
+    it('200 + forwards user and id to the service', async () => {
+      m.disconnectParentConnector.mockResolvedValue(true);
+      await request(app())
+        .post('/api/family-trees/member/char-1/disconnect-parent')
+        .send({})
+        .expect(200);
+      expect(m.disconnectParentConnector).toHaveBeenCalledWith('user-1', 'char-1');
+    });
+    it('404 when the service refuses (e.g. synthetic placeholder id)', async () => {
+      m.disconnectParentConnector.mockResolvedValue(false);
+      await request(app()).post('/api/family-trees/member/__user__/disconnect-parent').send({}).expect(404);
     });
   });
 

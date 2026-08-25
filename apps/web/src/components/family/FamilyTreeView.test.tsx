@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { FamilyTreeView, inferEdges } from './FamilyTreeView';
+import { FamilyTreeView, inferEdges, generationLabel } from './FamilyTreeView';
 import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
 
 // Avatar pulls from the network/avatar service — stub it for an isolated render.
@@ -145,6 +145,84 @@ describe('inferEdges — explicit parent links', () => {
   });
 });
 
+describe('inferEdges — ancestors/descendants beyond great-grandparent/grandchild', () => {
+  const m = (over: Partial<FamilyMember> & { id: string; generation: number }): FamilyMember => ({
+    name: over.id,
+    relation: 'related',
+    relation_label: 'Relative',
+    ...over,
+  });
+
+  it('connects a great-great-grandparent down to the great-grandparent by side, even though nothing hand-codes generation -4', () => {
+    const members: FamilyMember[] = [
+      m({ id: 'me', generation: 0, is_self: true }),
+      m({ id: 'mom', generation: -1, relation: 'parent', side: 'maternal' }),
+      m({ id: 'grandma', generation: -2, relation: 'grandparent', side: 'maternal' }),
+      m({ id: 'great-grandma', generation: -3, relation: 'related', side: 'maternal' }),
+      m({ id: 'great-great-grandma', generation: -4, relation: 'related', side: 'maternal' }),
+    ];
+    const edges = inferEdges(members);
+    expect(edges).toContainEqual({ from: 'great-great-grandma', to: 'great-grandma' });
+    expect(edges).toContainEqual({ from: 'great-grandma', to: 'grandma' });
+  });
+
+  it('does not connect a distant ancestor to a mismatched side', () => {
+    const members: FamilyMember[] = [
+      m({ id: 'me', generation: 0, is_self: true }),
+      m({ id: 'great-grandma', generation: -3, relation: 'related', side: 'maternal' }),
+      m({ id: 'great-great-grandpa', generation: -4, relation: 'related', side: 'paternal' }),
+    ];
+    const edges = inferEdges(members);
+    expect(edges.filter((e) => e.from === 'great-great-grandpa')).toHaveLength(0);
+  });
+
+  it('connects a great-great-grandchild up to the great-grandchild by side', () => {
+    const members: FamilyMember[] = [
+      m({ id: 'me', generation: 0, is_self: true }),
+      m({ id: 'kid', generation: 1, relation: 'child', side: 'maternal' }),
+      m({ id: 'grandkid', generation: 2, relation: 'grandchild', side: 'maternal' }),
+      m({ id: 'great-grandkid', generation: 3, relation: 'related', side: 'maternal' }),
+      m({ id: 'great-great-grandkid', generation: 4, relation: 'related', side: 'maternal' }),
+    ];
+    const edges = inferEdges(members);
+    expect(edges).toContainEqual({ from: 'great-grandkid', to: 'great-great-grandkid' });
+    expect(edges).toContainEqual({ from: 'grandkid', to: 'great-grandkid' });
+  });
+
+  it('leaves the hand-tuned -3..+2 range untouched (no duplicate/competing edges)', () => {
+    const members: FamilyMember[] = [
+      m({ id: 'me', generation: 0, is_self: true }),
+      m({ id: 'mom', generation: -1, relation: 'parent', side: 'maternal' }),
+      m({ id: 'grandma', generation: -2, relation: 'grandparent', side: 'maternal' }),
+    ];
+    const edges = inferEdges(members);
+    expect(edges.filter((e) => e.from === 'grandma' && e.to === 'mom')).toHaveLength(1);
+  });
+});
+
+describe('generationLabel', () => {
+  it('uses the named labels for the common range', () => {
+    expect(generationLabel(0)).toBe('Your Generation');
+    expect(generationLabel(-1)).toBe('Parents / Aunts / Uncles');
+    expect(generationLabel(-2)).toBe('Grandparents');
+    expect(generationLabel(-3)).toBe('Great-Grandparents');
+    expect(generationLabel(1)).toBe('Children');
+    expect(generationLabel(2)).toBe('Grandchildren');
+  });
+
+  it('spells out up to 3 "Great-"s for distant ancestors/descendants', () => {
+    expect(generationLabel(-4)).toBe('Great-Great-Grandparents');
+    expect(generationLabel(-5)).toBe('Great-Great-Great-Grandparents');
+    expect(generationLabel(4)).toBe('Great-Great-Grandchildren');
+  });
+
+  it('switches to numeric N×-Great- notation beyond 3 greats', () => {
+    expect(generationLabel(-6)).toBe('4×-Great-Grandparents');
+    expect(generationLabel(-10)).toBe('8×-Great-Grandparents');
+    expect(generationLabel(7)).toBe('5×-Great-Grandchildren');
+  });
+});
+
 describe('FamilyTreeView — edit affordances', () => {
   it('shows a review flag on suspect nodes', () => {
     render(<FamilyTreeView tree={tree} />);
@@ -250,6 +328,117 @@ describe('FamilyTreeView — drag-to-reorder (placement editing)', () => {
     render(<FamilyTreeView tree={rowTree} onReorderRow={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: /reorder/i }));
     expect(screen.queryByLabelText(/move you /i)).toBeNull();
+    isMobileMock.mockReturnValue(false);
+  });
+});
+
+describe('inferEdges — disconnected_parent suppresses every connector rule', () => {
+  const m = (over: Partial<FamilyMember> & { id: string; generation: number }): FamilyMember => ({
+    name: over.id,
+    relation: 'related',
+    relation_label: 'Relative',
+    ...over,
+  });
+
+  it('drops the inferred connector for a member who explicitly disconnected', () => {
+    const members: FamilyMember[] = [
+      m({ id: 'me', generation: 0, is_self: true }),
+      m({ id: 'mom', generation: -1, relation: 'parent', side: 'maternal' }),
+      m({ id: 'grandma', generation: -2, relation: 'grandparent', side: 'maternal', disconnected_parent: true }),
+    ];
+    const edges = inferEdges(members);
+    expect(edges.filter((e) => e.to === 'grandma')).toHaveLength(0);
+  });
+
+  it('wins even over an explicit parent_id (disconnect is the terminal state)', () => {
+    const members: FamilyMember[] = [
+      m({ id: 'me', generation: 0, is_self: true }),
+      m({ id: 'aunt', generation: -1, relation: 'aunt', side: 'maternal' }),
+      m({ id: 'cousin', generation: 0, relation: 'cousin', parent_id: 'aunt', disconnected_parent: true }),
+    ];
+    const edges = inferEdges(members);
+    expect(edges.filter((e) => e.to === 'cousin')).toHaveLength(0);
+  });
+
+  it('does not affect anyone else in the tree', () => {
+    const members: FamilyMember[] = [
+      m({ id: 'me', generation: 0, is_self: true }),
+      m({ id: 'mom', generation: -1, relation: 'parent', side: 'maternal' }),
+      m({ id: 'grandma', generation: -2, relation: 'grandparent', side: 'maternal', disconnected_parent: true }),
+      m({ id: 'dad', generation: -1, relation: 'parent', side: 'paternal' }),
+    ];
+    const edges = inferEdges(members);
+    expect(edges).toContainEqual({ from: 'dad', to: 'me' });
+    expect(edges).toContainEqual({ from: 'mom', to: 'me' });
+  });
+});
+
+describe('FamilyTreeView — Connect mode', () => {
+  const rowTree: FamilyTree = {
+    self_id: 'me',
+    branches: [],
+    members: [
+      { id: 'me', name: 'You', relation: 'related', relation_label: 'You', generation: 0, is_self: true },
+      { id: 'aunt-1', name: 'Ana Ruiz', relation: 'aunt', relation_label: 'Aunt', generation: -1 },
+      { id: 'uncle-1', name: 'Ben Ruiz', relation: 'uncle', relation_label: 'Uncle', generation: -1 },
+    ],
+  };
+
+  it('does not show the Connect toggle without onConnectMembers', () => {
+    render(<FamilyTreeView tree={rowTree} />);
+    expect(screen.queryByRole('button', { name: /^connect$/i })).toBeNull();
+  });
+
+  it('shows the Connect toggle when onConnectMembers is provided', () => {
+    render(<FamilyTreeView tree={rowTree} onConnectMembers={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /^connect$/i })).toBeInTheDocument();
+  });
+
+  it('tap-tap on mobile opens the quick-pick and confirming "parent" calls onConnectMembers', async () => {
+    isMobileMock.mockReturnValue(true);
+    const onConnectMembers = vi.fn().mockResolvedValue(undefined);
+    render(<FamilyTreeView tree={rowTree} onConnectMembers={onConnectMembers} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^connect$/i }));
+    fireEvent.click(screen.getAllByText('Ana Ruiz')[0]);
+    fireEvent.click(screen.getAllByText('Ben Ruiz')[0]);
+
+    expect(screen.getByText(/is Ben Ruiz's parent/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/is Ben Ruiz's parent/i));
+    await Promise.resolve();
+
+    expect(onConnectMembers).toHaveBeenCalledWith(expect.objectContaining({ id: 'aunt-1' }), expect.objectContaining({ id: 'uncle-1' }), 'parent');
+    isMobileMock.mockReturnValue(false);
+  });
+
+  it('offers the "married to" option only when both people share a generation', async () => {
+    isMobileMock.mockReturnValue(true);
+    const onConnectMembers = vi.fn().mockResolvedValue(undefined);
+    render(<FamilyTreeView tree={rowTree} onConnectMembers={onConnectMembers} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^connect$/i }));
+    fireEvent.click(screen.getAllByText('Ana Ruiz')[0]);
+    fireEvent.click(screen.getAllByText('Ben Ruiz')[0]);
+    expect(screen.getByText(/married to.*partnered with/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText(/married to.*partnered with/i));
+    await Promise.resolve();
+    expect(onConnectMembers).toHaveBeenCalledWith(expect.objectContaining({ id: 'aunt-1' }), expect.objectContaining({ id: 'uncle-1' }), 'spouse');
+    isMobileMock.mockReturnValue(false);
+  });
+
+  it('Cancel dismisses the quick-pick without calling onConnectMembers', () => {
+    isMobileMock.mockReturnValue(true);
+    const onConnectMembers = vi.fn();
+    render(<FamilyTreeView tree={rowTree} onConnectMembers={onConnectMembers} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^connect$/i }));
+    fireEvent.click(screen.getAllByText('Ana Ruiz')[0]);
+    fireEvent.click(screen.getAllByText('Ben Ruiz')[0]);
+    fireEvent.click(screen.getByText('Cancel'));
+
+    expect(onConnectMembers).not.toHaveBeenCalled();
+    expect(screen.queryByText('Cancel')).toBeNull();
     isMobileMock.mockReturnValue(false);
   });
 });
