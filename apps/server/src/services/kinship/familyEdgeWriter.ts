@@ -171,37 +171,58 @@ async function upsertFamilyEdgeOnce(
     logger.warn({ error, userId, sourceId, targetId, relationshipType: type }, 'Failed to upsert family edge');
     return false;
   }
-
-  // Typed kinship supersedes vague "family" / "related_to" between the same pair
-  // so Key people / People lists don't show the same person twice.
-  if (type !== 'family' && type !== 'related_to' && type !== 'related') {
-    await retireGenericFamilyEdgesBetween(userId, sourceId, targetId);
-  }
   return true;
 }
 
-/** Soft-retire generic family edges once a typed kinship edge exists. */
-async function retireGenericFamilyEdgesBetween(
+const GENERIC_FAMILY_TYPES = new Set(['family', 'related_to', 'related']);
+
+/**
+ * Once a specific typed kinship edge is asserted between two people, retire
+ * EVERY other active family-category edge between them — generic buckets
+ * ("family" / "related_to") and any earlier, now-corrected specific type
+ * alike (e.g. a stale "aunt_of" left behind after the user corrects someone
+ * to "grandparent_of"). Without this, a correction just adds a competing
+ * edge next to the wrong one instead of replacing it: the tree UI's
+ * family_override display masks the stale edge on the main tree view, but
+ * every other reader of character_relationships (sibling sync, cousin sync,
+ * kids-together, chat-side kinship inference) still sees the old, wrong
+ * edge and the correction never really "sticks."
+ */
+async function retireConflictingFamilyEdgesBetween(
   userId: string,
   a: string,
   b: string,
+  keepTypes: Set<string>,
 ): Promise<void> {
-  const { error } = await supabaseAdmin
+  const { data: rows, error: selectError } = await supabaseAdmin
     .from('character_relationships')
-    .update({
-      status: 'superseded',
-      updated_at: new Date().toISOString(),
-    })
+    .select('id, relationship_type')
     .eq('user_id', userId)
-    .in('relationship_type', ['family', 'related_to', 'related'])
-    .neq('status', 'superseded')
+    .eq('relationship_category', 'family')
+    .eq('status', 'active')
     .or(
       `and(source_character_id.eq.${a},target_character_id.eq.${b}),and(source_character_id.eq.${b},target_character_id.eq.${a})`,
     );
+  if (selectError) {
+    const code = (selectError as { code?: string }).code;
+    if (code === 'PGRST205' || code === '42P01') return;
+    logger.debug({ error: selectError, userId, a, b }, 'Could not read family edges to retire');
+    return;
+  }
+
+  const staleIds = (rows ?? [])
+    .filter((r) => !keepTypes.has(r.relationship_type as string))
+    .map((r) => r.id as string);
+  if (staleIds.length === 0) return;
+
+  const { error } = await supabaseAdmin
+    .from('character_relationships')
+    .update({ status: 'superseded', updated_at: new Date().toISOString() })
+    .in('id', staleIds);
   if (error) {
     const code = (error as { code?: string }).code;
     if (code === 'PGRST205' || code === '42P01') return;
-    logger.debug({ error, userId, a, b }, 'Could not retire generic family edges');
+    logger.debug({ error, userId, a, b, staleIds }, 'Could not retire conflicting family edges');
   }
 }
 
@@ -227,6 +248,13 @@ export async function upsertBidirectionalFamilyEdge(
       ...options,
       metadata: { ...(options.metadata ?? {}), inverse_of: type },
     });
+  }
+
+  // Only a specific (non-generic) assertion supersedes prior edges — a vague
+  // "related_to" write must never clobber an already-confirmed specific kinship.
+  if (ok && !GENERIC_FAMILY_TYPES.has(type)) {
+    const keepTypes = new Set([type, ...(inverse ? [inverse] : [])]);
+    await retireConflictingFamilyEdgesBetween(userId, sourceId, targetId, keepTypes);
   }
   return ok;
 }

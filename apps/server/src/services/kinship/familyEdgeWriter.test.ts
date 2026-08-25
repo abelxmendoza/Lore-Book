@@ -11,12 +11,31 @@ import {
   parseFocusedKinshipAssertion,
 } from './kinshipGlossary';
 
+const fromMock = vi.fn();
+
 vi.mock('../supabaseClient', () => ({
-  supabaseAdmin: { from: vi.fn() },
+  supabaseAdmin: { from: (...args: unknown[]) => fromMock(...args) },
 }));
 vi.mock('../../logger', () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
+
+type Row = Record<string, unknown>;
+
+/** Chainable stub matching the subset of the Supabase query builder this
+ *  service uses (select/eq/or/in/update/upsert, all resolving via `then`). */
+function chain(data: Row[] | Row | null, error: unknown = null, spies: Record<string, (...a: unknown[]) => unknown> = {}) {
+  const builder: Record<string, unknown> = {};
+  for (const m of ['select', 'eq', 'or', 'in', 'update', 'upsert']) {
+    builder[m] = (...args: unknown[]) => {
+      spies[m]?.(...args);
+      return builder;
+    };
+  }
+  builder.then = (resolve: (v: { data: unknown; error: unknown }) => unknown, reject: (e: unknown) => unknown) =>
+    Promise.resolve({ data, error }).then(resolve, reject);
+  return builder;
+}
 
 describe('familyEdgeWriter — type normalization', () => {
   it('maps surface kin labels to typed edges', () => {
@@ -45,6 +64,57 @@ describe('familyEdgeWriter — type normalization', () => {
     expect(normalizeTreeRelation('grandson')).toBe('grandson');
     expect(normalizeTreeRelation('cousin')).toBe('cousin');
     expect(normalizeTreeRelation('not_a_relation')).toBeNull();
+  });
+});
+
+describe('upsertBidirectionalFamilyEdge — stale edge retirement', () => {
+  beforeEach(() => {
+    fromMock.mockReset();
+  });
+
+  it('retires a stale conflicting specific-type edge when a correction is asserted', async () => {
+    const inSpy = vi.fn();
+    fromMock
+      .mockImplementationOnce(() => chain(null, null)) // upsert grandparent_of (abuela -> jerry)
+      .mockImplementationOnce(() => chain(null, null)) // upsert grandchild_of (jerry -> abuela)
+      .mockImplementationOnce(() =>
+        chain([
+          { id: 'stale-aunt-edge', relationship_type: 'aunt_of' },
+          { id: 'current-edge', relationship_type: 'grandparent_of' },
+        ]),
+      ) // select active family edges between the pair
+      .mockImplementationOnce(() => chain(null, null, { in: inSpy })); // update .in(staleIds)
+
+    const { upsertBidirectionalFamilyEdge } = await import('./familyEdgeWriter');
+    const ok = await upsertBidirectionalFamilyEdge('user-1', 'abuela', 'jerry', 'grandparent_of');
+
+    expect(ok).toBe(true);
+    expect(inSpy).toHaveBeenCalledWith('id', ['stale-aunt-edge']);
+  });
+
+  it('does not touch anything when no conflicting edge exists', async () => {
+    const updateSpy = vi.fn();
+    fromMock
+      .mockImplementationOnce(() => chain(null, null))
+      .mockImplementationOnce(() => chain(null, null))
+      .mockImplementationOnce(() => chain([{ id: 'current-edge', relationship_type: 'grandparent_of' }]))
+      .mockImplementationOnce(() => chain(null, null, { update: updateSpy }));
+
+    const { upsertBidirectionalFamilyEdge } = await import('./familyEdgeWriter');
+    await upsertBidirectionalFamilyEdge('user-1', 'abuela', 'jerry', 'grandparent_of');
+
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it('a generic "related_to" assertion never retires an existing specific edge', async () => {
+    // "related_to" has no known inverse, so only its own direction is upserted —
+    // and since it's generic, no select/update retirement pass follows.
+    fromMock.mockImplementationOnce(() => chain(null, null));
+
+    const { upsertBidirectionalFamilyEdge } = await import('./familyEdgeWriter');
+    await upsertBidirectionalFamilyEdge('user-1', 'abel', 'lourdes', 'related_to');
+
+    expect(fromMock).toHaveBeenCalledTimes(1);
   });
 });
 
