@@ -129,6 +129,18 @@ describe('Romantic Relationships Mock Data', () => {
       });
     });
 
+    it('should filter ex relationships', () => {
+      const exes = getMockRomanticRelationshipsByFilter('exes');
+      expect(exes.length).toBeGreaterThan(0);
+      exes.forEach((rel) => {
+        expect(
+          rel.relationship_type.startsWith('ex_') ||
+            rel.relationship_type === 'divorced' ||
+            (rel.is_current === false && rel.end_date)
+        ).toBeTruthy();
+      });
+    });
+
     it('should return all relationships for "all" filter', () => {
       const all = getMockRomanticRelationshipsByFilter('all');
       const total = getMockRomanticRelationships();
