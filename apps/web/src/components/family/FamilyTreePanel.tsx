@@ -60,6 +60,8 @@ interface FamilyTreePanelProps {
   onDelete?: (member: FamilyMember) => void;
   onKeep?: (member: FamilyMember) => void;
   onReorderRow?: (orderedIds: string[]) => Promise<void> | void;
+  onConnectMembers?: (from: FamilyMember, to: FamilyMember, kind: 'parent' | 'spouse') => Promise<void> | void;
+  onDisconnectParent?: (member: FamilyMember) => Promise<void> | void;
 }
 
 export const FamilyTreePanel = ({
@@ -76,6 +78,8 @@ export const FamilyTreePanel = ({
   onDelete,
   onKeep,
   onReorderRow,
+  onConnectMembers,
+  onDisconnectParent,
 }: FamilyTreePanelProps) => {
   const shouldUseMock = useShouldUseMockData();
   const [tree, setTree] = useState<FamilyTree | null>(null);
@@ -335,6 +339,8 @@ export const FamilyTreePanel = ({
         onDelete={onDelete}
         onKeep={onKeep}
         onReorderRow={onReorderRow}
+        onConnectMembers={onConnectMembers}
+        onDisconnectParent={onDisconnectParent}
       />
     </div>
   );

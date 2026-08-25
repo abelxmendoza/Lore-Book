@@ -111,14 +111,31 @@ router.patch('/member/:characterId/relationship', requireAuth, async (req: Authe
   const relation = typeof req.body?.relation === 'string' ? req.body.relation.trim() : '';
   const connectsToId = typeof req.body?.connectsToId === 'string' ? req.body.connectsToId.trim() || undefined : undefined;
   const side = ['maternal', 'paternal', 'both', 'other'].includes(req.body?.side) ? req.body.side : undefined;
+  const spouseId = typeof req.body?.spouseId === 'string' ? req.body.spouseId.trim() || undefined : undefined;
   if (!relation) return res.status(400).json({ success: false, error: 'relation is required' });
   try {
-    const ok = await familyTreeService.setMemberRelationship(userId, characterId, { relation, connectsToId, side });
+    const ok = await familyTreeService.setMemberRelationship(userId, characterId, { relation, connectsToId, side, spouseId });
     if (!ok) return res.status(404).json({ success: false, error: 'Could not set relationship' });
     res.json({ success: true });
   } catch (error) {
     logger.error({ error, userId, characterId }, 'Failed to set family relationship');
     res.status(500).json({ success: false, error: 'Failed to update relationship' });
+  }
+});
+
+// POST /api/family-trees/member/:characterId/disconnect-parent — remove their
+// connector line (click-a-line-to-disconnect in the tree UI). Does not touch
+// relation/side -- only the structural parent connector.
+router.post('/member/:characterId/disconnect-parent', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const characterId = String(req.params.characterId);
+  try {
+    const ok = await familyTreeService.disconnectParentConnector(userId, characterId);
+    if (!ok) return res.status(404).json({ success: false, error: 'Could not disconnect' });
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ error, userId, characterId }, 'Failed to disconnect family parent connector');
+    res.status(500).json({ success: false, error: 'Failed to disconnect' });
   }
 });
 

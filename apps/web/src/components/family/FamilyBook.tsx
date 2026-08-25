@@ -183,6 +183,33 @@ export function FamilyBook() {
       `Couldn't update ${member.name}`,
     ), [runEdit]);
 
+  const connectMembers = useCallback(
+    (from: FamilyMember, to: FamilyMember, kind: 'parent' | 'spouse') =>
+      runEdit(
+        () =>
+          fetchJson(`/api/family-trees/member/${to.id}/relationship`, {
+            method: 'PATCH',
+            body: JSON.stringify(
+              kind === 'parent'
+                ? { relation: to.relation, connectsToId: from.id }
+                : { relation: to.relation, spouseId: from.id },
+            ),
+          }),
+        kind === 'parent'
+          ? `Connected ${from.name} as ${to.name}'s parent`
+          : `Linked ${from.name} and ${to.name} as partners`,
+        `Couldn't connect ${from.name} and ${to.name}`,
+      ),
+    [runEdit],
+  );
+
+  const disconnectParent = useCallback((member: FamilyMember) =>
+    runEdit(
+      () => fetchJson(`/api/family-trees/member/${member.id}/disconnect-parent`, { method: 'POST', body: JSON.stringify({}) }),
+      `Disconnected ${member.name}`,
+      `Couldn't disconnect ${member.name}`,
+    ), [runEdit]);
+
   const confirmFamilyMatch = useCallback((match: PossibleFamilyMatch) =>
     runEdit(
       () => fetchJson(`/api/relationships/character-links/${match.id}`, {
@@ -293,6 +320,34 @@ export function FamilyBook() {
       setDemoTree(updatedTree);
       if (summary) setSummary({ ...summary, tree: updatedTree });
     },
+    onConnectMembers: (from: FamilyMember, to: FamilyMember, kind: 'parent' | 'spouse') => {
+      if (!demoTree) return;
+      const updatedMembers = demoTree.members.map((mem) => {
+        if (mem.id !== to.id) return mem;
+        if (kind === 'parent') {
+          return { ...mem, parent_id: from.id, disconnected_parent: undefined };
+        }
+        return { ...mem, paired_with_id: from.id };
+      });
+      const updatedTree = { ...demoTree, members: updatedMembers };
+      setDemoTree(updatedTree);
+      if (summary) setSummary({ ...summary, tree: updatedTree });
+      success(
+        kind === 'parent'
+          ? `Connected ${from.name} as ${to.name}'s parent (demo)`
+          : `Linked ${from.name} and ${to.name} as partners (demo)`,
+      );
+    },
+    onDisconnectParent: (m: FamilyMember) => {
+      if (!demoTree) return;
+      const updatedMembers = demoTree.members.map((mem) =>
+        mem.id === m.id ? { ...mem, parent_id: undefined, disconnected_parent: true } : mem,
+      );
+      const updatedTree = { ...demoTree, members: updatedMembers };
+      setDemoTree(updatedTree);
+      if (summary) setSummary({ ...summary, tree: updatedTree });
+      success(`Disconnected ${m.name} (demo)`);
+    },
   } : {};
 
   const editHandlers = shouldUseMock
@@ -304,6 +359,8 @@ export function FamilyBook() {
         onDelete: (m: FamilyMember) => void deleteMember(m),
         onReorderRow: reorderRow,
         onKeep: (m: FamilyMember) => void keepMember(m),
+        onConnectMembers: connectMembers,
+        onDisconnectParent: (m: FamilyMember) => void disconnectParent(m),
       };
 
   const tabs: Array<{ key: Tab; label: string; icon: typeof TreePine }> = [

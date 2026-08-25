@@ -123,6 +123,41 @@ export function useFamilyTreeEditing(opts: { enabled: boolean; onChanged?: () =>
     [runEdit],
   );
 
+  /** Persist a drag-drop or tap-tap connect gesture. "parent" writes the
+   *  target's existing relation unchanged plus connectsToId = the dragged-
+   *  from person, fixing the structural line without touching their
+   *  relation-to-you. "spouse" links them as partners via spouseId, same
+   *  write path the relationship editor's married-to picker uses. */
+  const connectMembers = useCallback(
+    async (from: FamilyMember, to: FamilyMember, kind: 'parent' | 'spouse'): Promise<void> => {
+      await runEdit(
+        () =>
+          kind === 'parent'
+            ? fetchJson(`/api/family-trees/member/${to.id}/relationship`, {
+                method: 'PATCH',
+                body: JSON.stringify({ relation: to.relation, connectsToId: from.id }),
+              })
+            : fetchJson(`/api/family-trees/member/${to.id}/relationship`, {
+                method: 'PATCH',
+                body: JSON.stringify({ relation: to.relation, spouseId: from.id }),
+              }),
+        kind === 'parent' ? `Connected ${from.name} as ${to.name}'s parent` : `Linked ${from.name} and ${to.name} as partners`,
+        `Couldn't connect ${from.name} and ${to.name}`,
+      );
+    },
+    [runEdit],
+  );
+
+  const disconnectParent = useCallback(
+    (member: FamilyMember) =>
+      runEdit(
+        () => fetchJson(`/api/family-trees/member/${member.id}/disconnect-parent`, { method: 'POST', body: JSON.stringify({}) }),
+        `Disconnected ${member.name}`,
+        `Couldn't disconnect ${member.name}`,
+      ),
+    [runEdit],
+  );
+
   /** Persist a drag-to-reorder within one generation row. Silent on success —
    *  the row visibly settling into place is enough feedback; a toast per row
    *  saved would be noisy when the user rearranged more than one row. */
@@ -150,6 +185,8 @@ export function useFamilyTreeEditing(opts: { enabled: boolean; onChanged?: () =>
         onDelete: (m: FamilyMember) => void deleteMember(m),
         onKeep: (m: FamilyMember) => void keepMember(m),
         onReorderRow: reorderRow,
+        onConnectMembers: connectMembers,
+        onDisconnectParent: (m: FamilyMember) => void disconnectParent(m),
       }
     : {};
 

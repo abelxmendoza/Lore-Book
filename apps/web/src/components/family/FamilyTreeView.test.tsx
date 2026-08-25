@@ -253,3 +253,114 @@ describe('FamilyTreeView — drag-to-reorder (placement editing)', () => {
     isMobileMock.mockReturnValue(false);
   });
 });
+
+describe('inferEdges — disconnected_parent suppresses every connector rule', () => {
+  const m = (over: Partial<FamilyMember> & { id: string; generation: number }): FamilyMember => ({
+    name: over.id,
+    relation: 'related',
+    relation_label: 'Relative',
+    ...over,
+  });
+
+  it('drops the inferred connector for a member who explicitly disconnected', () => {
+    const members: FamilyMember[] = [
+      m({ id: 'me', generation: 0, is_self: true }),
+      m({ id: 'mom', generation: -1, relation: 'parent', side: 'maternal' }),
+      m({ id: 'grandma', generation: -2, relation: 'grandparent', side: 'maternal', disconnected_parent: true }),
+    ];
+    const edges = inferEdges(members);
+    expect(edges.filter((e) => e.to === 'grandma')).toHaveLength(0);
+  });
+
+  it('wins even over an explicit parent_id (disconnect is the terminal state)', () => {
+    const members: FamilyMember[] = [
+      m({ id: 'me', generation: 0, is_self: true }),
+      m({ id: 'aunt', generation: -1, relation: 'aunt', side: 'maternal' }),
+      m({ id: 'cousin', generation: 0, relation: 'cousin', parent_id: 'aunt', disconnected_parent: true }),
+    ];
+    const edges = inferEdges(members);
+    expect(edges.filter((e) => e.to === 'cousin')).toHaveLength(0);
+  });
+
+  it('does not affect anyone else in the tree', () => {
+    const members: FamilyMember[] = [
+      m({ id: 'me', generation: 0, is_self: true }),
+      m({ id: 'mom', generation: -1, relation: 'parent', side: 'maternal' }),
+      m({ id: 'grandma', generation: -2, relation: 'grandparent', side: 'maternal', disconnected_parent: true }),
+      m({ id: 'dad', generation: -1, relation: 'parent', side: 'paternal' }),
+    ];
+    const edges = inferEdges(members);
+    expect(edges).toContainEqual({ from: 'dad', to: 'me' });
+    expect(edges).toContainEqual({ from: 'mom', to: 'me' });
+  });
+});
+
+describe('FamilyTreeView — Connect mode', () => {
+  const rowTree: FamilyTree = {
+    self_id: 'me',
+    branches: [],
+    members: [
+      { id: 'me', name: 'You', relation: 'related', relation_label: 'You', generation: 0, is_self: true },
+      { id: 'aunt-1', name: 'Ana Ruiz', relation: 'aunt', relation_label: 'Aunt', generation: -1 },
+      { id: 'uncle-1', name: 'Ben Ruiz', relation: 'uncle', relation_label: 'Uncle', generation: -1 },
+    ],
+  };
+
+  it('does not show the Connect toggle without onConnectMembers', () => {
+    render(<FamilyTreeView tree={rowTree} />);
+    expect(screen.queryByRole('button', { name: /^connect$/i })).toBeNull();
+  });
+
+  it('shows the Connect toggle when onConnectMembers is provided', () => {
+    render(<FamilyTreeView tree={rowTree} onConnectMembers={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /^connect$/i })).toBeInTheDocument();
+  });
+
+  it('tap-tap on mobile opens the quick-pick and confirming "parent" calls onConnectMembers', async () => {
+    isMobileMock.mockReturnValue(true);
+    const onConnectMembers = vi.fn().mockResolvedValue(undefined);
+    render(<FamilyTreeView tree={rowTree} onConnectMembers={onConnectMembers} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^connect$/i }));
+    fireEvent.click(screen.getAllByText('Ana Ruiz')[0]);
+    fireEvent.click(screen.getAllByText('Ben Ruiz')[0]);
+
+    expect(screen.getByText(/is Ben Ruiz's parent/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/is Ben Ruiz's parent/i));
+    await Promise.resolve();
+
+    expect(onConnectMembers).toHaveBeenCalledWith(expect.objectContaining({ id: 'aunt-1' }), expect.objectContaining({ id: 'uncle-1' }), 'parent');
+    isMobileMock.mockReturnValue(false);
+  });
+
+  it('offers the "married to" option only when both people share a generation', async () => {
+    isMobileMock.mockReturnValue(true);
+    const onConnectMembers = vi.fn().mockResolvedValue(undefined);
+    render(<FamilyTreeView tree={rowTree} onConnectMembers={onConnectMembers} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^connect$/i }));
+    fireEvent.click(screen.getAllByText('Ana Ruiz')[0]);
+    fireEvent.click(screen.getAllByText('Ben Ruiz')[0]);
+    expect(screen.getByText(/married to.*partnered with/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText(/married to.*partnered with/i));
+    await Promise.resolve();
+    expect(onConnectMembers).toHaveBeenCalledWith(expect.objectContaining({ id: 'aunt-1' }), expect.objectContaining({ id: 'uncle-1' }), 'spouse');
+    isMobileMock.mockReturnValue(false);
+  });
+
+  it('Cancel dismisses the quick-pick without calling onConnectMembers', () => {
+    isMobileMock.mockReturnValue(true);
+    const onConnectMembers = vi.fn();
+    render(<FamilyTreeView tree={rowTree} onConnectMembers={onConnectMembers} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^connect$/i }));
+    fireEvent.click(screen.getAllByText('Ana Ruiz')[0]);
+    fireEvent.click(screen.getAllByText('Ben Ruiz')[0]);
+    fireEvent.click(screen.getByText('Cancel'));
+
+    expect(onConnectMembers).not.toHaveBeenCalled();
+    expect(screen.queryByText('Cancel')).toBeNull();
+    isMobileMock.mockReturnValue(false);
+  });
+});
