@@ -1774,6 +1774,18 @@ class FamilyTreeService {
       addAdj(e.toId, e.fromId, e.type, e.evidence);
     }
 
+    // Prefer edges with a real generational assertion (grandparent_of, uncle_of,
+    // ...) over generic/unrecognized bucket types (family, related_to, a raw
+    // co-mention type, ...), which silently fall back to a same-generation
+    // delta of {forward: 0, backward: 0} below. Without this, when the same
+    // two people have more than one edge between them, whichever one a DB
+    // query happens to return first wins the "first visit" BFS below -- so an
+    // untyped co-mention row can silently outrank a correctly-typed kinship
+    // edge and place someone (e.g. an uncle) at the wrong generation.
+    for (const list of adj.values()) {
+      list.sort((a, b) => (GEN_DELTA[a.type.toLowerCase()] ? 0 : 1) - (GEN_DELTA[b.type.toLowerCase()] ? 0 : 1));
+    }
+
     /** Resolve a node's sex from known metadata, else a best-effort name guess. */
     const resolveSex = (id: string): InferredSex | null =>
       sexHints.get(id) ?? sexFromFirstName(names.get(id) ?? '') ?? null;
