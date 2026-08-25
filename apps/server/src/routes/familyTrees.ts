@@ -122,6 +122,25 @@ router.patch('/member/:characterId/relationship', requireAuth, async (req: Authe
   }
 });
 
+// PATCH /api/family-trees/reorder — drag-to-reorder within one generation row
+router.patch('/reorder', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const orderedIds = Array.isArray(req.body?.orderedIds)
+    ? req.body.orderedIds.filter((id: unknown): id is string => typeof id === 'string' && id.trim().length > 0)
+    : [];
+  if (orderedIds.length === 0) {
+    return res.status(400).json({ success: false, error: 'orderedIds is required' });
+  }
+  try {
+    const ok = await familyTreeService.reorderMembers(userId, orderedIds);
+    if (!ok) return res.status(404).json({ success: false, error: 'Could not save row order' });
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to save family tree row order');
+    res.status(500).json({ success: false, error: 'Failed to save row order' });
+  }
+});
+
 // POST /api/family-trees/:anchorId/members — add an existing character card to this family tree
 router.post('/:anchorId/members', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;

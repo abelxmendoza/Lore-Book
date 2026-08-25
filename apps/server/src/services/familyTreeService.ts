@@ -71,6 +71,11 @@ export interface FamilyMemberDTO {
    *  side alone is ambiguous when multiple same-side relatives share a
    *  generation, e.g. an uncle and a mother). */
   paired_with_id?: string;
+  /** User-dragged left-right position within this member's generation row
+   *  (see reorderMembers). Lower sorts first. Only present once the user has
+   *  manually reordered that row at least once — otherwise the automatic
+   *  sort (see sortFamilyMembersForDisplay) decides order. */
+  family_display_order?: number;
 }
 
 export interface FamilyBranchDTO {
@@ -1148,6 +1153,41 @@ class FamilyTreeService {
     return true;
   }
 
+  /**
+   * Persist a drag-to-reorder within one generation row. `orderedIds` is the
+   * full left-to-right order the user dropped that row into — every id in it
+   * gets a sequential family_display_order (see sortFamilyMembersForDisplay),
+   * overwriting whatever order that row had before. Ids that don't resolve to
+   * a real character owned by this user are silently skipped (a synthetic
+   * placeholder can't carry a stored order).
+   */
+  async reorderMembers(userId: string, orderedIds: string[]): Promise<boolean> {
+    const realIds = orderedIds.filter((id) => id && !isSyntheticNodeId(id));
+    if (realIds.length === 0) return false;
+
+    const { data: rows } = await supabaseAdmin
+      .from('characters')
+      .select('id, metadata')
+      .eq('user_id', userId)
+      .in('id', realIds);
+    const byId = new Map((rows ?? []).map((r) => [r.id, r]));
+
+    let wrote = false;
+    for (let i = 0; i < realIds.length; i++) {
+      const id = realIds[i];
+      const row = byId.get(id);
+      if (!row) continue;
+      const metadata = { ...((row.metadata as Record<string, unknown>) ?? {}), family_display_order: i };
+      const { error } = await supabaseAdmin.from('characters').update({ metadata }).eq('id', id).eq('user_id', userId);
+      if (error) {
+        logger.error({ error, userId, characterId: id }, 'Failed to save family tree row order');
+        continue;
+      }
+      wrote = true;
+    }
+    return wrote;
+  }
+
   /** Add an existing character card to a family tree centered on `anchorId`. */
   async addExistingFamilyMember(
     userId: string,
@@ -1754,7 +1794,17 @@ class FamilyTreeService {
       return m;
     });
 
-    return { ...tree, members: aligned };
+    // User-dragged row order (see reorderMembers) — applied last so it
+    // survives every override/review pass above, then re-sort: the tree was
+    // already sorted once upstream (before this field existed on the DTO),
+    // so this is the authoritative sort that actually respects it.
+    const withDisplayOrder = aligned.map((m) => {
+      const order = (meta.get(m.id)?.metadata as Record<string, unknown> | undefined)?.family_display_order;
+      return typeof order === 'number' ? { ...m, family_display_order: order } : m;
+    });
+    sortFamilyMembersForDisplay(withDisplayOrder);
+
+    return { ...tree, members: withDisplayOrder };
   }
 
   private buildTreeFromEdges(
@@ -2000,10 +2050,32 @@ function isLeadPriorityMember(m: FamilyMemberDTO, members: FamilyMemberDTO[]): b
  * each other too — see displayPairKey), then alphabetical. Without the
  * pairing step, a spouse pair only ends up adjacent by alphabetical
  * coincidence even when their side/generation both match.
+ *
+ * A generation row the user has manually dragged (family_display_order set
+ * on at least one member — see reorderMembers) skips all of that and sorts
+ * by the saved order instead, full stop: the whole point is letting the
+ * user's own placement win over the algorithm. A member added to that row
+ * after the last manual save (no order recorded yet) falls after everyone
+ * with an explicit position, ordered among themselves by the normal rules.
  */
 export function sortFamilyMembersForDisplay(members: FamilyMemberDTO[]): FamilyMemberDTO[] {
+  const manuallyOrderedGenerations = new Set<number>();
+  for (const m of members) {
+    if (typeof m.family_display_order === 'number') manuallyOrderedGenerations.add(m.generation);
+  }
+
   members.sort((a, b) => {
     if (a.generation !== b.generation) return a.generation - b.generation;
+
+    if (manuallyOrderedGenerations.has(a.generation)) {
+      const aHas = typeof a.family_display_order === 'number';
+      const bHas = typeof b.family_display_order === 'number';
+      if (aHas && bHas) return a.family_display_order! - b.family_display_order!;
+      if (aHas !== bHas) return aHas ? -1 : 1;
+      // Both unrecorded within a manually-ordered row — fall through to the
+      // normal rules below so new arrivals still sort sensibly among themselves.
+    }
+
     const selfDelta = Number(Boolean(b.is_self)) - Number(Boolean(a.is_self));
     if (selfDelta !== 0) return selfDelta;
     const leadDelta =

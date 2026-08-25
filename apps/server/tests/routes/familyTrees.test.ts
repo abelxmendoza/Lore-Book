@@ -11,6 +11,7 @@ const m = vi.hoisted(() => ({
   setMemberRelationship: vi.fn(),
   addExistingFamilyMember: vi.fn(),
   ensureMemberCard: vi.fn(),
+  reorderMembers: vi.fn(),
 }));
 
 vi.mock('../../src/middleware/auth', () => ({
@@ -28,6 +29,7 @@ vi.mock('../../src/services/familyTreeService', () => ({
     setMemberRelationship: (...a: unknown[]) => m.setMemberRelationship(...a),
     addExistingFamilyMember: (...a: unknown[]) => m.addExistingFamilyMember(...a),
     ensureMemberCard: (...a: unknown[]) => m.ensureMemberCard(...a),
+    reorderMembers: (...a: unknown[]) => m.reorderMembers(...a),
     getUserFamilyTree: vi.fn(),
     getCharacterFamilyTree: vi.fn(),
     getOrganizationFamilyTree: vi.fn(),
@@ -125,6 +127,29 @@ describe('family-tree member mutation routes', () => {
         relation: 'cousin',
         side: 'maternal',
       });
+    });
+  });
+
+  describe('PATCH /reorder', () => {
+    it('200 + forwards orderedIds to the service', async () => {
+      m.reorderMembers.mockResolvedValue(true);
+      await request(app())
+        .patch('/api/family-trees/reorder')
+        .send({ orderedIds: ['char-2', 'char-1', 'char-3'] })
+        .expect(200);
+      expect(m.reorderMembers).toHaveBeenCalledWith('user-1', ['char-2', 'char-1', 'char-3']);
+    });
+    it('400 when orderedIds is missing or empty', async () => {
+      await request(app()).patch('/api/family-trees/reorder').send({}).expect(400);
+      await request(app()).patch('/api/family-trees/reorder').send({ orderedIds: [] }).expect(400);
+      expect(m.reorderMembers).not.toHaveBeenCalled();
+    });
+    it('404 when the service refuses (no real ids resolved)', async () => {
+      m.reorderMembers.mockResolvedValue(false);
+      await request(app())
+        .patch('/api/family-trees/reorder')
+        .send({ orderedIds: ['__ghost__'] })
+        .expect(404);
     });
   });
 
