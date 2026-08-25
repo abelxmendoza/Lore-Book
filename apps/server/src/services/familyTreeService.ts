@@ -1816,8 +1816,14 @@ class FamilyTreeService {
         if (opts.restrictIds && !opts.restrictIds.has(neighbor)) continue;
         const deltas = GEN_DELTA[type.toLowerCase()] ?? { forward: 0, backward: 0 };
         let delta = 0;
+        // Match by type, not just node pair: when two people have more than one
+        // edge between them (e.g. both a `grandchild_of` and its reciprocal
+        // `grandparent_of` row), a type-blind lookup can pair this adjacency
+        // entry with the OTHER edge and read its delta in the wrong direction --
+        // silently flipping which generation a person lands in.
         const edge = edges.find(e =>
-          (e.fromId === current && e.toId === neighbor) || (e.fromId === neighbor && e.toId === current)
+          e.type === type &&
+          ((e.fromId === current && e.toId === neighbor) || (e.fromId === neighbor && e.toId === current))
         );
         const direction: 'forward' | 'backward' = edge?.fromId === current ? 'forward' : 'backward';
         if (edge?.fromId === current) delta = deltas.forward;
