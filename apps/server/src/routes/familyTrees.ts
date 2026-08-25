@@ -123,6 +123,22 @@ router.patch('/member/:characterId/relationship', requireAuth, async (req: Authe
   }
 });
 
+// POST /api/family-trees/member/:characterId/disconnect-parent — remove their
+// connector line (click-a-line-to-disconnect in the tree UI). Does not touch
+// relation/side -- only the structural parent connector.
+router.post('/member/:characterId/disconnect-parent', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const characterId = String(req.params.characterId);
+  try {
+    const ok = await familyTreeService.disconnectParentConnector(userId, characterId);
+    if (!ok) return res.status(404).json({ success: false, error: 'Could not disconnect' });
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ error, userId, characterId }, 'Failed to disconnect family parent connector');
+    res.status(500).json({ success: false, error: 'Failed to disconnect' });
+  }
+});
+
 // PATCH /api/family-trees/reorder — drag-to-reorder within one generation row
 router.patch('/reorder', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;

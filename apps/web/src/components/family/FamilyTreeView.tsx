@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback, type MouseEvent as ReactMouseEvent } from 'react';
 import {
   Heart,
   User,
@@ -13,6 +13,8 @@ import {
   ChevronLeft,
   ChevronRight,
   GripVertical,
+  Link2,
+  X,
 } from 'lucide-react';
 import { CharacterAvatar } from '../characters/CharacterAvatar';
 import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
@@ -40,6 +42,13 @@ interface FamilyTreeViewProps {
    *  `orderedIds` gets sequential placement, left to right. Presence of this
    *  prop is what surfaces the Reorder toggle at all. */
   onReorderRow?: (orderedIds: string[]) => Promise<void> | void;
+  /** Create a connection between two members by drag (desktop) or tap-tap
+   *  (mobile): `fromId` is who the user started the gesture on, `toId` is who
+   *  they dropped/tapped on. Presence of this prop is what surfaces the
+   *  Connect toggle at all. */
+  onConnectMembers?: (from: FamilyMember, to: FamilyMember, kind: 'parent' | 'spouse') => Promise<void> | void;
+  /** Remove a member's connector line entirely (click-a-line to disconnect). */
+  onDisconnectParent?: (member: FamilyMember) => Promise<void> | void;
 }
 
 type RelationStyle = {
@@ -355,7 +364,14 @@ export function inferEdges(members: FamilyMember[]): Array<{ from: string; to: s
   // then add the explicit links.
   const reconciled = edges.filter(e => !pinnedChildren.has(e.to));
   reconciled.push(...explicitEdges);
-  return reconciled;
+
+  // A member who explicitly disconnected their parent connector (click a
+  // line -> disconnect) gets none at all, even one this function would
+  // otherwise have inferred fresh next render. Checked last so it wins over
+  // every rule above, including the explicit-parent_id path.
+  const disconnectedIds = new Set(members.filter((m) => m.disconnected_parent).map((m) => m.id));
+  if (disconnectedIds.size === 0) return reconciled;
+  return reconciled.filter((e) => !disconnectedIds.has(e.to));
 }
 
 // ── PersonNode ─────────────────────────────────────────────────────────────────
@@ -601,7 +617,7 @@ export function generationLabel(gen: number): string {
 
 // ── FamilyTreeView ─────────────────────────────────────────────────────────────
 
-interface SvgLine { x1: number; y1: number; x2: number; y2: number }
+interface SvgLine { x1: number; y1: number; x2: number; y2: number; fromId: string; toId: string }
 
 function moveInArray<T>(list: T[], from: number, to: number): T[] {
   if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) {
@@ -623,15 +639,81 @@ export const FamilyTreeView = ({
   onDelete,
   onKeep,
   onReorderRow,
+  onConnectMembers,
+  onDisconnectParent,
 }: FamilyTreeViewProps) => {
   const { members } = tree;
   const isMobile = useIsMobile();
+  const membersById = new Map(members.map((m) => [m.id, m]));
 
   const containerRef = useRef<HTMLDivElement>(null);
   const nodeEls      = useRef<Map<string, HTMLButtonElement>>(new Map());
   const [lines, setLines] = useState<SvgLine[]>([]);
   const [svgW, setSvgW]   = useState(0);
   const [svgH, setSvgH]   = useState(0);
+
+  // Connect mode: drag from one person to another (desktop) or tap-tap
+  // (mobile, no native drag) to create a connection. Mutually exclusive with
+  // reorder mode — both use drag gestures on the same nodes.
+  const [connectMode, setConnectMode] = useState(false);
+  const [connectFromId, setConnectFromId] = useState<string | null>(null);
+  const [pendingConnect, setPendingConnect] = useState<{
+    fromId: string; toId: string; x: number; y: number;
+  } | null>(null);
+  const [connecting, setConnecting] = useState(false);
+
+  // A clicked connector line, pending disconnect confirmation.
+  const [selectedLine, setSelectedLine] = useState<{
+    fromId: string; toId: string; x: number; y: number;
+  } | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  const beginConnectFrom = useCallback((id: string) => {
+    setSelectedLine(null);
+    setConnectFromId((prev) => (prev === id ? null : id));
+  }, []);
+
+  const completeConnect = useCallback(
+    (toId: string, x: number, y: number) => {
+      if (!connectFromId || connectFromId === toId) {
+        setConnectFromId(null);
+        return;
+      }
+      setPendingConnect({ fromId: connectFromId, toId, x, y });
+      setConnectFromId(null);
+    },
+    [connectFromId],
+  );
+
+  const confirmConnect = useCallback(
+    async (kind: 'parent' | 'spouse') => {
+      if (!pendingConnect || !onConnectMembers) return;
+      const from = members.find((mm) => mm.id === pendingConnect.fromId);
+      const to = members.find((mm) => mm.id === pendingConnect.toId);
+      if (!from || !to) { setPendingConnect(null); return; }
+      setConnecting(true);
+      try {
+        await onConnectMembers(from, to, kind);
+        setPendingConnect(null);
+      } finally {
+        setConnecting(false);
+      }
+    },
+    [pendingConnect, onConnectMembers, members],
+  );
+
+  const confirmDisconnect = useCallback(async () => {
+    if (!selectedLine || !onDisconnectParent) return;
+    const target = members.find((m) => m.id === selectedLine.toId);
+    if (!target) { setSelectedLine(null); return; }
+    setDisconnecting(true);
+    try {
+      await onDisconnectParent(target);
+      setSelectedLine(null);
+    } finally {
+      setDisconnecting(false);
+    }
+  }, [selectedLine, onDisconnectParent, members]);
 
   // Drag-to-reorder (placement editing). Row order comes from the server
   // (sortFamilyMembersForDisplay) — this is only a local working copy of
@@ -700,7 +782,7 @@ export const FamilyTreeView = ({
       const x2 = tRect.left + tRect.width / 2  - cRect.left;
       const y2 = tRect.top                     - cRect.top;   // top of child avatar
 
-      measured.push({ x1, y1, x2, y2 });
+      measured.push({ x1, y1, x2, y2, fromId: edge.from, toId: edge.to });
     }
 
     setLines(measured);
@@ -740,10 +822,11 @@ export const FamilyTreeView = ({
   return (
     <div ref={containerRef} className="relative space-y-5">
 
-      {/* SVG connector overlay */}
+      {/* SVG connector overlay. Lines become clickable (disconnect) while in
+          Connect mode -- otherwise purely decorative, same as before. */}
       {lines.length > 0 && (
         <svg
-          className="absolute inset-0 pointer-events-none overflow-visible z-0"
+          className={`absolute inset-0 overflow-visible z-0 ${connectMode && onDisconnectParent ? '' : 'pointer-events-none'}`}
           width={svgW}
           height={svgH}
         >
@@ -752,15 +835,34 @@ export const FamilyTreeView = ({
             const cp1y = l.y1 + (l.y2 - l.y1) * 0.4;
             const cp2y = l.y2 - (l.y2 - l.y1) * 0.4;
             const d = `M ${l.x1} ${l.y1} C ${l.x1} ${cp1y}, ${l.x2} ${cp2y}, ${l.x2} ${l.y2}`;
+            const clickable = connectMode && Boolean(onDisconnectParent);
+            const isSelected = selectedLine?.fromId === l.fromId && selectedLine?.toId === l.toId;
+            const handleLineClick = clickable
+              ? (e: ReactMouseEvent) => setSelectedLine({ fromId: l.fromId, toId: l.toId, x: e.clientX, y: e.clientY })
+              : undefined;
             return (
-              <path
-                key={i}
-                d={d}
-                fill="none"
-                stroke="rgba(255,255,255,0.18)"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
+              <g key={i}>
+                {clickable && (
+                  <path
+                    d={d}
+                    fill="none"
+                    stroke="transparent"
+                    strokeWidth="16"
+                    strokeLinecap="round"
+                    style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+                    onClick={handleLineClick}
+                  />
+                )}
+                <path
+                  d={d}
+                  fill="none"
+                  stroke={isSelected ? 'rgba(248,113,113,0.85)' : 'rgba(255,255,255,0.18)'}
+                  strokeWidth={isSelected ? 2.5 : 1.5}
+                  strokeLinecap="round"
+                  style={clickable ? { pointerEvents: 'stroke', cursor: 'pointer' } : undefined}
+                  onClick={handleLineClick}
+                />
+              </g>
             );
           })}
         </svg>
@@ -791,8 +893,8 @@ export const FamilyTreeView = ({
         </div>
       )}
 
-      {/* Reorder toggle — drag people within their generation row to fix placement */}
-      {!compact && onReorderRow && (
+      {/* Reorder / Connect toggles */}
+      {!compact && (onReorderRow || onConnectMembers) && (
         <div className="flex items-center justify-end gap-1.5 relative z-[1]">
           {dirtyGenerations && (
             <button
@@ -804,23 +906,47 @@ export const FamilyTreeView = ({
               {savingReorder ? 'Saving…' : 'Save order'}
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => {
-              if (reorderMode) setRowOverrides(new Map());
-              setReorderMode((v) => !v);
-            }}
-            aria-pressed={reorderMode ? 'true' : 'false'}
-            title={reorderMode ? 'Done placing people' : 'Drag people to fix their placement'}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
-              reorderMode
-                ? 'border-primary/50 text-primary bg-primary/15'
-                : 'border-white/10 text-white/60 hover:text-white hover:border-white/25'
-            }`}
-          >
-            <ArrowLeftRight className="h-3.5 w-3.5" />
-            {reorderMode ? 'Done' : 'Reorder'}
-          </button>
+          {onConnectMembers && (
+            <button
+              type="button"
+              onClick={() => {
+                if (connectMode) { setConnectFromId(null); setPendingConnect(null); }
+                setSelectedLine(null);
+                setReorderMode(false);
+                setConnectMode((v) => !v);
+              }}
+              aria-pressed={connectMode ? 'true' : 'false'}
+              title={connectMode ? 'Done connecting people' : 'Drag one person onto another to connect them'}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                connectMode
+                  ? 'border-emerald-400/50 text-emerald-300 bg-emerald-500/15'
+                  : 'border-white/10 text-white/60 hover:text-white hover:border-white/25'
+              }`}
+            >
+              <Link2 className="h-3.5 w-3.5" />
+              {connectMode ? 'Done' : 'Connect'}
+            </button>
+          )}
+          {onReorderRow && (
+            <button
+              type="button"
+              onClick={() => {
+                if (reorderMode) setRowOverrides(new Map());
+                setConnectMode(false);
+                setReorderMode((v) => !v);
+              }}
+              aria-pressed={reorderMode ? 'true' : 'false'}
+              title={reorderMode ? 'Done placing people' : 'Drag people to fix their placement'}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                reorderMode
+                  ? 'border-primary/50 text-primary bg-primary/15'
+                  : 'border-white/10 text-white/60 hover:text-white hover:border-white/25'
+              }`}
+            >
+              <ArrowLeftRight className="h-3.5 w-3.5" />
+              {reorderMode ? 'Done' : 'Reorder'}
+            </button>
+          )}
         </div>
       )}
       {reorderMode && (
@@ -828,6 +954,15 @@ export const FamilyTreeView = ({
           {isMobile
             ? 'Use the arrows on each person to move them left or right, then save.'
             : 'Drag anyone to reposition them within their row, then save.'}
+        </p>
+      )}
+      {connectMode && (
+        <p className="text-[11px] text-white/40 -mt-3 relative z-[1]">
+          {isMobile
+            ? connectFromId
+              ? 'Now tap who they connect to.'
+              : 'Tap someone, then tap who they connect to.'
+            : 'Drag anyone onto someone else to connect them. Click a line to disconnect it.'}
         </p>
       )}
 
@@ -867,15 +1002,29 @@ export const FamilyTreeView = ({
                   )}
                 </div>
               )}
-              {others.map((m, idx) => (
+              {others.map((m, idx) => {
+                const canConnect = connectMode && !m.is_placeholder;
+                const canConnectDrag = canConnect && !isMobile;
+                const canConnectTap = canConnect && isMobile;
+                return (
                 <div
                   key={m.id}
-                  draggable={canDrag}
-                  onDragStart={canDrag ? () => setDragMemberId(m.id) : undefined}
-                  onDragEnd={canDrag ? () => setDragMemberId(null) : undefined}
-                  onDragOver={canDrag ? (e) => e.preventDefault() : undefined}
+                  draggable={canDrag || canConnectDrag}
+                  onDragStart={
+                    canConnectDrag ? () => setConnectFromId(m.id)
+                    : canDrag ? () => setDragMemberId(m.id)
+                    : undefined
+                  }
+                  onDragEnd={
+                    canConnectDrag ? () => setConnectFromId(null)
+                    : canDrag ? () => setDragMemberId(null)
+                    : undefined
+                  }
+                  onDragOver={canDrag || canConnectDrag ? (e) => e.preventDefault() : undefined}
                   onDrop={
-                    canDrag
+                    canConnectDrag
+                      ? (e) => completeConnect(m.id, e.clientX, e.clientY)
+                      : canDrag
                       ? () => {
                           if (dragMemberId == null) return;
                           const from = others.findIndex((x) => x.id === dragMemberId);
@@ -885,20 +1034,33 @@ export const FamilyTreeView = ({
                         }
                       : undefined
                   }
+                  onClick={
+                    canConnectTap
+                      ? (e) => {
+                          if (connectFromId && connectFromId !== m.id) {
+                            completeConnect(m.id, e.clientX, e.clientY);
+                          } else {
+                            beginConnectFrom(m.id);
+                          }
+                        }
+                      : undefined
+                  }
                   className={`flex flex-col items-center ${
                     canDrag ? `cursor-grab active:cursor-grabbing ${dragMemberId === m.id ? 'opacity-50' : ''}` : ''
+                  } ${canConnect ? 'cursor-pointer' : ''} ${
+                    connectFromId === m.id ? 'ring-2 ring-emerald-400/70 rounded-2xl' : ''
                   }`}
                 >
                   <NodeWithActions
                     member={m}
-                    onClick={reorderMode ? undefined : onMemberClick}
+                    onClick={reorderMode || canConnectTap ? undefined : onMemberClick}
                     compact={compact}
                     onNodeRef={handleNodeRef}
-                    onEditRelationship={reorderMode ? undefined : onEditRelationship}
-                    onExclude={reorderMode ? undefined : onExclude}
-                    onMoveToGroup={reorderMode ? undefined : onMoveToGroup}
-                    onDelete={reorderMode ? undefined : onDelete}
-                    onKeep={reorderMode ? undefined : onKeep}
+                    onEditRelationship={reorderMode || connectMode ? undefined : onEditRelationship}
+                    onExclude={reorderMode || connectMode ? undefined : onExclude}
+                    onMoveToGroup={reorderMode || connectMode ? undefined : onMoveToGroup}
+                    onDelete={reorderMode || connectMode ? undefined : onDelete}
+                    onKeep={reorderMode || connectMode ? undefined : onKeep}
                   />
                   {canDrag && (
                     <GripVertical className="h-3.5 w-3.5 text-white/25 -mt-1" />
@@ -926,7 +1088,8 @@ export const FamilyTreeView = ({
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         );
@@ -956,6 +1119,83 @@ export const FamilyTreeView = ({
           </div>
         </div>
       )}
+
+      {/* Connect quick-pick — appears after dragging/tapping one person onto
+          another; asks what the dragged-from person is to the drop target. */}
+      {pendingConnect && (() => {
+        const from = members.find((mm) => mm.id === pendingConnect.fromId);
+        const to = members.find((mm) => mm.id === pendingConnect.toId);
+        if (!from || !to) return null;
+        const sameGeneration = from.generation === to.generation;
+        return (
+          <>
+            <div className="fixed inset-0 z-[90]" onClick={() => setPendingConnect(null)} aria-hidden />
+            <div
+              role="menu"
+              className="fixed z-[95] w-56 -translate-x-1/2 rounded-lg border border-white/15 bg-[#15131f] py-1.5 text-left shadow-2xl"
+              style={{ left: pendingConnect.x, top: pendingConnect.y }}
+            >
+              <p className="px-3 pb-1.5 text-[10px] leading-snug text-white/50 border-b border-white/10 mb-1">
+                Connect <span className="text-white/80">{from.name}</span> to <span className="text-white/80">{to.name}</span>
+              </p>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={connecting}
+                onClick={() => void confirmConnect('parent')}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-white/80 hover:bg-white/10 disabled:opacity-50"
+              >
+                {from.name} is {to.name}'s parent
+              </button>
+              {sameGeneration && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={connecting}
+                  onClick={() => void confirmConnect('spouse')}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-white/80 hover:bg-white/10 disabled:opacity-50"
+                >
+                  Married to / partnered with {to.name}
+                </button>
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => setPendingConnect(null)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-white/50 hover:bg-white/10"
+              >
+                Cancel
+              </button>
+            </div>
+          </>
+        );
+      })()}
+
+      {/* Disconnect confirm — appears after clicking a connector line. */}
+      {selectedLine && (() => {
+        const to = members.find((mm) => mm.id === selectedLine.toId);
+        if (!to) return null;
+        return (
+          <>
+            <div className="fixed inset-0 z-[90]" onClick={() => setSelectedLine(null)} aria-hidden />
+            <div
+              role="menu"
+              className="fixed z-[95] -translate-x-1/2 rounded-lg border border-red-400/25 bg-[#1f1315] px-3 py-2 text-left shadow-2xl"
+              style={{ left: selectedLine.x, top: selectedLine.y }}
+            >
+              <button
+                type="button"
+                disabled={disconnecting}
+                onClick={() => void confirmDisconnect()}
+                className="flex items-center gap-1.5 text-xs font-medium text-red-300 hover:text-red-200 disabled:opacity-50"
+              >
+                <X className="h-3.5 w-3.5" />
+                {disconnecting ? 'Disconnecting…' : `Disconnect from ${to.name}`}
+              </button>
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 };

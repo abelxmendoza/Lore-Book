@@ -76,6 +76,12 @@ export interface FamilyMemberDTO {
    *  manually reordered that row at least once — otherwise the automatic
    *  sort (see sortFamilyMembersForDisplay) decides order. */
   family_display_order?: number;
+  /** User explicitly removed this member's inferred/asserted parent connector
+   *  line (see disconnectParentConnector) — distinct from parent_id being
+   *  unset, which just means "let LoreBook infer." This means "don't infer
+   *  one either." Drives the frontend to suppress every connector-line rule
+   *  that would otherwise point at this member. */
+  disconnected_parent?: boolean;
 }
 
 export interface FamilyBranchDTO {
@@ -1116,6 +1122,9 @@ class FamilyTreeService {
 
     const metadata = { ...((character.metadata as Record<string, unknown>) ?? {}) };
     delete metadata.family_excluded; // correcting the relation re-includes them
+    // Any explicit edit here supersedes a prior "no connector" state -- the
+    // user is actively setting this member's placement again.
+    delete metadata.parent_connector_removed;
     metadata.family_override = {
       relation,
       side: input.side ?? null,
@@ -1148,8 +1157,8 @@ class FamilyTreeService {
     }
 
     // A node can't be married to itself, a synthetic placeholder, or the
-    // protagonist's own card. Same-family-name gate isn't needed here since
-    // the picker is already scoped to real, non-self members client-side.
+    // protagonist's own card. The connect-drag / relationship-editor callers
+    // already scope their pickers to real, non-self members.
     const spouseId =
       input.spouseId && input.spouseId !== characterId && !isSyntheticNodeId(input.spouseId)
         ? input.spouseId
@@ -1166,6 +1175,54 @@ class FamilyTreeService {
       mutationType: 'RELATIONSHIP_CREATED',
       newValue: { relation, side: input.side ?? null, connects_to_id: connectsToId, spouse_id: spouseId },
       reason: `Set family relationship to ${relation}`,
+      source: 'USER',
+      metadata: { operation_type: 'family_rearrange', user_asserted: true },
+    });
+    return true;
+  }
+
+  /**
+   * Remove a member's parent connector line -- both any explicit
+   * connects_to_id override AND future auto-inference. Distinct from just
+   * clearing connects_to_id (which falls back to "let LoreBook infer",
+   * likely redrawing the same line): this is an explicit "no, there's no
+   * connector here" that the frontend's inferEdges must respect. Does not
+   * touch relation/side/spouse -- only the structural connector line.
+   */
+  async disconnectParentConnector(userId: string, characterId: string): Promise<boolean> {
+    if (isSyntheticNodeId(characterId)) return false;
+    const { data: character } = await supabaseAdmin
+      .from('characters')
+      .select('id, metadata')
+      .eq('id', characterId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!character) return false;
+
+    const metadata = { ...((character.metadata as Record<string, unknown>) ?? {}) };
+    metadata.parent_connector_removed = true;
+    const existingOverride = (metadata.family_override as Record<string, unknown> | undefined) ?? undefined;
+    if (existingOverride) {
+      metadata.family_override = { ...existingOverride, connects_to_id: null };
+    }
+    const { error } = await supabaseAdmin
+      .from('characters')
+      .update({ metadata })
+      .eq('id', characterId)
+      .eq('user_id', userId);
+    if (error) {
+      logger.error({ error, userId, characterId }, 'Failed to disconnect family parent connector');
+      return false;
+    }
+
+    const { identityLedgerService } = await import('./identity/identityLedgerService');
+    await identityLedgerService.recordMutation({
+      userId,
+      entityId: characterId,
+      entityType: 'character',
+      mutationType: 'RELATIONSHIP_CREATED',
+      newValue: { parent_connector_removed: true },
+      reason: 'Disconnected family tree parent connector',
       source: 'USER',
       metadata: { operation_type: 'family_rearrange', user_asserted: true },
     });
@@ -1728,6 +1785,7 @@ class FamilyTreeService {
           is_account_self: Boolean(accountSelfId && m.id === accountSelfId),
           first_name: row?.first_name ?? m.first_name,
           last_name: row?.last_name ?? m.last_name,
+          disconnected_parent: Boolean((row?.metadata as Record<string, unknown> | undefined)?.parent_connector_removed),
         };
         // Prefer the durable character card name when the tree node is still a
         // bare kinship word ("Mom" / "Dad") so the UI can show Mom (Elena Chen).
