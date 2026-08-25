@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { familyTreeService } from '../../src/services/familyTreeService';
+import { buildTreeFromEdges } from '../../src/services/familyTreeService';
 
 type Edge = { fromId: string; toId: string; type: string; confidence: number; evidence?: string };
 
-/** Direct access to the private BFS/composer entry point — pure and synchronous,
- *  no Supabase calls inside it, so no DB mocking is needed to exercise it. */
+/** The BFS/composer entry point — pure and synchronous, no Supabase calls
+ *  inside it, so no DB mocking is needed to exercise it. */
 function buildTree(
   rootId: string,
   rootName: string,
@@ -13,7 +13,7 @@ function buildTree(
   opts: { markSelf?: boolean; selfId?: string; restrictIds?: Set<string> } = {},
   sexHints: Map<string, 'male' | 'female'> = new Map(),
 ) {
-  return (familyTreeService as any).buildTreeFromEdges(rootId, rootName, edges, names, opts, sexHints);
+  return buildTreeFromEdges(rootId, rootName, edges, names, opts, sexHints);
 }
 
 describe('familyTreeService — multi-hop relation composition (regression for the aunt/uncle & cousin mislabel bug)', () => {
@@ -121,5 +121,46 @@ describe('familyTreeService — multi-hop relation composition (regression for t
     const tree = buildTree('you', 'You', edges, names, { markSelf: true, selfId: 'you' });
 
     expect(tree.members.find((m: any) => m.id === 'stepdad').relation).toBe('step_parent');
+  });
+});
+
+describe('familyTreeService — generation direction (regression for the Abuela-in-the-wrong-row bug)', () => {
+  // A relationship commonly gets persisted as two separate rows, one from each
+  // side (you --grandchild_of--> Abuela, AND Abuela --grandparent_of--> you) —
+  // both already correctly typed from their own fromId's perspective. The bug:
+  // generation used to be computed by re-matching *any* edge between the two
+  // node ids (ignoring which of the two rows a given traversal actually came
+  // from), so when both rows existed, whichever one the lookup happened to
+  // find first silently decided the direction — sometimes right, sometimes
+  // backwards, depending on array order alone. This pins that down: no matter
+  // which row comes first in the input, the answer must be the same.
+  it('computes the same, correct generation for a grandparent regardless of which of the two directional edge rows comes first', () => {
+    const names = new Map([
+      ['you', 'You'],
+      ['grandma', 'Abuela'],
+    ]);
+    const forward: Edge = { fromId: 'you', toId: 'grandma', type: 'grandchild_of', confidence: 1 };
+    const backward: Edge = { fromId: 'grandma', toId: 'you', type: 'grandparent_of', confidence: 1 };
+
+    const treeA = buildTree('you', 'You', [forward, backward], names, { markSelf: true, selfId: 'you' });
+    const treeB = buildTree('you', 'You', [backward, forward], names, { markSelf: true, selfId: 'you' });
+
+    expect(treeA.members.find((m: any) => m.id === 'grandma').generation).toBe(-2);
+    expect(treeB.members.find((m: any) => m.id === 'grandma').generation).toBe(-2);
+  });
+
+  it('computes the same, correct generation for a parent regardless of which of the two directional edge rows comes first', () => {
+    const names = new Map([
+      ['you', 'You'],
+      ['mom', 'Mom'],
+    ]);
+    const forward: Edge = { fromId: 'you', toId: 'mom', type: 'child_of', confidence: 1 };
+    const backward: Edge = { fromId: 'mom', toId: 'you', type: 'parent_of', confidence: 1 };
+
+    const treeA = buildTree('you', 'You', [forward, backward], names, { markSelf: true, selfId: 'you' });
+    const treeB = buildTree('you', 'You', [backward, forward], names, { markSelf: true, selfId: 'you' });
+
+    expect(treeA.members.find((m: any) => m.id === 'mom').generation).toBe(-1);
+    expect(treeB.members.find((m: any) => m.id === 'mom').generation).toBe(-1);
   });
 });

@@ -179,6 +179,31 @@ export function resolveFamilyEdgeDirection(
   return shouldFlip ? { fromId: targetId, toId: sourceId } : { fromId: sourceId, toId: targetId };
 }
 
+/**
+ * A distinct, narrower case than resolveFamilyEdgeDirection above: two rows
+ * both specifically typed (not the ambiguous generic bucket) claim the SAME
+ * ascending-kin type in opposite directions between the same two people —
+ * e.g. both "You grandparent_of Abuela" AND "Abuela grandparent_of You" on
+ * record. That's a direct contradiction (nobody is their own ancestor's
+ * ancestor), most likely a bad row from some now-unknown write path rather
+ * than the usual "generic bucket written backwards" pattern. Only fires when
+ * the contradicting counterpart genuinely exists, so it never second-guesses
+ * a legitimate rootId-as-elder edge (rootId's own child, say) that has no
+ * conflicting row — that's the whole reason resolveFamilyEdgeDirection
+ * itself stays scoped to generic-bucket rows only, and this stays just as
+ * narrow for the same reason.
+ */
+export function dropContradictoryAscendingEdges<T extends { fromId: string; toId: string; type: string }>(
+  rootId: string,
+  edges: T[],
+): T[] {
+  const keys = new Set(edges.map((e) => `${e.fromId}|${e.toId}|${e.type}`));
+  return edges.filter((e) => {
+    if (e.fromId !== rootId || !ASCENDING_KIN_EDGE_TYPES.has(e.type)) return true;
+    return !keys.has(`${e.toId}|${e.fromId}|${e.type}`);
+  });
+}
+
 const RELATION_LABEL: Record<string, string> = {
   parent_of: 'Parent', child_of: 'Child', sibling_of: 'Sibling', spouse_of: 'Spouse',
   grandparent_of: 'Grandparent', grandchild_of: 'Grandchild', aunt_of: 'Aunt', uncle_of: 'Uncle',
@@ -298,6 +323,30 @@ function isFamilyType(type: string): boolean {
 
 function normalizeRelationshipType(type: string): string {
   return normalizeFamilyEdgeType(type);
+}
+
+/**
+ * Which raw kinship label actually describes this row's source→target edge.
+ * `relationship_role` wins outright when set (an explicit role assignment).
+ * Otherwise, a specific `relationship_type` column value (step_child_of,
+ * parent_of, ...) is trusted over `metadata.kinship` — kinship is a display
+ * label for "what I call the other person" (e.g. "stepfather"), not a
+ * directional assertion, and the two can be captured by different signals
+ * that disagree about which end is the parent/child. Only when the column
+ * itself is a generic bucket (family/related_to/related) or empty does
+ * kinship get to supply the real type, since a generic-bucket row has no
+ * directional meaning of its own to override.
+ */
+export function resolveRawKinshipType(
+  relationshipRole: string | null | undefined,
+  relationshipType: string | null | undefined,
+  metaKinship: string | null,
+): string {
+  if (relationshipRole) return relationshipRole;
+  const rt = relationshipType ?? '';
+  const isGenericOrEmpty = !rt || GENERIC_FAMILY_BUCKET_TYPES.has(rt.toLowerCase());
+  if (isGenericOrEmpty && metaKinship) return metaKinship;
+  return rt || metaKinship || '';
 }
 
 function relationFromType(type: string, delta: number): FamilyRelationType {
@@ -843,7 +892,7 @@ class FamilyTreeService {
       names.set(characterId, rootChar.name);
       const sexHints = await this.loadSexHints(userId, memberIds);
 
-      const tree = this.buildTreeFromEdges(characterId, rootChar.name, connectedEdges, names, {
+      const tree = buildTreeFromEdges(characterId, rootChar.name, connectedEdges, names, {
         markSelf: opts.isUserTree ?? false,
         selfId: characterId,
       }, sexHints);
@@ -908,7 +957,7 @@ class FamilyTreeService {
       }
       const sexHints = await this.loadSexHints(userId, charIds);
 
-      const tree = this.buildTreeFromEdges(anchor, names.get(anchor) ?? org.name, edges, names, {
+      const tree = buildTreeFromEdges(anchor, names.get(anchor) ?? org.name, dropContradictoryAscendingEdges(anchor, edges), names, {
         markSelf: true,
         selfId,
         restrictIds: new Set(charIds),
@@ -1462,7 +1511,7 @@ class FamilyTreeService {
         const names = await this.loadNames(userId, selfTreeMemberIds);
         names.set(explicitSelfId, rootChar?.name ?? 'You');
         const sexHints = await this.loadSexHints(userId, selfTreeMemberIds);
-        const edgeTree = this.buildTreeFromEdges(explicitSelfId, rootChar?.name ?? 'You', edges, names, {
+        const edgeTree = buildTreeFromEdges(explicitSelfId, rootChar?.name ?? 'You', edges, names, {
           markSelf: true,
           selfId: explicitSelfId,
         }, sexHints);
@@ -1580,7 +1629,7 @@ class FamilyTreeService {
       if ((r.status ?? 'active') !== 'active') continue;
       if (excludedIds.has(r.source_character_id) || excludedIds.has(r.target_character_id)) continue;
       const metaKinship = typeof r.metadata?.kinship === 'string' ? String(r.metadata.kinship) : null;
-      const rawType = r.relationship_role ?? metaKinship ?? r.relationship_type;
+      const rawType = resolveRawKinshipType(r.relationship_role, r.relationship_type, metaKinship);
       if ((r.relationship_type ?? '').toLowerCase() === 'possible_family') continue;
       if (r.relationship_category !== 'family' && !isFamilyType(rawType) && !isFamilyType(r.relationship_type) && !isFamilyType(metaKinship ?? '')) continue;
       const type = normalizeRelationshipType(rawType);
@@ -1622,7 +1671,7 @@ class FamilyTreeService {
         if (excludedIds.has(r.source_character_id) || excludedIds.has(r.target_character_id)) continue;
         if ((r.relationship_type ?? '').toLowerCase() === 'possible_family') continue;
         const metaKinship = typeof r.metadata?.kinship === 'string' ? String(r.metadata.kinship) : null;
-        const rawType = r.relationship_role ?? metaKinship ?? r.relationship_type;
+        const rawType = resolveRawKinshipType(r.relationship_role, r.relationship_type, metaKinship);
         if (r.relationship_category !== 'family' && !isFamilyType(rawType) && !isFamilyType(r.relationship_type) && !isFamilyType(metaKinship ?? '')) continue;
         const type = normalizeRelationshipType(rawType);
         const key = `${r.source_character_id}|${r.target_character_id}|${type}`;
@@ -1638,7 +1687,7 @@ class FamilyTreeService {
       }
     }
 
-    return edges;
+    return dropContradictoryAscendingEdges(rootId, edges);
   }
 
   /** Edges implied by family_override.connects_to_id for this character and peers. */
@@ -1871,20 +1920,11 @@ class FamilyTreeService {
       return m;
     });
 
-    // User-dragged row order (see reorderMembers) — applied last so it
-    // survives every override/review pass above, then re-sort: the tree was
-    // already sorted once upstream (before this field existed on the DTO),
-    // so this is the authoritative sort that actually respects it.
-    const withDisplayOrder = aligned.map((m) => {
-      const order = (meta.get(m.id)?.metadata as Record<string, unknown> | undefined)?.family_display_order;
-      return typeof order === 'number' ? { ...m, family_display_order: order } : m;
-    });
-    sortFamilyMembersForDisplay(withDisplayOrder);
-
-    return { ...tree, members: withDisplayOrder };
+    return { ...tree, members: aligned };
   }
+}
 
-  private buildTreeFromEdges(
+export function buildTreeFromEdges(
     rootId: string,
     rootName: string,
     edges: Array<{ fromId: string; toId: string; type: string; confidence: number; evidence?: string }>,
@@ -1892,13 +1932,22 @@ class FamilyTreeService {
     opts: { markSelf?: boolean; selfId?: string; restrictIds?: Set<string> },
     sexHints: Map<string, InferredSex> = new Map(),
   ): FamilyTreeDTO {
-    const adj = new Map<string, Array<{ neighbor: string; type: string; evidence?: string }>>();
-    const addAdj = (a: string, b: string, type: string, evidence?: string) => {
-      (adj.get(a) ?? adj.set(a, []).get(a)!).push({ neighbor: b, type, evidence });
+    const adj = new Map<
+      string,
+      Array<{ neighbor: string; type: string; direction: 'forward' | 'backward'; evidence?: string }>
+    >();
+    const addAdj = (a: string, b: string, type: string, direction: 'forward' | 'backward', evidence?: string) => {
+      (adj.get(a) ?? adj.set(a, []).get(a)!).push({ neighbor: b, type, direction, evidence });
     };
     for (const e of edges) {
-      addAdj(e.fromId, e.toId, e.type, e.evidence);
-      addAdj(e.toId, e.fromId, e.type, e.evidence);
+      // Two rows commonly exist for one relationship (e.g. Abuela --grandparent_of--> You
+      // AND You --grandchild_of--> Abuela), each already correctly typed from its own
+      // fromId's perspective. Record each traversal's direction as it's actually added,
+      // rather than re-deriving it later by matching *any* edge between the same two
+      // nodes — with two rows sharing a node pair but opposite types, that re-lookup can
+      // grab the wrong one and apply GEN_DELTA's forward/backward the wrong way around.
+      addAdj(e.fromId, e.toId, e.type, 'forward', e.evidence);
+      addAdj(e.toId, e.fromId, e.type, 'backward', e.evidence);
     }
 
     // Prefer edges with a real generational assertion (grandparent_of, uncle_of,
@@ -1951,22 +2000,15 @@ class FamilyTreeService {
       const current = queue.shift()!;
       const currentGen = generations.get(current)!;
       const currentPath = paths.get(current) ?? null;
-      for (const { neighbor, type, evidence } of adj.get(current) ?? []) {
+      for (const { neighbor, type, direction, evidence } of adj.get(current) ?? []) {
         if (opts.restrictIds && !opts.restrictIds.has(neighbor)) continue;
         const deltas = GEN_DELTA[type.toLowerCase()] ?? { forward: 0, backward: 0 };
-        let delta = 0;
-        // Match by type, not just node pair: when two people have more than one
-        // edge between them (e.g. both a `grandchild_of` and its reciprocal
-        // `grandparent_of` row), a type-blind lookup can pair this adjacency
-        // entry with the OTHER edge and read its delta in the wrong direction --
-        // silently flipping which generation a person lands in.
-        const edge = edges.find(e =>
-          e.type === type &&
-          ((e.fromId === current && e.toId === neighbor) || (e.fromId === neighbor && e.toId === current))
-        );
-        const direction: 'forward' | 'backward' = edge?.fromId === current ? 'forward' : 'backward';
-        if (edge?.fromId === current) delta = deltas.forward;
-        else if (edge?.toId === current) delta = deltas.backward;
+        // direction is recorded on each adjacency entry at construction time
+        // (see addAdj above) rather than re-derived here — re-deriving it by
+        // matching *any* edge between the node pair (even type-aware) is
+        // strictly redundant once direction is already known unambiguously,
+        // and re-introduces the exact class of bug this was fixed for.
+        const delta = direction === 'forward' ? deltas.forward : deltas.backward;
 
         const nextGen = currentGen + delta;
         if (!generations.has(neighbor)) {
@@ -2029,7 +2071,6 @@ class FamilyTreeService {
       ],
       self_id: selfId,
     };
-  }
 }
 
 function inferSide(evidence?: string): 'maternal' | 'paternal' | 'both' | 'other' | undefined {
@@ -2145,32 +2186,10 @@ function isLeadPriorityMember(m: FamilyMemberDTO, members: FamilyMemberDTO[]): b
  * each other too — see displayPairKey), then alphabetical. Without the
  * pairing step, a spouse pair only ends up adjacent by alphabetical
  * coincidence even when their side/generation both match.
- *
- * A generation row the user has manually dragged (family_display_order set
- * on at least one member — see reorderMembers) skips all of that and sorts
- * by the saved order instead, full stop: the whole point is letting the
- * user's own placement win over the algorithm. A member added to that row
- * after the last manual save (no order recorded yet) falls after everyone
- * with an explicit position, ordered among themselves by the normal rules.
  */
 export function sortFamilyMembersForDisplay(members: FamilyMemberDTO[]): FamilyMemberDTO[] {
-  const manuallyOrderedGenerations = new Set<number>();
-  for (const m of members) {
-    if (typeof m.family_display_order === 'number') manuallyOrderedGenerations.add(m.generation);
-  }
-
   members.sort((a, b) => {
     if (a.generation !== b.generation) return a.generation - b.generation;
-
-    if (manuallyOrderedGenerations.has(a.generation)) {
-      const aHas = typeof a.family_display_order === 'number';
-      const bHas = typeof b.family_display_order === 'number';
-      if (aHas && bHas) return a.family_display_order! - b.family_display_order!;
-      if (aHas !== bHas) return aHas ? -1 : 1;
-      // Both unrecorded within a manually-ordered row — fall through to the
-      // normal rules below so new arrivals still sort sensibly among themselves.
-    }
-
     const selfDelta = Number(Boolean(b.is_self)) - Number(Boolean(a.is_self));
     if (selfDelta !== 0) return selfDelta;
     const leadDelta =

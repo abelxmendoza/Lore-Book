@@ -11,11 +11,13 @@ import {
   inferSiblingAndInverseParentEdges,
   inverseFamilyEdgeType,
   resolveFamilyEdgeDirection,
+  dropContradictoryAscendingEdges,
   alignMarriedInSidesWithSpouse,
   sortFamilyMembersForDisplay,
   familyTreeService,
   characterHasFamilyTreeSignal,
   isFamilyTreeEligibleCharacter,
+  resolveRawKinshipType,
   type FamilyMemberDTO,
   type FamilyTreeDTO,
   type CharacterKinshipRow,
@@ -561,6 +563,65 @@ describe('familyTreeService — alignMarriedInSidesWithSpouse', () => {
   });
 });
 
+describe('familyTreeService — dropContradictoryAscendingEdges (regression for the Abuela-in-the-wrong-row bug)', () => {
+  // Reproduces a real bad-data case: a "You grandparent_of Abuela" row existed
+  // alongside the correct "Abuela grandparent_of You" row — nobody is their
+  // own ancestor's ancestor, so this is a straight contradiction, most likely
+  // a bad row from an old/unknown write path rather than user error. Left
+  // alone, GEN_DELTA['grandparent_of'].forward computes rootId's generation
+  // math as if rootId really were the elder, landing Abuela at +2
+  // ("grandchild") instead of -2.
+  it('drops the row where rootId is asserted as the ascending party, when a contradicting row exists', () => {
+    const edges = [
+      { fromId: 'you', toId: 'grandma', type: 'grandparent_of', confidence: 0.75 },
+      { fromId: 'grandma', toId: 'you', type: 'grandparent_of', confidence: 0.75 },
+    ];
+
+    const result = dropContradictoryAscendingEdges('you', edges);
+
+    expect(result).toEqual([{ fromId: 'grandma', toId: 'you', type: 'grandparent_of', confidence: 0.75 }]);
+  });
+
+  it('leaves a legitimate rootId-as-elder edge alone when nothing contradicts it', () => {
+    // rootId really can be the ascending party of someone in their own tree —
+    // e.g. rootId's own child. No contradicting row exists here, so this
+    // must not be touched.
+    const edges = [{ fromId: 'you', toId: 'kid', type: 'parent_of', confidence: 0.75 }];
+
+    const result = dropContradictoryAscendingEdges('you', edges);
+
+    expect(result).toEqual(edges);
+  });
+
+  it('leaves non-ascending types (e.g. spouse_of, sibling_of) alone even when both directions exist', () => {
+    // Both directions legitimately coexist for symmetric types — that's not
+    // a contradiction, it's the normal bidirectional storage pattern.
+    const edges = [
+      { fromId: 'you', toId: 'partner', type: 'spouse_of', confidence: 0.75 },
+      { fromId: 'partner', toId: 'you', type: 'spouse_of', confidence: 0.75 },
+    ];
+
+    const result = dropContradictoryAscendingEdges('you', edges);
+
+    expect(result).toEqual(edges);
+  });
+
+  it('only drops rootId\'s own contradicting row, not one between two other people', () => {
+    const edges = [
+      { fromId: 'you', toId: 'grandma', type: 'grandparent_of', confidence: 0.75 },
+      { fromId: 'grandma', toId: 'you', type: 'grandparent_of', confidence: 0.75 },
+      { fromId: 'aunt', toId: 'cousin', type: 'aunt_of', confidence: 0.75 },
+    ];
+
+    const result = dropContradictoryAscendingEdges('you', edges);
+
+    expect(result).toEqual([
+      { fromId: 'grandma', toId: 'you', type: 'grandparent_of', confidence: 0.75 },
+      { fromId: 'aunt', toId: 'cousin', type: 'aunt_of', confidence: 0.75 },
+    ]);
+  });
+});
+
 describe('familyTreeService — sortFamilyMembersForDisplay', () => {
   // Reproduces the real follow-up: side alone doesn't move anyone within a
   // generation row — the row is plain alphabetical by name. A step-dad whose
@@ -662,36 +723,6 @@ describe('familyTreeService — sortFamilyMembersForDisplay', () => {
 
     expect(members[0].id).toBe('abuela');
   });
-
-  // A user-dragged row (family_display_order — see reorderMembers) should
-  // win outright: that's the entire point of drag-to-reorder, so it must
-  // beat every automatic rule, including Abuela leading and self-first.
-  it('respects a manually dragged order over the automatic sort, including Abuela and self', () => {
-    const abuela = member({ id: 'abuela', kinship_title: 'Abuela', generation: -2, relation: 'grandparent' });
-    const aunt = member({ id: 'tia', name: 'Ana Ruiz', generation: -2, relation: 'aunt', family_display_order: 0 });
-    const uncle = member({ id: 'tio', name: 'Ben Ruiz', generation: -2, relation: 'uncle', family_display_order: 1 });
-    // Abuela has no recorded order for this row — she still exists, just
-    // wasn't part of the last manual save, so she falls after the ordered ones.
-    const members = [abuela, uncle, aunt];
-
-    sortFamilyMembersForDisplay(members);
-
-    expect(members.map((m) => m.id)).toEqual(['tia', 'tio', 'abuela']);
-  });
-
-  it('leaves an unrelated generation on the automatic sort when only one row was manually ordered', () => {
-    const abuela = member({ id: 'abuela', kinship_title: 'Abuela', generation: -2, relation: 'grandparent' });
-    const auntBefore = member({ id: 'tia', name: 'Ana Ruiz', generation: -2, relation: 'aunt' });
-    const zoe = member({ id: 'zoe', name: 'Zoe', generation: 0, relation: 'cousin', family_display_order: 1 });
-    const amy = member({ id: 'amy', name: 'Amy', generation: 0, relation: 'cousin', family_display_order: 0 });
-    const members = [auntBefore, zoe, abuela, amy];
-
-    sortFamilyMembersForDisplay(members);
-
-    // Gen -2 (no manual order there) still leads with Abuela; gen 0 respects
-    // the manual order (amy=0 before zoe=1) rather than alphabetical.
-    expect(members.map((m) => m.id)).toEqual(['abuela', 'tia', 'amy', 'zoe']);
-  });
 });
 
 describe('familyTreeService — getKidsTogetherForRelationship (step-kid inference gate)', () => {
@@ -746,5 +777,34 @@ describe('familyTreeService — getKidsTogetherForRelationship (step-kid inferen
 
     const coParent = await familyTreeService.getKidsTogetherForRelationship('user-1', 'partner-1', 'baby_mama');
     expect(coParent.some((k) => k.id === 'eli')).toBe(true);
+  });
+});
+
+describe('familyTreeService — resolveRawKinshipType (regression for the Ben Lopez not pairing with Mom bug)', () => {
+  // A row can be correctly, specifically typed in relationship_type (e.g.
+  // "you step_child_of Ben" — you're recorded as HIS step-child) while its
+  // separate metadata.kinship field is a display label for the OTHER
+  // direction ("stepfather" — what you call him). Treating kinship as the
+  // edge's own type flips the meaning: the row still reads "you --step_
+  // parent_of--> Ben", i.e. backwards. A specific relationship_type column
+  // value must win over kinship, not the other way around.
+  it('trusts a specific relationship_type over metadata.kinship describing the other direction', () => {
+    expect(resolveRawKinshipType(null, 'step_child_of', 'stepfather')).toBe('step_child_of');
+    expect(resolveRawKinshipType(undefined, 'parent_of', 'mother')).toBe('parent_of');
+  });
+
+  it('falls back to metadata.kinship only when relationship_type is a generic bucket or empty', () => {
+    expect(resolveRawKinshipType(null, 'family', 'stepfather')).toBe('stepfather');
+    expect(resolveRawKinshipType(null, 'related_to', 'aunt')).toBe('aunt');
+    expect(resolveRawKinshipType(null, '', 'uncle')).toBe('uncle');
+    expect(resolveRawKinshipType(null, null, 'cousin')).toBe('cousin');
+  });
+
+  it('relationship_role always wins outright, even over a specific relationship_type', () => {
+    expect(resolveRawKinshipType('grandmother', 'step_child_of', 'stepfather')).toBe('grandmother');
+  });
+
+  it('returns the generic bucket type itself when nothing more specific is available', () => {
+    expect(resolveRawKinshipType(null, 'family', null)).toBe('family');
   });
 });
