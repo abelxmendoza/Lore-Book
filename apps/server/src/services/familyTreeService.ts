@@ -71,11 +71,6 @@ export interface FamilyMemberDTO {
    *  side alone is ambiguous when multiple same-side relatives share a
    *  generation, e.g. an uncle and a mother). */
   paired_with_id?: string;
-  /** User-dragged left-right position within this member's generation row
-   *  (see reorderMembers). Lower sorts first. Only present once the user has
-   *  manually reordered that row at least once — otherwise the automatic
-   *  sort (see sortFamilyMembersForDisplay) decides order. */
-  family_display_order?: number;
 }
 
 export interface FamilyBranchDTO {
@@ -171,6 +166,31 @@ export function resolveFamilyEdgeDirection(
   const wasGenericBucket = GENERIC_FAMILY_BUCKET_TYPES.has((rawRelationshipType ?? '').toLowerCase());
   const shouldFlip = wasGenericBucket && sourceId === rootId && ASCENDING_KIN_EDGE_TYPES.has(normalizedType);
   return shouldFlip ? { fromId: targetId, toId: sourceId } : { fromId: sourceId, toId: targetId };
+}
+
+/**
+ * A distinct, narrower case than resolveFamilyEdgeDirection above: two rows
+ * both specifically typed (not the ambiguous generic bucket) claim the SAME
+ * ascending-kin type in opposite directions between the same two people —
+ * e.g. both "You grandparent_of Abuela" AND "Abuela grandparent_of You" on
+ * record. That's a direct contradiction (nobody is their own ancestor's
+ * ancestor), most likely a bad row from some now-unknown write path rather
+ * than the usual "generic bucket written backwards" pattern. Only fires when
+ * the contradicting counterpart genuinely exists, so it never second-guesses
+ * a legitimate rootId-as-elder edge (rootId's own child, say) that has no
+ * conflicting row — that's the whole reason resolveFamilyEdgeDirection
+ * itself stays scoped to generic-bucket rows only, and this stays just as
+ * narrow for the same reason.
+ */
+export function dropContradictoryAscendingEdges<T extends { fromId: string; toId: string; type: string }>(
+  rootId: string,
+  edges: T[],
+): T[] {
+  const keys = new Set(edges.map((e) => `${e.fromId}|${e.toId}|${e.type}`));
+  return edges.filter((e) => {
+    if (e.fromId !== rootId || !ASCENDING_KIN_EDGE_TYPES.has(e.type)) return true;
+    return !keys.has(`${e.toId}|${e.fromId}|${e.type}`);
+  });
 }
 
 const RELATION_LABEL: Record<string, string> = {
@@ -837,7 +857,7 @@ class FamilyTreeService {
       names.set(characterId, rootChar.name);
       const sexHints = await this.loadSexHints(userId, memberIds);
 
-      const tree = this.buildTreeFromEdges(characterId, rootChar.name, connectedEdges, names, {
+      const tree = buildTreeFromEdges(characterId, rootChar.name, connectedEdges, names, {
         markSelf: opts.isUserTree ?? false,
         selfId: characterId,
       }, sexHints);
@@ -902,7 +922,7 @@ class FamilyTreeService {
       }
       const sexHints = await this.loadSexHints(userId, charIds);
 
-      const tree = this.buildTreeFromEdges(anchor, names.get(anchor) ?? org.name, edges, names, {
+      const tree = buildTreeFromEdges(anchor, names.get(anchor) ?? org.name, dropContradictoryAscendingEdges(anchor, edges), names, {
         markSelf: true,
         selfId,
         restrictIds: new Set(charIds),
@@ -1153,41 +1173,6 @@ class FamilyTreeService {
     return true;
   }
 
-  /**
-   * Persist a drag-to-reorder within one generation row. `orderedIds` is the
-   * full left-to-right order the user dropped that row into — every id in it
-   * gets a sequential family_display_order (see sortFamilyMembersForDisplay),
-   * overwriting whatever order that row had before. Ids that don't resolve to
-   * a real character owned by this user are silently skipped (a synthetic
-   * placeholder can't carry a stored order).
-   */
-  async reorderMembers(userId: string, orderedIds: string[]): Promise<boolean> {
-    const realIds = orderedIds.filter((id) => id && !isSyntheticNodeId(id));
-    if (realIds.length === 0) return false;
-
-    const { data: rows } = await supabaseAdmin
-      .from('characters')
-      .select('id, metadata')
-      .eq('user_id', userId)
-      .in('id', realIds);
-    const byId = new Map((rows ?? []).map((r) => [r.id, r]));
-
-    let wrote = false;
-    for (let i = 0; i < realIds.length; i++) {
-      const id = realIds[i];
-      const row = byId.get(id);
-      if (!row) continue;
-      const metadata = { ...((row.metadata as Record<string, unknown>) ?? {}), family_display_order: i };
-      const { error } = await supabaseAdmin.from('characters').update({ metadata }).eq('id', id).eq('user_id', userId);
-      if (error) {
-        logger.error({ error, userId, characterId: id }, 'Failed to save family tree row order');
-        continue;
-      }
-      wrote = true;
-    }
-    return wrote;
-  }
-
   /** Add an existing character card to a family tree centered on `anchorId`. */
   async addExistingFamilyMember(
     userId: string,
@@ -1386,7 +1371,7 @@ class FamilyTreeService {
         const names = await this.loadNames(userId, selfTreeMemberIds);
         names.set(explicitSelfId, rootChar?.name ?? 'You');
         const sexHints = await this.loadSexHints(userId, selfTreeMemberIds);
-        const edgeTree = this.buildTreeFromEdges(explicitSelfId, rootChar?.name ?? 'You', edges, names, {
+        const edgeTree = buildTreeFromEdges(explicitSelfId, rootChar?.name ?? 'You', edges, names, {
           markSelf: true,
           selfId: explicitSelfId,
         }, sexHints);
@@ -1562,7 +1547,7 @@ class FamilyTreeService {
       }
     }
 
-    return edges;
+    return dropContradictoryAscendingEdges(rootId, edges);
   }
 
   /** Edges implied by family_override.connects_to_id for this character and peers. */
@@ -1794,20 +1779,11 @@ class FamilyTreeService {
       return m;
     });
 
-    // User-dragged row order (see reorderMembers) — applied last so it
-    // survives every override/review pass above, then re-sort: the tree was
-    // already sorted once upstream (before this field existed on the DTO),
-    // so this is the authoritative sort that actually respects it.
-    const withDisplayOrder = aligned.map((m) => {
-      const order = (meta.get(m.id)?.metadata as Record<string, unknown> | undefined)?.family_display_order;
-      return typeof order === 'number' ? { ...m, family_display_order: order } : m;
-    });
-    sortFamilyMembersForDisplay(withDisplayOrder);
-
-    return { ...tree, members: withDisplayOrder };
+    return { ...tree, members: aligned };
   }
+}
 
-  private buildTreeFromEdges(
+export function buildTreeFromEdges(
     rootId: string,
     rootName: string,
     edges: Array<{ fromId: string; toId: string; type: string; confidence: number; evidence?: string }>,
@@ -1815,13 +1791,22 @@ class FamilyTreeService {
     opts: { markSelf?: boolean; selfId?: string; restrictIds?: Set<string> },
     sexHints: Map<string, InferredSex> = new Map(),
   ): FamilyTreeDTO {
-    const adj = new Map<string, Array<{ neighbor: string; type: string; evidence?: string }>>();
-    const addAdj = (a: string, b: string, type: string, evidence?: string) => {
-      (adj.get(a) ?? adj.set(a, []).get(a)!).push({ neighbor: b, type, evidence });
+    const adj = new Map<
+      string,
+      Array<{ neighbor: string; type: string; direction: 'forward' | 'backward'; evidence?: string }>
+    >();
+    const addAdj = (a: string, b: string, type: string, direction: 'forward' | 'backward', evidence?: string) => {
+      (adj.get(a) ?? adj.set(a, []).get(a)!).push({ neighbor: b, type, direction, evidence });
     };
     for (const e of edges) {
-      addAdj(e.fromId, e.toId, e.type, e.evidence);
-      addAdj(e.toId, e.fromId, e.type, e.evidence);
+      // Two rows commonly exist for one relationship (e.g. Abuela --grandparent_of--> You
+      // AND You --grandchild_of--> Abuela), each already correctly typed from its own
+      // fromId's perspective. Record each traversal's direction as it's actually added,
+      // rather than re-deriving it later by matching *any* edge between the same two
+      // nodes — with two rows sharing a node pair but opposite types, that re-lookup can
+      // grab the wrong one and apply GEN_DELTA's forward/backward the wrong way around.
+      addAdj(e.fromId, e.toId, e.type, 'forward', e.evidence);
+      addAdj(e.toId, e.fromId, e.type, 'backward', e.evidence);
     }
 
     /** Resolve a node's sex from known metadata, else a best-effort name guess. */
@@ -1862,16 +1847,10 @@ class FamilyTreeService {
       const current = queue.shift()!;
       const currentGen = generations.get(current)!;
       const currentPath = paths.get(current) ?? null;
-      for (const { neighbor, type, evidence } of adj.get(current) ?? []) {
+      for (const { neighbor, type, direction, evidence } of adj.get(current) ?? []) {
         if (opts.restrictIds && !opts.restrictIds.has(neighbor)) continue;
         const deltas = GEN_DELTA[type.toLowerCase()] ?? { forward: 0, backward: 0 };
-        let delta = 0;
-        const edge = edges.find(e =>
-          (e.fromId === current && e.toId === neighbor) || (e.fromId === neighbor && e.toId === current)
-        );
-        const direction: 'forward' | 'backward' = edge?.fromId === current ? 'forward' : 'backward';
-        if (edge?.fromId === current) delta = deltas.forward;
-        else if (edge?.toId === current) delta = deltas.backward;
+        const delta = direction === 'forward' ? deltas.forward : deltas.backward;
 
         const nextGen = currentGen + delta;
         if (!generations.has(neighbor)) {
@@ -1934,7 +1913,6 @@ class FamilyTreeService {
       ],
       self_id: selfId,
     };
-  }
 }
 
 function inferSide(evidence?: string): 'maternal' | 'paternal' | 'both' | 'other' | undefined {
@@ -2050,32 +2028,10 @@ function isLeadPriorityMember(m: FamilyMemberDTO, members: FamilyMemberDTO[]): b
  * each other too — see displayPairKey), then alphabetical. Without the
  * pairing step, a spouse pair only ends up adjacent by alphabetical
  * coincidence even when their side/generation both match.
- *
- * A generation row the user has manually dragged (family_display_order set
- * on at least one member — see reorderMembers) skips all of that and sorts
- * by the saved order instead, full stop: the whole point is letting the
- * user's own placement win over the algorithm. A member added to that row
- * after the last manual save (no order recorded yet) falls after everyone
- * with an explicit position, ordered among themselves by the normal rules.
  */
 export function sortFamilyMembersForDisplay(members: FamilyMemberDTO[]): FamilyMemberDTO[] {
-  const manuallyOrderedGenerations = new Set<number>();
-  for (const m of members) {
-    if (typeof m.family_display_order === 'number') manuallyOrderedGenerations.add(m.generation);
-  }
-
   members.sort((a, b) => {
     if (a.generation !== b.generation) return a.generation - b.generation;
-
-    if (manuallyOrderedGenerations.has(a.generation)) {
-      const aHas = typeof a.family_display_order === 'number';
-      const bHas = typeof b.family_display_order === 'number';
-      if (aHas && bHas) return a.family_display_order! - b.family_display_order!;
-      if (aHas !== bHas) return aHas ? -1 : 1;
-      // Both unrecorded within a manually-ordered row — fall through to the
-      // normal rules below so new arrivals still sort sensibly among themselves.
-    }
-
     const selfDelta = Number(Boolean(b.is_self)) - Number(Boolean(a.is_self));
     if (selfDelta !== 0) return selfDelta;
     const leadDelta =
