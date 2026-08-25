@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Loader2, X } from 'lucide-react';
 import type { FamilyMember } from '../../types/socialRoles';
 
 /** Base relations the user can assign — "{member} is my {relation}". Must match
@@ -39,6 +39,8 @@ export interface RelationshipEdit {
   side?: 'maternal' | 'paternal' | 'both' | 'other';
   /** Explicit parent to connect this node to. Empty = let LoreBook infer. */
   connectsToId?: string;
+  /** Person this member is married to / partnered with. Empty = leave as-is. */
+  spouseId?: string;
 }
 
 export function RelationshipEditor({
@@ -48,7 +50,7 @@ export function RelationshipEditor({
   onClose,
 }: {
   member: FamilyMember;
-  /** All tree members, used to populate the "connects to" (parent) picker. */
+  /** All tree members, used to populate the "connects to" and "married to" pickers. */
   members?: FamilyMember[];
   onSave: (edit: RelationshipEdit) => Promise<void> | void;
   onClose: () => void;
@@ -56,8 +58,18 @@ export function RelationshipEditor({
   const [relation, setRelation] = useState<string>(
     RELATION_OPTIONS.some((o) => o.value === member.relation) ? member.relation : 'related',
   );
-  const [side, setSide] = useState<'' | 'maternal' | 'paternal' | 'both' | 'other'>(member.side ?? '');
+  // 'partner' is an auto-computed side (set by spouse pairing, not this
+  // dropdown, which has no such option) -- treat it as unset here.
+  const [side, setSide] = useState<'' | 'maternal' | 'paternal' | 'both' | 'other'>(
+    member.side && member.side !== 'partner' ? member.side : '',
+  );
   const [connectsToId, setConnectsToId] = useState<string>(member.parent_id ?? '');
+  const [spouseId, setSpouseId] = useState<string>(member.paired_with_id ?? '');
+  // Start expanded only when there's already something back there to see —
+  // otherwise the common "just fix the generation" edit is one field, not four.
+  const [showMore, setShowMore] = useState(
+    Boolean(member.side || member.parent_id || member.paired_with_id),
+  );
   const [saving, setSaving] = useState(false);
 
   // Candidate parents: every other node, older generations first. The user can
@@ -66,10 +78,21 @@ export function RelationshipEditor({
     .filter((m) => m.id !== member.id && !m.is_placeholder)
     .sort((a, b) => a.generation - b.generation || a.name.localeCompare(b.name));
 
+  // Candidate spouses: same generation as this member, excluding self and
+  // whoever's already paired with someone else.
+  const spouseCandidates = members
+    .filter((m) => m.id !== member.id && !m.is_placeholder && !m.is_self && m.generation === member.generation)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   const save = async () => {
     setSaving(true);
     try {
-      await onSave({ relation, side: side || undefined, connectsToId: connectsToId || undefined });
+      await onSave({
+        relation,
+        side: side || undefined,
+        connectsToId: connectsToId || undefined,
+        spouseId: spouseId || undefined,
+      });
       onClose();
     } finally {
       setSaving(false);
@@ -99,44 +122,84 @@ export function RelationshipEditor({
           value={relation}
           onChange={(e) => setRelation(e.target.value)}
           aria-label="Relationship"
-          className="mt-1 mb-3 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white focus:border-emerald-400/60 focus:outline-none"
+          autoFocus
+          className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white focus:border-emerald-400/60 focus:outline-none"
         >
           {RELATION_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
 
-        <label className="block text-[11px] font-medium uppercase tracking-wide text-white/45">Family side</label>
-        <select
-          value={side}
-          onChange={(e) => setSide(e.target.value as typeof side)}
-          aria-label="Family side"
-          className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white focus:border-emerald-400/60 focus:outline-none"
+        <button
+          type="button"
+          onClick={() => setShowMore((v) => !v)}
+          className="mt-3 flex items-center gap-1 text-[11px] font-medium text-white/45 hover:text-white/70"
         >
-          {SIDE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
+          {showMore ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          {showMore ? 'Fewer options' : 'More options (side, married to, connects to)'}
+        </button>
 
-        <label className="mt-3 block text-[11px] font-medium uppercase tracking-wide text-white/45">
-          Connects to (parent)
-        </label>
-        <select
-          value={connectsToId}
-          onChange={(e) => setConnectsToId(e.target.value)}
-          aria-label="Connects to"
-          className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white focus:border-emerald-400/60 focus:outline-none"
-        >
-          <option value="">Auto — let LoreBook decide</option>
-          {parentCandidates.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}{m.relation_label ? ` · ${m.relation_label}` : ''}
-            </option>
-          ))}
-        </select>
-        <p className="mt-1 text-[10px] leading-snug text-white/35">
-          Pick who this person descends from to fix the line in the graph, or leave on Auto.
-        </p>
+        {showMore && (
+          <div className="mt-3 space-y-3 border-t border-white/10 pt-3">
+            <div>
+              <label className="block text-[11px] font-medium uppercase tracking-wide text-white/45">Family side</label>
+              <select
+                value={side}
+                onChange={(e) => setSide(e.target.value as typeof side)}
+                aria-label="Family side"
+                className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white focus:border-emerald-400/60 focus:outline-none"
+              >
+                {SIDE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-medium uppercase tracking-wide text-white/45">
+                Married to / partnered with
+              </label>
+              <select
+                value={spouseId}
+                onChange={(e) => setSpouseId(e.target.value)}
+                aria-label="Married to"
+                className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white focus:border-emerald-400/60 focus:outline-none"
+              >
+                <option value="">Not set</option>
+                {spouseCandidates.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}{m.relation_label ? ` · ${m.relation_label}` : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[10px] leading-snug text-white/35">
+                Links them as a couple so they're placed next to each other, even without a formal marriage on record.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-medium uppercase tracking-wide text-white/45">
+                Connects to (parent)
+              </label>
+              <select
+                value={connectsToId}
+                onChange={(e) => setConnectsToId(e.target.value)}
+                aria-label="Connects to"
+                className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white focus:border-emerald-400/60 focus:outline-none"
+              >
+                <option value="">Auto — let LoreBook decide</option>
+                {parentCandidates.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}{m.relation_label ? ` · ${m.relation_label}` : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[10px] leading-snug text-white/35">
+                Pick who this person descends from to fix the line in the graph, or leave on Auto.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="mt-5 flex justify-end gap-2">
           <button
