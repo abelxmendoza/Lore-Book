@@ -1,7 +1,22 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { Heart, User, MoreVertical, AlertTriangle, Pencil, UserMinus, Trash2, Check, Building2 } from 'lucide-react';
+import {
+  Heart,
+  User,
+  MoreVertical,
+  AlertTriangle,
+  Pencil,
+  UserMinus,
+  Trash2,
+  Check,
+  Building2,
+  ArrowLeftRight,
+  ChevronLeft,
+  ChevronRight,
+  GripVertical,
+} from 'lucide-react';
 import { CharacterAvatar } from '../characters/CharacterAvatar';
 import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import {
   formatFamilyMemberDisplayName,
   formatFamilyMemberSubtitle,
@@ -21,6 +36,10 @@ interface FamilyTreeViewProps {
   onDelete?: (member: FamilyMember) => void;
   /** Confirm a flagged member is really family (clears the review flag). */
   onKeep?: (member: FamilyMember) => void;
+  /** Persist a drag-to-reorder within one generation row — every id in
+   *  `orderedIds` gets sequential placement, left to right. Presence of this
+   *  prop is what surfaces the Reorder toggle at all. */
+  onReorderRow?: (orderedIds: string[]) => Promise<void> | void;
 }
 
 type RelationStyle = {
@@ -540,6 +559,16 @@ const GEN_LABELS: Record<number, string> = {
 
 interface SvgLine { x1: number; y1: number; x2: number; y2: number }
 
+function moveInArray<T>(list: T[], from: number, to: number): T[] {
+  if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) {
+    return list;
+  }
+  const next = [...list];
+  const [removed] = next.splice(from, 1);
+  next.splice(to, 0, removed);
+  return next;
+}
+
 export const FamilyTreeView = ({
   tree,
   onMemberClick,
@@ -549,14 +578,51 @@ export const FamilyTreeView = ({
   onMoveToGroup,
   onDelete,
   onKeep,
+  onReorderRow,
 }: FamilyTreeViewProps) => {
   const { members } = tree;
+  const isMobile = useIsMobile();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const nodeEls      = useRef<Map<string, HTMLButtonElement>>(new Map());
   const [lines, setLines] = useState<SvgLine[]>([]);
   const [svgW, setSvgW]   = useState(0);
   const [svgH, setSvgH]   = useState(0);
+
+  // Drag-to-reorder (placement editing). Row order comes from the server
+  // (sortFamilyMembersForDisplay) — this is only a local working copy of
+  // whichever rows the user has actively rearranged since entering reorder
+  // mode, keyed by generation. Cleared once every dirty row saves, since the
+  // parent refetches the tree and the server-sorted order takes back over.
+  const [reorderMode, setReorderMode] = useState(false);
+  const [rowOverrides, setRowOverrides] = useState<Map<number, string[]>>(new Map());
+  const [dragMemberId, setDragMemberId] = useState<string | null>(null);
+  const [savingReorder, setSavingReorder] = useState(false);
+  const dirtyGenerations = rowOverrides.size > 0;
+
+  const moveWithinRow = useCallback((gen: number, rowIds: string[], from: number, to: number) => {
+    const next = moveInArray(rowIds, from, to);
+    if (next === rowIds) return;
+    setRowOverrides((prev) => {
+      const copy = new Map(prev);
+      copy.set(gen, next);
+      return copy;
+    });
+  }, []);
+
+  const saveReorder = useCallback(async () => {
+    if (!onReorderRow || rowOverrides.size === 0) return;
+    setSavingReorder(true);
+    try {
+      for (const orderedIds of rowOverrides.values()) {
+        await onReorderRow(orderedIds);
+      }
+      setRowOverrides(new Map());
+      setReorderMode(false);
+    } finally {
+      setSavingReorder(false);
+    }
+  }, [onReorderRow, rowOverrides]);
 
   const handleNodeRef = useCallback((id: string, el: HTMLButtonElement | null) => {
     if (el) nodeEls.current.set(id, el);
@@ -681,12 +747,69 @@ export const FamilyTreeView = ({
         </div>
       )}
 
+      {/* Reorder toggle — drag people within their generation row to fix placement */}
+      {!compact && onReorderRow && (
+        <div className="flex items-center justify-end gap-1.5 relative z-[1]">
+          {dirtyGenerations && (
+            <button
+              type="button"
+              disabled={savingReorder}
+              onClick={() => void saveReorder()}
+              className="px-3 py-1.5 rounded-lg bg-primary/20 text-primary border border-primary/40 text-xs font-medium hover:bg-primary/30 disabled:opacity-50"
+            >
+              {savingReorder ? 'Saving…' : 'Save order'}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              if (reorderMode) setRowOverrides(new Map());
+              setReorderMode((v) => !v);
+            }}
+            aria-pressed={reorderMode ? 'true' : 'false'}
+            title={reorderMode ? 'Done placing people' : 'Drag people to fix their placement'}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+              reorderMode
+                ? 'border-primary/50 text-primary bg-primary/15'
+                : 'border-white/10 text-white/60 hover:text-white hover:border-white/25'
+            }`}
+          >
+            <ArrowLeftRight className="h-3.5 w-3.5" />
+            {reorderMode ? 'Done' : 'Reorder'}
+          </button>
+        </div>
+      )}
+      {reorderMode && (
+        <p className="text-[11px] text-white/40 -mt-3 relative z-[1]">
+          {isMobile
+            ? 'Use the arrows on each person to move them left or right, then save.'
+            : 'Drag anyone to reposition them within their row, then save.'}
+        </p>
+      )}
+
       {/* Generational rows */}
       {generations.map(gen => {
         const gMembers = byGen.get(gen)!;
         const label = GEN_LABELS[gen] ?? (gen < 0 ? `Generation ${Math.abs(gen)} Above` : `Generation ${gen} Below`);
         const self   = gMembers.find(m => m.is_self);
-        const others = gMembers.filter(m => !m.is_self);
+        const naturalOthers = gMembers.filter(m => !m.is_self);
+        const byId = new Map(naturalOthers.map((m) => [m.id, m]));
+        const override = rowOverrides.get(gen);
+        // A local override drives display while dragging; anyone it doesn't
+        // mention yet (e.g. the row changed underneath since reorder mode
+        // opened) falls back after it, in natural order.
+        const others = override
+          ? [
+              ...override.map((id) => byId.get(id)).filter((m): m is FamilyMember => Boolean(m)),
+              ...naturalOthers.filter((m) => !override.includes(m.id)),
+            ]
+          : naturalOthers;
+        const canDrag = reorderMode && !isMobile && others.length > 1;
+        const canArrow = reorderMode && isMobile && others.length > 1;
+
+        const moveOther = (from: number, to: number) => {
+          moveWithinRow(gen, others.map((m) => m.id), from, to);
+        };
 
         return (
           <div key={gen} className="relative z-[1]">
@@ -700,19 +823,65 @@ export const FamilyTreeView = ({
                   )}
                 </div>
               )}
-              {others.map(m => (
-                <NodeWithActions
+              {others.map((m, idx) => (
+                <div
                   key={m.id}
-                  member={m}
-                  onClick={onMemberClick}
-                  compact={compact}
-                  onNodeRef={handleNodeRef}
-                  onEditRelationship={onEditRelationship}
-                  onExclude={onExclude}
-                  onMoveToGroup={onMoveToGroup}
-                  onDelete={onDelete}
-                  onKeep={onKeep}
-                />
+                  draggable={canDrag}
+                  onDragStart={canDrag ? () => setDragMemberId(m.id) : undefined}
+                  onDragEnd={canDrag ? () => setDragMemberId(null) : undefined}
+                  onDragOver={canDrag ? (e) => e.preventDefault() : undefined}
+                  onDrop={
+                    canDrag
+                      ? () => {
+                          if (dragMemberId == null) return;
+                          const from = others.findIndex((x) => x.id === dragMemberId);
+                          if (from === -1 || from === idx) return;
+                          moveOther(from, idx);
+                          setDragMemberId(null);
+                        }
+                      : undefined
+                  }
+                  className={`flex flex-col items-center ${
+                    canDrag ? `cursor-grab active:cursor-grabbing ${dragMemberId === m.id ? 'opacity-50' : ''}` : ''
+                  }`}
+                >
+                  <NodeWithActions
+                    member={m}
+                    onClick={reorderMode ? undefined : onMemberClick}
+                    compact={compact}
+                    onNodeRef={handleNodeRef}
+                    onEditRelationship={reorderMode ? undefined : onEditRelationship}
+                    onExclude={reorderMode ? undefined : onExclude}
+                    onMoveToGroup={reorderMode ? undefined : onMoveToGroup}
+                    onDelete={reorderMode ? undefined : onDelete}
+                    onKeep={reorderMode ? undefined : onKeep}
+                  />
+                  {canDrag && (
+                    <GripVertical className="h-3.5 w-3.5 text-white/25 -mt-1" />
+                  )}
+                  {canArrow && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <button
+                        type="button"
+                        aria-label={`Move ${m.name} left`}
+                        disabled={idx === 0}
+                        onClick={() => moveOther(idx, idx - 1)}
+                        className="p-1.5 rounded-lg border border-white/10 text-white/60 active:bg-white/10 disabled:opacity-20 touch-manipulation"
+                      >
+                        <ChevronLeft className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Move ${m.name} right`}
+                        disabled={idx === others.length - 1}
+                        onClick={() => moveOther(idx, idx + 1)}
+                        className="p-1.5 rounded-lg border border-white/10 text-white/60 active:bg-white/10 disabled:opacity-20 touch-manipulation"
+                      >
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           </div>

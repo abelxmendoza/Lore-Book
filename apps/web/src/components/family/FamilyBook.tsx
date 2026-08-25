@@ -227,6 +227,19 @@ export function FamilyBook() {
     );
   }, [runEdit, shouldUseMock, demoTree, summary, success]);
 
+  const reorderRow = useCallback(async (orderedIds: string[]): Promise<void> => {
+    try {
+      await fetchJson('/api/family-trees/reorder', {
+        method: 'PATCH',
+        body: JSON.stringify({ orderedIds }),
+      });
+      refreshFamily();
+    } catch (e) {
+      const detail = e instanceof Error && e.message ? `: ${e.message}` : '';
+      toastError(`Couldn't save that order${detail}`);
+    }
+  }, [refreshFamily, toastError]);
+
   // Demo mode: local editing on the mock tree (no API calls)
   const mockEditHandlers = shouldUseMock ? {
     onEditRelationship: (m: FamilyMember) => setEditorMember(m),
@@ -265,6 +278,21 @@ export function FamilyBook() {
       if (summary) setSummary({ ...summary, tree: updatedTree });
       success(`Kept ${m.name} (demo)`);
     },
+    onReorderRow: (orderedIds: string[]) => {
+      if (!demoTree) return;
+      const orderIndex = new Map(orderedIds.map((id, i) => [id, i]));
+      const updatedMembers = [...demoTree.members].sort((a, b) => {
+        const ai = orderIndex.get(a.id);
+        const bi = orderIndex.get(b.id);
+        if (ai !== undefined && bi !== undefined) return ai - bi;
+        if (ai !== undefined) return -1;
+        if (bi !== undefined) return 1;
+        return 0;
+      });
+      const updatedTree = { ...demoTree, members: updatedMembers };
+      setDemoTree(updatedTree);
+      if (summary) setSummary({ ...summary, tree: updatedTree });
+    },
   } : {};
 
   const editHandlers = shouldUseMock
@@ -274,6 +302,7 @@ export function FamilyBook() {
         onExclude: (m: FamilyMember) => void excludeMember(m),
         onMoveToGroup: (m: FamilyMember) => void moveMemberToGroup(m),
         onDelete: (m: FamilyMember) => void deleteMember(m),
+        onReorderRow: reorderRow,
         onKeep: (m: FamilyMember) => void keepMember(m),
       };
 

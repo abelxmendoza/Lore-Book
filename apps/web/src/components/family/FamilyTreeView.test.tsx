@@ -8,6 +8,11 @@ vi.mock('../characters/CharacterAvatar', () => ({
   CharacterAvatar: ({ name }: { name: string }) => <div data-testid="avatar">{name}</div>,
 }));
 
+const isMobileMock = vi.fn(() => false);
+vi.mock('../../hooks/useIsMobile', () => ({
+  useIsMobile: () => isMobileMock(),
+}));
+
 beforeAll(() => {
   // jsdom has no ResizeObserver; FamilyTreeView observes its container.
   (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
@@ -181,5 +186,70 @@ describe('FamilyTreeView — edit affordances', () => {
     fireEvent.click(screen.getByTitle(/Goth Tio/));
     expect(onMemberClick).toHaveBeenCalledTimes(1);
     expect(onMemberClick.mock.calls[0][0].id).toBe('char-1');
+  });
+});
+
+describe('FamilyTreeView — drag-to-reorder (placement editing)', () => {
+  const rowTree: FamilyTree = {
+    self_id: 'me',
+    branches: [],
+    members: [
+      { id: 'me', name: 'You', relation: 'related', relation_label: 'You', generation: 0, is_self: true },
+      { id: 'aunt-1', name: 'Ana Ruiz', relation: 'aunt', relation_label: 'Aunt', generation: -1 },
+      { id: 'uncle-1', name: 'Ben Ruiz', relation: 'uncle', relation_label: 'Uncle', generation: -1 },
+    ],
+  };
+
+  it('does not show the Reorder toggle without onReorderRow', () => {
+    render(<FamilyTreeView tree={rowTree} />);
+    expect(screen.queryByRole('button', { name: /reorder/i })).toBeNull();
+  });
+
+  it('shows the Reorder toggle when onReorderRow is provided, and locks by default', () => {
+    render(<FamilyTreeView tree={rowTree} onReorderRow={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /reorder/i })).toBeInTheDocument();
+    expect(document.querySelector('[draggable="true"]')).toBeNull();
+    expect(screen.queryByLabelText(/move .* right/i)).toBeNull();
+  });
+
+  it('unlocks dragging on desktop and mobile arrows on mobile after toggling Reorder', () => {
+    isMobileMock.mockReturnValue(false);
+    const { unmount } = render(<FamilyTreeView tree={rowTree} onReorderRow={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /reorder/i }));
+    expect(document.querySelector('[draggable="true"]')).not.toBeNull();
+    expect(screen.queryByLabelText(/move .* right/i)).toBeNull();
+    unmount();
+
+    isMobileMock.mockReturnValue(true);
+    render(<FamilyTreeView tree={rowTree} onReorderRow={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /reorder/i }));
+    expect(document.querySelector('[draggable="true"]')).toBeNull();
+    expect(screen.getByLabelText('Move Ana Ruiz right')).toBeInTheDocument();
+    isMobileMock.mockReturnValue(false);
+  });
+
+  it('reorders via mobile arrows and saves the new order for that row only', async () => {
+    isMobileMock.mockReturnValue(true);
+    const onReorderRow = vi.fn().mockResolvedValue(undefined);
+    render(<FamilyTreeView tree={rowTree} onReorderRow={onReorderRow} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /reorder/i }));
+    fireEvent.click(screen.getByLabelText('Move Ana Ruiz right'));
+    expect(onReorderRow).not.toHaveBeenCalled(); // not saved yet — just a local working order
+
+    fireEvent.click(screen.getByRole('button', { name: /save order/i }));
+    await Promise.resolve();
+
+    expect(onReorderRow).toHaveBeenCalledTimes(1);
+    expect(onReorderRow).toHaveBeenCalledWith(['uncle-1', 'aunt-1']);
+    isMobileMock.mockReturnValue(false);
+  });
+
+  it('leaves the self node out of reordering — no move controls on it', () => {
+    isMobileMock.mockReturnValue(true);
+    render(<FamilyTreeView tree={rowTree} onReorderRow={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /reorder/i }));
+    expect(screen.queryByLabelText(/move you /i)).toBeNull();
+    isMobileMock.mockReturnValue(false);
   });
 });

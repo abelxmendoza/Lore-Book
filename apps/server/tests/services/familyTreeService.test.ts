@@ -662,6 +662,36 @@ describe('familyTreeService — sortFamilyMembersForDisplay', () => {
 
     expect(members[0].id).toBe('abuela');
   });
+
+  // A user-dragged row (family_display_order — see reorderMembers) should
+  // win outright: that's the entire point of drag-to-reorder, so it must
+  // beat every automatic rule, including Abuela leading and self-first.
+  it('respects a manually dragged order over the automatic sort, including Abuela and self', () => {
+    const abuela = member({ id: 'abuela', kinship_title: 'Abuela', generation: -2, relation: 'grandparent' });
+    const aunt = member({ id: 'tia', name: 'Ana Ruiz', generation: -2, relation: 'aunt', family_display_order: 0 });
+    const uncle = member({ id: 'tio', name: 'Ben Ruiz', generation: -2, relation: 'uncle', family_display_order: 1 });
+    // Abuela has no recorded order for this row — she still exists, just
+    // wasn't part of the last manual save, so she falls after the ordered ones.
+    const members = [abuela, uncle, aunt];
+
+    sortFamilyMembersForDisplay(members);
+
+    expect(members.map((m) => m.id)).toEqual(['tia', 'tio', 'abuela']);
+  });
+
+  it('leaves an unrelated generation on the automatic sort when only one row was manually ordered', () => {
+    const abuela = member({ id: 'abuela', kinship_title: 'Abuela', generation: -2, relation: 'grandparent' });
+    const auntBefore = member({ id: 'tia', name: 'Ana Ruiz', generation: -2, relation: 'aunt' });
+    const zoe = member({ id: 'zoe', name: 'Zoe', generation: 0, relation: 'cousin', family_display_order: 1 });
+    const amy = member({ id: 'amy', name: 'Amy', generation: 0, relation: 'cousin', family_display_order: 0 });
+    const members = [auntBefore, zoe, abuela, amy];
+
+    sortFamilyMembersForDisplay(members);
+
+    // Gen -2 (no manual order there) still leads with Abuela; gen 0 respects
+    // the manual order (amy=0 before zoe=1) rather than alphabetical.
+    expect(members.map((m) => m.id)).toEqual(['abuela', 'tia', 'amy', 'zoe']);
+  });
 });
 
 describe('familyTreeService — getKidsTogetherForRelationship (step-kid inference gate)', () => {

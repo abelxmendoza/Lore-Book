@@ -123,6 +123,25 @@ export function useFamilyTreeEditing(opts: { enabled: boolean; onChanged?: () =>
     [runEdit],
   );
 
+  /** Persist a drag-to-reorder within one generation row. Silent on success —
+   *  the row visibly settling into place is enough feedback; a toast per row
+   *  saved would be noisy when the user rearranged more than one row. */
+  const reorderRow = useCallback(
+    async (orderedIds: string[]): Promise<void> => {
+      try {
+        await fetchJson('/api/family-trees/reorder', {
+          method: 'PATCH',
+          body: JSON.stringify({ orderedIds }),
+        });
+        refresh();
+      } catch (e) {
+        const detail = e instanceof Error && e.message ? `: ${e.message}` : '';
+        toastError(`Couldn't save that order${detail}`);
+      }
+    },
+    [refresh, toastError],
+  );
+
   const editHandlers = enabled
     ? {
         onEditRelationship: (m: FamilyMember) => setEditorMember(m),
@@ -130,6 +149,7 @@ export function useFamilyTreeEditing(opts: { enabled: boolean; onChanged?: () =>
         onMoveToGroup: (m: FamilyMember) => void moveMemberToGroup(m),
         onDelete: (m: FamilyMember) => void deleteMember(m),
         onKeep: (m: FamilyMember) => void keepMember(m),
+        onReorderRow: reorderRow,
       }
     : {};
 
