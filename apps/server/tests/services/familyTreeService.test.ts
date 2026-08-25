@@ -544,6 +544,21 @@ describe('familyTreeService — alignMarriedInSidesWithSpouse', () => {
     expect(mom.side).toBe('maternal');
     expect(dad.side).toBe('paternal');
   });
+
+  it('records paired_with_id for a plain blood-relation couple (two grandparents), without touching side', () => {
+    const abuela = member({ id: 'abuela', kinship_title: 'Abuela', generation: -2, side: 'maternal', relation: 'grandparent' });
+    const abuelo = member({ id: 'abuelo', kinship_title: 'Abuelo', generation: -2, side: 'paternal', relation: 'grandparent' });
+    const members = [abuela, abuelo];
+    const edges = [{ fromId: 'abuela', toId: 'abuelo', type: 'spouse_of' }];
+
+    alignMarriedInSidesWithSpouse(members, edges);
+
+    expect(abuela.paired_with_id).toBe('abuelo');
+    expect(abuelo.paired_with_id).toBe('abuela');
+    // Neither is married-in, so side is left as-is, unlike the step-parent case.
+    expect(abuela.side).toBe('maternal');
+    expect(abuelo.side).toBe('paternal');
+  });
 });
 
 describe('familyTreeService — sortFamilyMembersForDisplay', () => {
@@ -599,6 +614,53 @@ describe('familyTreeService — sortFamilyMembersForDisplay', () => {
     sortFamilyMembersForDisplay(members);
 
     expect(members[0].id).toBe('you');
+  });
+
+  it('clusters a plain blood-relation couple (two grandparents) even when names sort far apart', () => {
+    const abuela = member({ id: 'abuela', name: 'Rosa Mendoza', kinship_title: 'Abuela', generation: -2, relation: 'grandparent' });
+    const abuelo = member({ id: 'abuelo', name: 'Zeke Mendoza', kinship_title: 'Abuelo', generation: -2, relation: 'grandparent' });
+    const auntBetween = member({ id: 'tia', name: 'Vera Ruiz', generation: -2, relation: 'aunt' });
+    const members = [auntBetween, abuelo, abuela];
+    alignMarriedInSidesWithSpouse(members, [{ fromId: 'abuela', toId: 'abuelo', type: 'spouse_of' }]);
+
+    sortFamilyMembersForDisplay(members);
+
+    const order = members.map((m) => m.id);
+    expect(Math.abs(order.indexOf('abuela') - order.indexOf('abuelo'))).toBe(1);
+  });
+
+  it('leads Abuela\'s generation row ahead of alphabetically-earlier relatives, matched by kinship_title', () => {
+    const abuela = member({ id: 'abuela', name: 'Rosa Mendoza', kinship_title: 'Abuela', generation: -2, relation: 'grandparent' });
+    const auntBefore = member({ id: 'tia', name: 'Ana Ruiz', generation: -2, relation: 'aunt' });
+    const members = [auntBefore, abuela];
+
+    sortFamilyMembersForDisplay(members);
+
+    expect(members[0].id).toBe('abuela');
+  });
+
+  it('pulls Abuela\'s paired spouse to the front of the row alongside her', () => {
+    const abuela = member({ id: 'abuela', name: 'Rosa Mendoza', kinship_title: 'Abuela', generation: -2, relation: 'grandparent' });
+    const abuelo = member({ id: 'abuelo', name: 'Zeke Mendoza', kinship_title: 'Abuelo', generation: -2, relation: 'grandparent' });
+    const auntBefore = member({ id: 'tia', name: 'Ana Ruiz', generation: -2, relation: 'aunt' });
+    const members = [auntBefore, abuelo, abuela];
+    alignMarriedInSidesWithSpouse(members, [{ fromId: 'abuela', toId: 'abuelo', type: 'spouse_of' }]);
+
+    sortFamilyMembersForDisplay(members);
+
+    const order = members.map((m) => m.id);
+    expect(order.slice(0, 2).sort()).toEqual(['abuela', 'abuelo']);
+    expect(order[2]).toBe('tia');
+  });
+
+  it('matches Abuela by name when kinship_title is not set', () => {
+    const abuela = member({ id: 'abuela', name: 'Abuela', generation: -2, relation: 'grandparent' });
+    const auntBefore = member({ id: 'tia', name: 'Ana Ruiz', generation: -2, relation: 'aunt' });
+    const members = [auntBefore, abuela];
+
+    sortFamilyMembersForDisplay(members);
+
+    expect(members[0].id).toBe('abuela');
   });
 });
 

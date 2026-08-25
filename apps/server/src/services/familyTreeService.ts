@@ -1901,9 +1901,13 @@ function inferSide(evidence?: string): 'maternal' | 'paternal' | 'both' | 'other
 const MARRIED_IN_RELATIONS = new Set<FamilyRelationType>(['step_parent', 'step_child', 'in_law']);
 
 /**
- * A step-parent (etc.) belongs on their spouse's side of the tree — e.g. a
- * step-dad married to Mom sits with the maternal branch, not wherever his
- * own kinship-extraction evidence text happened to point. Runs after
+ * Links every same-generation spouse_of pair via paired_with_id so display
+ * sorting can cluster them together (see displayPairKey) — a married-in
+ * relative (step-parent/step-child/in-law) as well as a plain blood-relation
+ * couple (e.g. two grandparents). Also carries a step-parent (etc.) onto
+ * their spouse's side of the tree — e.g. a step-dad married to Mom sits with
+ * the maternal branch, not wherever his own kinship-extraction evidence text
+ * happened to point; blood relatives keep their own side. Runs after
  * generation/relation/side are all assigned, using the spouse_of edges from
  * the same graph walk (same generation tier — same-tier check keeps this
  * from misfiring on an unrelated spouse_of edge to the wrong generation).
@@ -1922,10 +1926,11 @@ export function alignMarriedInSidesWithSpouse(
 
   const byId = new Map(members.map((m) => [m.id, m]));
   for (const m of members) {
-    if (!MARRIED_IN_RELATIONS.has(m.relation)) continue;
     const partner = byId.get(spouseOf.get(m.id) ?? '');
     if (!partner || partner.generation !== m.generation) continue;
-    if (partner.side && partner.side !== 'other') m.side = partner.side;
+    if (MARRIED_IN_RELATIONS.has(m.relation) && partner.side && partner.side !== 'other') {
+      m.side = partner.side;
+    }
     // Record the exact partner so display sorting can cluster them together
     // without re-guessing via side/generation, which is ambiguous whenever
     // more than one same-side blood relative shares that generation (e.g.
@@ -1936,45 +1941,74 @@ export function alignMarriedInSidesWithSpouse(
   }
 }
 
-/** Pairing key so a married-in relative (step-parent/step-child/in-law)
- *  sorts immediately next to the same-generation, same-side blood relative
- *  they're paired with (their "anchor"), instead of wherever their own name
- *  happens to fall alphabetically. Everyone else's key is just their own
- *  name, so they interleave normally. */
+/** Pairing key so any spouse pair (married-in relative or a plain
+ *  blood-relation couple, e.g. two grandparents) sorts immediately adjacent
+ *  to each other, instead of wherever their own names happen to fall
+ *  alphabetically. Everyone else's key is just their own name, so they
+ *  interleave normally. */
 function displayPairKey(m: FamilyMemberDTO, members: FamilyMemberDTO[]): string {
-  if (!MARRIED_IN_RELATIONS.has(m.relation)) return m.name;
-  // Prefer the exact spouse_of partner recorded by alignMarriedInSidesWithSpouse
-  // over guessing by side — side match alone is ambiguous the moment more
-  // than one same-side blood relative shares that generation (an uncle and
-  // a mother are both "maternal" but only one of them is the spouse).
-  if (m.paired_with_id) {
-    const exact = members.find((x) => x.id === m.paired_with_id && x.generation === m.generation);
-    if (exact) return exact.name;
+  const partner = m.paired_with_id
+    ? members.find((x) => x.id === m.paired_with_id && x.generation === m.generation)
+    : undefined;
+  if (!partner) {
+    if (!MARRIED_IN_RELATIONS.has(m.relation)) return m.name;
+    if (!m.side || m.side === 'other') return m.name;
+    // No recorded spouse_of partner — fall back to guessing by side, same
+    // as before paired_with_id existed.
+    const anchor = members.find(
+      (x) =>
+        x.id !== m.id &&
+        x.generation === m.generation &&
+        x.side === m.side &&
+        !MARRIED_IN_RELATIONS.has(x.relation) &&
+        x.relation !== 'related',
+    );
+    return anchor ? anchor.name : m.name;
   }
-  if (!m.side || m.side === 'other') return m.name;
-  const anchor = members.find(
-    (x) =>
-      x.id !== m.id &&
-      x.generation === m.generation &&
-      x.side === m.side &&
-      !MARRIED_IN_RELATIONS.has(x.relation) &&
-      x.relation !== 'related',
-  );
-  return anchor ? anchor.name : m.name;
+  // Married-in relative clusters under their blood-relative partner's name
+  // (the "anchor"), regardless of alphabetical order. Between two blood
+  // relatives married to each other, use whichever name sorts first so
+  // both converge on the same shared key.
+  const mMarriedIn = MARRIED_IN_RELATIONS.has(m.relation);
+  const partnerMarriedIn = MARRIED_IN_RELATIONS.has(partner.relation);
+  if (mMarriedIn && !partnerMarriedIn) return partner.name;
+  if (!mMarriedIn && partnerMarriedIn) return m.name;
+  return m.name < partner.name ? m.name : partner.name;
+}
+
+/** Whether this member should lead their generation row regardless of
+ *  alphabetical order — matched by kinship_title first (the term the user
+ *  actually uses, e.g. "Abuela", preserved even after her real name is
+ *  learned — see FamilyMemberDTO.kinship_title), falling back to name. */
+function isLeadPriorityName(value: string | undefined): boolean {
+  return (value ?? '').trim().toLowerCase() === 'abuela';
+}
+
+function isLeadPriorityMember(m: FamilyMemberDTO, members: FamilyMemberDTO[]): boolean {
+  if (isLeadPriorityName(m.kinship_title) || isLeadPriorityName(m.name)) return true;
+  const partner = m.paired_with_id
+    ? members.find((x) => x.id === m.paired_with_id && x.generation === m.generation)
+    : undefined;
+  return partner ? isLeadPriorityName(partner.kinship_title) || isLeadPriorityName(partner.name) : false;
 }
 
 /**
- * Sort members for display: generation, self first, then spouse pairs
+ * Sort members for display: generation, self first, then Abuela's cluster
+ * leading her generation row (see isLeadPriorityMember), then spouse pairs
  * clustered together (a step-parent sorts right next to the blood relative
- * they're married to — see displayPairKey), then alphabetical. Without the
- * pairing step, a step-parent and their spouse only end up adjacent by
- * alphabetical coincidence even when their side/generation both match.
+ * they're married to, and a plain couple like two grandparents sort next to
+ * each other too — see displayPairKey), then alphabetical. Without the
+ * pairing step, a spouse pair only ends up adjacent by alphabetical
+ * coincidence even when their side/generation both match.
  */
 export function sortFamilyMembersForDisplay(members: FamilyMemberDTO[]): FamilyMemberDTO[] {
   members.sort((a, b) => {
     if (a.generation !== b.generation) return a.generation - b.generation;
     const selfDelta = Number(Boolean(b.is_self)) - Number(Boolean(a.is_self));
     if (selfDelta !== 0) return selfDelta;
+    const leadDelta =
+      Number(isLeadPriorityMember(b, members)) - Number(isLeadPriorityMember(a, members));
+    if (leadDelta !== 0) return leadDelta;
     const aKey = displayPairKey(a, members);
     const bKey = displayPairKey(b, members);
     if (aKey !== bKey) return aKey.localeCompare(bKey);
