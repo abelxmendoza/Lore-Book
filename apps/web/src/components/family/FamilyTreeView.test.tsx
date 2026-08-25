@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { FamilyTreeView, inferEdges } from './FamilyTreeView';
+import { FamilyTreeView, inferEdges, generationLabel } from './FamilyTreeView';
 import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
 
 // Avatar pulls from the network/avatar service — stub it for an isolated render.
@@ -142,6 +142,84 @@ describe('inferEdges — explicit parent links', () => {
     const edges = inferEdges(members);
     expect(edges).toContainEqual({ from: 'me', to: 'kid' });
     expect(edges.filter((e) => e.to === 'kid')).toHaveLength(1);
+  });
+});
+
+describe('inferEdges — ancestors/descendants beyond great-grandparent/grandchild', () => {
+  const m = (over: Partial<FamilyMember> & { id: string; generation: number }): FamilyMember => ({
+    name: over.id,
+    relation: 'related',
+    relation_label: 'Relative',
+    ...over,
+  });
+
+  it('connects a great-great-grandparent down to the great-grandparent by side, even though nothing hand-codes generation -4', () => {
+    const members: FamilyMember[] = [
+      m({ id: 'me', generation: 0, is_self: true }),
+      m({ id: 'mom', generation: -1, relation: 'parent', side: 'maternal' }),
+      m({ id: 'grandma', generation: -2, relation: 'grandparent', side: 'maternal' }),
+      m({ id: 'great-grandma', generation: -3, relation: 'related', side: 'maternal' }),
+      m({ id: 'great-great-grandma', generation: -4, relation: 'related', side: 'maternal' }),
+    ];
+    const edges = inferEdges(members);
+    expect(edges).toContainEqual({ from: 'great-great-grandma', to: 'great-grandma' });
+    expect(edges).toContainEqual({ from: 'great-grandma', to: 'grandma' });
+  });
+
+  it('does not connect a distant ancestor to a mismatched side', () => {
+    const members: FamilyMember[] = [
+      m({ id: 'me', generation: 0, is_self: true }),
+      m({ id: 'great-grandma', generation: -3, relation: 'related', side: 'maternal' }),
+      m({ id: 'great-great-grandpa', generation: -4, relation: 'related', side: 'paternal' }),
+    ];
+    const edges = inferEdges(members);
+    expect(edges.filter((e) => e.from === 'great-great-grandpa')).toHaveLength(0);
+  });
+
+  it('connects a great-great-grandchild up to the great-grandchild by side', () => {
+    const members: FamilyMember[] = [
+      m({ id: 'me', generation: 0, is_self: true }),
+      m({ id: 'kid', generation: 1, relation: 'child', side: 'maternal' }),
+      m({ id: 'grandkid', generation: 2, relation: 'grandchild', side: 'maternal' }),
+      m({ id: 'great-grandkid', generation: 3, relation: 'related', side: 'maternal' }),
+      m({ id: 'great-great-grandkid', generation: 4, relation: 'related', side: 'maternal' }),
+    ];
+    const edges = inferEdges(members);
+    expect(edges).toContainEqual({ from: 'great-grandkid', to: 'great-great-grandkid' });
+    expect(edges).toContainEqual({ from: 'grandkid', to: 'great-grandkid' });
+  });
+
+  it('leaves the hand-tuned -3..+2 range untouched (no duplicate/competing edges)', () => {
+    const members: FamilyMember[] = [
+      m({ id: 'me', generation: 0, is_self: true }),
+      m({ id: 'mom', generation: -1, relation: 'parent', side: 'maternal' }),
+      m({ id: 'grandma', generation: -2, relation: 'grandparent', side: 'maternal' }),
+    ];
+    const edges = inferEdges(members);
+    expect(edges.filter((e) => e.from === 'grandma' && e.to === 'mom')).toHaveLength(1);
+  });
+});
+
+describe('generationLabel', () => {
+  it('uses the named labels for the common range', () => {
+    expect(generationLabel(0)).toBe('Your Generation');
+    expect(generationLabel(-1)).toBe('Parents / Aunts / Uncles');
+    expect(generationLabel(-2)).toBe('Grandparents');
+    expect(generationLabel(-3)).toBe('Great-Grandparents');
+    expect(generationLabel(1)).toBe('Children');
+    expect(generationLabel(2)).toBe('Grandchildren');
+  });
+
+  it('spells out up to 3 "Great-"s for distant ancestors/descendants', () => {
+    expect(generationLabel(-4)).toBe('Great-Great-Grandparents');
+    expect(generationLabel(-5)).toBe('Great-Great-Great-Grandparents');
+    expect(generationLabel(4)).toBe('Great-Great-Grandchildren');
+  });
+
+  it('switches to numeric N×-Great- notation beyond 3 greats', () => {
+    expect(generationLabel(-6)).toBe('4×-Great-Grandparents');
+    expect(generationLabel(-10)).toBe('8×-Great-Grandparents');
+    expect(generationLabel(7)).toBe('5×-Great-Grandchildren');
   });
 });
 
