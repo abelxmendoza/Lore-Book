@@ -323,6 +323,34 @@ export function inferEdges(members: FamilyMember[]): Array<{ from: string; to: s
     }
   }
 
+  // Generic deep-ancestor / deep-descendant chain: every rule above is
+  // hand-tuned for -3..+2 (great-grandparent through grandchild). A distant
+  // ancestor or descendant beyond that range still gets its own row (row
+  // grouping is generation-driven, not limited to this range), but without a
+  // rule here it would render with no connector line at all -- stranded
+  // rather than attached to the tree. Extend the same side-matching pattern
+  // already used for great-grandparent -> grandparent above to any adjacent
+  // pair outside the hand-tuned range, in both directions.
+  const allGens = [...byGen.keys()].sort((a, b) => a - b);
+  for (const gen of allGens) {
+    if (gen >= -3) continue; // -3 -> -2 and everything closer already handled above
+    const older = byGen.get(gen) ?? [];
+    const younger = byGen.get(gen + 1) ?? [];
+    for (const o of older) {
+      const match = younger.find((y) => y.side && o.side && y.side === o.side);
+      if (match) edges.push({ from: o.id, to: match.id });
+    }
+  }
+  for (const gen of allGens) {
+    if (gen <= 2) continue; // 0..2 and everything closer already handled above
+    const younger = byGen.get(gen) ?? [];
+    const older = byGen.get(gen - 1) ?? [];
+    for (const y of younger) {
+      const match = older.find((o) => o.side && y.side && o.side === y.side);
+      if (match) edges.push({ from: match.id, to: y.id });
+    }
+  }
+
   // Drop inferred connectors for any child the user explicitly re-parented,
   // then add the explicit links.
   const reconciled = edges.filter(e => !pinnedChildren.has(e.to));
@@ -554,6 +582,19 @@ const GEN_LABELS: Record<number, string> = {
   [1]:  'Children',
   [2]:  'Grandchildren',
 };
+
+/** Label for any generation, including ones further back/forward than the
+ *  named rows above -- so a distant ancestor someone mentions in passing
+ *  ("my great-great-great-grandmother") still gets a real row label instead
+ *  of "Generation 5 Above". Spells out "Great-" up to 3 times, then switches
+ *  to "N×-Great-" the way genealogists do once it'd otherwise get absurd. */
+export function generationLabel(gen: number): string {
+  const named = GEN_LABELS[gen];
+  if (named) return named;
+  const greats = Math.abs(gen) - 2; // gen -3/3 => 1 great, -4/4 => 2 greats, ...
+  const prefix = greats <= 3 ? 'Great-'.repeat(greats) : `${greats}×-Great-`;
+  return gen < 0 ? `${prefix}Grandparents` : `${prefix}Grandchildren`;
+}
 
 // ── FamilyTreeView ─────────────────────────────────────────────────────────────
 
@@ -790,7 +831,7 @@ export const FamilyTreeView = ({
       {/* Generational rows */}
       {generations.map(gen => {
         const gMembers = byGen.get(gen)!;
-        const label = GEN_LABELS[gen] ?? (gen < 0 ? `Generation ${Math.abs(gen)} Above` : `Generation ${gen} Below`);
+        const label = generationLabel(gen);
         const self   = gMembers.find(m => m.is_self);
         const naturalOthers = gMembers.filter(m => !m.is_self);
         const byId = new Map(naturalOthers.map((m) => [m.id, m]));
