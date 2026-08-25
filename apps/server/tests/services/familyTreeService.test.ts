@@ -17,6 +17,7 @@ import {
   familyTreeService,
   characterHasFamilyTreeSignal,
   isFamilyTreeEligibleCharacter,
+  resolveRawKinshipType,
   type FamilyMemberDTO,
   type FamilyTreeDTO,
   type CharacterKinshipRow,
@@ -776,5 +777,34 @@ describe('familyTreeService — getKidsTogetherForRelationship (step-kid inferen
 
     const coParent = await familyTreeService.getKidsTogetherForRelationship('user-1', 'partner-1', 'baby_mama');
     expect(coParent.some((k) => k.id === 'eli')).toBe(true);
+  });
+});
+
+describe('familyTreeService — resolveRawKinshipType (regression for the Ben Lopez not pairing with Mom bug)', () => {
+  // A row can be correctly, specifically typed in relationship_type (e.g.
+  // "you step_child_of Ben" — you're recorded as HIS step-child) while its
+  // separate metadata.kinship field is a display label for the OTHER
+  // direction ("stepfather" — what you call him). Treating kinship as the
+  // edge's own type flips the meaning: the row still reads "you --step_
+  // parent_of--> Ben", i.e. backwards. A specific relationship_type column
+  // value must win over kinship, not the other way around.
+  it('trusts a specific relationship_type over metadata.kinship describing the other direction', () => {
+    expect(resolveRawKinshipType(null, 'step_child_of', 'stepfather')).toBe('step_child_of');
+    expect(resolveRawKinshipType(undefined, 'parent_of', 'mother')).toBe('parent_of');
+  });
+
+  it('falls back to metadata.kinship only when relationship_type is a generic bucket or empty', () => {
+    expect(resolveRawKinshipType(null, 'family', 'stepfather')).toBe('stepfather');
+    expect(resolveRawKinshipType(null, 'related_to', 'aunt')).toBe('aunt');
+    expect(resolveRawKinshipType(null, '', 'uncle')).toBe('uncle');
+    expect(resolveRawKinshipType(null, null, 'cousin')).toBe('cousin');
+  });
+
+  it('relationship_role always wins outright, even over a specific relationship_type', () => {
+    expect(resolveRawKinshipType('grandmother', 'step_child_of', 'stepfather')).toBe('grandmother');
+  });
+
+  it('returns the generic bucket type itself when nothing more specific is available', () => {
+    expect(resolveRawKinshipType(null, 'family', null)).toBe('family');
   });
 });

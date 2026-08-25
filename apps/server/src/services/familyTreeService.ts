@@ -325,6 +325,30 @@ function normalizeRelationshipType(type: string): string {
   return normalizeFamilyEdgeType(type);
 }
 
+/**
+ * Which raw kinship label actually describes this row's source→target edge.
+ * `relationship_role` wins outright when set (an explicit role assignment).
+ * Otherwise, a specific `relationship_type` column value (step_child_of,
+ * parent_of, ...) is trusted over `metadata.kinship` — kinship is a display
+ * label for "what I call the other person" (e.g. "stepfather"), not a
+ * directional assertion, and the two can be captured by different signals
+ * that disagree about which end is the parent/child. Only when the column
+ * itself is a generic bucket (family/related_to/related) or empty does
+ * kinship get to supply the real type, since a generic-bucket row has no
+ * directional meaning of its own to override.
+ */
+export function resolveRawKinshipType(
+  relationshipRole: string | null | undefined,
+  relationshipType: string | null | undefined,
+  metaKinship: string | null,
+): string {
+  if (relationshipRole) return relationshipRole;
+  const rt = relationshipType ?? '';
+  const isGenericOrEmpty = !rt || GENERIC_FAMILY_BUCKET_TYPES.has(rt.toLowerCase());
+  if (isGenericOrEmpty && metaKinship) return metaKinship;
+  return rt || metaKinship || '';
+}
+
 function relationFromType(type: string, delta: number): FamilyRelationType {
   const t = type.toLowerCase();
   if (t.includes('aunt')) return 'aunt';
@@ -1605,7 +1629,7 @@ class FamilyTreeService {
       if ((r.status ?? 'active') !== 'active') continue;
       if (excludedIds.has(r.source_character_id) || excludedIds.has(r.target_character_id)) continue;
       const metaKinship = typeof r.metadata?.kinship === 'string' ? String(r.metadata.kinship) : null;
-      const rawType = r.relationship_role ?? metaKinship ?? r.relationship_type;
+      const rawType = resolveRawKinshipType(r.relationship_role, r.relationship_type, metaKinship);
       if ((r.relationship_type ?? '').toLowerCase() === 'possible_family') continue;
       if (r.relationship_category !== 'family' && !isFamilyType(rawType) && !isFamilyType(r.relationship_type) && !isFamilyType(metaKinship ?? '')) continue;
       const type = normalizeRelationshipType(rawType);
@@ -1647,7 +1671,7 @@ class FamilyTreeService {
         if (excludedIds.has(r.source_character_id) || excludedIds.has(r.target_character_id)) continue;
         if ((r.relationship_type ?? '').toLowerCase() === 'possible_family') continue;
         const metaKinship = typeof r.metadata?.kinship === 'string' ? String(r.metadata.kinship) : null;
-        const rawType = r.relationship_role ?? metaKinship ?? r.relationship_type;
+        const rawType = resolveRawKinshipType(r.relationship_role, r.relationship_type, metaKinship);
         if (r.relationship_category !== 'family' && !isFamilyType(rawType) && !isFamilyType(r.relationship_type) && !isFamilyType(metaKinship ?? '')) continue;
         const type = normalizeRelationshipType(rawType);
         const key = `${r.source_character_id}|${r.target_character_id}|${type}`;
