@@ -11,7 +11,7 @@ import { filterEpisodeParticipantNames, isPollutingPlaceLabel } from '../actors/
 import { classifyPersonAttribution, classifyPlaceAttribution } from '../attribution/eventEntityAttribution';
 import { segmentEpisodes, type Episode, type SegMessage } from './episodeSegmentationCore';
 import { loadThreadMessages } from './threadContentService';
-import { locationTimelineBuilder } from './entityTimelineBuilder';
+import { locationTimelineBuilder, organizationTimelineBuilder } from './entityTimelineBuilder';
 
 export interface EpisodeRow {
   id: string;
@@ -28,12 +28,12 @@ export interface EpisodeRow {
   source_event_ids: string[];
   participant_ids: string[];
   location_ids: string[];
-  primary_entity_type: 'character' | 'location' | null;
+  primary_entity_type: 'character' | 'location' | 'organization' | null;
   primary_entity_id: string | null;
 }
 
 export interface PrimaryEntity {
-  type: 'character' | 'location';
+  type: 'character' | 'location' | 'organization';
   id: string;
 }
 
@@ -154,13 +154,61 @@ async function resolveRealEntityMembership(
 }
 
 /**
+ * Which organization (if any) do two or more of these character participants
+ * actively belong to? Organization mentions are never treated as canonical
+ * participation (classifyOrganizationAttribution always rejects them, by
+ * design — "mention is not participation"), so an org can't be grounded from
+ * episode text the way a location/character can. Roster overlap instead: if
+ * multiple co-present real characters are active members of the same org,
+ * that's grounded evidence the scene is "about" that org. A single member
+ * alone is too weak (they could just be present in an unrelated scene) —
+ * ties (two+ orgs with the same top count) are ambiguous and resolve to null.
+ */
+async function resolveOrganizationForParticipants(
+  userId: string,
+  participantIds: string[]
+): Promise<string | null> {
+  if (participantIds.length === 0) return null;
+  const { data } = await supabaseAdmin
+    .from('organization_members')
+    .select('organization_id, character_id')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .in('character_id', participantIds);
+
+  const orgToMembers = new Map<string, Set<string>>();
+  for (const row of data ?? []) {
+    if (!row.organization_id || !row.character_id) continue;
+    if (!orgToMembers.has(row.organization_id)) orgToMembers.set(row.organization_id, new Set());
+    orgToMembers.get(row.organization_id)!.add(row.character_id);
+  }
+
+  let bestOrg: string | null = null;
+  let bestCount = 0;
+  let tie = false;
+  for (const [orgId, members] of orgToMembers) {
+    if (members.size < 2) continue;
+    if (members.size > bestCount) {
+      bestOrg = orgId;
+      bestCount = members.size;
+      tie = false;
+    } else if (members.size === bestCount) {
+      tie = true;
+    }
+  }
+  return tie ? null : bestOrg;
+}
+
+/**
  * Pick the episode's "primary" entity from grounded SUBJECT/PARTICIPANT
  * evidence. Location wins only when it is a locative destination, not a
  * referenced place. Characters win only as participants. First mention,
  * mention count, thread focus, possessives, and timing phrases never qualify.
- * Null when nothing is safely grounded.
+ * Organization wins only via roster overlap (see resolveOrganizationForParticipants) —
+ * never from text mentions. Null when nothing is safely grounded.
  */
-export function resolvePrimaryEntity(
+export async function resolvePrimaryEntity(
+  userId: string,
   ep: Episode,
   realCharacterIds: Set<string>,
   realLocationIds: Set<string>,
@@ -168,33 +216,35 @@ export function resolvePrimaryEntity(
     text?: string;
     namesById?: Map<string, string>;
   }
-): PrimaryEntity | null {
+): Promise<PrimaryEntity | null> {
   const text = opts?.text?.trim() ?? '';
   const namesById = opts?.namesById ?? new Map<string, string>();
 
-  if (text) {
-    for (const loc of ep.locations) {
-      if (!UUID_RE.test(loc) || !realLocationIds.has(loc)) continue;
-      const name = namesById.get(loc);
-      if (!name) continue;
-      const decision = classifyPlaceAttribution(name, text, { entityId: loc });
-      if (decision.canonical && decision.accepted) {
-        return { type: 'location', id: loc };
-      }
-    }
+  if (!text) return null;
 
-    for (const participantId of ep.participants) {
-      if (!UUID_RE.test(participantId) || !realCharacterIds.has(participantId)) continue;
-      const name = namesById.get(participantId);
-      if (!name) continue;
-      const decision = classifyPersonAttribution(name, text, { entityId: participantId });
-      if (decision.canonical && decision.accepted) {
-        return { type: 'character', id: participantId };
-      }
+  for (const loc of ep.locations) {
+    if (!UUID_RE.test(loc) || !realLocationIds.has(loc)) continue;
+    const name = namesById.get(loc);
+    if (!name) continue;
+    const decision = classifyPlaceAttribution(name, text, { entityId: loc });
+    if (decision.canonical && decision.accepted) {
+      return { type: 'location', id: loc };
     }
-
-    return null;
   }
+
+  for (const participantId of ep.participants) {
+    if (!UUID_RE.test(participantId) || !realCharacterIds.has(participantId)) continue;
+    const name = namesById.get(participantId);
+    if (!name) continue;
+    const decision = classifyPersonAttribution(name, text, { entityId: participantId });
+    if (decision.canonical && decision.accepted) {
+      return { type: 'character', id: participantId };
+    }
+  }
+
+  const presentCharacterIds = ep.participants.filter((id) => realCharacterIds.has(id));
+  const orgId = await resolveOrganizationForParticipants(userId, presentCharacterIds);
+  if (orgId) return { type: 'organization', id: orgId };
 
   return null;
 }
@@ -270,7 +320,7 @@ export async function persistEpisodesForThread(
       .map((m) => m.content)
       .join('\n');
     const sourceEventIds = await resolveEventIds(userId, ep.startAt, ep.endAt, participantIds);
-    const primaryEntity = resolvePrimaryEntity(ep, realCharacterIds, realLocationIds, {
+    const primaryEntity = await resolvePrimaryEntity(userId, ep, realCharacterIds, realLocationIds, {
       text: episodeText,
       namesById: nameById,
     });
@@ -316,6 +366,10 @@ export async function persistEpisodesForThread(
       void locationTimelineBuilder
         .processEpisodeForEntity(userId, episode.primary_entity_id, episode)
         .catch((err) => logger.warn({ err, episodeId: episode.id }, 'Location episode-timeline fold failed (non-blocking)'));
+    } else if (episode.primary_entity_type === 'organization' && episode.primary_entity_id) {
+      void organizationTimelineBuilder
+        .processEpisodeForEntity(userId, episode.primary_entity_id, episode)
+        .catch((err) => logger.warn({ err, episodeId: episode.id }, 'Organization episode-timeline fold failed (non-blocking)'));
     }
   }
 

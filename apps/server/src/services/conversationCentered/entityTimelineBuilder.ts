@@ -452,17 +452,21 @@ export class EntityTimelineBuilder {
         for (const thread of threads || []) {
           await this.processThreadForEntity(userId, entityId, thread.id);
         }
-      } else {
-        const { data: episodes } = await supabaseAdmin
-          .from('episodes')
-          .select('id, title, start_at')
-          .eq('user_id', userId)
-          .eq('primary_entity_type', 'location')
-          .eq('primary_entity_id', entityId);
+      }
 
-        for (const episode of episodes || []) {
-          await this.processEpisodeForEntity(userId, entityId, episode);
-        }
+      // Episode-sourced rows apply to both kinds: locations always did, and
+      // organizations now can too via roster-overlap primary-entity resolution
+      // (see episodePersistenceService.resolveOrganizationForParticipants) —
+      // in addition to, not instead of, the thread-level fold above.
+      const { data: episodes } = await supabaseAdmin
+        .from('episodes')
+        .select('id, title, start_at')
+        .eq('user_id', userId)
+        .eq('primary_entity_type', this.kind)
+        .eq('primary_entity_id', entityId);
+
+      for (const episode of episodes || []) {
+        await this.processEpisodeForEntity(userId, entityId, episode);
       }
     } catch (error) {
       logger.error({ error, userId, entityId, kind: this.kind }, 'Failed to rebuild timelines for entity');
