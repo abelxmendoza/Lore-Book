@@ -4,7 +4,7 @@
 // =====================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Sparkles, Plus, X, ChevronDown, ChevronUp, RefreshCw, Briefcase, Heart, GitBranch, Copy, Check } from 'lucide-react';
+import { Sparkles, Plus, ChevronDown, ChevronUp, ChevronRight, RefreshCw, Briefcase, Heart, GitBranch, Copy, Check } from 'lucide-react';
 import { skillsApi, type SkillSuggestion } from '../../api/skills';
 import { suggestionDismissApi } from '../../api/suggestionDismiss';
 import { useSuggestionRescan } from '../../hooks/useSuggestionRescan';
@@ -25,6 +25,7 @@ import { formatSkillCertaintyDetail } from '../../lib/skillStory';
 import { buildSkillSuggestionsClipboardText } from '../../lib/skillSuggestionsClipboard';
 import { copyTextToClipboard } from '../../lib/listClipboard';
 import { cn } from '../../lib/cn';
+import { SkillSuggestionDetailModal } from './SkillSuggestionDetailModal';
 
 interface Props {
   onSkillAdded?: () => void;
@@ -73,6 +74,7 @@ export const DetectedSkillSuggestions = ({
   const [demoRescanning, setDemoRescanning] = useState(false);
   const [rescanNotice, setRescanNotice] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [openSuggestion, setOpenSuggestion] = useState<SkillSuggestion | null>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scanning = rescanning || demoRescanning;
@@ -207,6 +209,7 @@ export const DetectedSkillSuggestions = ({
 
       setAdded((prev) => new Set(prev).add(k));
       setSuggestions((prev) => prev.filter((item) => keyFor(item) !== k));
+      setOpenSuggestion((current) => (current && keyFor(current) === k ? null : current));
       onSkillAdded?.();
     } catch (err) {
       console.error('Failed to add skill from suggestion:', err);
@@ -227,6 +230,7 @@ export const DetectedSkillSuggestions = ({
     const k = keyFor(s);
     setDismissed(prev => new Set(prev).add(k));
     setSuggestions(prev => prev.filter(item => keyFor(item) !== k));
+    setOpenSuggestion((current) => (current && keyFor(current) === k ? null : current));
     if (showDemo) {
       mockDataService.mutate.skills.removeSuggestion({ id: s.id, skill_name: s.skill_name });
       return;
@@ -381,11 +385,25 @@ export const DetectedSkillSuggestions = ({
                       )}
                     </div>
 
-                    <h4 className="text-[11px] sm:text-sm font-semibold text-white leading-snug line-clamp-2 mb-0.5 sm:mb-1 pr-1">
-                      {s.skill_name}
-                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => setOpenSuggestion(s)}
+                      aria-label={`Open ${s.skill_name} suggestion`}
+                      className="mb-0.5 sm:mb-1 w-full rounded-md pr-1 text-left hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                    >
+                      <span className="flex items-start gap-1 text-[11px] sm:text-sm font-semibold text-white leading-snug">
+                        <span className="min-w-0 line-clamp-2">{s.skill_name}</span>
+                        <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/30" />
+                      </span>
+                    </button>
                     {s.description && (
-                      <p className="text-[10px] sm:text-xs text-white/60 leading-snug line-clamp-2 mb-1 sm:mb-2">{s.description}</p>
+                      <button
+                        type="button"
+                        onClick={() => setOpenSuggestion(s)}
+                        className="mb-1 sm:mb-2 w-full rounded-md text-left text-[10px] sm:text-xs text-white/60 leading-snug line-clamp-2 hover:text-white/75"
+                      >
+                        {s.description}
+                      </button>
                     )}
                     {s.origin_story && (
                       <p className="hidden sm:block text-[11px] text-white/45 line-clamp-2 mb-2">{s.origin_story}</p>
@@ -445,6 +463,15 @@ export const DetectedSkillSuggestions = ({
       )}
     </div>
     {RescanToastContainer ? <RescanToastContainer /> : null}
+      {openSuggestion && (
+        <SkillSuggestionDetailModal
+          suggestion={openSuggestion}
+          adding={adding === keyFor(openSuggestion)}
+          onClose={() => setOpenSuggestion(null)}
+          onAdd={(s) => void handleAdd(s)}
+          onDismiss={(s, reason) => void handleDismiss(s, reason)}
+        />
+      )}
     </>
   );
 };
