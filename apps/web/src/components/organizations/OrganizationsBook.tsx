@@ -1659,6 +1659,9 @@ export const OrganizationsBook: React.FC = () => {
         categoryFilter={activeCategory}
         searchTerm={searchTerm}
         demoMode={isMockDataEnabled}
+        onOpenCandidate={(preview) => {
+          setSelectedOrganization(normalizeOrganization(preview));
+        }}
         onGroupCreated={(created) => {
           if (created) {
             const normalizedCreated = normalizeOrganization(created);
