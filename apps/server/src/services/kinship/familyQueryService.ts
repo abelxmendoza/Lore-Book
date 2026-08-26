@@ -19,8 +19,8 @@ const RELATION_TERMS: Record<string, string> = {
 };
 
 const STOP = new Set([
-  'a', 'all', 'and', 'are', 'family', 'find', 'how', 'in', 'is', 'list', 'me', 'my',
-  'need', 'needs', 'of', 'on', 'related', 'relative', 'relatives', 'show', 'side', 'the', 'to', 'tree', 'what', 'which', 'who',
+  'a', 'all', 'and', 'are', 'as', 'everyone', 'family', 'find', 'how', 'i', 'in', 'is', 'list', 'marked', 'me', 'my',
+  'need', 'needs', 'of', 'on', 'related', 'relative', 'relatives', 've', 'show', 'side', 'the', 'to', 'tree', 'what', 'which', 'who',
 ]);
 
 type FamilyQueryHints = {

@@ -1,5 +1,7 @@
 import { logger } from '../../logger';
 import { organizationService } from '../organizationService';
+import { familyTreeService } from '../familyTreeService';
+import { findFamilyMemberByName } from '../chat/familyWriteService';
 import type { ResponseActionCandidate } from './responseCompilerTypes';
 
 /**
@@ -13,15 +15,20 @@ import type { ResponseActionCandidate } from './responseCompilerTypes';
  * rule: assistant output never creates canon without confirmation.
  *
  * Scope today: `create_group` is fully applied via organizationService (which
- * dedups by name). Character/relationship actions are deliberately deferred —
- * creating people must go through the character resolve-before-write gate
+ * dedups by name), and `delete_family_member` via familyTreeService (which
+ * re-resolves the name fresh against the tree rather than trusting a stale
+ * id). Both act on an already-resolved existing entity, so neither needs the
+ * resolve-before-write gate. `add_relationship`/`add_character` remain
+ * deliberately deferred — creating a NEW identity must go through that gate
  * (entityResolutionCore / the /api/characters pipeline) to avoid spawning
  * duplicate identities, so we do NOT shortcut that here.
  */
 
 export type ApplyActionStatus =
   | 'created'
+  | 'deleted'
   | 'already_exists'
+  | 'not_found'
   | 'not_yet_supported'
   | 'invalid';
 
@@ -30,7 +37,7 @@ export type ApplyActionResult = {
   status: ApplyActionStatus;
   actionType: string;
   message: string;
-  entity?: { kind: 'organization'; id: string; name: string };
+  entity?: { kind: 'organization' | 'character'; id: string; name: string };
 };
 
 export type ApplyActionInput = Pick<ResponseActionCandidate, 'type' | 'label'> & {
@@ -90,6 +97,62 @@ export async function applyResponseAction(
         actionType: action.type,
         message: `Created group "${name}".`,
         entity: { kind: 'organization', id: created.id, name: created.name },
+      };
+    }
+
+    case 'delete_family_member': {
+      const name = String((action.payload?.characterName as string | undefined) ?? '').trim();
+      if (!name) {
+        return {
+          applied: false,
+          status: 'invalid',
+          actionType: action.type,
+          message: 'Could not determine which family member to delete from the action.',
+        };
+      }
+
+      // Re-resolve fresh at confirm time rather than trusting a stale id from
+      // propose time — the tree can change in between, and this is the same
+      // "don't trust a stale reference" pattern create_group already uses
+      // via orgService.findByName.
+      const lookup = await findFamilyMemberByName(userId, name);
+      if (lookup.status === 'not_found') {
+        return {
+          applied: false,
+          status: 'not_found',
+          actionType: action.type,
+          message: `Couldn't find "${name}" in your family tree anymore — nothing was deleted.`,
+        };
+      }
+      if (lookup.status === 'ambiguous') {
+        return {
+          applied: false,
+          status: 'not_found',
+          actionType: action.type,
+          message: `Found more than one match for "${name}" (${lookup.candidates.join(', ')}) — nothing was deleted.`,
+        };
+      }
+
+      const ok = await familyTreeService.deleteMember(userId, lookup.id, 'Deleted via chat confirmation');
+      if (!ok) {
+        return {
+          applied: false,
+          status: 'invalid',
+          actionType: action.type,
+          message: `Couldn't delete ${lookup.name}.`,
+        };
+      }
+
+      logger.info(
+        { userId, characterId: lookup.id, name: lookup.name },
+        'responseAction: deleted family member from user-confirmed action chip',
+      );
+      return {
+        applied: true,
+        status: 'deleted',
+        actionType: action.type,
+        message: `Deleted ${lookup.name}.`,
+        entity: { kind: 'character', id: lookup.id, name: lookup.name },
       };
     }
 

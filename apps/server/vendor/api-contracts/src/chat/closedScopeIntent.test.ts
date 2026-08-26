@@ -75,6 +75,27 @@ describe('isFamilyWriteRequest / isRomanceWriteRequest', () => {
     expect(isRomanceWriteRequest('mark Jamie as dating')).toBe(true);
     expect(isRomanceWriteRequest('we broke up with Jamie')).toBe(true);
   });
+
+  it('matches a side-only correction', () => {
+    expect(isFamilyWriteRequest("change Abuela's side to paternal")).toBe(true);
+    expect(isFamilyWriteRequest('set Ralph side to maternal')).toBe(true);
+  });
+
+  it('matches a soft exclude (bare "remove X from my family tree")', () => {
+    expect(isFamilyWriteRequest('remove Ralph from my family tree')).toBe(true);
+    expect(isFamilyWriteRequest('exclude Ralph from family')).toBe(true);
+  });
+
+  it('matches a hard delete request', () => {
+    expect(isFamilyWriteRequest('delete Uncle Ralph')).toBe(true);
+    expect(isFamilyWriteRequest('delete Uncle Ralph from my family tree')).toBe(true);
+    expect(isFamilyWriteRequest('remove Ralph entirely')).toBe(true);
+    expect(isFamilyWriteRequest('remove Ralph as a character')).toBe(true);
+  });
+
+  it('does not confuse a hard delete with a character-book delete', () => {
+    expect(isFamilyWriteRequest('delete Marcus from my character book')).toBe(false);
+  });
 });
 
 describe('isCharacterBookWriteRequest', () => {
