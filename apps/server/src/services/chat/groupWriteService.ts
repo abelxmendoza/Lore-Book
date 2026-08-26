@@ -36,6 +36,127 @@ export type GroupWriteResult = {
   summary: string;
 };
 
+export type OrganizationRelationshipWriteIntent = {
+  fromName: string;
+  toName: string;
+  relationshipType: 'part_of' | 'affiliated_with';
+  action: 'upsert' | 'remove';
+  childKind?: 'team' | 'company';
+  locationName?: string;
+};
+
+export type OrganizationSiteWriteIntent = {
+  organizationName: string;
+  locationName: string;
+};
+
+function cleanOrganizationName(value: string): string {
+  return value
+    .trim()
+    .replace(/^["'“”‘’]+|["'“”‘’.,!?]+$/g, '')
+    .replace(/^(?:the|my|our)\s+/i, '')
+    .trim();
+}
+
+const HIERARCHY_NOUN = 'subgroup|department|division|branch|team|child group|job|role|position';
+
+/** Explicit "add this place as a company site" without creating a nested group. */
+export function parseOrganizationSiteWrite(message: string): OrganizationSiteWriteIntent | null {
+  const text = message.trim();
+  const addSite = text.match(
+    /^(?:please\s+)?(?:add|make)\s+(.{1,80}?)\s+(?:as\s+)?(?:a\s+)?(?:location|site|office|lab|warehouse|depot)\s+(?:of|for|under)\s+(.{1,80}?)[.!?]*$/i,
+  );
+  if (addSite) {
+    const locationName = cleanOrganizationName(addSite[1]);
+    const organizationName = cleanOrganizationName(addSite[2]);
+    if (locationName && organizationName && locationName.toLowerCase() !== organizationName.toLowerCase()) {
+      return { organizationName, locationName };
+    }
+  }
+  const hasSite = text.match(
+    /^(.{1,80}?)\s+has\s+(?:a\s+|an\s+)?(?:location|site|office|lab|warehouse|depot)\s+(?:in|at|called)\s+(.{1,80}?)[.!?]*$/i,
+  );
+  if (hasSite) {
+    const organizationName = cleanOrganizationName(hasSite[1]);
+    const locationName = cleanOrganizationName(hasSite[2]);
+    if (locationName && organizationName && locationName.toLowerCase() !== organizationName.toLowerCase()) {
+      return { organizationName, locationName };
+    }
+  }
+  return null;
+}
+
+/** Explicit hierarchy/connection edits routed through organization chat write. */
+export function parseOrganizationRelationshipWrite(message: string): OrganizationRelationshipWriteIntent | null {
+  const text = message.trim();
+  const names = (left: string, right: string) => {
+    const fromName = cleanOrganizationName(left);
+    const toName = cleanOrganizationName(right);
+    if (!fromName || !toName || fromName.toLowerCase() === toName.toLowerCase()) return null;
+    return { fromName, toName };
+  };
+
+  const disconnect = text.match(
+    /^(?:please\s+)?(?:disconnect|unlink)\s+(.{1,80}?)\s+from\s+(.{1,80}?)[.!?]*$/i,
+  );
+  if (disconnect) {
+    const pair = names(disconnect[1], disconnect[2]);
+    if (pair) return { ...pair, relationshipType: 'affiliated_with', action: 'remove' };
+  }
+
+  const nestedAtSite = [
+    new RegExp(
+      `^(?:please\\s+)?(?:make|mark|set)\\s+(.{1,80}?)\\s+(?:as\\s+|a\\s+|the\\s+)?(?:${HIERARCHY_NOUN})\\s+at\\s+(?:the\\s+)?(.{1,80}?)\\s+(?:of|under|inside|within)\\s+(.{1,80}?)[.!?]*$`,
+      'i',
+    ),
+    new RegExp(
+      `^(.{1,80}?)\\s+(?:is|should be)\\s+(?:a\\s+|the\\s+)?(?:${HIERARCHY_NOUN})\\s+at\\s+(?:the\\s+)?(.{1,80}?)\\s+(?:of|under|inside|within)\\s+(.{1,80}?)[.!?]*$`,
+      'i',
+    ),
+    /^(.{1,80}?)\s+(?:belongs|sits|rolls up)\s+(?:to|under)\s+(.{1,80}?)\s+at\s+(?:the\s+)?(.{1,80}?)[.!?]*$/i,
+  ];
+  for (const pattern of nestedAtSite) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const locationLast = pattern === nestedAtSite[2];
+    const fromName = match[1];
+    const locationName = locationLast ? match[3] : match[2];
+    const toName = locationLast ? match[2] : match[3];
+    const pair = names(fromName, toName);
+    const site = cleanOrganizationName(locationName);
+    if (pair && site) {
+      return { ...pair, relationshipType: 'part_of', action: 'upsert', childKind: 'team', locationName: site };
+    }
+  }
+
+  const hierarchyPatterns = [
+    new RegExp(
+      `^(?:please\\s+)?(?:make|mark|set)\\s+(.{1,80}?)\\s+(?:as\\s+|a\\s+|the\\s+)?(?:${HIERARCHY_NOUN})\\s+(?:of|under|inside|within|at|with)\\s+(.{1,80}?)[.!?]*$`,
+      'i',
+    ),
+    new RegExp(
+      `^(.{1,80}?)\\s+(?:is|should be)\\s+(?:a\\s+|the\\s+)?(?:${HIERARCHY_NOUN})\\s+(?:of|under|inside|within|at|with|for)\\s+(.{1,80}?)[.!?]*$`,
+      'i',
+    ),
+    /^(.{1,80}?)\s+(?:belongs|sits|rolls up)\s+(?:to|under|inside|within)\s+(.{1,80}?)[.!?]*$/i,
+  ];
+  for (const pattern of hierarchyPatterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const pair = names(match[1], match[2]);
+    if (pair) return { ...pair, relationshipType: 'part_of', action: 'upsert', childKind: 'team' };
+  }
+
+  const connected = text.match(
+    /^(?:please\s+)?(?:connect|link)\s+(.{1,80}?)\s+(?:to|with|and)\s+(.{1,80}?)[.!?]*$/i,
+  );
+  if (connected) {
+    const pair = names(connected[1], connected[2]);
+    if (pair) return { ...pair, relationshipType: 'affiliated_with', action: 'upsert' };
+  }
+  return null;
+}
+
 const PENDING_META_KEY = 'pendingGroupWrite';
 
 function titleCaseWords(raw: string): string {
@@ -327,6 +448,119 @@ export async function writeOrganizationGroupFromChat(
 
   const history = options?.conversationHistory ?? [];
 
+  const siteIntent = parseOrganizationSiteWrite(message);
+  if (siteIntent) {
+    let org = await organizationService.findByName(userId, siteIntent.organizationName);
+    if (!org) {
+      org = await organizationService.createOrganization(userId, {
+        name: siteIntent.organizationName,
+        type: 'company',
+        group_type: 'company',
+        description: `Created from chat with site ${siteIntent.locationName}`,
+        metadata: { created_via: 'organization_site_write' },
+      });
+    }
+    const location = await organizationService.attachOrganizationSite(userId, org.id, {
+      location_name: siteIntent.locationName,
+    });
+    return {
+      organizationId: org.id,
+      organizationName: org.name,
+      created: false,
+      renamed: false,
+      members: [],
+      summary: `Linked **${location.location_name}** as a location of **${org.name}**.`,
+    };
+  }
+
+  const relationshipIntent = parseOrganizationRelationshipWrite(message);
+  if (relationshipIntent) {
+    let fromOrg = await organizationService.findByName(userId, relationshipIntent.fromName);
+    let toOrg = await organizationService.findByName(userId, relationshipIntent.toName);
+
+    if (relationshipIntent.action === 'remove') {
+      if (!fromOrg || !toOrg) {
+        const missing = [
+          !fromOrg ? relationshipIntent.fromName : null,
+          !toOrg ? relationshipIntent.toName : null,
+        ].filter(Boolean).join(' and ');
+        throw new Error(`I couldn't find ${missing} in Groups & Organizations.`);
+      }
+      const removed = await organizationService.removeRelationshipsBetween(userId, fromOrg.id, toOrg.id);
+      return {
+        organizationId: fromOrg.id,
+        organizationName: fromOrg.name,
+        created: false,
+        renamed: false,
+        members: [],
+        summary: removed > 0
+          ? `Disconnected **${fromOrg.name}** from **${toOrg.name}**.`
+          : `**${fromOrg.name}** and **${toOrg.name}** were not connected.`,
+      };
+    }
+
+    if (relationshipIntent.relationshipType === 'part_of') {
+      if (!toOrg) {
+        toOrg = await organizationService.createOrganization(userId, {
+          name: relationshipIntent.toName,
+          type: 'company',
+          group_type: 'company',
+          description: `Created from chat as the parent of ${relationshipIntent.fromName}`,
+          metadata: { created_via: 'organization_relationship_write' },
+        });
+      }
+      if (!fromOrg) {
+        fromOrg = await organizationService.createOrganization(userId, {
+          name: relationshipIntent.fromName,
+          type: 'other',
+          group_type: relationshipIntent.childKind ?? 'team',
+          description: `Created from chat nested under ${toOrg.name}`,
+          parent_group_id: toOrg.id,
+          metadata: {
+            created_via: 'organization_relationship_write',
+            subcategory: 'department',
+          },
+        });
+      }
+    }
+
+    if (!fromOrg || !toOrg) {
+      const missing = [
+        !fromOrg ? relationshipIntent.fromName : null,
+        !toOrg ? relationshipIntent.toName : null,
+      ].filter(Boolean).join(' and ');
+      throw new Error(`I couldn't find ${missing} in Groups & Organizations.`);
+    }
+    const created = await organizationService.ensureRelationship(
+      userId,
+      fromOrg.id,
+      toOrg.id,
+      relationshipIntent.relationshipType,
+      '[chat-confirmed] Explicit organization relationship edit',
+    );
+    let siteText = '';
+    if (relationshipIntent.locationName) {
+      const location = await organizationService.attachChildToParentSite(
+        userId,
+        fromOrg.id,
+        toOrg.id,
+        { location_name: relationshipIntent.locationName },
+      );
+      siteText = ` at **${location.location_name}**`;
+    }
+    const relationText = relationshipIntent.relationshipType === 'part_of'
+      ? `Set **${fromOrg.name}** as a ${relationshipIntent.childKind === 'team' ? 'department / job' : 'subgroup'} of **${toOrg.name}**${siteText}.`
+      : `Connected **${fromOrg.name}** with **${toOrg.name}**.`;
+    return {
+      organizationId: fromOrg.id,
+      organizationName: fromOrg.name,
+      created: false,
+      renamed: false,
+      members: [],
+      summary: created ? relationText : `${relationText} That connection was already saved.`,
+    };
+  }
+
   const deleteMatch = message.match(
     /\b(?:delete|remove)\s+(?:the\s+)?(?:group|crew|squad|org(?:anization)?)\s+(.{1,80})$|\b(?:delete|remove)\s+(.{1,80}?)\s+from\s+my\s+(?:groups?|organizations?)\s+book\b/i,
   );
@@ -380,7 +614,8 @@ export async function writeOrganizationGroupFromChat(
     }
   } else if (wantsCreate || !organizationId) {
     organizationName = inferGroupNameFromContext(message, history, options?.threadTitle);
-    const existing = await organizationService.findByName(userId, organizationName);
+    const requestedOrganizationName = organizationName;
+    const existing = await organizationService.findByName(userId, requestedOrganizationName);
     if (existing) {
       organizationId = existing.id;
       organizationName = existing.name;
@@ -389,7 +624,7 @@ export async function writeOrganizationGroupFromChat(
       const write = await applySuggestionCandidate({
         userId,
         domain: 'organizations',
-        name: organizationName,
+        name: requestedOrganizationName,
         incomingType: 'crew',
         evidence: message,
         extractor: 'group_write_chat',
@@ -397,7 +632,7 @@ export async function writeOrganizationGroupFromChat(
         writePolicy: 'user',
         onCreate: async () => {
           const org = await organizationService.createOrganization(userId, {
-            name: organizationName,
+            name: requestedOrganizationName,
             type: 'club',
             group_type: 'crew',
             description: `Created from chat: ${message.slice(0, 180)}`,
@@ -414,8 +649,8 @@ export async function writeOrganizationGroupFromChat(
       }
     }
     await writePendingGroup(userId, threadId, {
-      organizationId,
-      name: organizationName,
+      organizationId: organizationId!,
+      name: organizationName!,
     });
   }
 

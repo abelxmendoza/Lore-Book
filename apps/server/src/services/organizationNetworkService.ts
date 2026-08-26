@@ -15,6 +15,7 @@ import { clampOrgNetworkDepth } from './query/bookQuerySourceCaps';
 import { supabaseAdmin } from './supabaseClient';
 
 export type OrgNetworkEdge = {
+  id?: string;
   fromId: string;
   toId: string;
   relationshipType: OrgRelationshipType;
@@ -28,6 +29,12 @@ export type OrgNetworkNodeRel = {
   direction: 'outgoing' | 'incoming';
   inferred: boolean;
   notes?: string;
+  relationshipId?: string;
+};
+
+export type OrgNetworkLocation = {
+  locationId?: string;
+  name: string;
 };
 
 export type OrgNetworkNode = {
@@ -37,6 +44,7 @@ export type OrgNetworkNode = {
   member_count: number;
   member_names: string[];
   relationships: OrgNetworkNodeRel[];
+  locations?: OrgNetworkLocation[];
 };
 
 export type OrgNetwork = {
@@ -71,12 +79,32 @@ export class OrganizationNetworkService {
 
       const relationships = (relRows ?? []) as OrganizationRelationship[];
       const edges: OrgNetworkEdge[] = relationships.map(r => ({
+        id: r.id,
         fromId: r.from_org_id,
         toId: r.to_org_id,
         relationshipType: r.relationship_type,
         inferred: Boolean(r.notes?.startsWith('[auto-inferred]')),
         notes: r.notes,
       }));
+
+      // `organizations.parent_group_id` is the canonical nesting pointer used
+      // by group detection and manual organization edits. Older rows may not
+      // also have an organization_relationships edge, so project that pointer
+      // into the network instead of making valid departments/subgroups vanish.
+      const edgeKeys = new Set(edges.map(e => `${e.fromId}|${e.toId}|${e.relationshipType}`));
+      for (const org of orgs) {
+        if (!org.parent_group_id || !orgById.has(org.parent_group_id)) continue;
+        const key = `${org.id}|${org.parent_group_id}|part_of`;
+        if (edgeKeys.has(key)) continue;
+        edgeKeys.add(key);
+        edges.push({
+          fromId: org.id,
+          toId: org.parent_group_id,
+          relationshipType: 'part_of',
+          inferred: false,
+          notes: '[parent-group] Canonical organization hierarchy',
+        });
+      }
 
       const nodeRels = new Map<string, OrgNetworkNodeRel[]>();
       const addRel = (orgId: string, rel: OrgNetworkNodeRel) => {
@@ -92,6 +120,7 @@ export class OrganizationNetworkService {
           direction: 'outgoing',
           inferred: e.inferred,
           notes: e.notes,
+          relationshipId: e.id,
         });
         addRel(e.toId, {
           toId: e.fromId,
@@ -99,6 +128,7 @@ export class OrganizationNetworkService {
           direction: 'incoming',
           inferred: e.inferred,
           notes: e.notes,
+          relationshipId: e.id,
         });
       }
 
@@ -109,6 +139,10 @@ export class OrganizationNetworkService {
         member_count: org.members?.length ?? org.member_count ?? 0,
         member_names: (org.members ?? []).map(m => m.character_name).slice(0, 8),
         relationships: nodeRels.get(org.id) ?? [],
+        locations: (org.locations ?? []).map(loc => ({
+          locationId: loc.location_id,
+          name: loc.location_name,
+        })),
       });
 
       const allNodes = orgs.map(buildNode);

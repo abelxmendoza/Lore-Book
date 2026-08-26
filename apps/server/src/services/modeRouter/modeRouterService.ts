@@ -47,7 +47,7 @@ export type ChatMode =
   | 'SUBJECT_TIMELINE'       // Existing subject timeline compiler + stitched feed
   | 'CURRENT_STORY_CAST'     // Closed-scope: new/returning/unresolved people in the active thread
   | 'CHARACTER_BOOK_WRITE'   // Explicit "add these people to my character book" request
-  | 'ORGANIZATION_GROUP_WRITE' // Explicit "make a group" / "here's the roster" write
+  | 'ORGANIZATION_GROUP_WRITE' // Explicit group create, roster, hierarchy, or connection write
   | 'ENTITY_RECLASSIFY_WRITE' // Wrong-book correction: "X is a group, not a place"
   | 'LOCATION_WRITE'         // Explicit Places create/update/delete
   | 'PROJECT_WRITE'          // Explicit Projects create/update/delete
@@ -741,7 +741,7 @@ Modes:
 6. ACTION_LOG - ONLY for explicit save/log/record commands: "Log this", "Save this", "Remember this", "Journal entry: ...", "Memory: ...", "Lore note: ...". NOT for first-person narrative sentences. NOT for "I thought", "I felt", "I noticed", "I realized", "I decided", or any normal conversational sentence.
 8. CURRENT_STORY_CAST - Asking who's new vs. already-known in the CURRENT conversation/thread specifically: "who's new and returning in this story?", "who have I mentioned so far in this chat?". Scoped to this thread, not the whole life story. NOT for listing members of a group you are creating ("So far we have A, B, and C").
 9. CHARACTER_BOOK_WRITE - Explicit request to save/add/rename/delete people in the character book: "make sure they're all in my character book", "add Marcus to my character book", "delete the person Marcus".
-10. ORGANIZATION_GROUP_WRITE - Explicit request to create/delete a group/crew/squad OR supply its roster: "make a group for that", "create a group for underground artists", "delete the group Northwind Collective", "So far we have Stimkybun, Smeepsx, and Hell Fairy".
+10. ORGANIZATION_GROUP_WRITE - Explicit request to create/delete a group/crew/squad, supply its roster, or edit group/company/job hierarchy and connections: "make a group for that", "delete the group Northwind Collective", "So far we have Marcus, Jamie, and Nova", "make Robotics a department under Vanguard Robotics", "Robotics is a job at Vanguard Robotics", "connect Vanguard Robotics with MemoVault".
 10b. ENTITY_RECLASSIFY_WRITE - Wrong-book correction: "Popular E-Girls is a group, not a place", "move X to my Groups book", "X should be a project".
 10c. LOCATION_WRITE - Explicit Places create/rename/delete: "add Northwind Depot as a place", "delete the place X".
 10d. PROJECT_WRITE - Explicit Projects create/rename/delete: "add MemoVault as a project".

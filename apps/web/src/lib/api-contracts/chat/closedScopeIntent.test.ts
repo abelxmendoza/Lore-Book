@@ -112,6 +112,17 @@ describe('isOrganizationGroupWriteRequest', () => {
     expect(isOrganizationGroupWriteRequest('delete the group Northwind Collective')).toBe(true);
   });
 
+  it('matches manual hierarchy and connection edits', () => {
+    expect(isOrganizationGroupWriteRequest('make Robotics a department under Vanguard Robotics')).toBe(true);
+    expect(isOrganizationGroupWriteRequest('Studio Team is a subgroup of MemoVault')).toBe(true);
+    expect(isOrganizationGroupWriteRequest('connect Vanguard Robotics with MemoVault')).toBe(true);
+    expect(isOrganizationGroupWriteRequest('Robotics is a job at Vanguard Robotics')).toBe(true);
+    expect(isOrganizationGroupWriteRequest('disconnect Robotics from Vanguard Robotics')).toBe(true);
+    expect(isOrganizationGroupWriteRequest('make Field Crew a team at Northwind Depot under Northwind Logistics')).toBe(true);
+    expect(isOrganizationGroupWriteRequest('add Northwind Depot as a location of Northwind Logistics')).toBe(true);
+    expect(isOrganizationGroupWriteRequest('Jamie is going to the store')).toBe(false);
+  });
+
   it('defers wrong-book corrections to reclassify', () => {
     expect(isOrganizationGroupWriteRequest('Northwind Collective is a group, not a place')).toBe(false);
   });
