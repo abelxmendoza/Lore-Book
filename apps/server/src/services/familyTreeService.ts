@@ -944,10 +944,14 @@ class FamilyTreeService {
         edges.push({
           fromId: r.source_character_id,
           toId: r.target_character_id,
-          type: r.relationship_type,
+          type: normalizeRelationshipType(r.relationship_type),
           confidence: 0.7,
         });
       }
+      // Shared-parent siblings so an org roster is bidirectional too — without
+      // this, two members who share a parent only show as siblings if a
+      // sibling_of row happens to exist independently of the parent links.
+      edges.push(...inferSiblingAndInverseParentEdges(edges));
 
       const selfId = (await this.findUserCharacterId(userId)) ?? charIds[0];
       const anchor = charIds.includes(selfId) ? selfId : charIds[0];
