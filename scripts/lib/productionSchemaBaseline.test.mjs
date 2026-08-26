@@ -43,6 +43,11 @@ test('active migration chain starts from the production schema baseline', () => 
     '20260820015515_harden_export_views_and_epiphany_insert.sql',
     '20260821120000_journal_occurrence_nullable.sql',
     '20260821194550_drop_character_timeline_events.sql',
+    '20260822100000_suggestion_dismissal_organizations.sql',
+    '20260822184817_revoke_anon_security_definer_rpcs.sql',
+    '20260822184825_harden_export_views_and_epiphany_insert.sql',
+    '20260824173159_enforce_chat_message_session_fk.sql',
+    '20260825000000_episodes_primary_entity_organization.sql',
   ]);
 });
 

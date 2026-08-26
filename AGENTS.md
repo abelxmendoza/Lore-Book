@@ -127,3 +127,16 @@ Local dev uses the Supabase local stack (Docker). `supabase start` is on 54321 (
   `apps/server/{src,tests}/**/*.js` afterward. Web tests are unaffected.
 - Lint and `tsc --noEmit` have many pre-existing errors (a tsc baseline is tolerated); `apps/server`
   `npm run build` uses `tsc ... || true` by design.
+
+### Supabase Preview on `main` (false-red)
+
+- GitHub App check **Supabase Preview** on production project `cshtthzpgkmrbcsfghyq`
+  compares `schema_migrations.version` to `supabase/migrations/` filenames. PRs
+  that do not touch `supabase/` skip; **merges to `main` still run**. Combined
+  commit status can be green while this one check is red.
+- Two reviewed production timestamps (`20260822184817`, `20260822184825`) are
+  aliases of canonical files; no-op shims live next to those files. Do **not**
+  `supabase db push` / `migration repair` / apply SQL to silence the check.
+- Keep GitHub **Deploy to production** off on that project until a reviewed
+  apply is approved. Greening Preview while auto-deploy is on can apply every
+  local-only migration on the next `main` merge.
