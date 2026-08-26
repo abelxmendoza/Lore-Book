@@ -183,7 +183,29 @@ export function filterVisibleSuggestions<T extends SuggestionMatchFields>(
   getName: (item: T) => string,
   bookEntries: SuggestionBookEntry[]
 ): T[] {
-  return items
-    .map((item) => enrichSuggestionWithBookMatch(item, getName, bookEntries))
-    .filter((item) => item.match_status !== 'existing');
+  return collapseSuggestionsByBookMatch(
+    items
+      .map((item) => enrichSuggestionWithBookMatch(item, getName, bookEntries))
+      .filter((item) => item.match_status !== 'existing'),
+  );
+}
+
+/** Keep the strongest card when several suggestions point at the same book skill. */
+export function collapseSuggestionsByBookMatch<T extends SuggestionMatchFields & { confidence?: number | null }>(
+  items: T[],
+): T[] {
+  const byKey = new Map<string, T>();
+  const unmatched: T[] = [];
+  for (const item of items) {
+    const key = item.matched_book_id || item.matched_book_name?.trim().toLowerCase() || '';
+    if (!key) {
+      unmatched.push(item);
+      continue;
+    }
+    const prev = byKey.get(key);
+    const prevScore = prev?.confidence ?? 0;
+    const nextScore = item.confidence ?? 0;
+    if (!prev || nextScore > prevScore) byKey.set(key, item);
+  }
+  return [...byKey.values(), ...unmatched];
 }

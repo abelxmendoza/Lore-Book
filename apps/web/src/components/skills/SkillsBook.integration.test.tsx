@@ -210,6 +210,23 @@ describe('SkillsBook (Redux integration)', () => {
     expect(within(modal).getByText('React Development')).toBeInTheDocument();
   });
 
+  it('lets the user pick two skills and choose which name to keep', async () => {
+    wrap(<SkillsBook />);
+    await findCard('React Development');
+
+    fireEvent.click(screen.getByRole('button', { name: /merge skills/i }));
+    expect(screen.getByRole('button', { name: /cancel merge/i })).toBeInTheDocument();
+    expect(
+      screen.getByText(/select two or more related skills, then choose which name to keep/i),
+    ).toBeInTheDocument();
+
+    fireEvent.click(await findCard('React Development'));
+    fireEvent.click(screen.getByRole('heading', { name: 'Guitar' }));
+
+    expect(screen.getAllByRole('button', { name: /keep react development/i }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole('button', { name: /keep guitar/i }).length).toBeGreaterThanOrEqual(1);
+  });
+
   it('switches to the persisted list view and keeps the copy-all control available', async () => {
     wrap(<SkillsBook />);
     await findCard('React Development');

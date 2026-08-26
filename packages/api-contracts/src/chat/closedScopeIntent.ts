@@ -95,7 +95,37 @@ const GROUP_RELATIONSHIP_WRITE_RE = new RegExp(
   'i',
 );
 
-/** Rough count of name-like tokens in a list ("A, B, and C"). */
+const GROUP_CLASSIFY_TYPE_NOUN =
+  'family|household|company|employer|workplace|crew|band|club|community|scene|nonprofit|institution|school|brand|vendor|software|collective|martial\\s+arts|public\\s+entity|friend\\s+group|sports\\s+team|team';
+const GROUP_CLASSIFY_IS_RE = new RegExp(
+  `\\b(.{1,80}?)\\s+(?:is|should be)\\s+(?:a\\s+|an\\s+|the\\s+)?(${GROUP_CLASSIFY_TYPE_NOUN})\\b(?!\\s+(?:of|under|inside|within|at|with|for)\\b)`,
+  'i',
+);
+const GROUP_CLASSIFY_MARK_RE = new RegExp(
+  `\\b(?:mark|set|make|classify)\\s+(.{1,80}?)\\s+(?:as\\s+)?(?:a\\s+|an\\s+|the\\s+)?(${GROUP_CLASSIFY_TYPE_NOUN})\\b(?!\\s+(?:of|under|inside|within|at|with|for)\\b)`,
+  'i',
+);
+const GROUP_STANCE_RE =
+  /\b(?:put|move|mark|set)\s+(.{1,80}?)\s+(?:in(?:to)?|as|under)\s+(?:the\s+)?(mine|close to|their world|mentioned)\b/i;
+const GROUP_MEMBERSHIP_RE =
+  /\b(?:i(?:'m|\s+am)?|we(?:'re|\s+are)?)\s+(?:a\s+)?(member|founder|leader|alumnus|fan|collaborator)\s+(?:of|at|with)\s+.{1,80}$/i;
+const GROUP_I_BELONG_RE = /\bi\s+belong\s+to\s+.{1,80}$/i;
+const GROUP_CLOSE_TO_RE = /\bi(?:'m|\s+am)\s+close\s+to\s+.{1,80}$/i;
+const GROUP_FORMER_RE = /\bi\s+used\s+to\s+(?:be\s+(?:in|a member of)|belong to)\s+.{1,80}$/i;
+
+export function isOrganizationClassificationWriteRequest(message: string): boolean {
+  const text = message.trim();
+  if (!text) return false;
+  return (
+    GROUP_CLASSIFY_IS_RE.test(text) ||
+    GROUP_CLASSIFY_MARK_RE.test(text) ||
+    GROUP_STANCE_RE.test(text) ||
+    GROUP_MEMBERSHIP_RE.test(text) ||
+    GROUP_I_BELONG_RE.test(text) ||
+    GROUP_CLOSE_TO_RE.test(text) ||
+    GROUP_FORMER_RE.test(text)
+  );
+}
 export function countListedNameLikeTokens(message: string): number {
   const cleaned = message
     .replace(/\b(so far we have|here(?:'s| is) the roster|roster(?:\s+is|:)|members?(?:\s+are|\s+include|:)|the members)\b/gi, ' ')
@@ -121,7 +151,8 @@ export function isOrganizationGroupWriteRequest(message: string): boolean {
     GROUP_FOR_RE.test(text) ||
     GROUP_ADD_MEMBERS_RE.test(text) ||
     GROUP_DELETE_RE.test(text) ||
-    GROUP_RELATIONSHIP_WRITE_RE.test(text)
+    GROUP_RELATIONSHIP_WRITE_RE.test(text) ||
+    isOrganizationClassificationWriteRequest(text)
   ) {
     return true;
   }
@@ -245,12 +276,19 @@ const SKILL_DELETE_RE =
   /\b(?:delete|remove)\s+(?:the\s+)?skill\s+(.{1,80})$|\b(?:delete|remove)\s+(.{1,80}?)\s+from\s+(?:my\s+)?skills?(?:\s+book)?\b/i;
 const SKILL_RENAME_RE =
   /\b(?:rename)\s+(?:the\s+)?skill\s+(.{1,60}?)\s+to\s+(.{1,60})$/i;
+const SKILL_MERGE_RE =
+  /\b(?:merge|fold)\s+(?:the\s+)?(?:skill\s+)?([a-zA-Z][a-zA-Z0-9'’./&+-]*(?:\s+[a-zA-Z][a-zA-Z0-9'’./&+-]*){0,5})\s+into\s+(?:the\s+)?(?:skill\s+)?([a-zA-Z][a-zA-Z0-9'’./&+-]*(?:\s+[a-zA-Z][a-zA-Z0-9'’./&+-]*){0,5})\b/i;
 
 export function isSkillWriteRequest(message: string): boolean {
   const text = message.trim();
   if (!text) return false;
   if (isEntityReclassifyWriteRequest(text)) return false;
-  return SKILL_CREATE_RE.test(text) || SKILL_DELETE_RE.test(text) || SKILL_RENAME_RE.test(text);
+  return (
+    SKILL_CREATE_RE.test(text) ||
+    SKILL_DELETE_RE.test(text) ||
+    SKILL_RENAME_RE.test(text) ||
+    SKILL_MERGE_RE.test(text)
+  );
 }
 
 const QUEST_CREATE_RE =

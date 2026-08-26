@@ -12,6 +12,8 @@ import type {
 import type { Character } from '../components/characters/CharacterProfileCard';
 import type { Achievement } from '../types/achievement';
 import type { Skill, SkillMetadata, SkillProgress } from '../types/skill';
+import { inferRelatedProjects, pickPeerSkillNames } from '../lib/skillConnections';
+import { readSkillProfile } from '../lib/skillProfile';
 import { enrichSkillProfileForStory } from './skillStoryDemoData';
 import type { MemoryCard, LinkedMemory } from '../types/memory';
 import type { QuestHistory } from '../types/quest';
@@ -516,54 +518,59 @@ export function getMockOrganizationMentionTrace(org: Organization): MockOrganiza
   };
 }
 
-export function enrichSkillForDemo(skill: Skill): Skill {
-  const withDetails = skill.metadata?.skill_details
-    ? skill
-    : {
-        ...skill,
-        metadata: {
-          ...skill.metadata,
-          skill_details: {
-            years_practiced: 2,
-            why_started: {
-              reason: skill.description ?? `You picked up ${skill.skill_name} through practice and curiosity.`,
-              entry_id: 'demo',
-              extracted_at: skill.created_at,
-            },
-            learned_from: [
-              {
-                character_id: 'dummy-1',
-                character_name: 'Alex',
-                relationship_type: 'peer' as const,
-                first_mentioned: skill.first_mentioned_at,
-                evidence_entry_ids: [],
-              },
-            ],
-            practiced_at: [
-              {
-                location_id: 'dummy-loc-1',
-                location_name: 'Home studio',
-                practice_count: Math.max(skill.practice_count, 3),
-                last_practiced: skill.last_practiced_at ?? skill.updated_at,
-                evidence_entry_ids: [],
-              },
-            ],
-          } satisfies SkillMetadata,
-        },
-      };
+export function enrichSkillForDemo(skill: Skill, peers: Skill[] = []): Skill {
+  const profile = readSkillProfile(skill.metadata);
+  const existingDetails = skill.metadata?.skill_details as SkillMetadata | undefined;
+  const relatedSkillNames =
+    profile?.related_skill_names?.length
+      ? profile.related_skill_names
+      : pickPeerSkillNames(skill, peers);
+  const relatedProjects =
+    profile?.related_projects?.length
+      ? profile.related_projects
+      : inferRelatedProjects(skill);
+
+  const skillDetails: SkillMetadata = existingDetails ?? {
+    years_practiced: 2,
+    why_started: {
+      reason: skill.description ?? `You picked up ${skill.skill_name} through practice and curiosity.`,
+      entry_id: 'demo',
+      extracted_at: skill.created_at,
+    },
+  };
+
+  const withDetails: Skill = {
+    ...skill,
+    metadata: {
+      ...skill.metadata,
+      skill_details: skillDetails,
+      skill_profile: {
+        skill_type: profile?.skill_type ?? 'hobby',
+        monetization: profile?.monetization ?? 'hobby_only',
+        proficiency: profile?.proficiency ?? Math.min(95, skill.current_level * 11 + 18),
+        enjoyment: profile?.enjoyment ?? 70,
+        usage_frequency: profile?.usage_frequency ?? 'weekly',
+        trajectory: profile?.trajectory ?? 'improving',
+        ...profile,
+        related_skill_names: relatedSkillNames,
+        related_projects: relatedProjects,
+      },
+    },
+  };
 
   return enrichSkillProfileForStory(withDetails);
 }
 
 export function getMockSkillConnections(
   skill: Skill,
-  characters: Character[],
+  _characters: Character[] = [],
 ): {
   relatedCharacters: Array<{ id: string; name: string; role?: string; relationship?: string }>;
   relatedOrganizations: Array<{ id: string; name: string; type?: string }>;
 } {
   const details = skill.metadata?.skill_details as SkillMetadata | undefined;
-  const fromDetails = [
+  const profile = readSkillProfile(skill.metadata);
+  const relatedCharacters = [
     ...(details?.learned_from ?? []).map((t) => ({
       id: t.character_id,
       name: t.character_name,
@@ -577,23 +584,12 @@ export function getMockSkillConnections(
       relationship: `${p.practice_count} sessions`,
     })),
   ];
-  if (fromDetails.length > 0) {
-    return {
-      relatedCharacters: fromDetails,
-      relatedOrganizations: [
-        { id: 'mock-org-work', name: 'Side projects circle', type: 'crew' },
-      ],
-    };
-  }
-  return {
-    relatedCharacters: characters.slice(0, 3).map((c) => ({
-      id: c.id,
-      name: c.name,
-      role: c.role ?? undefined,
-      relationship: 'Mentioned together',
-    })),
-    relatedOrganizations: [{ id: 'mock-org-1', name: 'The Thursday Crew', type: 'crew' }],
-  };
+  const relatedOrganizations = (profile?.related_jobs ?? []).map((job) => ({
+    id: `mock-org-${job.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    name: job,
+    type: 'work',
+  }));
+  return { relatedCharacters, relatedOrganizations };
 }
 
 export function getMockSkillMilestones(skill: Skill): Achievement[] {

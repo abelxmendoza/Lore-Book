@@ -19,7 +19,7 @@ const MERGE_TARGETS: Array<{ target: string; aliases: string[] }> = [
   },
   {
     target: 'Front-End Development',
-    aliases: ['frontend development', 'front-end development', 'front end development'],
+    aliases: ['frontend development', 'front-end development', 'front end development', 'web ui development'],
   },
   {
     target: 'Software Debugging',
@@ -58,6 +58,14 @@ const MERGE_TARGETS: Array<{ target: string; aliases: string[] }> = [
       'social interaction',
       'socializing',
     ],
+  },
+  {
+    target: 'Hardware Prototyping',
+    aliases: ['hardware prototyping', 'prototyping'],
+  },
+  {
+    target: 'Music Release',
+    aliases: ['music release', 'independent music release', 'music distribution'],
   },
 ];
 

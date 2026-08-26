@@ -63,7 +63,7 @@ export const skillsApi = {
     return response.suggestions || [];
   },
 
-  async materializeSuggestion(input: SkillSuggestion & { suggestion_id?: string }): Promise<Skill> {
+  async materializeSuggestion(input: SkillSuggestion & { suggestion_id?: string; merge_into_skill_id?: string }): Promise<Skill> {
     const response = await fetchJson<{ skill: Skill }>('/api/skills/suggestions/materialize', {
       method: 'POST',
       body: JSON.stringify({
@@ -85,9 +85,21 @@ export const skillsApi = {
         related_skill_names: input.related_skill_names,
         evidence: input.evidence,
         suggestion_id: input.id ?? input.suggestion_id,
+        merge_into_skill_id: input.merge_into_skill_id,
       }),
     });
     return response.skill;
+  },
+
+  async mergeSkills(sourceId: string, targetId: string, reason?: string): Promise<{ skill: Skill; report?: { reviewFlags?: string[] } }> {
+    return fetchJson<{ skill: Skill; report?: { reviewFlags?: string[] } }>('/api/skills/merge', {
+      method: 'POST',
+      body: JSON.stringify({
+        source_id: sourceId,
+        target_id: targetId,
+        reason: reason ?? 'Merged from Skills Book',
+      }),
+    });
   },
 
   async rejectSuggestionByName(skillName: string): Promise<void> {

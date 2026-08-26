@@ -745,7 +745,7 @@ Modes:
 10b. ENTITY_RECLASSIFY_WRITE - Wrong-book correction: "Popular E-Girls is a group, not a place", "move X to my Groups book", "X should be a project".
 10c. LOCATION_WRITE - Explicit Places create/rename/delete: "add Northwind Depot as a place", "delete the place X".
 10d. PROJECT_WRITE - Explicit Projects create/rename/delete: "add MemoVault as a project".
-10e. SKILL_WRITE - Explicit Skills create/rename/delete: "add Welding as a skill".
+10e. SKILL_WRITE - Explicit Skills create/rename/delete/merge: "add Welding as a skill", "merge Prototyping into Hardware Prototyping".
 10f. QUEST_WRITE - Explicit Quest Log create/rename/delete/status: "add Ship MemoVault as a quest", "mark the quest X as done".
 10g. FAMILY_WRITE - Explicit Family Tree kinship write: "mark Marcus as my cousin".
 10h. ROMANCE_WRITE - Explicit Dating & Romance status write: "mark Jamie as dating", "we broke up with Jamie".
@@ -755,7 +755,7 @@ Modes:
 13. LOCATION_QUERY - Read-only query over Places and Locations: "which places did I visit with Marcus?", "show places linked to Vanguard Robotics", "which locations need coordinates?".
 14. ROMANCE_QUERY - Grounded query over Dating and Romance: "who am I currently dating?", "show my past relationships", "which romantic records need review?", "rank my evidence-backed connections by compatibility".
 15. PROJECT_QUERY - Grounded query over the Projects Book: "show my active software projects", "which projects did I finish in 2025?", "rank my projects by grounded importance".
-16. SKILL_QUERY - Grounded query over the Skills Book: "show my improving technical skills", "which skills do I use for Vanguard Robotics?", "rank my evidence-backed skills by proficiency".
+16. SKILL_QUERY - Grounded query over the Skills Book: "show my improving technical skills", "which skills do I use for Vanguard Robotics?", "rank my evidence-backed skills by proficiency", "which skills are similar?", "what skills are similar to Interviewing".
 17. QUEST_QUERY - Grounded query over the Quest Log: "what quests am I currently working on?", "show blocked quests", "which quests are due soon?", "rank my quests by priority".
 18. BOOK_QUERY - Cross-Book query, or a grounded query over People, Life Log, Documents, or Narrative Anchors: "what skills support my active quests?", "which documents mention MemoVault?", "show people connected to Vanguard Robotics".
 
@@ -950,7 +950,7 @@ export function isSkillQueryRequest(message: string): boolean {
   }
   return (
     /\b(?:which|what|show|find|list|how many|rank|compare)\b/i.test(text) &&
-    /\b(?:my|active|inactive|technical|creative|physical|professional|practical|social|intellectual|emotional|artistic|paid|hobby|improving|stagnant|declining|practiced|level|proficiency|confidence|evidence|use|used|needed|required|project|job|review)\b/i.test(text)
+    /\b(?:my|active|inactive|technical|creative|physical|professional|practical|social|intellectual|emotional|artistic|paid|hobby|improving|stagnant|declining|practiced|level|proficiency|confidence|evidence|use|used|needed|required|project|job|review|similar|related|duplicates?|merge)\b/i.test(text)
   );
 }
 

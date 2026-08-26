@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   areNicknameVariants,
+  collapseSuggestionsByBookMatch,
+  filterVisibleSuggestions,
   resolveSuggestionBookMatch,
 } from './suggestionBookFilter';
 
@@ -22,5 +24,45 @@ describe('resolveSuggestionBookMatch — nicknames', () => {
   it('does not treat unrelated short names as nicknames', () => {
     expect(areNicknameVariants('mark', 'mary')).toBe(false);
     expect(resolveSuggestionBookMatch('Mary', [{ name: 'Mark Johnson' }]).status).toBe('new');
+  });
+});
+
+describe('skill suggestion visibility', () => {
+  it('hides exact book matches and keeps the strongest similar card per book skill', () => {
+    const visible = filterVisibleSuggestions(
+      [
+        { skill_name: 'Front-End Development', match_status: 'existing' as const, confidence: 0.9 },
+        {
+          skill_name: 'Socializing at night events',
+          match_status: 'similar' as const,
+          matched_book_id: 'book-social',
+          matched_book_name: 'Socializing',
+          confidence: 0.88,
+        },
+        {
+          skill_name: 'Meeting people at concerts',
+          match_status: 'similar' as const,
+          matched_book_id: 'book-social',
+          matched_book_name: 'Socializing',
+          confidence: 0.93,
+        },
+        { skill_name: 'Calligraphy', match_status: 'new' as const, confidence: 0.8 },
+      ],
+      (item) => item.skill_name,
+      [{ id: 'book-frontend', name: 'Front-End Development' }],
+    );
+
+    expect(visible.map((item) => item.skill_name)).toEqual([
+      'Meeting people at concerts',
+      'Calligraphy',
+    ]);
+  });
+
+  it('keeps unmatched new suggestions instead of collapsing them together', () => {
+    const collapsed = collapseSuggestionsByBookMatch([
+      { match_status: 'new' as const, skill_name: 'Networking', confidence: 0.8 },
+      { match_status: 'new' as const, skill_name: 'Self Marketing', confidence: 0.9 },
+    ]);
+    expect(collapsed).toHaveLength(2);
   });
 });

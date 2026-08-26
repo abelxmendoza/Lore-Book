@@ -1,13 +1,15 @@
 /**
- * Explicit Skills book writes from chat — create / rename / delete.
+ * Explicit Skills book writes from chat — create / rename / delete / merge.
  */
 
 import { normalizeNameKey } from '../../utils/nameNormalization';
+import { isMatchableBookSkill, readSkillAliases } from '../skills/skillMerge';
+import { skillMergeService } from '../skills/skillMergeService';
 import { skillService } from '../skills/skillService';
 
 export type SkillWriteResult = {
   summary: string;
-  operation: 'create' | 'rename' | 'delete';
+  operation: 'create' | 'rename' | 'delete' | 'merge';
   skillId: string | null;
   skillName: string;
 };
@@ -20,14 +22,50 @@ function cleanName(raw: string): string {
     .trim();
 }
 
+const SKILL_MERGE_RE =
+  /\b(?:merge|fold)\s+(?:the\s+)?(?:skill\s+)?([a-zA-Z][a-zA-Z0-9'’./&+-]*(?:\s+[a-zA-Z][a-zA-Z0-9'’./&+-]*){0,5})\s+into\s+(?:the\s+)?(?:skill\s+)?([a-zA-Z][a-zA-Z0-9'’./&+-]*(?:\s+[a-zA-Z][a-zA-Z0-9'’./&+-]*){0,5})\b/i;
+
+export function parseSkillMerge(message: string): { source: string; target: string } | null {
+  const match = message.trim().match(SKILL_MERGE_RE);
+  if (!match) return null;
+  const source = cleanName(match[1] ?? '');
+  const target = cleanName(match[2] ?? '');
+  if (!source || !target || source.toLowerCase() === target.toLowerCase()) return null;
+  return { source, target };
+}
+
 async function findSkillByName(userId: string, name: string) {
   const key = normalizeNameKey(name);
   const skills = await skillService.getSkills(userId);
-  return skills.find((s) => normalizeNameKey(s.skill_name) === key) ?? null;
+  return (
+    skills.find((skill) => {
+      if (!isMatchableBookSkill(skill)) return false;
+      if (normalizeNameKey(skill.skill_name) === key) return true;
+      return readSkillAliases(skill.metadata).some((alias) => normalizeNameKey(alias) === key);
+    }) ?? null
+  );
 }
 
 export async function writeSkillFromChat(userId: string, message: string): Promise<SkillWriteResult> {
   const text = message.trim();
+
+  const merge = parseSkillMerge(text);
+  if (merge) {
+    const source = await findSkillByName(userId, merge.source);
+    const target = await findSkillByName(userId, merge.target);
+    if (!source) throw new Error(`I couldn't find a skill named "${merge.source}".`);
+    if (!target) throw new Error(`I couldn't find a skill named "${merge.target}".`);
+    const { skill, report } = await skillMergeService.merge(userId, source.id, target.id, {
+      reason: 'Merged from chat',
+    });
+    const aliasNote = report.aliases.length ? ` Aliases: ${report.aliases.join(', ')}.` : '';
+    return {
+      summary: `Merged **${report.sourceName}** into **${report.targetName}**.${aliasNote} Ask “which skills are similar?” if you want more merge candidates.`,
+      operation: 'merge',
+      skillId: skill.id ?? target.id,
+      skillName: skill.skill_name,
+    };
+  }
 
   const rename = text.match(/\b(?:rename)\s+(?:the\s+)?skill\s+(.{1,60}?)\s+to\s+(.{1,60})$/i);
   if (rename) {
@@ -89,5 +127,7 @@ export async function writeSkillFromChat(userId: string, message: string): Promi
     };
   }
 
-  throw new Error('Try “add Welding as a skill”, “rename the skill X to Y”, or “delete the skill X”.');
+  throw new Error(
+    'Try “add Welding as a skill”, “merge Prototyping into Hardware Prototyping”, “rename the skill X to Y”, or “delete the skill X”.',
+  );
 }

@@ -50,6 +50,7 @@ import {
   getSkillStoryNarrative,
 } from '../../mocks/skillStoryDemoData';
 import { slugId } from '../../lib/skillEntityNavigation';
+import { assembleSkillConnections, skillConnectionsAreEmpty } from '../../lib/skillConnections';
 
 type Theme = ReturnType<typeof skillCategoryTheme>;
 
@@ -408,7 +409,6 @@ export function SkillChatTab({
 
 export function SkillConnectionsTab({
   skill,
-  profile,
   details,
   theme,
   relatedCharacters,
@@ -418,32 +418,14 @@ export function SkillConnectionsTab({
   relatedCharacters: Array<{ id: string; name: string; role?: string; relationship?: string }>;
   relatedOrganizations: Array<{ id: string; name: string; type?: string }>;
 }) {
-  const relatedSkills = readRelatedSkillNames(skill.metadata);
-  const projects = profile?.related_projects ?? [];
-  const places = [
-    ...(details?.learned_at ?? []).map((loc) => ({
-      id: loc.location_id,
-      name: loc.location_name,
-    })),
-    ...(details?.practiced_at ?? []).map((loc) => ({
-      id: loc.location_id,
-      name: loc.location_name,
-    })),
-  ].filter((loc, i, arr) => arr.findIndex((x) => x.id === loc.id) === i);
-  const learned = details?.learned_from ?? [];
-  const practiced = details?.practiced_with ?? [];
+  const connections = assembleSkillConnections({
+    skill,
+    details,
+    relatedCharacters,
+    relatedOrganizations,
+  });
 
-  const empty =
-    relatedSkills.length === 0 &&
-    projects.length === 0 &&
-    !(profile?.related_jobs && profile.related_jobs.length > 0) &&
-    relatedCharacters.length === 0 &&
-    places.length === 0 &&
-    relatedOrganizations.length === 0 &&
-    learned.length === 0 &&
-    practiced.length === 0;
-
-  if (empty) {
+  if (skillConnectionsAreEmpty(connections)) {
     return (
       <p className="text-sm text-white/50 py-8 text-center">
         Links to people, places, projects, and related skills will appear here as LoreBook learns them.
@@ -452,46 +434,46 @@ export function SkillConnectionsTab({
   }
 
   return (
-    <div className="space-y-3 min-w-0">
-      {learned.length > 0 && (
+    <div className="space-y-3 min-w-0" data-testid="skill-connections-tab">
+      {connections.learnedFrom.length > 0 && (
         <section>
           <p className="text-[10px] uppercase tracking-wider text-blue-300/80 mb-2">Learned from</p>
-          {learned.map((t) => (
+          {connections.learnedFrom.map((person) => (
             <button
-              key={t.character_id}
+              key={person.id}
               type="button"
-              onClick={() => nav?.onOpenCharacter({ id: t.character_id, name: t.character_name })}
+              onClick={() => nav?.onOpenCharacter({ id: person.id, name: person.name })}
               className="block w-full text-left rounded-lg border border-blue-500/25 bg-blue-500/10 px-3 py-2 mb-1.5 touch-manipulation"
             >
-              <p className="text-sm text-blue-100">{t.character_name}</p>
-              <p className="text-[10px] text-blue-200/60 capitalize">{t.relationship_type}</p>
+              <p className="text-sm text-blue-100">{person.name}</p>
+              <p className="text-[10px] text-blue-200/60 capitalize">{person.role}</p>
             </button>
           ))}
         </section>
       )}
 
-      {practiced.length > 0 && (
+      {connections.practicedWith.length > 0 && (
         <section>
           <p className="text-[10px] uppercase tracking-wider text-white/45 mb-2">Worked with</p>
-          {practiced.map((p) => (
+          {connections.practicedWith.map((person) => (
             <button
-              key={p.character_id}
+              key={person.id}
               type="button"
-              onClick={() => nav?.onOpenCharacter({ id: p.character_id, name: p.character_name })}
+              onClick={() => nav?.onOpenCharacter({ id: person.id, name: person.name })}
               className="block w-full text-left rounded-lg border border-white/10 bg-black/30 px-3 py-2 mb-1.5 touch-manipulation"
             >
-              <p className="text-sm text-white">{p.character_name}</p>
-              <p className="text-[10px] text-white/45">{p.practice_count} sessions</p>
+              <p className="text-sm text-white">{person.name}</p>
+              <p className="text-[10px] text-white/45">{person.relationship}</p>
             </button>
           ))}
         </section>
       )}
 
-      {relatedSkills.length > 0 && (
+      {connections.relatedSkills.length > 0 && (
         <section>
           <p className="text-[10px] uppercase tracking-wider text-white/45 mb-2">Related skills</p>
           <div className="flex flex-wrap gap-1.5">
-            {relatedSkills.map((name) => (
+            {connections.relatedSkills.map((name) => (
               <NavChip
                 key={name}
                 label={name}
@@ -503,27 +485,27 @@ export function SkillConnectionsTab({
         </section>
       )}
 
-      {projects.length > 0 && (
+      {connections.projects.length > 0 && (
         <section>
           <p className="text-[10px] uppercase tracking-wider text-white/45 mb-2">Related projects</p>
           <div className="flex flex-wrap gap-1.5">
-            {projects.map((p) => (
+            {connections.projects.map((project) => (
               <NavChip
-                key={p}
-                label={p}
+                key={project}
+                label={project}
                 className="text-xs border-amber-500/35 bg-amber-500/10 text-amber-200"
-                onClick={nav ? () => nav.onOpenProject({ id: slugId(p, 'project'), name: p }) : undefined}
+                onClick={nav ? () => nav.onOpenProject({ id: slugId(project, 'project'), name: project }) : undefined}
               />
             ))}
           </div>
         </section>
       )}
 
-      {profile?.related_jobs && profile.related_jobs.length > 0 && (
+      {connections.jobs.length > 0 && (
         <section>
           <p className="text-[10px] uppercase tracking-wider text-white/45 mb-2">Work contexts</p>
           <div className="flex flex-wrap gap-1.5">
-            {profile.related_jobs.map((job) => (
+            {connections.jobs.map((job) => (
               <NavChip
                 key={job}
                 label={job}
@@ -535,34 +517,34 @@ export function SkillConnectionsTab({
         </section>
       )}
 
-      {relatedCharacters.length > 0 && (
+      {connections.otherPeople.length > 0 && (
         <section>
           <p className="text-[10px] uppercase tracking-wider text-white/45 mb-2 flex items-center gap-1">
             <Users className="h-3 w-3" /> People
           </p>
           <div className="space-y-1.5">
-            {relatedCharacters.map((c) => (
+            {connections.otherPeople.map((person) => (
               <button
-                key={c.id}
+                key={person.id}
                 type="button"
-                onClick={() => nav?.onOpenCharacter({ id: c.id, name: c.name })}
+                onClick={() => nav?.onOpenCharacter({ id: person.id, name: person.name })}
                 className="w-full text-left rounded-lg border border-white/10 bg-black/30 px-3 py-2 hover:border-blue-500/40 hover:bg-blue-500/10 transition-colors touch-manipulation"
               >
-                <p className="text-sm text-white">{c.name}</p>
-                {c.relationship && <p className="text-[10px] text-white/45">{c.relationship}</p>}
+                <p className="text-sm text-white">{person.name}</p>
+                {person.relationship && <p className="text-[10px] text-white/45">{person.relationship}</p>}
               </button>
             ))}
           </div>
         </section>
       )}
 
-      {places.length > 0 && (
+      {connections.places.length > 0 && (
         <section>
           <p className="text-[10px] uppercase tracking-wider text-white/45 mb-2 flex items-center gap-1">
             <MapPin className="h-3 w-3" /> Places
           </p>
           <div className="flex flex-wrap gap-1.5">
-            {places.map((loc) => (
+            {connections.places.map((loc) => (
               <button
                 key={loc.id}
                 type="button"
@@ -576,11 +558,11 @@ export function SkillConnectionsTab({
         </section>
       )}
 
-      {relatedOrganizations.length > 0 && (
+      {connections.organizations.length > 0 && (
         <section>
           <p className="text-[10px] uppercase tracking-wider text-white/45 mb-2">Organizations</p>
           <div className="space-y-1.5">
-            {relatedOrganizations.map((org) => (
+            {connections.organizations.map((org) => (
               <button
                 key={org.id}
                 type="button"

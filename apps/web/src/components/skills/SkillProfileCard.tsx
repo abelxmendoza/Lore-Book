@@ -23,6 +23,8 @@ export interface SkillProfileCardProps {
   /** @deprecated Progress bars belong in the modal; kept for call-site compat. */
   showProgress?: boolean;
   className?: string;
+  selected?: boolean;
+  selectionMode?: boolean;
 }
 
 function levelProgressPct(skill: Skill): number | null {
@@ -38,6 +40,8 @@ export const SkillProfileCard: React.FC<SkillProfileCardProps> = ({
   skill,
   onClick,
   className,
+  selected = false,
+  selectionMode = false,
 }) => {
   const profile = readSkillProfile(skill.metadata);
   const theme = skillCategoryTheme(skill.skill_category);
@@ -56,10 +60,21 @@ export const SkillProfileCard: React.FC<SkillProfileCardProps> = ({
         theme.border,
         theme.hoverBorder,
         theme.hoverShadow,
+        selected && 'ring-1 ring-primary/50 border-primary/60',
         !skill.is_active && 'opacity-75',
         className,
       )}
     >
+      {selectionMode && (
+        <span
+          className={cn(
+            'absolute top-1.5 right-1.5 z-10 flex h-5 w-5 items-center justify-center rounded border text-[10px]',
+            selected ? 'border-primary/80 bg-primary text-white' : 'border-white/25 bg-black/40 text-transparent',
+          )}
+        >
+          ✓
+        </span>
+      )}
       <div className={cn('absolute inset-x-0 top-0 h-16 bg-gradient-to-b opacity-45 pointer-events-none', theme.headerGrad)} />
 
       <div className="relative shrink-0 px-2.5 pt-2 pb-1.5 border-b border-white/5">
@@ -72,7 +87,7 @@ export const SkillProfileCard: React.FC<SkillProfileCardProps> = ({
               {skill.skill_category.replace(/_/g, ' ')}
             </p>
           </div>
-          <ChevronRight className={cn('h-3.5 w-3.5 text-white/25 shrink-0 mt-1 transition-colors', theme.chevronHover)} />
+          <ChevronRight className={cn('h-3.5 w-3.5 text-white/25 shrink-0 mt-1 transition-colors', !selectionMode && theme.chevronHover, selectionMode && 'opacity-0')} />
         </div>
       </div>
 
