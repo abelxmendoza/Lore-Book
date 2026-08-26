@@ -189,24 +189,35 @@ export const characterTitleService = {
     if (!row) return null;
 
     const current = displayTitleFromRow(row);
-    const built = buildDisplayTitleFromName(characterId, input.primaryTitle, {
+    const trimmed = input.primaryTitle.trim();
+    const userConfirmed = input.userConfirmed ?? true;
+    const built = buildDisplayTitleFromName(characterId, trimmed, {
       stability: input.stability ?? 'stable',
     });
-    if (built.rejected) {
+
+    // User edits on the card must always stick — including kinship-only labels
+    // like "Tía Maribel" that inference would reject as bare titles.
+    if (built.rejected && !userConfirmed) {
       throw new Error('Cannot set bare title without context');
     }
+
+    const proposedPrimary = userConfirmed ? trimmed : built.displayTitle.primaryTitle;
+    const proposedType = built.rejected
+      ? built.displayTitle.titleType
+      : built.displayTitle.titleType;
+    const proposedParts = built.rejected ? {} : built.displayTitle.titleParts;
 
     const result = applyTitleUpdate({
       current,
       proposal: {
-        proposedPrimaryTitle: built.displayTitle.primaryTitle,
-        proposedTitleType: built.displayTitle.titleType,
-        proposedParts: built.displayTitle.titleParts,
+        proposedPrimaryTitle: proposedPrimary,
+        proposedTitleType: proposedType,
+        proposedParts,
         reason: 'user_edit',
         stability: input.stability ?? 'stable',
         preservePreviousAsAlias: true,
       },
-      userConfirmed: input.userConfirmed ?? true,
+      userConfirmed,
       force: true,
     });
 

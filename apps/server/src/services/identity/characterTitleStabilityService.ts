@@ -83,7 +83,12 @@ export function applyTitleUpdate(input: ApplyTitleUpdateInput): ApplyTitleUpdate
       titleParts: proposal.proposedParts,
       titleType: proposal.proposedTitleType,
       aliases,
-      stability: userConfirmed ? 'stable' : proposal.stability,
+      stability:
+        userConfirmed && proposal.stability === 'locked'
+          ? 'locked'
+          : userConfirmed
+            ? 'stable'
+            : proposal.stability,
       evidencePhrases: [...new Set([...current.evidencePhrases, proposal.reason])],
     },
   };

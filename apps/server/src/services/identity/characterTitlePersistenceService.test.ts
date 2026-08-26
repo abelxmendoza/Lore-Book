@@ -153,3 +153,39 @@ describe('characterTitleService.addAlias', () => {
     expect(state.updatePatch?.alias).toEqual(['Tay', 'Static Bloom']);
   });
 });
+
+describe('characterTitleService.patchTitle', () => {
+  beforeEach(() => {
+    state.row = {
+      id: 'character-a',
+      user_id: 'user-a',
+      name: 'Maribel',
+      alias: [],
+      metadata: {
+        display_title: {
+          characterId: 'character-a',
+          primaryTitle: 'Tía Maribel',
+          titleParts: { honorific: 'Tía', givenName: 'Maribel' },
+          titleType: 'family_title_name',
+          aliases: [],
+          stability: 'stable',
+          evidencePhrases: [],
+        },
+      },
+    };
+    state.updatePatch = null;
+    state.filters = [];
+  });
+
+  it('persists user-confirmed kinship titles the inference guard would reject', async () => {
+    const result = await characterTitleService.patchTitle('user-a', 'character-a', {
+      primaryTitle: 'Mom',
+      stability: 'locked',
+      userConfirmed: true,
+    });
+
+    expect(result?.displayTitle.primaryTitle).toBe('Mom');
+    expect(result?.displayTitle.stability).toBe('locked');
+    expect(state.updatePatch?.name).toBe('Mom');
+  });
+});
