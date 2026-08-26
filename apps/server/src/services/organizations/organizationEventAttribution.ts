@@ -124,6 +124,23 @@ function isSoftwareOrg(org: OrganizationCatalogEntry): boolean {
   return type === 'software' || type === 'platform' || type === 'vendor';
 }
 
+/** Saved workplace/institution cards may use a name mention as Timeline evidence. */
+const CATALOG_NAME_MENTION_TIMELINE_TYPES = new Set([
+  'company',
+  'brand',
+  'institution',
+  'team',
+  'nonprofit',
+  'public_entity',
+  'project',
+  'event_group',
+]);
+
+export function catalogNameMentionQualifiesForTimeline(groupType?: string | null): boolean {
+  if (!groupType) return false;
+  return CATALOG_NAME_MENTION_TIMELINE_TYPES.has(groupType.toLowerCase());
+}
+
 function classifyMention(input: {
   span: string;
   window: string;
@@ -355,14 +372,18 @@ function classifyMention(input: {
     role: 'referenced',
     evidence: w.trim(),
     evidenceKind: 'name_in_span',
-    confidence: 0.55,
+    confidence: catalogNameMentionQualifiesForTimeline(input.org.groupType) && !isSoftwareOrg(input.org) ? 0.72 : 0.55,
     accepted: true,
     canonical: Boolean(input.org.id),
-    acceptedForOrganizationTimeline: false,
-    whyIncluded: 'Named in the event text without an involvement role',
+    acceptedForOrganizationTimeline:
+      catalogNameMentionQualifiesForTimeline(input.org.groupType) && !isSoftwareOrg(input.org),
+    whyIncluded:
+      catalogNameMentionQualifiesForTimeline(input.org.groupType) && !isSoftwareOrg(input.org)
+        ? 'Named in a dated event for a saved organization'
+        : 'Named in the event text without an involvement role',
     sourceSpan: input.span,
     subjectCharacterHint,
-    protagonistRelation: false,
+    protagonistRelation: catalogNameMentionQualifiesForTimeline(input.org.groupType) && !isSoftwareOrg(input.org),
     unresolved: false,
   };
 }
@@ -530,6 +551,78 @@ export function mergeOrganizationAttributionMetadata(
     organizationAttributions: attributions,
     organizationIds: [...new Set(timelineIds)],
   };
+}
+
+/**
+ * Additive plan: attach this organization (and any newly derived parents) to
+ * an existing event without dropping prior attributions or user corrections.
+ * Returns null when the event does not mention the org.
+ */
+export function planOrganizationAttributionBackfill(input: {
+  text: string;
+  existingMetadata?: Record<string, unknown> | null;
+  catalog: OrganizationCatalogEntry[];
+  organizationId: string;
+}): Record<string, unknown> | null {
+  const existing = readOrganizationAttributions(input.existingMetadata);
+  if (existing.some((row) => row.organizationId === input.organizationId)) return null;
+
+  const next = attributeOrganizationsInEvent({
+    text: input.text,
+    organizations: input.catalog,
+  });
+  const toAdd = next.filter((row) => {
+    const id = row.organizationId;
+    if (!id) return false;
+    return !existing.some((prior) => prior.organizationId === id);
+  });
+  if (toAdd.length === 0) return null;
+  return mergeOrganizationAttributionMetadata(input.existingMetadata, [...existing, ...toAdd]);
+}
+
+/**
+ * Additive plan for a full-catalog pass: attach every org the event text
+ * newly supports, without dropping prior attributions or corrections.
+ */
+export function planUserOrganizationAttributionBackfill(input: {
+  text: string;
+  existingMetadata?: Record<string, unknown> | null;
+  catalog: OrganizationCatalogEntry[];
+}): Record<string, unknown> | null {
+  const existing = readOrganizationAttributions(input.existingMetadata);
+  const next = attributeOrganizationsInEvent({
+    text: input.text,
+    organizations: input.catalog,
+  });
+  const byId = new Map(
+    existing
+      .filter((row) => Boolean(row.organizationId))
+      .map((row) => [row.organizationId as string, row]),
+  );
+  const merged = [...existing];
+  let changed = false;
+
+  for (const incoming of next) {
+    const id = incoming.organizationId;
+    if (!id) continue;
+    const prior = byId.get(id);
+    if (!prior) {
+      merged.push(incoming);
+      byId.set(id, incoming);
+      changed = true;
+      continue;
+    }
+    if (prior.correctionHistory?.length || prior.rejected) continue;
+    if (!prior.acceptedForOrganizationTimeline && incoming.acceptedForOrganizationTimeline) {
+      const idx = merged.findIndex((row) => row.organizationId === id);
+      if (idx >= 0) merged[idx] = incoming;
+      byId.set(id, incoming);
+      changed = true;
+    }
+  }
+
+  if (!changed) return null;
+  return mergeOrganizationAttributionMetadata(input.existingMetadata, merged);
 }
 
 export function applyOrganizationAttributionCorrection(

@@ -10,6 +10,15 @@ import { MemoryRouter } from 'react-router-dom';
 import { CharacterDetailModal } from './CharacterDetailModal';
 import type { Character } from './CharacterProfileCard';
 import { STORY_DATA_UPDATED, type StoryDataUpdatedDetail } from '../../lib/storyRefresh';
+import { copyTextToClipboard } from '../../lib/listClipboard';
+
+vi.mock('../../lib/listClipboard', async (orig) => {
+  const actual = await orig<typeof import('../../lib/listClipboard')>();
+  return {
+    ...actual,
+    copyTextToClipboard: vi.fn().mockResolvedValue(true),
+  };
+});
 
 // Mock dependencies
 const mockOpenChatWithFocus = vi.fn();
@@ -142,6 +151,7 @@ describe('CharacterDetailModal', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(copyTextToClipboard).mockResolvedValue(true);
     sessionStorage.clear();
     characterQueryMock.state = {
       query: null,
@@ -1252,6 +1262,110 @@ describe('CharacterDetailModal', () => {
       });
       expect(await screen.findByText('Amazon')).toBeInTheDocument();
     });
+  });
+
+  it('copies every connection from the Connections tab', async () => {
+    const user = userEvent.setup();
+    const { fetchJson } = await import('../../lib/api');
+    vi.mocked(fetchJson).mockImplementation(async (input: RequestInfo) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (url === '/api/family-trees/character/jamie-copy') {
+        return {
+          success: true,
+          tree: {
+            self_id: 'jamie-copy',
+            branches: [],
+            members: [
+              {
+                id: 'jamie-copy',
+                name: 'Jamie',
+                relation: 'related',
+                relation_label: 'Self',
+                generation: 0,
+                is_self: true,
+              },
+              {
+                id: 'mom-tree',
+                name: 'Elena Chen',
+                kinship_title: 'Mom',
+                relation: 'parent',
+                relation_label: 'Mom',
+                generation: -1,
+              },
+            ],
+          },
+        } as never;
+      }
+      if (url === '/api/characters/jamie-copy/peripherals') {
+        return {
+          success: true,
+          peripherals: [
+            {
+              id: 'periph-carmen',
+              peripheral_name: 'Carmen',
+              peripheral_surface: 'Carmen',
+              role: 'extended_family',
+              tier: 'confirmed',
+              metadata: { lexical_evidence: 'Met at brunch' },
+            },
+          ],
+        } as never;
+      }
+      throw new Error('Not found');
+    });
+
+    const jamie: Character = {
+      ...mockCharacter,
+      id: 'jamie-copy',
+      name: 'Jamie',
+      metadata: { distinct_from_self: true },
+      relationships: [
+        {
+          id: 'rel-marcus',
+          character_id: 'marcus-1',
+          character_name: 'Marcus',
+          relationship_type: 'friend',
+          status: 'active',
+          summary: 'Music scene',
+        },
+        {
+          id: 'rel-mom',
+          character_id: 'mom-1',
+          character_name: 'Taylor',
+          relationship_type: 'mother',
+          status: 'active',
+        },
+      ],
+      associated_with_character_ids: ['marcus-1'],
+    };
+
+    render(
+      <CharacterDetailModal
+        character={jamie}
+        onClose={mockOnClose}
+        onUpdate={mockOnUpdate}
+        initialTab="relationships"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText('Loading character details...')).not.toBeInTheDocument();
+    });
+
+    await waitFor(async () => {
+      await user.click(screen.getByTestId('character-modal-connections-copy-all'));
+      const payload = String(vi.mocked(copyTextToClipboard).mock.calls.at(-1)?.[0] ?? '');
+      expect(payload).toContain('Mom (Elena Chen)');
+      expect(payload).toContain('Carmen');
+    });
+    const payload = String(vi.mocked(copyTextToClipboard).mock.calls.at(-1)?.[0] ?? '');
+    expect(payload).toContain('Connections — Jamie');
+    expect(payload).toContain('Marcus');
+    expect(payload).toContain('Taylor');
+    expect(payload).toContain('Biological parents');
+    expect(payload).toContain('Friends & other');
+    expect(payload).toContain('Family tree');
+    expect(payload).toContain('Wider network');
   });
 
   describe('relationship authority Connections', () => {

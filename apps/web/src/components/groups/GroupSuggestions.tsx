@@ -13,6 +13,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { useToast } from '../ui/toast';
 import { fetchJson } from '../../lib/api';
+import { dispatchStoryDataUpdated } from '../../lib/storyRefresh';
 import type { Organization, OrganizationMember } from '../organizations/OrganizationProfileCard';
 import { deriveOrganizationProfile } from '../../lib/organizationProfile';
 import {
@@ -318,6 +319,10 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
   const finishAccept = async (candidateId: string, created?: Organization) => {
     if (created) {
       success(`"${created.name}" added to your Groups book.`, ADD_TOAST_MS, 'group');
+      dispatchStoryDataUpdated({
+        scopes: ['organizations', 'timeline', 'story'],
+        organizationIds: [created.id],
+      });
     }
 
     setExiting(prev => new Set(prev).add(candidateId));
@@ -390,7 +395,12 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
       await finishAccept(candidateId, created);
     } catch (err) {
       console.error('Failed to accept candidate:', err);
-      error('Could not add group. Please try again.');
+      const message = err instanceof Error ? err.message.trim() : '';
+      error(
+        message && message !== 'Failed to accept candidate'
+          ? message
+          : 'Could not add group. Please try again.',
+      );
       setExiting(prev => {
         const next = new Set(prev);
         next.delete(candidateId);

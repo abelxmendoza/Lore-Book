@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { groupCandidateService } from '../services/groupCandidateService';
-import { CANONICAL_GROUP_TYPES } from '../constants/groupTypes';
+import { CANONICAL_GROUP_TYPES, GROUP_CANDIDATE_ROSTER_REQUIRED } from '../constants/groupTypes';
 
 const router = Router();
 
@@ -92,7 +92,16 @@ router.post('/:id/accept', requireAuth, async (req: AuthenticatedRequest, res) =
     const result = await groupCandidateService.acceptCandidate(userId, candidateId, parsed.data);
     res.json({ success: true, organization_id: result.organization_id });
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to accept candidate';
     logger.error({ error, userId, candidateId }, 'Failed to accept group candidate');
+    if (message === 'Candidate not found') {
+      res.status(404).json({ success: false, error: message });
+      return;
+    }
+    if (message === GROUP_CANDIDATE_ROSTER_REQUIRED) {
+      res.status(400).json({ success: false, error: message });
+      return;
+    }
     res.status(500).json({ success: false, error: 'Failed to accept candidate' });
   }
 });

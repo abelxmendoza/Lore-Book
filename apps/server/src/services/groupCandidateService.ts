@@ -7,6 +7,10 @@
 // =====================================================
 
 import { logger } from '../logger';
+import {
+  GROUP_CANDIDATE_ROSTER_REQUIRED,
+  requiresConfirmedRoster,
+} from '../constants/groupTypes';
 import { clustersMatch } from '../utils/clusterMatch';
 import { supabaseAdmin } from './supabaseClient';
 import { characterConnectionService, type ConnectionOriginContext } from './characterConnectionService';
@@ -16,6 +20,7 @@ import type { GroupType, MembershipModel, UserRelationship } from './organizatio
 import { organizationRelationshipInferenceService } from './organizationRelationshipInferenceService';
 import { nameHousehold } from './entities/householdNaming';
 import { ORG_CANDIDATE_NOISE_MEMBER_NAMES } from './lorebook/quality/organizationCandidateGuard';
+import { hydrateEntityTimelineAfterSuggestionAccept } from './lorebook/suggestions/suggestionEntityTimeline';
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -244,7 +249,15 @@ export class GroupCandidateService {
     group: Awaited<ReturnType<typeof groupDetectionService.detectGroupsInMessage>>[number],
     messageId: string
   ): Promise<void> {
-    if (!group.is_public_entity && group.member_ids.length < 2) return;
+    if (
+      requiresConfirmedRoster({
+        isPublicEntity: group.is_public_entity,
+        groupType: group.group_type,
+      }) &&
+      group.member_ids.length < 2
+    ) {
+      return;
+    }
     if (group.members.length < 2 && !group.name) return;
 
     // Give unnamed groups a creative, context-suited name so they surface and
@@ -616,8 +629,14 @@ export class GroupCandidateService {
     const membershipModel = overrides.membership_model ?? candidate.suggested_membership_model;
     const members: string[] = overrides.members ?? candidate.detected_members ?? [];
     const acceptedMembers = await this.resolveAcceptedMembers(userId, candidate as GroupCandidate, members);
-    if (!candidate.is_public_entity && acceptedMembers.length < 2) {
-      throw new Error('Group candidates require at least two confirmed character members');
+    if (
+      requiresConfirmedRoster({
+        isPublicEntity: candidate.is_public_entity,
+        groupType,
+      }) &&
+      acceptedMembers.length < 2
+    ) {
+      throw new Error(GROUP_CANDIDATE_ROSTER_REQUIRED);
     }
 
     // A department/team/lab candidate carries its resolved parent company's
@@ -687,6 +706,8 @@ export class GroupCandidateService {
     const { familyGroupSyncService } = await import('./familyGroupSyncService');
     await familyGroupSyncService.syncGroup(userId, org.id).catch(() => {});
 
+    await hydrateEntityTimelineAfterSuggestionAccept(userId, { kind: 'organization', id: org.id });
+
     // Mark candidate as accepted
     await supabaseAdmin
       .from('group_candidates')
@@ -748,6 +769,8 @@ export class GroupCandidateService {
       .update({ status: 'accepted', created_organization_id: targetOrgId, updated_at: new Date().toISOString() })
       .eq('id', candidateId)
       .eq('user_id', userId);
+
+    await hydrateEntityTimelineAfterSuggestionAccept(userId, { kind: 'organization', id: targetOrgId });
 
     return { organization_id: targetOrgId, added_members: added };
   }

@@ -668,6 +668,8 @@ class LocationSuggestionService {
     if (!created) {
       throw new Error('Could not save place — it may already exist under a similar name');
     }
+    const { hydrateEntityTimelineAfterSuggestionAccept } = await import('./lorebook/suggestions/suggestionEntityTimeline');
+    await hydrateEntityTimelineAfterSuggestionAccept(userId, { kind: 'location', id: created.id });
     return created;
   }
 

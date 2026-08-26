@@ -178,42 +178,50 @@ export class OrganizationRelationshipInferenceService {
   }
 
   /**
-   * Family households (e.g. "Tía Grace's Household") roll up to the main family org ("My Family").
+   * Family households (e.g. "Jamie's Household") roll up to the family org
+   * ("Jamie's Family" / "My Family"). Household cards are often typed
+   * `household`, not `family` — both must count.
    */
   inferFamilyHouseholdLinks(orgs: Organization[]): InferredOrgLink[] {
-    const familyOrgs = orgs.filter(o => o.group_type === 'family' || o.type === 'family');
-    if (familyOrgs.length < 2) return [];
+    const households = orgs.filter(isHouseholdOrg);
+    const families = orgs.filter(o => isFamilyContainer(o) && !isHouseholdOrg(o));
+    if (households.length === 0 || families.length === 0) return [];
 
-    const households = familyOrgs.filter(o =>
-      /\bhousehold\b/i.test(o.name) || /\bhouse\b/i.test(o.name)
-    );
-    if (households.length === 0) return [];
-
-    let mainFamily = familyOrgs.find(o =>
+    let mainFamily = families.find(o =>
       /\bmy family\b/i.test(o.name) ||
       normalizeName(o.name) === 'family' ||
       normalizeName(o.name) === 'our family'
     );
-    if (!mainFamily) {
-      const nonHousehold = familyOrgs.filter(o => !households.some(h => h.id === o.id));
-      if (nonHousehold.length === 1) mainFamily = nonHousehold[0];
-      else if (nonHousehold.length > 1) {
-        mainFamily = nonHousehold.sort((a, b) =>
-          (b.members?.length ?? 0) - (a.members?.length ?? 0)
-        )[0];
-      }
+    if (!mainFamily && families.length === 1) mainFamily = families[0];
+    if (!mainFamily && families.length > 1) {
+      mainFamily = [...families].sort((a, b) =>
+        (b.members?.length ?? 0) - (a.members?.length ?? 0)
+      )[0];
     }
     if (!mainFamily) return [];
 
     const links: InferredOrgLink[] = [];
+    const seen = new Set<string>();
     for (const h of households) {
       if (h.id === mainFamily.id) continue;
+      const stem = possessiveStem(h.name);
+      const matched = stem
+        ? families.find(f => {
+            const familyStem = possessiveStem(f.name);
+            return familyStem === stem || normalizeName(f.name).includes(stem);
+          })
+        : null;
+      const parent = matched ?? mainFamily;
+      if (!parent || parent.id === h.id) continue;
+      const key = `${h.id}|${parent.id}|part_of`;
+      if (seen.has(key)) continue;
+      seen.add(key);
       links.push({
         fromOrgId: h.id,
-        toOrgId: mainFamily.id,
+        toOrgId: parent.id,
         relationshipType: 'part_of',
-        confidence: 0.86,
-        reason: `Family household "${h.name}" rolls up to "${mainFamily.name}"`,
+        confidence: matched ? 0.9 : 0.86,
+        reason: `Family household "${h.name}" rolls up to "${parent.name}"`,
       });
     }
     return links;
@@ -471,6 +479,23 @@ Rules:
 function parentNameIncludes(name: string, ...needles: string[]): boolean {
   const n = normalizeName(name);
   return needles.some(k => n.includes(k));
+}
+
+function isHouseholdOrg(org: Organization): boolean {
+  if (org.group_type === 'household' || org.type === 'household') return true;
+  if (/\bhousehold\b/i.test(org.name)) return true;
+  if (/\bfamily\s+home\b/i.test(org.name)) return true;
+  return /\bhouse\b/i.test(org.name) && !/\bwarehouse\b/i.test(org.name);
+}
+
+function isFamilyContainer(org: Organization): boolean {
+  if (org.group_type === 'family' || org.type === 'family') return true;
+  return /\bfamily\b/i.test(org.name);
+}
+
+function possessiveStem(name: string): string | null {
+  const match = name.match(/^(.+?)(?:'s|’s)\s+/i);
+  return match ? normalizeName(match[1]) : null;
 }
 
 export const organizationRelationshipInferenceService = new OrganizationRelationshipInferenceService();

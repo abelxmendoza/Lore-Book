@@ -16,7 +16,7 @@ type Props = {
   organization: Organization;
   mockMode?: boolean;
   active?: boolean;
-  /** Prefetched derived events from the parent modal (avoids a second fetch). */
+  /** When set, skip GET /timelines and render this feed (tests / overview). */
   derivedEvents?: OrgDerivedEvent[];
   derivedLoading?: boolean;
   recordedEvents: OrganizationEvent[];

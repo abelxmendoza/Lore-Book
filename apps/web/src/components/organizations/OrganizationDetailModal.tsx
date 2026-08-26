@@ -4,7 +4,7 @@
 // Features: Info, Members, Stories, Timeline, Locations, Chat (main-chat handoff), …
 // =====================================================
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { X, Save, Users, BookOpen, Calendar, MapPin, Clock, FileText, Building2, Plus, Edit2, Trash2, Sparkles, TrendingUp, TrendingDown, Minus, Award, Star, Info, Loader2, Link2, ArrowRight, ArrowLeft, TreePine, AlertTriangle, Search, MessageSquare } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -67,6 +67,9 @@ import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { mutationErrorMessage } from '../../store/rtkMutationUtils';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { ConnectionsCopyAllButton } from '../characters/ConnectionsCopyAllButton';
+import { buildOrganizationRelationshipsClipboardText } from '../../lib/organizationRelationshipsClipboard';
+import { inferHouseholdFamilyPartOfLinks, isFamilyGroup, isHouseholdGroup } from '../../lib/groupTaxonomy';
 import {
   getMockOrganizationDerivedEvents,
   type OrgDerivedEvent,
@@ -163,6 +166,41 @@ type OrganizationMentionTrace = {
   facts: any[];
 };
 
+function mergeParentGroupRelationships(
+  org: Organization,
+  peers: Organization[],
+  rels: OrganizationRelationship[],
+): OrganizationRelationship[] {
+  const merged = [...rels];
+  const hasLink = (fromId: string, toId: string) =>
+    merged.some(
+      (rel) =>
+        rel.from_org_id === fromId &&
+        rel.to_org_id === toId &&
+        (rel.relationship_type === 'part_of' || rel.relationship_type === 'spawned_from'),
+    );
+  const push = (fromId: string, toId: string) => {
+    if (!fromId || !toId || fromId === toId || hasLink(fromId, toId)) return;
+    merged.push({
+      id: `parent-group-${fromId}-${toId}`,
+      user_id: 'local',
+      from_org_id: fromId,
+      to_org_id: toId,
+      relationship_type: 'part_of',
+      notes: '[parent-group] Canonical organization hierarchy',
+      created_at: org.updated_at,
+    });
+  };
+  if (org.parent_group_id) push(org.id, org.parent_group_id);
+  for (const peer of peers) {
+    if (peer.parent_group_id === org.id) push(peer.id, org.id);
+  }
+  for (const link of inferHouseholdFamilyPartOfLinks(org, peers)) {
+    push(link.fromId, link.toId);
+  }
+  return merged;
+}
+
 const REL_TYPE_LABELS: Record<OrgRelationshipType, string> = {
   part_of: 'Part of',
   affiliated_with: 'Affiliated with',
@@ -248,12 +286,12 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const [editedOrg, setEditedOrg] = useState<Organization>(resolvedOrganization);
   const tabs = useMemo(() => {
     const list = [...BASE_TABS];
-    if (editedOrg.group_type === 'family') {
+    if (isFamilyGroup(editedOrg)) {
       list.splice(4, 0, { key: 'family', label: 'Family Tree', shortLabel: 'Family', icon: TreePine });
     }
     list.push({ key: 'danger', label: 'Delete', shortLabel: 'Delete', icon: Trash2 });
     return list;
-  }, [editedOrg.group_type]);
+  }, [editedOrg]);
   // Mobile bottom nav (EntityModalBottomNav) renders Delete as its own
   // dangerAction chip at the end of the row, not as a regular tab.
   const sectionTabs = useMemo(() => tabs.filter((t) => t.key !== 'danger'), [tabs]);
@@ -471,6 +509,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const [relationshipsLoaded, setRelationshipsLoaded] = useState(false);
   const [relationshipsLoading, setRelationshipsLoading] = useState(false);
   const [reconcilingRelationships, setReconcilingRelationships] = useState(false);
+  const autoReconciledOrgId = useRef<string | null>(null);
   const [relatedOrgs, setRelatedOrgs] = useState<Organization[]>([]);
   const [showAddRelationship, setShowAddRelationship] = useState(false);
   const [newRelationship, setNewRelationship] = useState<{
@@ -547,6 +586,10 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     setReclassifyBusy(false);
     setReclassifyError(null);
     setReclassifySuccess(false);
+    autoReconciledOrgId.current = null;
+    setRelationships([]);
+    setRelationshipsLoaded(false);
+    setRelatedOrgs([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: id-scoped reset only
   }, [organization.id]);
 
@@ -751,11 +794,11 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     setRelationshipsLoading(true);
     try {
       if (isMockDataEnabled) {
-        const { relationships, relatedOrgs: peers } = getMockOrganizationRelationships(
+        const { relationships: mockRels, relatedOrgs: peers } = getMockOrganizationRelationships(
           organization,
           allOrganizations,
         );
-        setRelationships(relationships);
+        setRelationships(mergeParentGroupRelationships(organization, peers, mockRels));
         setRelatedOrgs(peers);
         return;
       }
@@ -764,18 +807,17 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
           `/api/organizations/${organization.id}/relationships`
         ),
       ]);
-      setRelationships(relResult.relationships || []);
-      // Reuse the book's already-loaded org list when available — avoids a
-      // redundant GET /api/organizations (5-table fan-out) on every relationships
-      // tab open. Fall back to a fetch only when the modal was opened without context.
+      let peers: Organization[] = [];
       if (allOrganizations.length > 0) {
-        setRelatedOrgs(allOrganizations.filter(o => o.id !== organization.id));
+        peers = allOrganizations.filter(o => o.id !== organization.id);
       } else {
         const orgResult = await fetchJson<{ success: boolean; organizations: Organization[] }>(
           '/api/organizations'
         );
-        setRelatedOrgs((orgResult.organizations || []).filter(o => o.id !== organization.id));
+        peers = (orgResult.organizations || []).filter(o => o.id !== organization.id);
       }
+      setRelatedOrgs(peers);
+      setRelationships(mergeParentGroupRelationships(organization, peers, relResult.relationships || []));
     } catch (error) {
       console.error('Failed to load relationships:', error);
     } finally {
@@ -857,13 +899,78 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   }, [allOrganizations, isMockDataEnabled, organization.id, relatedOrgs, relationships]);
 
   const previewNetwork = useMemo(() => {
-    if (!isMockDataEnabled) return null;
+    if (!relationshipsLoaded) return null;
     return buildOrgNetworkPreview(
       organization,
       relatedOrgs.length > 0 ? relatedOrgs : allOrganizations,
       relationships,
     );
-  }, [isMockDataEnabled, organization, relatedOrgs, allOrganizations, relationships]);
+  }, [allOrganizations, organization, relatedOrgs, relationships, relationshipsLoaded]);
+
+  const displayHierarchy = useMemo(() => {
+    const peers = relatedOrgs.length > 0 ? relatedOrgs : allOrganizations;
+    const nameOf = (id: string) => {
+      if (id === organization.id) return organization.name;
+      return peers.find((peer) => peer.id === id)?.name ?? 'Unknown group';
+    };
+    const parentRel = relationships.find(
+      (rel) => (rel.relationship_type === 'part_of' || rel.relationship_type === 'spawned_from') && rel.from_org_id === organization.id,
+    );
+    const seen = new Set(derivedHierarchy.subgroups.map((sg) => sg.id));
+    const subgroups = [...derivedHierarchy.subgroups];
+    for (const rel of relationships) {
+      if (rel.relationship_type !== 'part_of' && rel.relationship_type !== 'spawned_from') continue;
+      if (rel.to_org_id !== organization.id || seen.has(rel.from_org_id)) continue;
+      seen.add(rel.from_org_id);
+      subgroups.push({
+        id: rel.from_org_id,
+        name: nameOf(rel.from_org_id),
+        relationship_type: rel.relationship_type,
+        inferred: Boolean(rel.notes?.startsWith('[parent-group]') || rel.notes?.startsWith('[auto-inferred]')),
+      });
+    }
+    return {
+      parent: derivedHierarchy.parent ?? (parentRel
+        ? {
+            id: parentRel.to_org_id,
+            name: nameOf(parentRel.to_org_id),
+            relationship_type: parentRel.relationship_type,
+            inferred: Boolean(parentRel.notes?.startsWith('[parent-group]') || parentRel.notes?.startsWith('[auto-inferred]')),
+          }
+        : undefined),
+      subgroups,
+    };
+  }, [allOrganizations, derivedHierarchy.parent, derivedHierarchy.subgroups, organization.id, organization.name, relatedOrgs, relationships]);
+
+  const relationshipsClipboardText = useMemo(() => {
+    const nameOf = (id: string) => {
+      if (id === organization.id) return organization.name;
+      return relatedOrgs.find((org) => org.id === id)?.name
+        || allOrganizations.find((org) => org.id === id)?.name
+        || 'Unknown group';
+    };
+    return buildOrganizationRelationshipsClipboardText({
+      groupName: editedOrg.name,
+      parent: derivedHierarchy.parent?.name,
+      subgroups: derivedHierarchy.subgroups.map((sg) => sg.name),
+      links: relationships.map((rel) => ({
+        fromName: nameOf(rel.from_org_id),
+        toName: nameOf(rel.to_org_id),
+        relationshipType: rel.relationship_type,
+        notes: rel.notes,
+        inferred: Boolean(rel.notes?.startsWith('[auto-inferred]')),
+      })),
+    });
+  }, [
+    allOrganizations,
+    derivedHierarchy.parent?.name,
+    derivedHierarchy.subgroups,
+    editedOrg.name,
+    organization.id,
+    organization.name,
+    relatedOrgs,
+    relationships,
+  ]);
 
   const openLinkedOrg = (orgId: string) => {
     if (isMockDataEnabled) {
@@ -884,9 +991,16 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const handleReconcileRelationships = async () => {
     setReconcilingRelationships(true);
     try {
+      if (isMockDataEnabled) {
+        setRelationshipsLoaded(false);
+        setDerivedLoaded(false);
+        await loadRelationships();
+        return;
+      }
       await fetchJson('/api/organizations/reconcile-relationships', { method: 'POST', body: JSON.stringify({}) });
       setRelationshipsLoaded(false);
       setDerivedLoaded(false);
+      dispatchStoryDataUpdated({ scopes: ['organizations'], organizationIds: [organization.id] });
       await loadRelationships();
     } catch (error) {
       console.error('Failed to reconcile relationships:', error);
@@ -894,6 +1008,32 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
       setReconcilingRelationships(false);
     }
   };
+
+  useEffect(() => {
+    if (isMockDataEnabled || isEphemeralEntityId(organization.id)) return;
+    if (activeTab !== 'relationships') return;
+    if (!relationshipsLoaded || relationshipsLoading || reconcilingRelationships) return;
+    if (relationships.some((rel) => !rel.id.startsWith('parent-group-'))) return;
+    if (autoReconciledOrgId.current === organization.id) return;
+    const peers = relatedOrgs.length > 0 ? relatedOrgs : allOrganizations;
+    const canInfer =
+      (isFamilyGroup(organization) && peers.some(isHouseholdGroup)) ||
+      (isHouseholdGroup(organization) && peers.some(isFamilyGroup));
+    if (!canInfer) return;
+    autoReconciledOrgId.current = organization.id;
+    void handleReconcileRelationships();
+  }, [
+    activeTab,
+    allOrganizations,
+    isMockDataEnabled,
+    organization,
+    relatedOrgs,
+    reconcilingRelationships,
+    relationships.length,
+    relationshipsLoaded,
+    relationshipsLoading,
+    relationships,
+  ]);
 
 
   const handleAddRelationship = async () => {
@@ -1022,6 +1162,14 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const handleRemoveRelationship = async (relationshipId: string) => {
     const removed = relationships.find(rel => rel.id === relationshipId);
     setRelationships(prev => prev.filter(r => r.id !== relationshipId));
+    if (relationshipId.startsWith('parent-group-')) {
+      setDerivedLoaded(false);
+      dispatchStoryDataUpdated({
+        scopes: ['organizations'],
+        organizationIds: removed ? [removed.from_org_id, removed.to_org_id] : [organization.id],
+      });
+      return;
+    }
     try {
       await removeOrganizationRelationship({ organizationId: organization.id, relationshipId }).unwrap();
       setDerivedLoaded(false);
@@ -3155,8 +3303,6 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                 organization={resolvedOrganization}
                 mockMode={isMockDataEnabled}
                 active={activeTab === 'timeline'}
-                derivedEvents={derivedEvents}
-                derivedLoading={derivedLoading}
                 recordedEvents={events}
                 onAddEvent={handleAddEvent}
                 onRemoveEvent={handleRemoveEvent}
@@ -3494,7 +3640,11 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                       <p className="text-xs text-white/45">How {editedOrg.name} connects to other groups</p>
                     </div>
                   </div>
-                  <div className="flex gap-2 shrink-0">
+                  <div className="flex gap-2 shrink-0 flex-wrap justify-end">
+                    <ConnectionsCopyAllButton
+                      text={relationshipsClipboardText}
+                      data-testid="org-modal-relationships-copy-all"
+                    />
                     <Button
                       variant="outline"
                       size="sm"
@@ -3521,34 +3671,34 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
               </div>
 
               {/* Hierarchy learned from chat */}
-              {(derivedHierarchy.parent || (derivedHierarchy.subgroups?.length ?? 0) > 0) && (
+              {(displayHierarchy.parent || displayHierarchy.subgroups.length > 0) && (
                 <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/[0.06] p-3.5 sm:p-4 space-y-3">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-indigo-300" />
                     <p className="text-sm font-semibold text-white/85">Group structure</p>
                   </div>
-                  {derivedHierarchy.parent && (
+                  {displayHierarchy.parent && (
                     <div className="text-sm">
                       <span className="text-white/45">Part of </span>
                       <button
                         type="button"
-                        onClick={() => openLinkedOrg(derivedHierarchy.parent!.id)}
+                        onClick={() => openLinkedOrg(displayHierarchy.parent!.id)}
                         className="font-semibold text-indigo-300 hover:text-indigo-200 underline-offset-2 hover:underline"
                       >
-                        {derivedHierarchy.parent.name}
+                        {displayHierarchy.parent.name}
                       </button>
-                      {derivedHierarchy.parent.inferred && (
+                      {displayHierarchy.parent.inferred && (
                         <Badge variant="outline" className="ml-2 text-[10px] border-indigo-500/30 text-indigo-300/70">
                           from chat
                         </Badge>
                       )}
                     </div>
                   )}
-                  {derivedHierarchy.subgroups.length > 0 && (
+                  {displayHierarchy.subgroups.length > 0 && (
                     <div>
                       <p className="text-xs text-white/45 mb-2">Subgroups</p>
                       <div className="flex flex-wrap gap-2">
-                        {derivedHierarchy.subgroups.map(sg => (
+                        {displayHierarchy.subgroups.map(sg => (
                           <button
                             key={sg.id}
                             type="button"
@@ -3569,6 +3719,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
               )}
 
               <div className="rounded-xl border border-white/10 bg-black/40 p-3 sm:p-4">
+                {relationshipsLoaded && previewNetwork ? (
                 <OrganizationGroupNetwork
                   rootOrgId={organization.id}
                   compact
@@ -3590,6 +3741,12 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                     if (match) void handleRemoveRelationship(match.id);
                   }}
                 />
+                ) : (
+                  <div className="py-6 flex items-center justify-center gap-2 text-white/55 text-sm">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Mapping group network…
+                  </div>
+                )}
               </div>
 
               {showAddRelationship && (
@@ -3660,7 +3817,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Loading relationships…
                 </div>
-              ) : relationships.length === 0 && !showAddRelationship && (derivedHierarchy?.subgroups?.length ?? 0) === 0 && (previewNetwork?.edgeCount ?? 0) === 0 ? (
+              ) : relationships.length === 0 && !showAddRelationship && displayHierarchy.subgroups.length === 0 && !displayHierarchy.parent && (previewNetwork?.edgeCount ?? 0) === 0 ? (
                 <div className="rounded-xl border border-dashed border-white/12 bg-black/25 px-4 py-10 text-center">
                   <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-400/20 bg-indigo-500/10">
                     <Link2 className="h-5 w-5 text-indigo-300/80" />

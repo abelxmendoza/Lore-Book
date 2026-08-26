@@ -79,6 +79,24 @@ describe('modalDemoData', () => {
     expect(affiliations.m1?.some((a) => a.id === 'mock-4')).toBe(true);
   });
 
+  it('nests a household under the demo family via parent_group_id', () => {
+    const family = testOrganization({
+      id: 'mock-8',
+      name: 'The Whitmore-Chen Family',
+      type: 'family',
+      group_type: 'family',
+    });
+    const household = testOrganization({
+      id: 'mock-8h',
+      name: "Nana Elena's Household",
+      type: 'other',
+      group_type: 'household',
+      parent_group_id: 'mock-8',
+    });
+    const { relationships } = getMockOrganizationRelationships(family, [family, household]);
+    expect(relationships.some((rel) => rel.from_org_id === 'mock-8h' && rel.to_org_id === 'mock-8' && rel.relationship_type === 'part_of')).toBe(true);
+  });
+
   it('enriches sparse demo organizations with profile and analytics', () => {
     const sparse: Organization = {
       id: 'mock-11',

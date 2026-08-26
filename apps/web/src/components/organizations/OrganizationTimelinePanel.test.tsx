@@ -141,5 +141,7 @@ describe('OrganizationTimelinePanel', () => {
     const urls = vi.mocked(fetchJson).mock.calls.map((call) => String(call[0]));
     expect(urls.some((url) => url.includes('/api/organizations/org-1/timelines'))).toBe(true);
     expect(urls.some((url) => url.includes('rebuild-timelines'))).toBe(false);
+    expect(screen.getByRole('button', { name: /swimlanes/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^list$/i })).toBeInTheDocument();
   });
 });

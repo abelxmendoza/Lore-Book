@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
 import { LoreBook } from './LoreBook';
+import { makeStore } from '../../store';
 
 const mockNavigate = vi.fn();
 
@@ -63,9 +65,11 @@ vi.mock('./LibraryLanding', () => ({
 
 function renderReader() {
   return render(
-    <MemoryRouter initialEntries={['/lorebook?book=demo-1']}>
-      <LoreBook />
-    </MemoryRouter>,
+    <Provider store={makeStore()}>
+      <MemoryRouter initialEntries={['/lorebook?book=demo-1']}>
+        <LoreBook />
+      </MemoryRouter>
+    </Provider>,
   );
 }
 

@@ -32,7 +32,8 @@ import { Button } from '../ui/button';
 import { CharacterAvatar } from './CharacterAvatar';
 import { CharacterDetailModal } from './CharacterDetailModal';
 import { CharacterKinshipLists } from './CharacterKinshipLists';
-import { isKinshipConnection } from '../../lib/characterKinshipGroups';
+import { ConnectionsCopyAllButton } from './ConnectionsCopyAllButton';
+import { isKinshipConnection, groupKinshipConnections } from '../../lib/characterKinshipGroups';
 import { CharacterTitleSection } from './CharacterTitleSection';
 import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 import { CharacterKnowledgeBase, type CharacterKnowledgeBaseData } from './CharacterKnowledgeBase';
@@ -49,6 +50,7 @@ import { isSyntheticSelfId } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
 import { getMainCharacterDisplayName, getSelfProfileRoleTagline, personalizeSelfSummary } from '../../lib/characterDisplay';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import { buildCharacterConnectionsClipboardText } from '../../lib/characterConnectionsClipboard';
 import { openChatThreadAtMessage } from '../../lib/chatThreadJump';
 import { format, parseISO } from 'date-fns';
 import { fetchJson } from '../../lib/api';
@@ -488,6 +490,69 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
     () => allRelationships.filter((rel) => !isKinshipConnection(rel)),
     [allRelationships],
   );
+
+  const connectionsClipboardText = useMemo(() => {
+    const people: Array<{
+      name: string;
+      relationshipType?: string;
+      status?: string;
+      closenessScore?: number;
+      summary?: string;
+      section?: string;
+    }> = [];
+    const seen = new Set<string>();
+    const pushPerson = (person: (typeof people)[number]) => {
+      const name = person.name.trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      people.push(person);
+    };
+    for (const group of groupKinshipConnections(kinshipRelationships)) {
+      for (const rel of group.members) {
+        pushPerson({
+          name: rel.character_name || 'Unknown',
+          relationshipType: rel.relationship_type,
+          status: rel.status,
+          closenessScore: rel.closeness_score,
+          summary: rel.summary,
+          section: group.label,
+        });
+      }
+    }
+    for (const rel of sortedRelationships) {
+      pushPerson({
+        name: rel.character_name || 'Unknown',
+        relationshipType: rel.relationship_type,
+        status: rel.status,
+        closenessScore: rel.closeness_score,
+        summary: rel.summary,
+        section: 'People',
+      });
+    }
+    return buildCharacterConnectionsClipboardText({
+      characterName: getMainCharacterDisplayName(profile.character, user),
+      people,
+      groups: selfOrganizations.map((org) => ({
+        name: org.name,
+        groupType: String(org.group_type ?? org.type ?? ''),
+        membership: 'Member',
+        role: (org.members ?? []).find(
+          (m) =>
+            m.character_id === selfId ||
+            m.character_name?.toLowerCase() === (profile.character.name ?? '').toLowerCase(),
+        )?.role,
+      })),
+    });
+  }, [
+    kinshipRelationships,
+    profile.character,
+    selfId,
+    selfOrganizations,
+    sortedRelationships,
+    user,
+  ]);
 
   const statItems = [
     {
@@ -1017,6 +1082,12 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
 
               {/* People */}
               <TabsContent value="people" className={`${tabPanelClass} space-y-3`}>
+                <div className="flex justify-end px-1">
+                  <ConnectionsCopyAllButton
+                    text={connectionsClipboardText}
+                    data-testid="self-modal-connections-copy-all"
+                  />
+                </div>
                 {/* Groups & Organizations first — then individual people below */}
                 {canEditWorld && (
                   <div className="space-y-2">

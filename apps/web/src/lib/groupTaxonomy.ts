@@ -9,12 +9,13 @@ export type SocialGroupCategory =
   | 'TEAM' | 'BAND' | 'EVENT_GROUP' | 'FRIEND_GROUP' | 'PROJECT' | 'UNKNOWN';
 
 type SocialOrg = Pick<Organization, 'name' | 'group_type' | 'metadata'> & {
+  id?: string;
   social_category?: string | null;
   parent_group_id?: string | null;
 };
 
 const HOUSEHOLD_RE = /\b(household|family\s+home)\b/i;
-const FAMILY_RE = /\b(my\s+family|the\s+family|our\s+family|^family$)\b/i;
+const FAMILY_RE = /\b(my\s+family|the\s+family|our\s+family|^family$|.+\bfamily$)\b/i;
 const EVENT_GROUP_RE = /\b(party|reunion|gathering|meetup|wedding|graduation)\b/i;
 
 export function getSocialCategory(org: SocialOrg): SocialGroupCategory {
@@ -35,11 +36,15 @@ export function getSocialCategory(org: SocialOrg): SocialGroupCategory {
 }
 
 export function isHouseholdGroup(org: SocialOrg): boolean {
-  return getSocialCategory(org) === 'HOUSEHOLD' || org.group_type === 'household' || HOUSEHOLD_RE.test(org.name);
+  if (getSocialCategory(org) === 'HOUSEHOLD' || org.group_type === 'household' || HOUSEHOLD_RE.test(org.name)) {
+    return true;
+  }
+  return /\bhouse\b/i.test(org.name) && !/\bwarehouse\b/i.test(org.name);
 }
 
 export function isFamilyGroup(org: SocialOrg): boolean {
-  return getSocialCategory(org) === 'FAMILY' || (org.group_type === 'family' && !isHouseholdGroup(org));
+  if (isHouseholdGroup(org)) return false;
+  return getSocialCategory(org) === 'FAMILY' || org.group_type === 'family' || FAMILY_RE.test(org.name);
 }
 
 export function isCommunityGroup(org: SocialOrg): boolean {
@@ -67,19 +72,57 @@ export function isTopLevelGroup(org: SocialOrg): boolean {
   return !isEventGroup(org);
 }
 
+function normalizeGroupName(name: string): string {
+  return name.trim().toLowerCase().replace(/['’]/g, "'");
+}
+
+function possessiveStem(name: string): string | null {
+  const match = name.match(/^(.+?)(?:'s|’s)\s+/i);
+  return match ? normalizeGroupName(match[1]) : null;
+}
+
+function householdBelongsToFamily(household: SocialOrg, family: SocialOrg): boolean {
+  if (!isHouseholdGroup(household) || !isFamilyGroup(family) || household.id === family.id) return false;
+  if (household.parent_group_id === family.id) return true;
+  const meta = household.metadata ?? {};
+  if (meta.parent_group_id === family.id) return true;
+  if (
+    typeof meta.parent_family_name === 'string' &&
+    meta.parent_family_name.trim().toLowerCase() === family.name.trim().toLowerCase()
+  ) {
+    return true;
+  }
+  const householdStem = possessiveStem(household.name);
+  if (!householdStem) return false;
+  const familyStem = possessiveStem(family.name);
+  return familyStem === householdStem || normalizeGroupName(family.name).includes(householdStem);
+}
+
 export function computeChildHouseholds(parent: Organization, all: Organization[]): Organization[] {
-  const parentId = parent.id;
-  const parentKey = parent.name.trim().toLowerCase();
   return all
-    .filter((org) => {
-      if (org.id === parent.id) return false;
-      if (org.parent_group_id === parentId) return true;
-      const meta = org.metadata ?? {};
-      if (meta.parent_group_id === parentId) return true;
-      if (typeof meta.parent_family_name === 'string' && meta.parent_family_name.toLowerCase() === parentKey) return true;
-      return isHouseholdGroup(org) && !org.parent_group_id && /\bfamily\b/i.test(parent.name) && /\b(household|home)\b/i.test(org.name);
-    })
+    .filter((org) => org.id !== parent.id && householdBelongsToFamily(org, parent))
     .sort((a, b) => b.usage_count - a.usage_count);
+}
+
+/** Household → family `part_of` links for the Relationships tab (current org as parent or child). */
+export function inferHouseholdFamilyPartOfLinks(
+  org: SocialOrg & { id: string },
+  peers: Array<SocialOrg & { id: string }>,
+): Array<{ fromId: string; toId: string }> {
+  const catalog = [org, ...peers.filter((peer) => peer.id !== org.id)];
+  const links: Array<{ fromId: string; toId: string }> = [];
+  const seen = new Set<string>();
+  for (const household of catalog.filter(isHouseholdGroup)) {
+    for (const family of catalog.filter((peer) => isFamilyGroup(peer) && !isHouseholdGroup(peer))) {
+      if (!householdBelongsToFamily(household, family)) continue;
+      if (org.id !== household.id && org.id !== family.id) continue;
+      const key = `${household.id}|${family.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      links.push({ fromId: household.id, toId: family.id });
+    }
+  }
+  return links;
 }
 
 export type LinkedVenue = { name: string; locationId?: string };

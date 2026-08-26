@@ -809,6 +809,17 @@ export class OrganizationService {
 
       if (error) throw error;
 
+      void import('./lorebook/suggestions/suggestionEntityTimeline')
+        .then(({ hydrateEntityTimelineAfterSuggestionAccept }) =>
+          hydrateEntityTimelineAfterSuggestionAccept(userId, {
+            kind: 'organization',
+            id: org.id,
+          }),
+        )
+        .catch((error) => {
+          logger.warn({ error, userId, orgId: org.id }, 'organization create timeline hydrate failed');
+        });
+
       return {
         ...org,
         members: [],

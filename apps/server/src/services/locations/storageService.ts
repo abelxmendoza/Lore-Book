@@ -81,6 +81,17 @@ export class LocationStorage {
         throw error;
       }
 
+      void import('../lorebook/suggestions/suggestionEntityTimeline')
+        .then(({ hydrateEntityTimelineAfterSuggestionAccept }) =>
+          hydrateEntityTimelineAfterSuggestionAccept(userId, {
+            kind: 'location',
+            id: data.id,
+          }),
+        )
+        .catch((hydrateError) => {
+          logger.warn({ error: hydrateError, userId, locationId: data.id }, 'location create timeline hydrate failed');
+        });
+
       return {
         id: data.id,
         name: data.name,

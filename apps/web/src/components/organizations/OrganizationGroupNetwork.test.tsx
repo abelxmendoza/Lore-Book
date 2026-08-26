@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { fetchJson } from '../../lib/api';
-import { OrganizationGroupNetwork } from './OrganizationGroupNetwork';
+import { OrganizationGroupNetwork, buildOrgNetworkPreview } from './OrganizationGroupNetwork';
 import { groupChildrenBySite, locationMatchKey } from './orgNetworkSites';
 
 vi.mock('../../lib/api', () => ({ fetchJson: vi.fn() }));
@@ -142,5 +142,29 @@ describe('OrganizationGroupNetwork', () => {
     expect(companyCard).toHaveTextContent(/QA Lab/);
     expect(screen.getByRole('button', { name: 'Field Crew' }).parentElement).toHaveTextContent(/Based at/);
     expect(screen.getByRole('button', { name: 'Field Crew' }).parentElement).not.toHaveTextContent(/no groups yet/);
+  });
+});
+
+describe('buildOrgNetworkPreview', () => {
+  it('keeps a family graph scoped to that family instead of every nested company team', () => {
+    const network = buildOrgNetworkPreview(
+      { id: 'family', name: 'The Whitmore-Chen Family', group_type: 'family', parent_group_id: null },
+      [
+        { id: 'house', name: "Nana Elena's Household", group_type: 'household', parent_group_id: 'family' },
+        { id: 'company', name: 'Northwind Logistics', group_type: 'company', parent_group_id: null },
+        { id: 'crew', name: 'Field Crew', group_type: 'team', parent_group_id: 'company' },
+      ],
+      [
+        {
+          id: 'parent-group-house-family',
+          from_org_id: 'house',
+          to_org_id: 'family',
+          relationship_type: 'part_of',
+          notes: '[parent-group] Canonical organization hierarchy',
+        },
+      ],
+    );
+    expect(network.nodes.map((node) => node.id).sort()).toEqual(['family', 'house']);
+    expect(network.edgeCount).toBe(1);
   });
 });

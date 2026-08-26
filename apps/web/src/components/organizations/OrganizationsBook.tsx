@@ -642,6 +642,36 @@ const MOCK_ORGANIZATIONS: Organization[] = [
     analytics: mkAnalytics(85, 97, 'stable', ['Unconditional foundation', 'Longest relationship of my life'], ['Distance', 'Old dynamics']),
   },
 
+  {
+    id: 'mock-8h',
+    name: "Nana Elena's Household",
+    aliases: ['Elena household', 'Cedar Falls household'],
+    type: 'other', group_type: 'household',
+    membership_model: 'strict', user_relationship: 'member', is_public_entity: false,
+    description: 'The Cedar Falls house where Sunday calls and holiday dinners still land — nested under the Whitmore-Chen family.',
+    location: 'Cedar Falls, CA',
+    status: 'active',
+    member_count: 3,
+    usage_count: 28,
+    confidence: 0.94,
+    last_seen: subDays(new Date(), 6).toISOString(),
+    created_at: subDays(new Date(), 365 * 12).toISOString(),
+    updated_at: subDays(new Date(), 6).toISOString(),
+    parent_group_id: 'mock-8',
+    metadata: { parent_family_name: 'The Whitmore-Chen Family' },
+    members: [
+      { id: 'm1', character_name: 'Nana Elena', role: 'Elder', status: 'active' },
+      { id: 'm2', character_name: 'Mom', role: 'Daughter', status: 'active' },
+      { id: 'm3', character_name: 'Dad', role: 'Son-in-law', status: 'active' },
+    ],
+    stories: [
+      { id: 's1', title: 'Sunday call from the kitchen', summary: 'Elena put the phone on speaker while something simmered. The whole household checked in.', date: subDays(new Date(), 6).toISOString() },
+    ],
+    events: [{ id: 'e1', title: 'Sunday call', date: subDays(new Date(), 6).toISOString(), type: 'social' }],
+    locations: [{ id: 'l1', location_name: 'Cedar Falls, CA', visit_count: 12, last_visited: subDays(new Date(), 60).toISOString() }],
+    analytics: mkAnalytics(78, 88, 'stable', ['Physical home base for family'], ['Distance on ordinary weeks']),
+  },
+
   // ── PROFESSIONAL / COMPANIES ───────────────────────────────────────
 
   {

@@ -5,6 +5,9 @@ import {
   attributeOrganizationsInEvent,
   eventAcceptedForOrganization,
   explainOrganizationTimelineInclusion,
+  planOrganizationAttributionBackfill,
+  planUserOrganizationAttributionBackfill,
+  readOrganizationAttributions,
   subjectWhyIncludedForOrganization,
   type OrganizationCatalogEntry,
 } from './organizationEventAttribution';
@@ -208,5 +211,170 @@ describe('organization event attribution', () => {
     const parent = explainOrganizationTimelineInclusion(rows, ACME_HOLDINGS.id);
     expect(labs).toMatchObject({ role: 'department', direct: true, accepted: true });
     expect(parent).toMatchObject({ role: 'parent_context', direct: false, derivedFrom: ACME_LABS.id });
+  });
+});
+
+describe('planOrganizationAttributionBackfill', () => {
+  const northwind: OrganizationCatalogEntry = {
+    id: 'org-northwind',
+    name: 'Northwind Logistics',
+    groupType: 'company',
+  };
+
+  it('attaches a workplace mention so the new company card can show a Timeline', () => {
+    const metadata = planOrganizationAttributionBackfill({
+      text: 'I started working at Northwind Logistics.',
+      existingMetadata: {
+        organizationAttributions: [{
+          organizationId: 'org-memovault',
+          organizationName: 'MemoVault',
+          role: 'referenced',
+          evidence: 'prior',
+          evidenceKind: 'name_mention',
+          confidence: 0.4,
+          accepted: true,
+          canonical: true,
+          acceptedForOrganizationTimeline: false,
+          direct: true,
+          whyIncluded: 'prior',
+          protagonistRelation: false,
+          unresolved: false,
+        }],
+      },
+      catalog: [northwind, { id: 'org-memovault', name: 'MemoVault', groupType: 'software' }],
+      organizationId: northwind.id,
+    });
+    const rows = readOrganizationAttributions(metadata);
+    expect(rows.some((row) => row.organizationId === 'org-memovault')).toBe(true);
+    expect(eventAcceptedForOrganization(rows, northwind.id)).toBe(true);
+  });
+
+  it('returns null when the event never mentions the organization', () => {
+    expect(
+      planOrganizationAttributionBackfill({
+        text: 'Lunch with Jamie at the depot.',
+        catalog: [northwind],
+        organizationId: northwind.id,
+      }),
+    ).toBeNull();
+  });
+
+  it('returns null when the organization is already attributed', () => {
+    expect(
+      planOrganizationAttributionBackfill({
+        text: 'I started working at Northwind Logistics.',
+        existingMetadata: {
+          organizationAttributions: [{
+            organizationId: northwind.id,
+            organizationName: northwind.name,
+            role: 'employer',
+            evidence: 'existing',
+            evidenceKind: 'explicit_work_phrase',
+            confidence: 0.9,
+            accepted: true,
+            canonical: true,
+            acceptedForOrganizationTimeline: true,
+            direct: true,
+            whyIncluded: 'existing',
+            protagonistRelation: true,
+            unresolved: false,
+          }],
+        },
+        catalog: [northwind],
+        organizationId: northwind.id,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('planUserOrganizationAttributionBackfill', () => {
+  const northwind: OrganizationCatalogEntry = {
+    id: 'org-northwind',
+    name: 'Northwind Logistics',
+    groupType: 'company',
+  };
+  const memovault: OrganizationCatalogEntry = {
+    id: 'org-memovault',
+    name: 'MemoVault',
+    groupType: 'software',
+  };
+
+  it('attaches every newly mentioned org in one catalog pass', () => {
+    const metadata = planUserOrganizationAttributionBackfill({
+      text: 'I started working at Northwind Logistics and use MemoVault for notes.',
+      catalog: [northwind, memovault],
+    });
+    const rows = readOrganizationAttributions(metadata);
+    expect(eventAcceptedForOrganization(rows, northwind.id)).toBe(true);
+    expect(rows.some((row) => row.organizationId === memovault.id)).toBe(true);
+  });
+
+  it('keeps prior attributions and only adds missing orgs', () => {
+    const metadata = planUserOrganizationAttributionBackfill({
+      text: 'I started working at Northwind Logistics and use MemoVault for notes.',
+      existingMetadata: {
+        organizationAttributions: [{
+          organizationId: memovault.id,
+          organizationName: memovault.name,
+          role: 'software_tool',
+          evidence: 'prior',
+          evidenceKind: 'name_mention',
+          confidence: 0.4,
+          accepted: true,
+          canonical: true,
+          acceptedForOrganizationTimeline: false,
+          direct: true,
+          whyIncluded: 'prior',
+          protagonistRelation: false,
+          unresolved: false,
+        }],
+      },
+      catalog: [northwind, memovault],
+    });
+    const rows = readOrganizationAttributions(metadata);
+    expect(rows.some((row) => row.organizationId === memovault.id && row.whyIncluded === 'prior')).toBe(true);
+    expect(eventAcceptedForOrganization(rows, northwind.id)).toBe(true);
+  });
+
+  it('returns null when nothing new matches', () => {
+    expect(
+      planUserOrganizationAttributionBackfill({
+        text: 'Lunch with Jamie at the depot.',
+        catalog: [northwind, memovault],
+      }),
+    ).toBeNull();
+  });
+
+  it('puts a saved company name mention on Organization Timeline', () => {
+    const metadata = planUserOrganizationAttributionBackfill({
+      text: 'Shift at Northwind Logistics.',
+      catalog: [northwind],
+    });
+    expect(eventAcceptedForOrganization(readOrganizationAttributions(metadata), northwind.id)).toBe(true);
+  });
+
+  it('upgrades a prior name-only reference once the company qualifies for Timeline', () => {
+    const metadata = planUserOrganizationAttributionBackfill({
+      text: 'Shift at Northwind Logistics.',
+      existingMetadata: {
+        organizationAttributions: [{
+          organizationId: northwind.id,
+          organizationName: northwind.name,
+          role: 'referenced',
+          evidence: 'prior',
+          evidenceKind: 'name_in_span',
+          confidence: 0.55,
+          accepted: true,
+          canonical: true,
+          acceptedForOrganizationTimeline: false,
+          direct: true,
+          whyIncluded: 'prior',
+          protagonistRelation: false,
+          unresolved: false,
+        }],
+      },
+      catalog: [northwind],
+    });
+    expect(eventAcceptedForOrganization(readOrganizationAttributions(metadata), northwind.id)).toBe(true);
   });
 });

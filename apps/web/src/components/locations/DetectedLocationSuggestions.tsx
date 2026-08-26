@@ -16,6 +16,7 @@ import { SuggestionPanelEmptyState } from '../suggestions/SuggestionPanelEmptySt
 import { SuggestionDismissButton } from '../suggestions/SuggestionDismissButton';
 import { buildLocationSuggestionsClipboardText } from '../../lib/locationSuggestionsClipboard';
 import { copyTextToClipboard } from '../../lib/listClipboard';
+import { dispatchStoryDataUpdated } from '../../lib/storyRefresh';
 import { cn } from '../../lib/cn';
 
 type Props = {
@@ -185,6 +186,7 @@ export const DetectedLocationSuggestions = ({ onLocationAdded, demoMode, existin
       setSuggestions(prev => prev.filter(item => keyFor(item) !== k));
       onLocationAdded?.();
       window.dispatchEvent(new CustomEvent('lk:locations-updated', { detail: {} }));
+      dispatchStoryDataUpdated({ scopes: ['timeline', 'story'] });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add place');
     } finally {

@@ -55,4 +55,24 @@ describe('OrganizationRelationshipInferenceService', () => {
     const links = svc.inferFamilyHouseholdLinks(orgs);
     expect(links.some(l => l.fromOrgId === '1' && l.toOrgId === '2' && l.relationshipType === 'part_of')).toBe(true);
   });
+
+  it('links household-typed cards onto a possessive family group', () => {
+    const orgs = [
+      org('hh', "Jamie's Household", 'household'),
+      org('fam', "Jamie's Family", 'family'),
+    ];
+    const links = svc.inferFamilyHouseholdLinks(orgs);
+    expect(links.some(l => l.fromOrgId === 'hh' && l.toOrgId === 'fam' && l.relationshipType === 'part_of')).toBe(true);
+  });
+
+  it('pairs a house-named group with the matching family even when other families exist', () => {
+    const orgs = [
+      org('hh', "Jamie's House", 'household'),
+      org('other', 'The Whitmore-Chen Family', 'family'),
+      org('fam', "Jamie's Family", 'family'),
+    ];
+    const links = svc.inferFamilyHouseholdLinks(orgs);
+    expect(links.some(l => l.fromOrgId === 'hh' && l.toOrgId === 'fam')).toBe(true);
+    expect(links.some(l => l.fromOrgId === 'hh' && l.toOrgId === 'other')).toBe(false);
+  });
 });
