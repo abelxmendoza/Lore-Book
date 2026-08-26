@@ -72,6 +72,21 @@ const ACTION_PATTERNS: ActionPattern[] = [
       requiresConfirmation: true,
     }),
   },
+  {
+    // Matches familyWriteService's delete-pending confirmation phrasing:
+    // "Delete **Ralph Mendoza** from your family tree? This permanently
+    // removes..." — the chip carries the plain name only; applyResponseAction
+    // re-resolves it fresh at confirm time rather than trusting a stale id.
+    type: 'delete_family_member',
+    pattern: /\bDelete\s+\*\*(.+?)\*\*\s+from your family tree\?/i,
+    build: (m) => ({
+      type: 'delete_family_member',
+      label: `Delete ${m[1].trim()}`,
+      confidence: 0.95,
+      requiresConfirmation: true,
+      payload: { characterName: m[1].trim() },
+    }),
+  },
 ];
 
 export function extractResponseActions(rawResponse: string): ResponseActionCandidate[] {

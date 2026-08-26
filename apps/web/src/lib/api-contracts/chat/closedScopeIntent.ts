@@ -263,11 +263,39 @@ const FAMILY_WRITE_RE =
   /\b(?:mark|set|add)\s+(.{1,60}?)\s+(?:as\s+)?(?:my\s+)?(mom|mother|dad|father|brother|sister|cousin|uncle|aunt|grandma|grandmother|grandpa|grandfather|sibling|parent|child|son|daughter|niece|nephew)\b/i;
 const FAMILY_ADD_MEMBER_RE =
   /\badd\s+(.{1,60}?)\s+(?:to|into)\s+(?:my\s+)?(?:family(?:\s+tree)?|kin)\b/i;
+/** "change/set/correct Abuela's side to paternal" — side-only correction, no relation change. */
+const FAMILY_SIDE_RE =
+  /\b(?:change|set|correct)\s+(.{1,60}?)(?:'s)?\s+side\s+to\s+(maternal|paternal|both|other)\b/i;
+/** "remove/exclude X from my family (tree)" — soft, reversible (keeps the Character card). */
+const FAMILY_EXCLUDE_RE =
+  /\b(?:remove|exclude)\s+(.{1,60}?)\s+from\s+(?:my\s+)?family(?:\s+tree)?\b/i;
+/**
+ * "delete X" / "delete X from my family tree" / "remove X entirely" — a real,
+ * cascading, permanent character delete. Deliberately distinct in shape from
+ * FAMILY_EXCLUDE_RE (bare "remove X from my family tree" is the soft one) and
+ * from CHARACTER_BOOK_DELETE_RE ("delete X from my character book"): the bare
+ * form is capped at 4 name-shaped tokens and anchored to end-of-string so it
+ * can't swallow an unrelated trailing clause, and the "family" form requires
+ * the literal word "family" so it never matches a character-book delete.
+ */
+const FAMILY_DELETE_BARE_RE = /\bdelete\s+((?:[a-zA-Z'’.-]+\s*){1,4})[.!]?$/i;
+const FAMILY_DELETE_WITH_FAMILY_RE =
+  /\bdelete\s+(.{1,60}?)\s+from\s+(?:my\s+)?family(?:\s+tree)?\s*[.!]?$/i;
+const FAMILY_DELETE_ENTIRELY_RE =
+  /\bremove\s+(.{1,60}?)\s+(?:entirely|permanently|as\s+a\s+(?:character|person)|for\s+good)\b/i;
 
 export function isFamilyWriteRequest(message: string): boolean {
   const text = message.trim();
   if (!text) return false;
-  return FAMILY_WRITE_RE.test(text) || FAMILY_ADD_MEMBER_RE.test(text);
+  return (
+    FAMILY_WRITE_RE.test(text) ||
+    FAMILY_ADD_MEMBER_RE.test(text) ||
+    FAMILY_SIDE_RE.test(text) ||
+    FAMILY_EXCLUDE_RE.test(text) ||
+    FAMILY_DELETE_BARE_RE.test(text) ||
+    FAMILY_DELETE_WITH_FAMILY_RE.test(text) ||
+    FAMILY_DELETE_ENTIRELY_RE.test(text)
+  );
 }
 
 const ROMANCE_STATUS_RE =

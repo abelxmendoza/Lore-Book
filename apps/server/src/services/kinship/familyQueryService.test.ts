@@ -82,5 +82,19 @@ describe('familyQueryService', () => {
     expect(result.households).toHaveLength(1);
     expect(result.households[0]).toMatchObject({ name: 'Vale House', residentCount: 2 });
   });
+
+  it('"show me everyone I\'ve marked as family" returns the full roster, unfiltered', () => {
+    // Every word here ("show", "me", "family", etc.) is in the stop/excluded
+    // sets, so no relation/side/text filters apply — this locks in that a
+    // plain browse-all phrasing already works without any new query code.
+    const hints = deriveFamilyQueryHints("show me everyone I've marked as family");
+    expect(hints.relations).toEqual([]);
+    expect(hints.sides).toEqual([]);
+    expect(hints.personTerms).toEqual([]);
+    expect(hints.textTerms).toEqual([]);
+
+    const result = compileFamilyQuery(graph, households, analytics, request("show me everyone I've marked as family"));
+    expect(result.results.map((item) => item.name).sort()).toEqual(['Jamie Vale', 'Marcus Vale']);
+  });
 });
 
