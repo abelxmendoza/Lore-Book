@@ -144,6 +144,7 @@ describe('LoreBook composer flow (integration)', () => {
       await vi.advanceTimersByTimeAsync(520);
     });
     vi.useRealTimers();
+    fireEvent.blur(screen.getByRole('textbox'));
 
     await waitFor(
       () => {

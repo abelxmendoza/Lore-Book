@@ -36,7 +36,7 @@ export const BookPage = ({
   const textRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    textRef.current?.scrollTo(0, 0);
+    textRef.current?.scrollTo?.(0, 0);
   }, [content, pageNumber, sectionTitle]);
 
   useEffect(() => {

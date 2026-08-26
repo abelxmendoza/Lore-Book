@@ -65,7 +65,7 @@ interface Props {
   organization: Organization;
   mockMode?: boolean;
   active?: boolean;
-  /** When provided, use these instead of fetching derived-context. */
+  /** When provided, use these instead of fetching GET /timelines. */
   events?: OrgDerivedEvent[];
   loading?: boolean;
   /** Override auto title from stance voice. */

@@ -25,6 +25,7 @@ import { SuggestionPanelEmptyState } from '../suggestions/SuggestionPanelEmptySt
 import { openCharacterBookModal } from '../../lib/openCharacterBookModal';
 import { buildCharacterSuggestionsClipboardText } from '../../lib/characterSuggestionsClipboard';
 import { copyTextToClipboard } from '../../lib/listClipboard';
+import { dispatchStoryDataUpdated } from '../../lib/storyRefresh';
 import { cn } from '../../lib/cn';
 import {
   CharacterSuggestionDetailModal,
@@ -360,6 +361,12 @@ export const DetectedCharacterSuggestions = ({
       setAdded(prev => new Set(prev).add(k));
       invalidateEntityTags(['Character']);
       const saved = addResult?.character as { id?: string; name?: string } | undefined;
+      if (saved?.id) {
+        dispatchStoryDataUpdated({
+          scopes: ['characters', 'timeline', 'story'],
+          characterIds: [saved.id],
+        });
+      }
       await onCharacterAdded?.({
         ...s,
         matchedCharacterId: saved?.id,

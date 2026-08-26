@@ -152,6 +152,10 @@ const DEMO_ORG_RELATIONSHIP_LINKS: Record<
   'mock-23': [
     { toId: 'mock-20', type: 'part_of', notes: 'QA team at the Hollywood lab.' },
   ],
+  'mock-8': [],
+  'mock-8h': [
+    { toId: 'mock-8', type: 'part_of', notes: "Nana Elena's house rolls up to the Whitmore-Chen family." },
+  ],
 };
 
 function defaultDemoAnalytics(org: Organization): NonNullable<Organization['analytics']> {

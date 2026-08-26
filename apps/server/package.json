@@ -57,6 +57,8 @@
     "contextual-lore:audit": "tsx src/scripts/founderContextualLoreBackfill.ts",
     "contextual-lore:apply": "tsx src/scripts/founderContextualLoreBackfill.ts --apply",
     "timeline:repair-founder": "tsx src/scripts/repairOmniTimelineFounder.ts",
+    "timelines:hydrate-admin": "tsx src/scripts/hydrateBookEntityTimelines.ts",
+    "timelines:hydrate-admin:apply": "tsx src/scripts/hydrateBookEntityTimelines.ts --apply",
     "mvp-diagnostic": "tsx scripts/true-mvp-diagnostic.ts",
     "egress:rowsize": "tsx scripts/measure-egress-rowsize.ts",
     "egress:simulate": "tsx scripts/simulate-egress.ts",

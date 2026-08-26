@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { getAnalyticsTier, groupAnalyticsService } from './groupAnalyticsService';
-import type { Organization } from './organizationService';
+import { organizationService, type Organization } from './organizationService';
 
 function org(overrides: Partial<Organization> = {}): Organization {
   return {
@@ -66,5 +66,40 @@ describe('groupAnalyticsService — relationship-depth gating, not raw mention c
     const analytics = await groupAnalyticsService.calculateAnalytics('user-1', pastOrg.id, pastOrg);
     expect(analytics.importance_score).toBe(0);
     expect(analytics.recency_score).toBe(0);
+  });
+
+  describe('recursion guard — calculateAnalytics must never re-fetch its own organization', () => {
+    // Regression test for a real production incident: calculateAnalytics's
+    // 'full' and 'cultural' tiers each used to call two private helpers
+    // (getGroupConversations, calculateUserInfluence) that independently
+    // re-fetched the org via organizationService.getOrganization(userId, id).
+    // organizationService.getOrganization is itself the CALLER of
+    // calculateAnalytics, so that re-fetch re-entered calculateAnalytics,
+    // which called the helpers again — infinite recursion, crashing the
+    // process with a heap out-of-memory error even for a tiny 9-member org.
+    // The fix threads the already-hydrated `organization` object through
+    // instead of re-fetching it; this test asserts getOrganization is never
+    // called from inside calculateAnalytics, for either tier that touches
+    // those helpers.
+
+    it('never calls organizationService.getOrganization while computing full analytics', async () => {
+      const getOrgSpy = vi.spyOn(organizationService, 'getOrganization');
+      const memberOrg = org({ user_relationship: 'member', members: [] as unknown as Organization['members'] });
+
+      await groupAnalyticsService.calculateAnalytics('user-1', memberOrg.id, memberOrg);
+
+      expect(getOrgSpy).not.toHaveBeenCalled();
+      getOrgSpy.mockRestore();
+    });
+
+    it('never calls organizationService.getOrganization while computing cultural-tier analytics', async () => {
+      const getOrgSpy = vi.spyOn(organizationService, 'getOrganization');
+      const fanOrg = org({ user_relationship: 'fan' });
+
+      await groupAnalyticsService.calculateAnalytics('user-1', fanOrg.id, fanOrg);
+
+      expect(getOrgSpy).not.toHaveBeenCalled();
+      getOrgSpy.mockRestore();
+    });
   });
 });

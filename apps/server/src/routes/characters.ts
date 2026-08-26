@@ -522,6 +522,9 @@ async function finalizeCharacterSuggestionAdd(
   }
 
   void characterIdentityIndexService.rebuild(userId).catch(() => {});
+
+  const { hydrateEntityTimelineAfterSuggestionAccept } = await import('../services/lorebook/suggestions/suggestionEntityTimeline');
+  await hydrateEntityTimelineAfterSuggestionAccept(userId, { kind: 'character', id: character.id });
 }
 
 /**

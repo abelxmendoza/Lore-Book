@@ -3,7 +3,7 @@
  * Data: GET /api/organizations/network
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Network, GitBranch, Building2, List, RefreshCw, Loader2, MapPin } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -83,7 +83,23 @@ export function buildOrgNetworkPreview(
 ): OrgNetwork {
   const orgs = [root, ...peers.filter(org => org.id !== root.id)];
   const orgById = new Map(orgs.map(org => [org.id, org]));
-  const edges: OrgNetworkEdge[] = relationships.map(rel => ({
+  const relatedIds = new Set<string>([root.id]);
+  for (const rel of relationships) {
+    if (rel.from_org_id === root.id || rel.to_org_id === root.id) {
+      relatedIds.add(rel.from_org_id);
+      relatedIds.add(rel.to_org_id);
+    }
+  }
+  if (root.parent_group_id && orgById.has(root.parent_group_id)) {
+    relatedIds.add(root.parent_group_id);
+  }
+  for (const org of orgs) {
+    if (org.parent_group_id === root.id) relatedIds.add(org.id);
+  }
+  const scopedRelationships = relationships.filter(
+    (rel) => relatedIds.has(rel.from_org_id) && relatedIds.has(rel.to_org_id),
+  );
+  const edges: OrgNetworkEdge[] = scopedRelationships.map(rel => ({
     id: rel.id,
     fromId: rel.from_org_id,
     toId: rel.to_org_id,
@@ -93,7 +109,8 @@ export function buildOrgNetworkPreview(
   }));
   const edgeKeys = new Set(edges.map(edge => `${edge.fromId}|${edge.toId}|${edge.relationshipType}`));
   for (const org of orgs) {
-    if (!org.parent_group_id || !orgById.has(org.parent_group_id)) continue;
+    if (!relatedIds.has(org.id)) continue;
+    if (!org.parent_group_id || !relatedIds.has(org.parent_group_id) || !orgById.has(org.parent_group_id)) continue;
     const key = `${org.id}|${org.parent_group_id}|part_of`;
     if (edgeKeys.has(key)) continue;
     edgeKeys.add(key);
@@ -190,15 +207,18 @@ export function OrganizationGroupNetwork({
   onDisconnect,
   previewNetwork,
 }: Props) {
-  const [network, setNetwork] = useState<OrgNetwork | null>(previewNetwork ?? null);
+  const [fetchedNetwork, setFetchedNetwork] = useState<OrgNetwork | null>(previewNetwork ?? null);
   const [loading, setLoading] = useState(!previewNetwork);
   const [view, setView] = useState<'tree' | 'graph' | 'list'>(compact ? 'list' : 'graph');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [pendingDisconnect, setPendingDisconnect] = useState<OrgNetworkEdge | null>(null);
+  const loadGeneration = useRef(0);
+  const network = previewNetwork ?? fetchedNetwork;
 
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current;
     if (previewNetwork) {
-      setNetwork(previewNetwork);
+      setFetchedNetwork(previewNetwork);
       if (previewNetwork.rootOrg) setExpanded(new Set([previewNetwork.rootOrg.id]));
       setLoading(false);
       return;
@@ -211,14 +231,16 @@ export function OrganizationGroupNetwork({
       const data = await fetchJson<{ success: boolean; network: OrgNetwork }>(
         `/api/organizations/network?${q.toString()}`
       );
+      if (generation !== loadGeneration.current) return;
       if (data.success) {
-        setNetwork(data.network);
+        setFetchedNetwork(data.network);
         if (data.network.rootOrg) setExpanded(new Set([data.network.rootOrg.id]));
       }
     } catch {
-      setNetwork(null);
+      if (generation !== loadGeneration.current) return;
+      setFetchedNetwork(null);
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
   }, [rootOrgId, compact, previewNetwork]);
 
@@ -413,7 +435,7 @@ export function OrganizationGroupNetwork({
     );
   }
 
-  if (!network || network.orgCount === 0) {
+  if (!network || network.edgeCount === 0) {
     return (
       <div className={`text-center text-white/45 ${compact ? 'py-6 px-2' : 'py-10 px-4'}`}>
         <Network className="h-8 w-8 mx-auto mb-2 opacity-30" />

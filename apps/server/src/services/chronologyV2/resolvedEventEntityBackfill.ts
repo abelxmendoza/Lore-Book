@@ -87,8 +87,105 @@ export function planEntityBackfill(
   return { peopleToAdd, locationsToAdd };
 }
 
+const ENTITY_PAGE = 1000;
+const USER_WIDE_EVENT_CAP = 10_000;
+const SUGGESTION_EVENT_CAP = 1500;
+
+async function selectAllPages<T>(
+  fetchPage: (from: number, to: number) => Promise<{ data: T[] | null; error: { message: string } | null }>,
+  pageSize = ENTITY_PAGE,
+  cap = USER_WIDE_EVENT_CAP,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let offset = 0; offset < cap; offset += pageSize) {
+    const { data, error } = await fetchPage(offset, offset + pageSize - 1);
+    if (error) throw error;
+    const rows = data ?? [];
+    out.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+  return out;
+}
+
 class ResolvedEventEntityBackfillService {
+  /**
+   * Scoped additive backfill for one newly accepted character or place.
+   * Writes immediately (not a dry-run script).
+   */
+  async backfillForEntity(
+    userId: string,
+    entity: { kind: 'character' | 'location'; id: string },
+  ): Promise<EntityBackfillReport> {
+    const empty: EntityBackfillReport = {
+      eventsScanned: 0,
+      eventsUpdated: 0,
+      peopleAdded: 0,
+      locationsAdded: 0,
+      samples: [],
+    };
+    if (entity.kind === 'character') {
+      const { data, error } = await supabaseAdmin
+        .from('characters')
+        .select('id, name, alias, metadata')
+        .eq('user_id', userId)
+        .eq('id', entity.id)
+        .maybeSingle();
+      if (error || !data || isSelfCharacterRow(data)) return empty;
+      return this.applyBackfill(
+        userId,
+        [{ id: data.id, names: [data.name, ...((data.alias as string[] | null) ?? [])] }],
+        [],
+        false,
+      );
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('locations')
+      .select('id, name, aliases')
+      .eq('user_id', userId)
+      .eq('id', entity.id)
+      .maybeSingle();
+    if (error || !data) return empty;
+    return this.applyBackfill(
+      userId,
+      [],
+      [{ id: data.id, names: [data.name, ...((data.aliases as string[] | null) ?? [])] }],
+      false,
+    );
+  }
+
   async backfillForUser(userId: string, dryRun = true): Promise<EntityBackfillReport> {
+    const [characters, locations] = await Promise.all([
+      selectAllPages<{ id: string; name: string; alias: string[] | null; metadata: Record<string, unknown> | null }>(
+        (from, to) =>
+          supabaseAdmin
+            .from('characters')
+            .select('id, name, alias, metadata')
+            .eq('user_id', userId)
+            .range(from, to),
+        ENTITY_PAGE,
+        5_000,
+      ),
+      selectAllPages<{ id: string; name: string; aliases: string[] | null }>(
+        (from, to) =>
+          supabaseAdmin
+            .from('locations')
+            .select('id, name, aliases')
+            .eq('user_id', userId)
+            .range(from, to),
+        ENTITY_PAGE,
+        5_000,
+      ),
+    ]);
+
+    const characterRefs: NamedEntityRef[] = characters
+      .filter((row) => !isSelfCharacterRow(row))
+      .map((row) => ({ id: row.id, names: [row.name, ...((row.alias as string[] | null) ?? [])] }));
+    const locationRefs: NamedEntityRef[] = locations.map((row) => ({
+      id: row.id,
+      names: [row.name, ...((row.aliases as string[] | null) ?? [])],
+    }));
+
     const report: EntityBackfillReport = {
       eventsScanned: 0,
       eventsUpdated: 0,
@@ -97,27 +194,65 @@ class ResolvedEventEntityBackfillService {
       samples: [],
     };
 
-    const [charactersRes, locationsRes, eventsRes] = await Promise.all([
-      supabaseAdmin.from('characters').select('id, name, alias, metadata').eq('user_id', userId),
-      supabaseAdmin.from('locations').select('id, name, aliases').eq('user_id', userId),
-      supabaseAdmin
+    for (let offset = 0; offset < USER_WIDE_EVENT_CAP; offset += ENTITY_PAGE) {
+      const { data, error } = await supabaseAdmin
         .from('resolved_events')
         .select('id, title, summary, people, locations, metadata')
-        .eq('user_id', userId),
-    ]);
-    if (charactersRes.error) throw charactersRes.error;
-    if (locationsRes.error) throw locationsRes.error;
-    if (eventsRes.error) throw eventsRes.error;
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + ENTITY_PAGE - 1);
+      if (error) throw error;
+      const events = data ?? [];
+      const pageReport = await this.applyBackfill(userId, characterRefs, locationRefs, dryRun, events);
+      report.eventsScanned += pageReport.eventsScanned;
+      report.eventsUpdated += pageReport.eventsUpdated;
+      report.peopleAdded += pageReport.peopleAdded;
+      report.locationsAdded += pageReport.locationsAdded;
+      if (report.samples.length < 20) {
+        report.samples.push(...pageReport.samples.slice(0, 20 - report.samples.length));
+      }
+      if (events.length < ENTITY_PAGE) break;
+    }
 
-    const characterRefs: NamedEntityRef[] = (charactersRes.data ?? [])
-      .filter((row) => !isSelfCharacterRow(row))
-      .map((row) => ({ id: row.id, names: [row.name, ...((row.alias as string[] | null) ?? [])] }));
-    const locationRefs: NamedEntityRef[] = (locationsRes.data ?? []).map((row) => ({
-      id: row.id,
-      names: [row.name, ...((row.aliases as string[] | null) ?? [])],
-    }));
+    logger.info({ dryRun, ...report, samples: undefined }, 'entity_backfill: completed');
+    return report;
+  }
 
-    for (const event of eventsRes.data ?? []) {
+  private async applyBackfill(
+    userId: string,
+    characterRefs: NamedEntityRef[],
+    locationRefs: NamedEntityRef[],
+    dryRun: boolean,
+    preloadedEvents?: Array<{
+      id: string;
+      title: string | null;
+      summary: string | null;
+      people: string[] | null;
+      locations: string[] | null;
+      metadata: Record<string, unknown> | null;
+    }>,
+  ): Promise<EntityBackfillReport> {
+    const report: EntityBackfillReport = {
+      eventsScanned: 0,
+      eventsUpdated: 0,
+      peopleAdded: 0,
+      locationsAdded: 0,
+      samples: [],
+    };
+
+    let events = preloadedEvents;
+    if (!events) {
+      const eventsRes = await supabaseAdmin
+        .from('resolved_events')
+        .select('id, title, summary, people, locations, metadata')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(SUGGESTION_EVENT_CAP);
+      if (eventsRes.error) throw eventsRes.error;
+      events = eventsRes.data ?? [];
+    }
+
+    for (const event of events) {
       report.eventsScanned++;
       const plan = planEntityBackfill(event, characterRefs, locationRefs);
       if (!plan) continue;
@@ -159,7 +294,6 @@ class ResolvedEventEntityBackfillService {
       }
     }
 
-    logger.info({ userId, dryRun, ...report, samples: undefined }, 'entity_backfill: completed');
     return report;
   }
 }

@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { shortDisplayName } from '../../lib/displayName';
 import { EntityModalBottomNav } from '../common/EntityModalBottomNav';
 import { dedupeRelationshipsByPerson } from '../../lib/dedupeCharacterRelationships';
-import { isKinshipConnection } from '../../lib/characterKinshipGroups';
+import { isKinshipConnection, groupKinshipConnections } from '../../lib/characterKinshipGroups';
 import { isPetCharacter } from '../../lib/isPetCharacter';
 import { relationshipToYouLabel, resolveRelationshipToYou } from '../../lib/relationshipToYou';
 import { composeRomanticRelationshipBadgeLabel } from '../../lib/romanticRelationshipLabel';
 import { CharacterKinshipLists } from './CharacterKinshipLists';
+import { ConnectionsCopyAllButton } from './ConnectionsCopyAllButton';
 import { CharacterPerceptionsTab } from '../perceptions/CharacterPerceptionsTab';
 import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2, RefreshCw, Loader2, ImageIcon, Shield, ChevronDown, MapPin, Plus, BookOpen, Pin } from 'lucide-react';
 import { XProvenanceBadge } from '../integrations/XProvenanceBadge';
@@ -68,6 +69,14 @@ import {
 } from '../../mocks/characterIntelligence';
 import { getMockRomanticRelationshipForCharacter } from '../../mocks/romanticLifeImpact';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import {
+  buildCharacterConnectionsClipboardText,
+  peopleFromFamilyTree,
+  peopleFromPeripherals,
+} from '../../lib/characterConnectionsClipboard';
+import { listCharacterPeripherals } from '../../api/characterPeripherals';
+import { getMockPeripheralsForCharacter } from '../../mocks/characterPeripherals';
+import type { FamilyTree } from '../../types/socialRoles';
 import { openDatingRomanceCharacterChat } from '../../lib/datingRomanceChatFocus';
 import { openDatingRomanceModal } from '../../lib/openDatingRomanceModal';
 import { openChatThreadAtMessage } from '../../lib/chatThreadJump';
@@ -1562,12 +1571,93 @@ export const CharacterDetailModal = ({
   const [provenanceLoaded, setProvenanceLoaded] = useState(false);
 
   const [familyRefreshKey, setFamilyRefreshKey] = useState(0);
+  const [clipboardFamilyTree, setClipboardFamilyTree] = useState<FamilyTree | null>(null);
+  const [clipboardPeripherals, setClipboardPeripherals] = useState<
+    Array<{
+      name?: string | null;
+      surface?: string | null;
+      role?: string | null;
+      tier?: string | null;
+      summary?: string | null;
+    }>
+  >([]);
   // Make this character's family tree editable in the modal — same exclude/delete/
   // keep/edit-relationship actions as the user's own Family Book.
   const familyEditing = useFamilyTreeEditing({
     enabled: !isMockDataEnabled,
     onChanged: () => setFamilyRefreshKey((k) => k + 1),
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    const characterId = editedCharacter.id;
+    const characterName = editedCharacter.name;
+    if (activeTab !== 'relationships') return;
+    if (!characterId || isPetCharacter(editedCharacter)) {
+      setClipboardFamilyTree(null);
+      setClipboardPeripherals([]);
+      return;
+    }
+
+    if (isMockDataEnabled) {
+      setClipboardFamilyTree(
+        createMockFamilyTreeForCharacter(characterName) ?? createMockUserFamilyTree(),
+      );
+      setClipboardPeripherals(
+        getMockPeripheralsForCharacter(characterId).map((item) => ({
+          name: item.peripheral_name,
+          surface: item.peripheral_surface,
+          role: item.role,
+          tier: item.tier,
+          summary: item.metadata?.lexical_evidence,
+        })),
+      );
+      return;
+    }
+
+    setClipboardFamilyTree(null);
+    setClipboardPeripherals([]);
+    void (async () => {
+      try {
+        const result = await fetchJson<{ success: boolean; tree: FamilyTree }>(
+          `/api/family-trees/character/${characterId}`,
+        );
+        if (!cancelled && result.success) setClipboardFamilyTree(result.tree);
+      } catch {
+        // Copy-all still works from relationships / lore even if the tree is empty.
+      }
+      try {
+        const peripherals = await listCharacterPeripherals(characterId);
+        if (!cancelled) {
+          setClipboardPeripherals(
+            peripherals
+              .filter((item) => item.tier !== 'dismissed')
+              .map((item) => ({
+                name: item.peripheral_name,
+                surface: item.peripheral_surface,
+                role: item.role,
+                tier: item.tier,
+                summary: item.metadata?.lexical_evidence,
+              })),
+          );
+        }
+      } catch {
+        // Wider-network copy is optional.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeTab,
+    editedCharacter.id,
+    editedCharacter.metadata,
+    editedCharacter.name,
+    editedCharacter.tags,
+    familyRefreshKey,
+    isMockDataEnabled,
+  ]);
 
   // ── Temporal attributes (all historical, not just current) ─────────────────
   const [allAttributes, setAllAttributes] = useState<any[]>([]);
@@ -2977,6 +3067,154 @@ export const CharacterDetailModal = ({
     return getMockRomanticRelationshipForCharacter(editedCharacter.id, editedCharacter.name);
   }, [relationship, manualDatingRelationship, isMockDataEnabled, editedCharacter.id, editedCharacter.name]);
 
+  const connectionsClipboardText = useMemo(() => {
+    const toYou = resolveRelationshipToYou({
+      metadata: (editedCharacter.metadata ?? {}) as Record<string, unknown>,
+      relationships: editedCharacter.relationships,
+      romanticType: resolvedRomanticRelationship?.relationship_type,
+    }).value;
+    const withYou = youProjection
+      ? describeCurrentRelationship(youProjection).headline
+      : toYou
+        ? relationshipToYouLabel(toYou)
+        : null;
+
+    const familyKeys = new Set(
+      familyDimensionConnections.map((rel) => rel.character_id || rel.id || rel.character_name),
+    );
+    const people: Array<{
+      name: string;
+      relationshipType?: string;
+      status?: string;
+      closenessScore?: number;
+      summary?: string;
+      section?: string;
+    }> = [];
+    const seen = new Set<string>();
+    const pushPerson = (person: (typeof people)[number]) => {
+      const name = person.name.trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      people.push(person);
+    };
+
+    for (const group of groupKinshipConnections(kinshipConnections)) {
+      for (const rel of group.members) {
+        pushPerson({
+          name: rel.character_name || 'Unknown',
+          relationshipType: rel.relationship_type,
+          status: rel.status,
+          closenessScore: rel.closeness_score,
+          summary: rel.summary,
+          section: group.label,
+        });
+      }
+    }
+    for (const rel of remainingConnections) {
+      const projection = rel.character_id ? relationshipProjections?.[rel.character_id] : undefined;
+      const currentType = projection
+        ? describeCurrentRelationship(projection).typeLabel ?? rel.relationship_type
+        : rel.relationship_type;
+      const key = rel.character_id || rel.id || rel.character_name;
+      pushPerson({
+        name: rel.character_name || 'Unknown',
+        relationshipType: currentType,
+        status: rel.status,
+        closenessScore: rel.closeness_score,
+        summary: rel.summary,
+        section: familyKeys.has(key) ? 'Family relationship' : 'Friends & other',
+      });
+    }
+    for (const person of loreProfile?.people ?? []) {
+      pushPerson({
+        name: person.name,
+        relationshipType: person.relationshipType,
+        closenessScore: person.closenessScore,
+        summary: person.summary,
+        section: 'Lore associations',
+      });
+    }
+    for (const person of peopleFromFamilyTree(isPet ? null : clipboardFamilyTree)) {
+      pushPerson(person);
+    }
+    for (const person of peopleFromPeripherals(clipboardPeripherals)) {
+      pushPerson(person);
+    }
+
+    const affiliation = editedCharacter.primary_organization;
+    const orgs =
+      storyGroups.length > 0 || !affiliation?.id
+        ? [...storyGroups]
+        : [
+            {
+              id: affiliation.id,
+              name: affiliation.name,
+              group_type: affiliation.group_type,
+              character_role: affiliation.role,
+              user_is_member: false,
+            },
+          ];
+    const seenGroupNames = new Set(orgs.map((org) => org.name.trim().toLowerCase()).filter(Boolean));
+    const loreGroups = (loreProfile?.groups ?? [])
+      .filter((group) => {
+        const key = group.name.trim().toLowerCase();
+        if (!key || seenGroupNames.has(key)) return false;
+        seenGroupNames.add(key);
+        return true;
+      })
+      .map((group) => ({
+        name: group.name,
+        groupType: group.type,
+        membership: group.userRelationship === 'member' ? 'Shared' : 'Theirs',
+        role: group.role,
+      }));
+
+    return buildCharacterConnectionsClipboardText({
+      characterName: shortDisplayName(editedCharacter.name),
+      withYou,
+      romance: resolvedRomanticRelationship
+        ? {
+            type: resolvedRomanticRelationship.relationship_type,
+            status: resolvedRomanticRelationship.status,
+          }
+        : null,
+      people,
+      groups: [
+        ...orgs.map((org) => ({
+          name: org.name,
+          groupType: String(org.group_type ?? (org as { type?: string }).type ?? ''),
+          membership: org.user_is_member ? 'Shared' : 'Theirs',
+          role: org.character_role,
+        })),
+        ...loreGroups,
+      ],
+      associated: (editedCharacter.associated_with_character_ids ?? []).map((charId) => {
+        const match = editedCharacter.relationships?.find((rel) => rel.character_id === charId);
+        return match?.character_name || charId;
+      }),
+    });
+  }, [
+    clipboardFamilyTree,
+    clipboardPeripherals,
+    editedCharacter.associated_with_character_ids,
+    editedCharacter.metadata,
+    editedCharacter.name,
+    editedCharacter.primary_organization,
+    editedCharacter.relationships,
+    familyDimensionConnections,
+    isPet,
+    kinshipConnections,
+    loreProfile?.groups,
+    loreProfile?.people,
+    relationshipProjections,
+    remainingConnections,
+    resolvedRomanticRelationship,
+    storyGroups,
+    youProjection,
+  ]);
+
   const handleAddToDatingBook = async () => {
     if (!canAddToDatingBook || isMainCharacter) return;
     setAddingToDatingBook(true);
@@ -3853,6 +4091,9 @@ export const CharacterDetailModal = ({
 
             {!loadingDetails && activeTab === 'relationships' && (
               <div className="space-y-8">
+                <div className="flex justify-end">
+                  <ConnectionsCopyAllButton text={connectionsClipboardText} />
+                </div>
                 {/* With you — read-only recap; edit lives on Info */}
                 <div>
                   <ConnectionSectionHeader icon={Users} title="With you" />
