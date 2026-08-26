@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import {
   auditMigrationLedger,
   parseLocalMigrationFilename,
   PRODUCTION_LEDGER_CANON,
+  PRODUCTION_LEDGER_VERSION_ALIASES,
   readLocalMigrations,
 } from './migrationLedgerAudit.mjs';
 
@@ -130,6 +132,58 @@ test('production RPC lockdown and export-view hardening are exact ledger matches
   );
   assert.equal(stale.retimestamped.length, 2);
   assert.equal(stale.safeForAutomaticPush, false);
+});
+
+test('GitHub Preview can resolve production timestamp aliases as local files', () => {
+  const local = readLocalMigrations(migrationsDirectory);
+  const byVersion = new Map(local.map((row) => [row.version, row]));
+
+  const revokeAlias = byVersion.get(PRODUCTION_LEDGER_VERSION_ALIASES.revoke_anon_security_definer_rpcs);
+  const exportAlias = byVersion.get(
+    PRODUCTION_LEDGER_VERSION_ALIASES.harden_export_views_and_epiphany_insert,
+  );
+  assert.ok(revokeAlias, 'missing local file for production ledger version 20260822184817');
+  assert.ok(exportAlias, 'missing local file for production ledger version 20260822184825');
+  assert.equal(revokeAlias.name, 'revoke_anon_security_definer_rpcs');
+  assert.equal(exportAlias.name, 'harden_export_views_and_epiphany_insert');
+  assert.equal(revokeAlias.filename, '20260822184817_revoke_anon_security_definer_rpcs.sql');
+  assert.equal(exportAlias.filename, '20260822184825_harden_export_views_and_epiphany_insert.sql');
+
+  for (const filename of [revokeAlias.filename, exportAlias.filename]) {
+    const sql = readFileSync(resolve(migrationsDirectory, filename), 'utf8');
+    assert.match(sql, /Production ledger alias/);
+    assert.match(sql, /DO \$production_ledger_alias\$/);
+    const statements = sql
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('--'))
+      .join('\n');
+    assert.doesNotMatch(statements, /\b(CREATE|ALTER|DROP|GRANT|REVOKE)\b/i);
+  }
+
+  const relevant = local.filter(
+    (row) =>
+      row.name === 'revoke_anon_security_definer_rpcs' ||
+      row.name === 'harden_export_views_and_epiphany_insert',
+  );
+  assert.equal(relevant.length, 4);
+
+  const aliasRemote = auditMigrationLedger(relevant, [
+    { version: '20260822184817', name: 'revoke_anon_security_definer_rpcs' },
+    { version: '20260822184825', name: 'harden_export_views_and_epiphany_insert' },
+  ]);
+  assert.equal(aliasRemote.exact.length, 2);
+  assert.equal(aliasRemote.retimestamped.length, 0);
+  assert.equal(aliasRemote.remoteOnly.length, 0);
+
+  const bothRemotes = auditMigrationLedger(relevant, [
+    { version: '20260820003718', name: 'revoke_anon_security_definer_rpcs' },
+    { version: '20260820015515', name: 'harden_export_views_and_epiphany_insert' },
+    { version: '20260822184817', name: 'revoke_anon_security_definer_rpcs' },
+    { version: '20260822184825', name: 'harden_export_views_and_epiphany_insert' },
+  ]);
+  assert.equal(bothRemotes.exact.length, 4);
+  assert.equal(bothRemotes.localOnly.length, 0);
+  assert.equal(bothRemotes.remoteOnly.length, 0);
 });
 
 test('fails closed when a nameless remote row maps to colliding local versions', () => {
