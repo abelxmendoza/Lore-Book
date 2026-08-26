@@ -25,6 +25,23 @@ function cleanPhrase(raw: string): string {
     .trim();
 }
 
+/**
+ * Pull the optional "because ..." clause off the end of a command, e.g.
+ * "Ralph moved out ... because he got his own place" -> "he got his own
+ * place". Deliberately not a single `/\bbecause\s+(.+)$/` regex — `\s+`
+ * immediately followed by `.+` (which also matches whitespace) is
+ * ReDoS-prone on a long run of spaces, since the two quantifiers can split
+ * the run ambiguously many ways. A tiny keyword-only regex (no quantifier
+ * overlap, so no backtracking) plus a plain string slice is both safe and
+ * simpler.
+ */
+function extractBecauseReason(text: string): string | undefined {
+  const match = /\bbecause\b/i.exec(text);
+  if (!match) return undefined;
+  const reason = text.slice(match.index + match[0].length).trim();
+  return reason || undefined;
+}
+
 // Bounded, unambiguous "1-6 word-like tokens" for names/addresses inside a
 // larger regex — see PR #398 (household names/addresses run longer than
 // person names, e.g. "Mom and Dad's House" or "456 Oak Ave"). No lazy
@@ -87,11 +104,11 @@ export async function writeHouseholdFromChat(userId: string, message: string): P
     if (lookup.status === 'ambiguous') {
       throw new Error(`I found more than one household matching "${cleanPhrase(addMember[2])}": ${lookup.candidates.join(', ')}. Which one did you mean?`);
     }
-    const reasonMatch = text.match(/\bbecause\s+(.+)$/i);
+    const reason = extractBecauseReason(text);
     const character = await findOrCreateCharacter(userId, personName);
     await householdWriteService.addHouseholdMember(userId, lookup.id, character.name, {
       characterId: character.id,
-      reason: reasonMatch?.[1]?.trim(),
+      reason,
     });
     return {
       summary: `Added **${character.name}** to the **${lookup.name}** household${character.created ? ' (created Character card)' : ''}.`,
@@ -118,8 +135,8 @@ export async function writeHouseholdFromChat(userId: string, message: string): P
       throw new Error(`I found more than one household matching "${cleanPhrase(householdPhrase)}": ${lookup.candidates.join(', ')}. Which one did you mean?`);
     }
     const personLookup = await findOrCreateCharacter(userId, personName);
-    const reasonMatch = text.match(/\bbecause\s+(.+)$/i);
-    const ok = await householdWriteService.removeHouseholdMember(userId, lookup.id, personLookup.id, reasonMatch?.[1]?.trim());
+    const reason = extractBecauseReason(text);
+    const ok = await householdWriteService.removeHouseholdMember(userId, lookup.id, personLookup.id, reason);
     if (!ok) throw new Error(`${personLookup.name} doesn't currently live at the ${lookup.name} household.`);
     return {
       summary: `Removed **${personLookup.name}** from the **${lookup.name}** household (their Character card is kept — history preserved).`,
@@ -141,8 +158,8 @@ export async function writeHouseholdFromChat(userId: string, message: string): P
       throw new Error(`I found more than one household matching "${cleanPhrase(move[1])}": ${lookup.candidates.join(', ')}. Which one did you mean?`);
     }
     const newLocation = cleanPhrase(move[2]);
-    const reasonMatch = text.match(/\bbecause\s+(.+)$/i);
-    await householdWriteService.moveHousehold(userId, lookup.id, newLocation, reasonMatch?.[1]?.trim());
+    const reason = extractBecauseReason(text);
+    await householdWriteService.moveHousehold(userId, lookup.id, newLocation, reason);
     return {
       summary: `Moved the **${lookup.name}** household to **${newLocation}**.`,
       operation: 'move',
