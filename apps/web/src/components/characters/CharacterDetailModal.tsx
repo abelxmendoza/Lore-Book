@@ -657,7 +657,13 @@ export const CharacterDetailModal = ({
         ...prev,
         metadata: { ...(prev.metadata ?? {}), display_title: previousDisplayTitle },
       }));
-      throw err instanceof Error ? err : new Error('Failed to update title');
+      const message = err instanceof Error ? err.message : 'Failed to update title';
+      if (/backend unavailable|connect to server|connection refused/i.test(message)) {
+        throw new Error(
+          'Could not reach the server. Start the API with: cd apps/server && npm run dev',
+        );
+      }
+      throw err instanceof Error ? err : new Error(message);
     }
   };
 
