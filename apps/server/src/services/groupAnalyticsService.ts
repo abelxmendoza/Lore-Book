@@ -124,7 +124,7 @@ export class GroupAnalyticsService {
       // Light estimate: how often is this group mentioned?
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - 90);
-      const conversations = await this.getGroupConversations(userId, organizationId, cutoff);
+      const conversations = await this.getGroupConversations(userId, organization, cutoff);
       const mentions = await this.getJournalMentions(userId, organization, cutoff);
       const influence = Math.min(100, (conversations.length + mentions.length) * 4);
       return culturalStub(influence, now);
@@ -137,7 +137,7 @@ export class GroupAnalyticsService {
       cutoffDate.setDate(cutoffDate.getDate() - calculationPeriod);
 
       // Get conversation data
-      const conversations = await this.getGroupConversations(userId, organizationId, cutoffDate);
+      const conversations = await this.getGroupConversations(userId, organization, cutoffDate);
       
       // Get journal entries mentioning the group
       const journalMentions = await this.getJournalMentions(userId, organization, cutoffDate);
@@ -204,7 +204,7 @@ export class GroupAnalyticsService {
       
       const user_influence_over_group = await this.calculateUserInfluence(
         userId,
-        organizationId,
+        organization,
         conversations,
         groupEvents
       );
@@ -286,7 +286,7 @@ export class GroupAnalyticsService {
    */
   private async getGroupConversations(
     userId: string,
-    organizationId: string,
+    organization: Organization,
     since: Date
   ): Promise<any[]> {
     try {
@@ -301,19 +301,19 @@ export class GroupAnalyticsService {
 
       if (error) throw error;
 
-      // Get organization name for filtering
-      const org = await organizationService.getOrganization(userId, organizationId);
-      if (!org) return [];
-
-      const orgName = org.name.toLowerCase();
-      const orgAliases = (org.aliases || []).map((a: string) => a.toLowerCase());
+      // organization is already fully hydrated by the caller (getOrganization) —
+      // re-fetching it here via organizationService.getOrganization would call
+      // straight back into calculateAnalytics, which is what calls this
+      // function: unbounded recursion, not just a wasted query.
+      const orgName = organization.name.toLowerCase();
+      const orgAliases = (organization.aliases || []).map((a: string) => a.toLowerCase());
 
       // Filter messages that mention the group
       return (data || []).filter(msg => {
         const content = msg.content.toLowerCase();
-        return content.includes(orgName) || 
+        return content.includes(orgName) ||
                orgAliases.some((alias: string) => content.includes(alias)) ||
-               (org.members || []).some((m: OrganizationMember) => 
+               (organization.members || []).some((m: OrganizationMember) =>
                  content.includes(m.character_name.toLowerCase())
                );
       });
@@ -687,7 +687,7 @@ export class GroupAnalyticsService {
    */
   private async calculateUserInfluence(
     userId: string,
-    organizationId: string,
+    organization: Organization,
     conversations: any[],
     groupEvents: any[]
   ): Promise<number> {
@@ -705,9 +705,12 @@ export class GroupAnalyticsService {
       }
     });
 
-    // Check user's role in organization
-    const org = await organizationService.getOrganization(userId, organizationId);
-    const userMember = org?.members?.find(m => m.status === 'active');
+    // Check user's role in organization — organization is already fully
+    // hydrated by the caller (getOrganization); re-fetching it here via
+    // organizationService.getOrganization would call straight back into
+    // calculateAnalytics, which is what calls this function: unbounded
+    // recursion, not just a wasted query (see getGroupConversations above).
+    const userMember = organization.members?.find(m => m.status === 'active');
     const role = userMember?.role?.toLowerCase() || '';
     
     let roleBonus = 0;
