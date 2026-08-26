@@ -24,6 +24,8 @@ describe('book query chat intent', () => {
     expect(isUniversalBookQueryRequest('Show my blocked quests')).toBe(false);
     expect(isUniversalBookQueryRequest('Show my maternal cousins')).toBe(false);
     expect(isUniversalBookQueryRequest('Which places did I visit?')).toBe(false);
+    expect(isUniversalBookQueryRequest('Which people need review?')).toBe(false);
+    expect(isUniversalBookQueryRequest('Show people connected to Vanguard Robotics')).toBe(false);
   });
 
   it('does not steal ordinary recall or conversational statements', () => {

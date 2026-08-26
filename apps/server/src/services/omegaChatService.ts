@@ -3606,6 +3606,7 @@ When updating relationship analytics or emotional signals from this thread, weig
       if (
         routing.mode === 'SUBJECT_TIMELINE' ||
         routing.mode === 'ORGANIZATION_QUERY' ||
+        routing.mode === 'CHARACTER_QUERY' ||
         routing.mode === 'FAMILY_QUERY' ||
         routing.mode === 'LOCATION_QUERY' ||
         routing.mode === 'ROMANCE_QUERY' ||

@@ -21,6 +21,7 @@ const FILES = [
   "chat/closedScopeIntent.ts",
   "chat/closedScopeIntent.test.ts",
   "characters/characterQuery.ts",
+  "characters/characterBookQuery.ts",
   "organizations/organizationQuery.ts",
   "family/familyQuery.ts",
   "locations/locationQuery.ts",

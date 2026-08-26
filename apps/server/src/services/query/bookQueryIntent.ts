@@ -24,7 +24,6 @@ const GRAPH_QUERY_LANGUAGE =
   /\b(?:who introduced|how do i know|connected to|connection between|what links|through whom|know each other|in common)\b/i;
 
 const GENERIC_CHAT_QUERY_DOMAINS = new Set<BookQueryDomain>([
-  'character',
   'event',
   'document',
   'narrative',
@@ -37,11 +36,10 @@ export function detectBookQueryDomains(message: string): BookQueryDomain[] {
 /**
  * Generic Book chat routing is intentionally narrow:
  * - two or more Book domains means the question needs cross-Book retrieval;
- * - People, Life Log, Documents, and Narrative use the generic adapter because
- *   they do not yet have a dedicated mature mode handler.
- *
- * Single-domain Organizations, Family, Places, Romance, Projects, Skills, and
- * Quests retain their existing handlers and richer domain-specific semantics.
+ * - People, Organizations, Family, Places, Romance, Projects, Skills, and
+ *   Quests retain their existing handlers and richer domain-specific semantics.
+ * - Life Log, Documents, and Narrative use the generic adapter because they do
+ *   not yet have a dedicated mature mode handler.
  */
 export function isUniversalBookQueryRequest(message: string): boolean {
   const text = message.trim();

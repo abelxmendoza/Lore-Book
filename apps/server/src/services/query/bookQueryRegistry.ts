@@ -3,6 +3,7 @@ import {
   familyQueryRequestSchema,
   locationQueryRequestSchema,
   organizationQueryRequestSchema,
+  characterBookQueryRequestSchema,
   projectQueryRequestSchema,
   questQueryRequestSchema,
   romanceQueryRequestSchema,
@@ -15,7 +16,7 @@ import {
 } from '@lorebook/api-contracts';
 
 import { logger } from '../../logger';
-import { queryBookEntities } from '../entities/bookEntityQueryService';
+import { queryCharactersForUser } from '../characters/characterBookQueryService';
 import { userFileRegistry } from '../ingestion/userFileRegistry';
 import { queryFamilyForUser } from '../kinship/familyQueryService';
 import { queryLocationsForUser } from '../locations/locationQueryService';
@@ -104,27 +105,31 @@ export function inferBookQueryIntent(
 }
 
 const queryCharacters: DomainQuery = async (userId, request) => {
-  const response = await queryBookEntities(userId, { types: ['character'], limit: 100 });
-  const terms = queryTerms(request.query);
-  return response.entities
-    .filter((row) => {
-      if (!terms.length) return true;
-      const searchable = normalize([row.name, ...row.aliases, row.status].join(' '));
-      return terms.some((term) => searchable.includes(term));
-    })
-    .slice(0, request.perDomainLimit)
-    .map((row) => ({
-      id: row.id,
-      domain: 'character' as const,
-      title: row.name,
-      subtitle: row.aliases.length ? `Also known as ${row.aliases.join(', ')}` : 'Character Book',
-      status: row.status,
-      updatedAt: row.updatedAt,
-      score: terms.filter((term) => normalize([row.name, ...row.aliases].join(' ')).includes(term)).length * 10 + 1,
-      matchedReasons: terms.length ? ['Matches a name or alias in Character Book'] : ['Character Book record'],
-      evidence: request.includeEvidence ? [evidence('characters', row.id, 'Canonical Character Book record', null, row.updatedAt)] : [],
-      relatedEntities: [],
-    }));
+  const response = await queryCharactersForUser(userId, characterBookQueryRequestSchema.parse({
+    query: request.query, limit: request.perDomainLimit, includeFacets: false,
+  }));
+  return response.results.map((row) => ({
+    id: row.characterId,
+    domain: 'character' as const,
+    title: row.name,
+    subtitle: row.organizationNames.length
+      ? row.organizationNames.slice(0, 2).join(', ')
+      : row.aliases.length
+        ? `Also known as ${row.aliases.join(', ')}`
+        : 'Character Book',
+    status: row.needsReview ? 'needs_review' : row.status,
+    updatedAt: row.updatedAt,
+    score: row.score,
+    matchedReasons: row.matchedReasons,
+    evidence: request.includeEvidence
+      ? [evidence('characters', row.characterId, 'Canonical Character Book record', null, row.updatedAt)]
+      : [],
+    relatedEntities: row.organizationNames.map((name) => ({
+      domain: 'organization' as const,
+      name,
+      relation: 'group member',
+    })),
+  }));
 };
 
 const queryOrganizations: DomainQuery = async (userId, request) => {

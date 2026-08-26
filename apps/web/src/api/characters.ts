@@ -1,4 +1,5 @@
 import { fetchJson } from '../lib/api';
+import type { CharacterBookQueryRequest, CharacterBookQueryResponse } from '../lib/api-contracts';
 
 export type CharacterProfile = {
   id: string;
@@ -42,3 +43,9 @@ export const fetchCharacterCloseness = (id: string) =>
 
 export const fetchCharacterInfluence = (id: string) =>
   fetchJson<{ influence: { category: string; score: number }[] }>(`/api/characters/${id}/influence`);
+
+export const queryCharacterBook = (request: CharacterBookQueryRequest) =>
+  fetchJson<{ success: boolean; result: CharacterBookQueryResponse }>('/api/characters/query', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });

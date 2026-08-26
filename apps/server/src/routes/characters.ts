@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 
 import { Router } from 'express';
 import { z } from 'zod';
+import { characterBookQueryRequestSchema } from '@lorebook/api-contracts';
 
 import { config } from '../config';
 import { openai } from '../lib/openai';
@@ -15,6 +16,7 @@ import { findSimilarCharacter } from '../services/characterDeduplicationService'
 import { characterMergeService } from '../services/characterMergeService';
 import { characterRegistry } from '../services/characterRegistry';
 import { countCanonicalEventsForCharacters } from '../services/characters/canonicalCharacterEventCount';
+import { queryCharactersForUser } from '../services/characters/characterBookQueryService';
 import { entityAttributeDetector } from '../services/conversationCentered/entityAttributeDetector';
 import { peoplePlacesService } from '../services/peoplePlacesService';
 import { supabaseAdmin } from '../services/supabaseClient';
@@ -895,6 +897,26 @@ router.post('/card-audit/review/:id/resolve', requireAuth, asyncHandler(async (r
   }
   res.json({ success: true });
 }));
+
+router.post('/query', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const parsed = characterBookQueryRequestSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({
+      success: false,
+      error: 'Invalid character book query',
+      details: parsed.error.flatten(),
+    });
+    return;
+  }
+  try {
+    const result = await queryCharactersForUser(userId, parsed.data);
+    res.json({ success: true, result });
+  } catch (error) {
+    logger.error({ err: error, userId }, 'Failed to query Character Book');
+    res.status(500).json({ success: false, error: 'Failed to query Character Book' });
+  }
+});
 
 router.get('/duplicates', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
