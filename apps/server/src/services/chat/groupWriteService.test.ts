@@ -4,11 +4,82 @@ import {
   extractListedMemberNames,
   inferGroupNameFromContext,
   isReplyToGroupNamingPrompt,
+  parseOrganizationRelationshipWrite,
+  parseOrganizationSiteWrite,
   recoverListedMemberNamesFromHistory,
   resolveGroupWriteMemberNames,
 } from './groupWriteService';
 
 describe('groupWriteService helpers', () => {
+  it('parses hierarchy and connected-group chat edits', () => {
+    expect(parseOrganizationRelationshipWrite('make Robotics a department under Vanguard Robotics')).toEqual({
+      fromName: 'Robotics',
+      toName: 'Vanguard Robotics',
+      relationshipType: 'part_of',
+      action: 'upsert',
+      childKind: 'team',
+    });
+    expect(parseOrganizationRelationshipWrite('Studio Team is a subgroup of MemoVault')).toEqual({
+      fromName: 'Studio Team',
+      toName: 'MemoVault',
+      relationshipType: 'part_of',
+      action: 'upsert',
+      childKind: 'team',
+    });
+    expect(parseOrganizationRelationshipWrite('Robotics is a job at Vanguard Robotics')).toEqual({
+      fromName: 'Robotics',
+      toName: 'Vanguard Robotics',
+      relationshipType: 'part_of',
+      action: 'upsert',
+      childKind: 'team',
+    });
+    expect(parseOrganizationRelationshipWrite('connect Vanguard Robotics with MemoVault')).toEqual({
+      fromName: 'Vanguard Robotics',
+      toName: 'MemoVault',
+      relationshipType: 'affiliated_with',
+      action: 'upsert',
+    });
+    expect(parseOrganizationRelationshipWrite('disconnect Robotics from Vanguard Robotics')).toEqual({
+      fromName: 'Robotics',
+      toName: 'Vanguard Robotics',
+      relationshipType: 'affiliated_with',
+      action: 'remove',
+    });
+    expect(parseOrganizationRelationshipWrite('Jamie is going to the store')).toBeNull();
+    expect(parseOrganizationRelationshipWrite('make Field Crew a team at Northwind Depot under Northwind Logistics')).toEqual({
+      fromName: 'Field Crew',
+      toName: 'Northwind Logistics',
+      relationshipType: 'part_of',
+      action: 'upsert',
+      childKind: 'team',
+      locationName: 'Northwind Depot',
+    });
+    expect(parseOrganizationRelationshipWrite('QA Lab is a department at the Hollywood lab of Vanguard Robotics')).toEqual({
+      fromName: 'QA Lab',
+      toName: 'Vanguard Robotics',
+      relationshipType: 'part_of',
+      action: 'upsert',
+      childKind: 'team',
+      locationName: 'Hollywood lab',
+    });
+    expect(parseOrganizationRelationshipWrite('Field Crew belongs to Northwind Logistics at Northwind Depot')).toEqual({
+      fromName: 'Field Crew',
+      toName: 'Northwind Logistics',
+      relationshipType: 'part_of',
+      action: 'upsert',
+      childKind: 'team',
+      locationName: 'Northwind Depot',
+    });
+    expect(parseOrganizationSiteWrite('add Northwind Depot as a location of Northwind Logistics')).toEqual({
+      organizationName: 'Northwind Logistics',
+      locationName: 'Northwind Depot',
+    });
+    expect(parseOrganizationSiteWrite('Vanguard Robotics has a lab in Hollywood')).toEqual({
+      organizationName: 'Vanguard Robotics',
+      locationName: 'Hollywood',
+    });
+  });
+
   it('extracts a comma/and roster list', () => {
     expect(
       extractListedMemberNames(

@@ -818,6 +818,36 @@ router.get('/:id/relationships', requireAuth, async (req: AuthenticatedRequest, 
   }
 });
 
+// PATCH /api/organizations/:id/relationships/:relationshipId
+router.patch('/:id/relationships/:relationshipId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const relationshipId = String(req.params.relationshipId);
+  const parsed = z.object({
+    relationship_type: z.enum(ORG_REL_TYPES),
+    notes: z.string().max(1000).optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: parsed.error.issues });
+    return;
+  }
+  try {
+    const relationship = await organizationService.updateRelationship(
+      userId,
+      relationshipId,
+      parsed.data.relationship_type as OrgRelationshipType,
+      parsed.data.notes,
+    );
+    res.json({ success: true, relationship });
+  } catch (error) {
+    logger.error({ error, userId, relationshipId }, 'Failed to update organization relationship');
+    const message = error instanceof Error ? error.message : '';
+    res.status(message === 'Relationship not found' ? 404 : 500).json({
+      success: false,
+      error: message === 'Relationship not found' ? message : 'Failed to update relationship',
+    });
+  }
+});
+
 // DELETE /api/organizations/:id/relationships/:relationshipId
 router.delete('/:id/relationships/:relationshipId', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;

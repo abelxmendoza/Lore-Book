@@ -87,7 +87,8 @@ import { mockDataService } from '../../services/mockDataService';
 import { locationAliasesForDisplay } from '../../lib/locationMergeMetadata';
 import { highlightTextTerms } from '../../lib/highlightTextTerms';
 import { FamilyTreePanel } from '../family/FamilyTreePanel';
-import { OrganizationGroupNetwork } from './OrganizationGroupNetwork';
+import { OrganizationGroupNetwork, buildOrgNetworkPreview } from './OrganizationGroupNetwork';
+import { locationMatchKey } from './orgNetworkSites';
 import type { Organization, OrganizationMember, OrganizationStory, OrganizationEvent, OrganizationLocation, OrganizationRelationship, OrgRelationshipType } from './OrganizationProfileCard';
 import type { Character } from '../characters/CharacterProfileCard';
 import type { LocationProfile } from '../locations/LocationProfileCard';
@@ -101,6 +102,7 @@ type OrganizationDetailModalProps = {
 };
 
 type TabKey = OrgModalTabKey;
+type ManualOrgRelationshipType = OrgRelationshipType | 'contains_subgroup';
 
 // Events & locations inferred from the group's members across chat threads /
 // journal entries (served by GET /api/organizations/:id/derived-context).
@@ -172,6 +174,13 @@ const REL_TYPE_LABELS: Record<OrgRelationshipType, string> = {
 };
 
 const ORG_REL_TYPE_OPTIONS = Object.keys(REL_TYPE_LABELS) as OrgRelationshipType[];
+const MANUAL_ORG_REL_TYPE_OPTIONS: Array<{ value: ManualOrgRelationshipType; label: string }> = [
+  { value: 'part_of', label: 'Part of (choose parent)' },
+  { value: 'contains_subgroup', label: 'Contains subgroup' },
+  ...ORG_REL_TYPE_OPTIONS
+    .filter(type => type !== 'part_of')
+    .map(type => ({ value: type, label: REL_TYPE_LABELS[type] })),
+];
 const GROUP_TYPE_OPTIONS: Array<{ value: Organization['group_type']; label: string }> = [
   { value: 'band', label: 'Band' },
   { value: 'friend_group', label: 'Friend group' },
@@ -464,12 +473,23 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   const [reconcilingRelationships, setReconcilingRelationships] = useState(false);
   const [relatedOrgs, setRelatedOrgs] = useState<Organization[]>([]);
   const [showAddRelationship, setShowAddRelationship] = useState(false);
-  const [newRelationship, setNewRelationship] = useState<{ to_org_id: string; relationship_type: OrgRelationshipType; notes: string }>({
+  const [newRelationship, setNewRelationship] = useState<{
+    to_org_id: string;
+    relationship_type: ManualOrgRelationshipType;
+    notes: string;
+    siteKey: string;
+  }>({
     to_org_id: '',
     relationship_type: 'affiliated_with',
     notes: '',
+    siteKey: '',
   });
   const [relationshipSaving, setRelationshipSaving] = useState(false);
+  const [editingRelationshipId, setEditingRelationshipId] = useState<string | null>(null);
+  const [relationshipEdit, setRelationshipEdit] = useState<{ relationship_type: OrgRelationshipType; notes: string }>({
+    relationship_type: 'affiliated_with',
+    notes: '',
+  });
 
   // Delete state — two-step confirmation in the Delete tab
   const [deleteStep, setDeleteStep] = useState<null | 'warn' | 'type'>(null);
@@ -552,12 +572,6 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
   }, [organization.id, isMockDataEnabled]);
 
   useEffect(() => {
-    if (activeTab === 'relationships' && !relationshipsLoaded) {
-      void loadRelationships();
-    }
-  }, [activeTab, relationshipsLoaded]);
-
-  useEffect(() => {
     if (
       (activeTab !== 'timeline' &&
         activeTab !== 'locations' &&
@@ -597,7 +611,33 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
             source: 'conversation' as const,
           })),
       );
-      setDerivedHierarchy({ subgroups: [], related: [] });
+      const { relationships: mockRels } = getMockOrganizationRelationships(organization, allOrganizations);
+      const parent = mockRels.find(rel => rel.relationship_type === 'part_of' && rel.from_org_id === organization.id);
+      const subgroups = mockRels.filter(rel => rel.relationship_type === 'part_of' && rel.to_org_id === organization.id);
+      setDerivedHierarchy({
+        parent: parent
+          ? {
+              id: parent.to_org_id,
+              name: allOrganizations.find(org => org.id === parent.to_org_id)?.name ?? 'Unknown group',
+              relationship_type: 'part_of',
+            }
+          : undefined,
+        subgroups: subgroups.map(rel => ({
+          id: rel.from_org_id,
+          name: allOrganizations.find(org => org.id === rel.from_org_id)?.name ?? 'Unknown group',
+          relationship_type: 'part_of',
+        })),
+        related: mockRels
+          .filter(rel => rel.relationship_type !== 'part_of')
+          .map(rel => {
+            const otherId = rel.from_org_id === organization.id ? rel.to_org_id : rel.from_org_id;
+            return {
+              id: otherId,
+              name: allOrganizations.find(org => org.id === otherId)?.name ?? 'Unknown group',
+              relationship_type: rel.relationship_type,
+            };
+          }),
+      });
       setDerivedLoaded(true);
       return;
     }
@@ -620,7 +660,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
       })
       .catch(() => {})
       .finally(() => { setDerivedLoading(false); setDerivedLoaded(true); });
-  }, [activeTab, organization, derivedLoaded, isMockDataEnabled]);
+  }, [activeTab, organization, derivedLoaded, isMockDataEnabled, allOrganizations]);
 
   useEffect(() => {
     if (mentionsLoaded || !organization.id || isMockDataEnabled) return;
@@ -707,7 +747,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     });
   }, [organization.id, isMockDataEnabled]);
 
-  const loadRelationships = async () => {
+  const loadRelationships = useCallback(async () => {
     setRelationshipsLoading(true);
     try {
       if (isMockDataEnabled) {
@@ -742,12 +782,88 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
       setRelationshipsLoaded(true);
       setRelationshipsLoading(false);
     }
-  };
+  }, [allOrganizations, isMockDataEnabled, organization]);
+
+  useEffect(() => {
+    if (activeTab !== 'relationships') return;
+    if (!isMockDataEnabled && relationshipsLoaded) return;
+    void loadRelationships();
+  }, [activeTab, isMockDataEnabled, loadRelationships, relationshipsLoaded]);
 
   const orgNameById = (id: string): string => {
     if (id === organization.id) return organization.name;
     return relatedOrgs.find(o => o.id === id)?.name || 'Unknown organization';
   };
+
+  const hierarchySiteOptions = useMemo(() => {
+    const containsSubgroup = newRelationship.relationship_type === 'contains_subgroup';
+    const isPartOf = newRelationship.relationship_type === 'part_of';
+    if (!containsSubgroup && !isPartOf) return [];
+    const parentOrg = containsSubgroup
+      ? organization
+      : relatedOrgs.find((org) => org.id === newRelationship.to_org_id);
+    const parentLocations = containsSubgroup
+      ? locations
+      : [
+          ...(parentOrg?.locations ?? []),
+          ...(isMockDataEnabled && parentOrg
+            ? getDemoOrganizationLocationLinks(parentOrg.id)
+            : []),
+        ];
+    const seen = new Set<string>();
+    const options: Array<{ key: string; name: string; locationId?: string }> = [];
+    for (const loc of parentLocations) {
+      const key = locationMatchKey(loc);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      options.push({
+        key,
+        name: loc.location_name,
+        locationId: loc.location_id,
+      });
+    }
+    return options;
+  }, [
+    isMockDataEnabled,
+    locations,
+    newRelationship.relationship_type,
+    newRelationship.to_org_id,
+    organization,
+    relatedOrgs,
+  ]);
+
+  const groupsAtOrgLocation = useCallback((location: OrganizationLocation) => {
+    const key = locationMatchKey(location);
+    if (!key) return [];
+    const peers = (relatedOrgs.length > 0 ? relatedOrgs : allOrganizations).filter(
+      (org) => org.id !== organization.id,
+    );
+    return peers.filter((org) => {
+      const isChild =
+        org.parent_group_id === organization.id ||
+        relationships.some(
+          (rel) =>
+            (rel.relationship_type === 'part_of' || rel.relationship_type === 'spawned_from') &&
+            rel.from_org_id === org.id &&
+            rel.to_org_id === organization.id,
+        );
+      if (!isChild) return false;
+      const orgLocations = [
+        ...(org.locations ?? []),
+        ...(isMockDataEnabled ? getDemoOrganizationLocationLinks(org.id) : []),
+      ];
+      return orgLocations.some((loc) => locationMatchKey(loc) === key);
+    });
+  }, [allOrganizations, isMockDataEnabled, organization.id, relatedOrgs, relationships]);
+
+  const previewNetwork = useMemo(() => {
+    if (!isMockDataEnabled) return null;
+    return buildOrgNetworkPreview(
+      organization,
+      relatedOrgs.length > 0 ? relatedOrgs : allOrganizations,
+      relationships,
+    );
+  }, [isMockDataEnabled, organization, relatedOrgs, allOrganizations, relationships]);
 
   const openLinkedOrg = (orgId: string) => {
     if (isMockDataEnabled) {
@@ -784,18 +900,85 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     if (!newRelationship.to_org_id) return;
     setRelationshipSaving(true);
     try {
+      const containsSubgroup = newRelationship.relationship_type === 'contains_subgroup';
+      const isHierarchy = containsSubgroup || newRelationship.relationship_type === 'part_of';
+      const fromOrganizationId = containsSubgroup ? newRelationship.to_org_id : organization.id;
+      const toOrganizationId = containsSubgroup ? organization.id : newRelationship.to_org_id;
+      const relationshipType: OrgRelationshipType = containsSubgroup
+        ? 'part_of'
+        : newRelationship.relationship_type as OrgRelationshipType;
+      const selectedSite = isHierarchy
+        ? hierarchySiteOptions.find((site) => site.key === newRelationship.siteKey)
+        : undefined;
+
+      if (isMockDataEnabled) {
+        const rel: OrganizationRelationship = {
+          id: `demo-rel-${Date.now()}`,
+          user_id: 'demo',
+          from_org_id: fromOrganizationId,
+          to_org_id: toOrganizationId,
+          relationship_type: relationshipType,
+          notes: newRelationship.notes || undefined,
+          created_at: new Date().toISOString(),
+        };
+        setRelationships((prev) => [rel, ...prev]);
+        if (selectedSite) {
+          const childId = fromOrganizationId;
+          const parentId = toOrganizationId;
+          if (selectedSite.locationId) {
+            linkDemoLocationOrganization(
+              { id: selectedSite.locationId, name: selectedSite.name },
+              childId,
+              demoOrgHint(),
+            );
+            linkDemoLocationOrganization(
+              { id: selectedSite.locationId, name: selectedSite.name },
+              parentId,
+              demoOrgHint(),
+            );
+          } else {
+            linkDemoOrganizationLocationByName(childId, selectedSite.name, demoOrgHint());
+            linkDemoOrganizationLocationByName(parentId, selectedSite.name, demoOrgHint());
+          }
+        }
+        setNewRelationship({ to_org_id: '', relationship_type: 'affiliated_with', notes: '', siteKey: '' });
+        setShowAddRelationship(false);
+        return;
+      }
+
       const result = await addOrganizationRelationship({
-        organizationId: organization.id,
+        organizationId: fromOrganizationId,
         relationship: {
-          to_org_id: newRelationship.to_org_id,
-          relationship_type: newRelationship.relationship_type,
+          to_org_id: toOrganizationId,
+          relationship_type: relationshipType,
           notes: newRelationship.notes || undefined,
         },
       }).unwrap() as { success: boolean; relationship: OrganizationRelationship };
       if (result.success) {
         setRelationships(prev => [result.relationship, ...prev]);
-        setNewRelationship({ to_org_id: '', relationship_type: 'affiliated_with', notes: '' });
+        if (selectedSite) {
+          const payload = {
+            location_name: selectedSite.name,
+            ...(selectedSite.locationId ? { location_id: selectedSite.locationId } : {}),
+          };
+          await Promise.all([
+            addOrganizationLocation({
+              organizationId: fromOrganizationId,
+              location: payload,
+            }).unwrap().catch(() => null),
+            addOrganizationLocation({
+              organizationId: toOrganizationId,
+              location: payload,
+            }).unwrap().catch(() => null),
+          ]);
+        }
+        setNewRelationship({ to_org_id: '', relationship_type: 'affiliated_with', notes: '', siteKey: '' });
         setShowAddRelationship(false);
+        setDerivedLoaded(false);
+        dispatchStoryDataUpdated({
+          scopes: ['organizations'],
+          organizationIds: [organization.id, newRelationship.to_org_id],
+        });
       }
     } catch (error) {
       console.error('Failed to add relationship:', error);
@@ -804,12 +987,54 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
     }
   };
 
+  const beginRelationshipEdit = (relationship: OrganizationRelationship) => {
+    setEditingRelationshipId(relationship.id);
+    setRelationshipEdit({
+      relationship_type: relationship.relationship_type,
+      notes: relationship.notes?.replace(/^\[auto-inferred(?::llm)?\]\s*/, '') ?? '',
+    });
+  };
+
+  const handleUpdateRelationship = async () => {
+    if (!editingRelationshipId) return;
+    setRelationshipSaving(true);
+    try {
+      const result = await fetchJson<{ success: boolean; relationship: OrganizationRelationship }>(
+        `/api/organizations/${organization.id}/relationships/${editingRelationshipId}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify(relationshipEdit),
+        },
+      );
+      if (result.success) {
+        setRelationships(prev => prev.map(rel => rel.id === editingRelationshipId ? result.relationship : rel));
+        setEditingRelationshipId(null);
+        setDerivedLoaded(false);
+        dispatchStoryDataUpdated({ scopes: ['organizations'], organizationIds: [organization.id] });
+      }
+    } catch (error) {
+      console.error('Failed to update relationship:', error);
+    } finally {
+      setRelationshipSaving(false);
+    }
+  };
+
   const handleRemoveRelationship = async (relationshipId: string) => {
+    const removed = relationships.find(rel => rel.id === relationshipId);
     setRelationships(prev => prev.filter(r => r.id !== relationshipId));
     try {
       await removeOrganizationRelationship({ organizationId: organization.id, relationshipId }).unwrap();
+      setDerivedLoaded(false);
+      dispatchStoryDataUpdated({
+        scopes: ['organizations'],
+        organizationIds: removed
+          ? [removed.from_org_id, removed.to_org_id]
+          : [organization.id],
+      });
     } catch (error) {
       console.error('Failed to remove relationship:', error);
+      setRelationshipsLoaded(false);
+      void loadRelationships();
     }
   };
 
@@ -2972,6 +3197,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                     </h3>
                     <p className="text-[11px] text-white/40 mt-0.5 sm:truncate">
                       Linked places for {editedOrg.name}
+                      {editedOrg.group_type === 'company' ? ' — groups at each site show below' : ''}
                     </p>
                   </div>
                   <Button
@@ -3167,6 +3393,20 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                             {location.visit_count} {location.visit_count === 1 ? 'visit' : 'visits'}
                             {location.last_visited ? ` · Last ${formatDate(location.last_visited)}` : ''}
                           </div>
+                          {groupsAtOrgLocation(location).length > 0 && (
+                            <div className="mt-1.5 ml-5 flex flex-wrap gap-1.5">
+                              {groupsAtOrgLocation(location).map((group) => (
+                                <button
+                                  key={group.id}
+                                  type="button"
+                                  onClick={() => openLinkedOrg(group.id)}
+                                  className="rounded-md border border-indigo-400/25 bg-indigo-500/10 px-2 py-0.5 text-[10px] text-indigo-200 hover:bg-indigo-500/20"
+                                >
+                                  {group.name}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </button>
                         <Button
                           variant="ghost"
@@ -3334,6 +3574,21 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                   compact
                   title={`${organization.name} in context`}
                   onOrgClick={openLinkedOrg}
+                  onLocationClick={(locationId, locationName) => {
+                    void openLinkedLocation({ locationId, locationName });
+                  }}
+                  previewNetwork={previewNetwork}
+                  onDisconnect={(edge) => {
+                    if (edge.id) {
+                      void handleRemoveRelationship(edge.id);
+                      return;
+                    }
+                    const match = relationships.find(rel =>
+                      (rel.from_org_id === edge.fromId && rel.to_org_id === edge.toId) ||
+                      (rel.from_org_id === edge.toId && rel.to_org_id === edge.fromId),
+                    );
+                    if (match) void handleRemoveRelationship(match.id);
+                  }}
                 />
               </div>
 
@@ -3341,7 +3596,9 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                 <div className="rounded-xl border border-indigo-400/20 bg-indigo-500/[0.05] p-3.5 sm:p-4 space-y-3">
                   <p className="text-xs text-white/50">
                     {organization.name} <span className="text-white/30">is</span>{' '}
-                    <span className="text-indigo-300">{REL_TYPE_LABELS[newRelationship.relationship_type].toLowerCase()}</span>{' '}
+                    <span className="text-indigo-300">
+                      {(MANUAL_ORG_REL_TYPE_OPTIONS.find(option => option.value === newRelationship.relationship_type)?.label ?? 'connected to').toLowerCase()}
+                    </span>{' '}
                     <span className="text-white/30">→</span>{' '}
                     {newRelationship.to_org_id ? orgNameById(newRelationship.to_org_id) : '…'}
                   </p>
@@ -3358,14 +3615,27 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                   </select>
                   <select
                     value={newRelationship.relationship_type}
-                    onChange={e => setNewRelationship(v => ({ ...v, relationship_type: e.target.value as OrgRelationshipType }))}
+                    onChange={e => setNewRelationship(v => ({ ...v, relationship_type: e.target.value as ManualOrgRelationshipType, siteKey: '' }))}
                     aria-label="Relationship type"
                     className={FIELD_SELECT}
                   >
-                    {ORG_REL_TYPE_OPTIONS.map(type => (
-                      <option key={type} value={type}>{REL_TYPE_LABELS[type]}</option>
+                    {MANUAL_ORG_REL_TYPE_OPTIONS.map(option => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
+                  {hierarchySiteOptions.length > 0 && (
+                    <select
+                      value={newRelationship.siteKey}
+                      onChange={e => setNewRelationship(v => ({ ...v, siteKey: e.target.value }))}
+                      aria-label="Company location for this group"
+                      className={FIELD_SELECT}
+                    >
+                      <option value="">Any location / company-wide</option>
+                      {hierarchySiteOptions.map(site => (
+                        <option key={site.key} value={site.key}>{site.name}</option>
+                      ))}
+                    </select>
+                  )}
                   <Input
                     placeholder="Notes (optional)"
                     value={newRelationship.notes}
@@ -3390,7 +3660,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Loading relationships…
                 </div>
-              ) : relationships.length === 0 && !showAddRelationship ? (
+              ) : relationships.length === 0 && !showAddRelationship && (derivedHierarchy?.subgroups?.length ?? 0) === 0 && (previewNetwork?.edgeCount ?? 0) === 0 ? (
                 <div className="rounded-xl border border-dashed border-white/12 bg-black/25 px-4 py-10 text-center">
                   <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-400/20 bg-indigo-500/10">
                     <Link2 className="h-5 w-5 text-indigo-300/80" />
@@ -3455,15 +3725,55 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                               </div>
                             )}
                           </div>
-                          <button
-                            type="button"
-                            aria-label={`Remove relationship with ${otherOrgName}`}
-                            className="shrink-0 h-8 w-8 rounded-lg flex items-center justify-center text-white/25 opacity-70 transition hover:bg-red-500/15 hover:text-red-400 group-hover:opacity-100"
-                            onClick={() => void handleRemoveRelationship(rel.id)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              aria-label={`Edit relationship with ${otherOrgName}`}
+                              className="h-8 w-8 rounded-lg flex items-center justify-center text-white/30 opacity-70 transition hover:bg-indigo-500/15 hover:text-indigo-300 group-hover:opacity-100"
+                              onClick={() => beginRelationshipEdit(rel)}
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`Remove relationship with ${otherOrgName}`}
+                              className="h-8 w-8 rounded-lg flex items-center justify-center text-white/25 opacity-70 transition hover:bg-red-500/15 hover:text-red-400 group-hover:opacity-100"
+                              onClick={() => void handleRemoveRelationship(rel.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </div>
+                        {editingRelationshipId === rel.id && (
+                          <div className="mt-3 grid gap-2 border-t border-white/8 pt-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_auto]">
+                            <select
+                              value={relationshipEdit.relationship_type}
+                              onChange={event => setRelationshipEdit(value => ({
+                                ...value,
+                                relationship_type: event.target.value as OrgRelationshipType,
+                              }))}
+                              aria-label={`Edit relationship type with ${otherOrgName}`}
+                              className={FIELD_SELECT}
+                            >
+                              {ORG_REL_TYPE_OPTIONS.map(type => (
+                                <option key={type} value={type}>{REL_TYPE_LABELS[type]}</option>
+                              ))}
+                            </select>
+                            <Input
+                              value={relationshipEdit.notes}
+                              onChange={event => setRelationshipEdit(value => ({ ...value, notes: event.target.value }))}
+                              placeholder="Notes (optional)"
+                              className={FIELD_INPUT}
+                            />
+                            <div className="flex gap-2">
+                              <Button size="sm" disabled={relationshipSaving} onClick={() => void handleUpdateRelationship()}>
+                                {relationshipSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                                <span className="ml-1.5">Save</span>
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => setEditingRelationshipId(null)}>Cancel</Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

@@ -1920,6 +1920,50 @@ export class OrganizationService {
   }
 
   /**
+   * Link a Places Book (or name-only) site onto an organization.
+   * Resolves an existing location card by name when location_id is omitted.
+   */
+  async attachOrganizationSite(
+    userId: string,
+    organizationId: string,
+    site: { location_name: string; location_id?: string },
+  ): Promise<OrganizationLocation> {
+    let locationId = site.location_id;
+    let locationName = site.location_name.trim();
+    if (!locationId && locationName) {
+      const { data, error } = await supabaseAdmin
+        .from('locations')
+        .select('id, name')
+        .eq('user_id', userId);
+      if (error) throw error;
+      const key = locationName.toLowerCase();
+      const match = (data ?? []).find((row) => String(row.name ?? '').trim().toLowerCase() === key);
+      if (match) {
+        locationId = match.id as string;
+        locationName = String(match.name);
+      }
+    }
+    return this.addLocation(userId, organizationId, {
+      location_name: locationName,
+      location_id: locationId,
+    });
+  }
+
+  /**
+   * Nest a subgroup at a parent company's site: both orgs get the same
+   * organization_locations row so the network can group children by place.
+   */
+  async attachChildToParentSite(
+    userId: string,
+    childOrgId: string,
+    parentOrgId: string,
+    site: { location_name: string; location_id?: string },
+  ): Promise<OrganizationLocation> {
+    await this.attachOrganizationSite(userId, parentOrgId, site);
+    return this.attachOrganizationSite(userId, childOrgId, site);
+  }
+
+  /**
    * Remove a location from an organization
    */
   async removeLocation(userId: string, organizationId: string, locationId: string): Promise<void> {
@@ -1948,7 +1992,15 @@ export class OrganizationService {
     relationshipType: OrgRelationshipType,
     notes?: string
   ): Promise<OrganizationRelationship> {
+    this.invalidateOrganizations(userId);
     try {
+      const [fromOrg, toOrg] = await Promise.all([
+        this.getOwnedOrganizationRef(userId, fromOrgId),
+        this.getOwnedOrganizationRef(userId, toOrgId),
+      ]);
+      if (!fromOrg || !toOrg) throw new Error('Organization not found');
+      if (fromOrgId === toOrgId) throw new Error('An organization cannot relate to itself');
+
       const { data, error } = await supabaseAdmin
         .from('organization_relationships')
         .insert({
@@ -1962,6 +2014,14 @@ export class OrganizationService {
         .single();
 
       if (error) throw error;
+      if (relationshipType === 'part_of') {
+        const { error: parentError } = await supabaseAdmin
+          .from('organizations')
+          .update({ parent_group_id: toOrgId, updated_at: new Date().toISOString() })
+          .eq('id', fromOrgId)
+          .eq('user_id', userId);
+        if (parentError) throw parentError;
+      }
       return data;
     } catch (error) {
       logger.error({ error, userId, fromOrgId, toOrgId }, 'Failed to add organization relationship');
@@ -1987,7 +2047,17 @@ export class OrganizationService {
         .eq('to_org_id', toOrgId)
         .eq('relationship_type', relationshipType)
         .maybeSingle();
-      if (existing) return false;
+      if (existing) {
+        if (relationshipType === 'part_of') {
+          await supabaseAdmin
+            .from('organizations')
+            .update({ parent_group_id: toOrgId, updated_at: new Date().toISOString() })
+            .eq('id', fromOrgId)
+            .eq('user_id', userId);
+          this.invalidateOrganizations(userId);
+        }
+        return false;
+      }
       await this.addRelationship(userId, fromOrgId, toOrgId, relationshipType, notes);
       return true;
     } catch (error) {
@@ -1997,7 +2067,17 @@ export class OrganizationService {
   }
 
   async removeRelationship(userId: string, relationshipId: string): Promise<void> {
+    this.invalidateOrganizations(userId);
     try {
+      const { data: relationship, error: readError } = await supabaseAdmin
+        .from('organization_relationships')
+        .select('*')
+        .eq('id', relationshipId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (readError) throw readError;
+      if (!relationship) throw new Error('Relationship not found');
+
       const { error } = await supabaseAdmin
         .from('organization_relationships')
         .delete()
@@ -2005,10 +2085,76 @@ export class OrganizationService {
         .eq('user_id', userId);
 
       if (error) throw error;
+      if (relationship.relationship_type === 'part_of') {
+        const { error: parentError } = await supabaseAdmin
+          .from('organizations')
+          .update({ parent_group_id: null, updated_at: new Date().toISOString() })
+          .eq('id', relationship.from_org_id)
+          .eq('user_id', userId)
+          .eq('parent_group_id', relationship.to_org_id);
+        if (parentError) throw parentError;
+      }
     } catch (error) {
       logger.error({ error, userId, relationshipId }, 'Failed to remove organization relationship');
       throw error;
     }
+  }
+
+  async removeRelationshipsBetween(userId: string, orgIdA: string, orgIdB: string): Promise<number> {
+    const relationships = await this.getRelationships(userId, orgIdA);
+    const matches = relationships.filter(rel =>
+      (rel.from_org_id === orgIdA && rel.to_org_id === orgIdB) ||
+      (rel.from_org_id === orgIdB && rel.to_org_id === orgIdA),
+    );
+    for (const rel of matches) {
+      await this.removeRelationship(userId, rel.id);
+    }
+    return matches.length;
+  }
+
+  async updateRelationship(
+    userId: string,
+    relationshipId: string,
+    relationshipType: OrgRelationshipType,
+    notes?: string,
+  ): Promise<OrganizationRelationship> {
+    this.invalidateOrganizations(userId);
+    const { data: existing, error: readError } = await supabaseAdmin
+      .from('organization_relationships')
+      .select('*')
+      .eq('id', relationshipId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (readError) throw readError;
+    if (!existing) throw new Error('Relationship not found');
+
+    const { data, error } = await supabaseAdmin
+      .from('organization_relationships')
+      .update({ relationship_type: relationshipType, notes: notes || null })
+      .eq('id', relationshipId)
+      .eq('user_id', userId)
+      .select()
+      .single();
+    if (error) throw error;
+
+    if (existing.relationship_type === 'part_of' && relationshipType !== 'part_of') {
+      const { error: clearError } = await supabaseAdmin
+        .from('organizations')
+        .update({ parent_group_id: null, updated_at: new Date().toISOString() })
+        .eq('id', existing.from_org_id)
+        .eq('user_id', userId)
+        .eq('parent_group_id', existing.to_org_id);
+      if (clearError) throw clearError;
+    } else if (relationshipType === 'part_of') {
+      const { error: parentError } = await supabaseAdmin
+        .from('organizations')
+        .update({ parent_group_id: existing.to_org_id, updated_at: new Date().toISOString() })
+        .eq('id', existing.from_org_id)
+        .eq('user_id', userId);
+      if (parentError) throw parentError;
+    }
+
+    return data as OrganizationRelationship;
   }
 
   async getRelationships(userId: string, orgId: string): Promise<OrganizationRelationship[]> {

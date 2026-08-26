@@ -80,6 +80,20 @@ const GROUP_ROSTER_CUE_RE =
   /\b(?:so far we have|here(?:'s| is) the roster|roster(?:\s+is|:)|members?(?:\s+are|\s+include|:)|the members)\b/i;
 const GROUP_DELETE_RE =
   /\b(delete|remove)\s+(?:the\s+)?(?:group|crew|squad|org(?:anization)?)\s+.{1,80}$|\b(delete|remove)\s+.{1,80}\bfrom\s+my\s+(groups?|organizations?)\s+book\b/i;
+const GROUP_HIERARCHY_NOUN = 'subgroup|department|division|branch|team|child group|job|role|position';
+const GROUP_SITE_NOUN = 'location|site|office|lab|warehouse|depot';
+const GROUP_RELATIONSHIP_WRITE_RE = new RegExp(
+  `^(?:please\\s+)?(?:` +
+    `(?:make|mark|set)\\s+.{1,80}?\\s+(?:as\\s+|a\\s+|the\\s+)?(?:${GROUP_HIERARCHY_NOUN})\\s+(?:of|under|inside|within|at|with)\\s+.{1,80}` +
+    `|.{1,80}?\\s+(?:is|should be)\\s+(?:a\\s+|the\\s+)?(?:${GROUP_HIERARCHY_NOUN})\\s+(?:of|under|inside|within|at|with|for)\\s+.{1,80}` +
+    `|.{1,80}?\\s+(?:belongs|sits|rolls up)\\s+(?:to|under|inside|within)\\s+.{1,80}` +
+    `|(?:connect|link)\\s+.{1,80}?\\s+(?:to|with|and)\\s+.{1,80}` +
+    `|(?:disconnect|unlink)\\s+.{1,80}?\\s+from\\s+.{1,80}` +
+    `|(?:add|make)\\s+.{1,80}?\\s+(?:as\\s+)?(?:a\\s+)?(?:${GROUP_SITE_NOUN})\\s+(?:of|for|under)\\s+.{1,80}` +
+    `|.{1,80}?\\s+has\\s+(?:a\\s+|an\\s+)?(?:${GROUP_SITE_NOUN})\\s+(?:in|at|called)\\s+.{1,80}` +
+  `)[.!?]*$`,
+  'i',
+);
 
 /** Rough count of name-like tokens in a list ("A, B, and C"). */
 export function countListedNameLikeTokens(message: string): number {
@@ -106,7 +120,8 @@ export function isOrganizationGroupWriteRequest(message: string): boolean {
     GROUP_CREATE_RE.test(text) ||
     GROUP_FOR_RE.test(text) ||
     GROUP_ADD_MEMBERS_RE.test(text) ||
-    GROUP_DELETE_RE.test(text)
+    GROUP_DELETE_RE.test(text) ||
+    GROUP_RELATIONSHIP_WRITE_RE.test(text)
   ) {
     return true;
   }

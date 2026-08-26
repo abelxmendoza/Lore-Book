@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Network, GitBranch, Building2, RefreshCw, Loader2 } from 'lucide-react';
+import { Network, GitBranch, Building2, List, RefreshCw, Loader2, MapPin } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -12,6 +12,12 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import type { OrgRelationshipType } from '../organizations/OrganizationProfileCard';
+import {
+  groupChildrenBySite,
+  isOrgSiteNodeId,
+  orgSiteNodeId,
+  type OrgNetworkLocation,
+} from './orgNetworkSites';
 
 type OrgNetworkNode = {
   id: string;
@@ -25,10 +31,13 @@ type OrgNetworkNode = {
     direction: 'outgoing' | 'incoming';
     inferred: boolean;
     notes?: string;
+    relationshipId?: string;
   }>;
+  locations?: OrgNetworkLocation[];
 };
 
 type OrgNetworkEdge = {
+  id?: string;
   fromId: string;
   toId: string;
   relationshipType: OrgRelationshipType;
@@ -43,6 +52,103 @@ type OrgNetwork = {
   orgCount: number;
   edgeCount: number;
 };
+
+type PreviewOrg = {
+  id: string;
+  name: string;
+  group_type?: string;
+  member_count?: number;
+  parent_group_id?: string | null;
+  members?: Array<{ character_name: string }>;
+  locations?: Array<{ location_id?: string; location_name: string }>;
+};
+
+function mapPreviewLocations(org: PreviewOrg): OrgNetworkLocation[] {
+  return (org.locations ?? []).map(loc => ({
+    locationId: loc.location_id,
+    name: loc.location_name,
+  }));
+}
+
+export function buildOrgNetworkPreview(
+  root: PreviewOrg,
+  peers: PreviewOrg[],
+  relationships: Array<{
+    id: string;
+    from_org_id: string;
+    to_org_id: string;
+    relationship_type: OrgRelationshipType;
+    notes?: string;
+  }>,
+): OrgNetwork {
+  const orgs = [root, ...peers.filter(org => org.id !== root.id)];
+  const orgById = new Map(orgs.map(org => [org.id, org]));
+  const edges: OrgNetworkEdge[] = relationships.map(rel => ({
+    id: rel.id,
+    fromId: rel.from_org_id,
+    toId: rel.to_org_id,
+    relationshipType: rel.relationship_type,
+    inferred: Boolean(rel.notes?.startsWith('[auto-inferred]')),
+    notes: rel.notes,
+  }));
+  const edgeKeys = new Set(edges.map(edge => `${edge.fromId}|${edge.toId}|${edge.relationshipType}`));
+  for (const org of orgs) {
+    if (!org.parent_group_id || !orgById.has(org.parent_group_id)) continue;
+    const key = `${org.id}|${org.parent_group_id}|part_of`;
+    if (edgeKeys.has(key)) continue;
+    edgeKeys.add(key);
+    edges.push({
+      fromId: org.id,
+      toId: org.parent_group_id,
+      relationshipType: 'part_of',
+      inferred: false,
+      notes: '[parent-group] Canonical organization hierarchy',
+    });
+  }
+  const nodeRels = new Map<string, OrgNetworkNode['relationships']>();
+  const addRel = (orgId: string, rel: OrgNetworkNode['relationships'][number]) => {
+    const list = nodeRels.get(orgId) ?? [];
+    list.push(rel);
+    nodeRels.set(orgId, list);
+  };
+  for (const edge of edges) {
+    addRel(edge.fromId, {
+      toId: edge.toId,
+      relationshipType: edge.relationshipType,
+      direction: 'outgoing',
+      inferred: edge.inferred,
+      notes: edge.notes,
+      relationshipId: edge.id,
+    });
+    addRel(edge.toId, {
+      toId: edge.fromId,
+      relationshipType: edge.relationshipType,
+      direction: 'incoming',
+      inferred: edge.inferred,
+      notes: edge.notes,
+      relationshipId: edge.id,
+    });
+  }
+  const nodes: OrgNetworkNode[] = orgs
+    .filter(org => org.id === root.id || edges.some(edge => edge.fromId === org.id || edge.toId === org.id))
+    .map(org => ({
+      id: org.id,
+      name: org.name,
+      group_type: org.group_type,
+      member_count: org.members?.length ?? org.member_count ?? 0,
+      member_names: (org.members ?? []).map(member => member.character_name).slice(0, 8),
+      relationships: nodeRels.get(org.id) ?? [],
+      locations: mapPreviewLocations(org),
+    }));
+  const rootNode = nodes.find(node => node.id === root.id) ?? nodes[0] ?? null;
+  return {
+    rootOrg: rootNode,
+    nodes,
+    edges: edges.filter(edge => orgById.has(edge.fromId) && orgById.has(edge.toId)),
+    orgCount: nodes.length,
+    edgeCount: edges.length,
+  };
+}
 
 const REL_LABEL: Record<string, string> = {
   part_of: 'part of',
@@ -70,6 +176,9 @@ type Props = {
   compact?: boolean;
   title?: string;
   onOrgClick?: (orgId: string, orgName: string) => void;
+  onLocationClick?: (locationId: string | undefined, locationName: string) => void;
+  onDisconnect?: (edge: OrgNetworkEdge) => void;
+  previewNetwork?: OrgNetwork | null;
 };
 
 export function OrganizationGroupNetwork({
@@ -77,13 +186,23 @@ export function OrganizationGroupNetwork({
   compact,
   title = 'Group Network',
   onOrgClick,
+  onLocationClick,
+  onDisconnect,
+  previewNetwork,
 }: Props) {
-  const [network, setNetwork] = useState<OrgNetwork | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'tree' | 'graph'>('graph');
+  const [network, setNetwork] = useState<OrgNetwork | null>(previewNetwork ?? null);
+  const [loading, setLoading] = useState(!previewNetwork);
+  const [view, setView] = useState<'tree' | 'graph' | 'list'>(compact ? 'list' : 'graph');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [pendingDisconnect, setPendingDisconnect] = useState<OrgNetworkEdge | null>(null);
 
   const load = useCallback(async () => {
+    if (previewNetwork) {
+      setNetwork(previewNetwork);
+      if (previewNetwork.rootOrg) setExpanded(new Set([previewNetwork.rootOrg.id]));
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const q = new URLSearchParams();
@@ -101,7 +220,7 @@ export function OrganizationGroupNetwork({
     } finally {
       setLoading(false);
     }
-  }, [rootOrgId, compact]);
+  }, [rootOrgId, compact, previewNetwork]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => onStoryDataUpdated(() => { void load(); }, 'organizations'), [load]);
@@ -111,12 +230,57 @@ export function OrganizationGroupNetwork({
     [network]
   );
 
+  const siteLayout = useMemo(() => {
+    if (!network) {
+      return {
+        childrenOf: new Map<string, string[]>(),
+        siteNodes: new Map<string, { id: string; name: string; locationId?: string; ownerId: string }>(),
+        routedHierarchy: new Set<string>(),
+      };
+    }
+    const childrenOf = new Map<string, string[]>();
+    const siteNodes = new Map<string, { id: string; name: string; locationId?: string; ownerId: string }>();
+    const routedHierarchy = new Set<string>();
+    const addChild = (parentId: string, childId: string) => {
+      const list = childrenOf.get(parentId) ?? [];
+      if (!list.includes(childId)) list.push(childId);
+      childrenOf.set(parentId, list);
+    };
+    for (const node of network.nodes) {
+      const rawChildren = network.edges
+        .filter(edge => edge.toId === node.id && HIERARCHY.has(edge.relationshipType))
+        .map(edge => edge.fromId);
+      // Leaf groups that only *occupy* a site should not grow their own empty
+      // location nodes (that duplicated Depot/lab under Field Crew / QA Lab).
+      const nestSites = node.group_type === 'company' || rawChildren.length > 0;
+      if (!nestSites) continue;
+      const { buckets, unassigned } = groupChildrenBySite(
+        node.locations,
+        rawChildren,
+        id => nodeById.get(id)?.locations,
+      );
+      for (const bucket of buckets) {
+        const siteId = orgSiteNodeId(node.id, bucket.key);
+        siteNodes.set(siteId, {
+          id: siteId,
+          name: bucket.name,
+          locationId: bucket.locationId,
+          ownerId: node.id,
+        });
+        addChild(node.id, siteId);
+        for (const childId of bucket.childIds) {
+          addChild(siteId, childId);
+          routedHierarchy.add(`${childId}|${node.id}`);
+        }
+      }
+      for (const childId of unassigned) addChild(node.id, childId);
+    }
+    return { childrenOf, siteNodes, routedHierarchy };
+  }, [network, nodeById]);
+
   const hierarchyChildren = useCallback((parentId: string): string[] => {
-    if (!network) return [];
-    return network.edges
-      .filter(e => e.toId === parentId && HIERARCHY.has(e.relationshipType))
-      .map(e => e.fromId);
-  }, [network]);
+    return siteLayout.childrenOf.get(parentId) ?? [];
+  }, [siteLayout]);
 
   const graphLayout = useMemo(() => {
     if (!network || network.nodes.length === 0) return null;
@@ -132,7 +296,7 @@ export function OrganizationGroupNetwork({
     assign(root.id, 0);
 
     for (const n of network.nodes) {
-      if (!levels.has(n.id)) levels.set(n.id, 0);
+      if (!levels.has(n.id)) assign(n.id, 0);
     }
 
     const byLevel = new Map<number, string[]>();
@@ -168,6 +332,33 @@ export function OrganizationGroupNetwork({
   };
 
   const renderTreeNode = (nodeId: string, depth = 0): React.ReactNode => {
+    const site = siteLayout.siteNodes.get(nodeId);
+    if (site) {
+      const children = hierarchyChildren(nodeId);
+      return (
+        <div key={nodeId} style={{ marginLeft: depth * 16 }}>
+          <button
+            type="button"
+            onClick={() => onLocationClick?.(site.locationId, site.name)}
+            className="w-full text-left flex items-start gap-2 p-2.5 rounded-lg mb-1.5 border border-teal-400/25 bg-teal-500/10 transition hover:bg-teal-500/15"
+          >
+            <span className="text-white/40 w-4 shrink-0">{children.length > 0 ? '−' : ''}</span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <MapPin className="h-3.5 w-3.5 text-teal-300 shrink-0" />
+                <span className="font-medium text-white text-sm">{site.name}</span>
+                <Badge variant="outline" className="text-[10px] border-teal-400/30 text-teal-200">location</Badge>
+                <span className="text-[10px] text-white/40">
+                  {children.length} {children.length === 1 ? 'group' : 'groups'}
+                </span>
+              </div>
+            </div>
+          </button>
+          {children.map(cid => renderTreeNode(cid, depth + 1))}
+        </div>
+      );
+    }
+
     const node = nodeById.get(nodeId);
     if (!node) return null;
     const children = hierarchyChildren(nodeId);
@@ -255,13 +446,16 @@ export function OrganizationGroupNetwork({
         </CardHeader>
       )}
       <CardContent className={compact ? 'p-0' : 'pt-0'}>
-        <Tabs value={view} onValueChange={v => setView(v as 'tree' | 'graph')}>
+        <Tabs value={view} onValueChange={v => setView(v as 'tree' | 'graph' | 'list')}>
           <TabsList className={`mb-3 ${compact ? 'h-8' : ''}`}>
             <TabsTrigger value="graph" className="text-xs">
               <GitBranch className="w-3.5 h-3.5 mr-1" /> Graph
             </TabsTrigger>
             <TabsTrigger value="tree" className="text-xs">
               <Building2 className="w-3.5 h-3.5 mr-1" /> Tree
+            </TabsTrigger>
+            <TabsTrigger value="list" className="text-xs">
+              <List className="w-3.5 h-3.5 mr-1" /> List
             </TabsTrigger>
           </TabsList>
 
@@ -270,21 +464,75 @@ export function OrganizationGroupNetwork({
               <div className="overflow-x-auto rounded-xl border border-white/10 bg-black/50">
                 <svg width={graphLayout.w} height={graphLayout.h} className="min-w-full">
                   {network.edges.map((e, i) => {
+                    if (HIERARCHY.has(e.relationshipType) && siteLayout.routedHierarchy.has(`${e.fromId}|${e.toId}`)) {
+                      return null;
+                    }
                     const a = graphLayout.positions.get(e.fromId);
                     const b = graphLayout.positions.get(e.toId);
                     if (!a || !b) return null;
                     const mx = (a.x + b.x) / 2;
                     const my = (a.y + b.y) / 2;
+                    const canDisconnect = Boolean(onDisconnect && (e.id || e.relationshipType === 'part_of'));
                     return (
-                      <g key={i}>
+                      <g key={e.id ?? i}>
                         <line
                           x1={a.x} y1={a.y + 18} x2={b.x} y2={b.y - 18}
-                          className={`${relColor(e.relationshipType, e.inferred)}`}
+                          className={`${relColor(e.relationshipType, e.inferred)} ${canDisconnect ? 'cursor-pointer' : ''}`}
                           strokeWidth={HIERARCHY.has(e.relationshipType) ? 2 : 1.5}
                           strokeDasharray={e.inferred ? '4 3' : undefined}
+                          onClick={canDisconnect ? (event) => {
+                            event.stopPropagation();
+                            setPendingDisconnect(e);
+                          } : undefined}
                         />
                         <text x={mx} y={my} className="fill-white/35 text-[9px]" textAnchor="middle">
                           {REL_LABEL[e.relationshipType] ?? e.relationshipType}
+                        </text>
+                      </g>
+                    );
+                  })}
+                  {[...siteLayout.childrenOf.entries()].flatMap(([parentId, childIds]) =>
+                    childIds.map((childId) => {
+                      const a = graphLayout.positions.get(parentId);
+                      const b = graphLayout.positions.get(childId);
+                      if (!a || !b) return null;
+                      const isSiteHop = isOrgSiteNodeId(parentId) || isOrgSiteNodeId(childId);
+                      if (!isSiteHop) return null;
+                      const mx = (a.x + b.x) / 2;
+                      const my = (a.y + b.y) / 2;
+                      return (
+                        <g key={`site-edge-${parentId}-${childId}`}>
+                          <line
+                            x1={a.x} y1={a.y + 18} x2={b.x} y2={b.y - 18}
+                            className="stroke-teal-300/80"
+                            strokeWidth={2}
+                          />
+                          <text x={mx} y={my} className="fill-teal-200/50 text-[9px]" textAnchor="middle">
+                            {isOrgSiteNodeId(childId) ? 'site' : 'at'}
+                          </text>
+                        </g>
+                      );
+                    }),
+                  )}
+                  {[...siteLayout.siteNodes.values()].map(site => {
+                    const p = graphLayout.positions.get(site.id);
+                    if (!p) return null;
+                    return (
+                      <g
+                        key={site.id}
+                        className="cursor-pointer"
+                        onClick={() => onLocationClick?.(site.locationId, site.name)}
+                      >
+                        <rect
+                          x={p.x - 72} y={p.y - 22} width={144} height={44} rx={10}
+                          className="fill-teal-500/20 stroke-teal-400/50"
+                          strokeWidth={1.5}
+                        />
+                        <text x={p.x} y={p.y - 4} textAnchor="middle" className="fill-white text-[11px] font-medium pointer-events-none">
+                          {site.name.length > 18 ? `${site.name.slice(0, 16)}…` : site.name}
+                        </text>
+                        <text x={p.x} y={p.y + 12} textAnchor="middle" className="fill-teal-200/70 text-[9px] pointer-events-none">
+                          location
                         </text>
                       </g>
                     );
@@ -321,13 +569,137 @@ export function OrganizationGroupNetwork({
             )}
             <p className="text-[10px] text-white/35 mt-2">
               Solid lines = hierarchy · dashed = learned from chat · click a group to open
+              {onDisconnect ? ' · click a line to disconnect' : ''}
             </p>
+            {pendingDisconnect && onDisconnect && (
+              <div className="mt-3 rounded-lg border border-rose-400/30 bg-rose-500/10 p-3 text-xs text-white/80">
+                Disconnect {nodeById.get(pendingDisconnect.fromId)?.name ?? 'this group'} from {nodeById.get(pendingDisconnect.toId)?.name ?? 'that group'}?
+                <div className="mt-2 flex gap-2">
+                  <Button
+                    size="sm"
+                    className="h-8 bg-rose-500/20 border border-rose-400/40 text-rose-100"
+                    onClick={() => {
+                      onDisconnect(pendingDisconnect);
+                      setPendingDisconnect(null);
+                    }}
+                  >
+                    Disconnect
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-8" onClick={() => setPendingDisconnect(null)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="tree" className="mt-0 max-h-[420px] overflow-y-auto pr-1">
             {network.rootOrg
               ? renderTreeNode(network.rootOrg.id)
               : network.nodes.map(n => renderTreeNode(n.id))}
+          </TabsContent>
+
+          <TabsContent value="list" className="mt-0 space-y-2 max-h-[420px] overflow-y-auto pr-1">
+            {network.nodes.map(node => {
+              const parentLinks = node.relationships.filter(
+                rel => HIERARCHY.has(rel.relationshipType) && rel.direction === 'outgoing',
+              );
+              const subgroupLinks = node.relationships.filter(
+                rel => HIERARCHY.has(rel.relationshipType) && rel.direction === 'incoming',
+              );
+              const connectedLinks = node.relationships.filter(rel => !HIERARCHY.has(rel.relationshipType));
+              const isCompany = node.group_type === 'company';
+              const subgroupLabel = isCompany ? 'Departments & jobs: ' : 'Subgroups: ';
+              const rawChildIds = subgroupLinks.map(rel => rel.toId);
+              const nestSites = isCompany || rawChildIds.length > 0;
+              const { buckets, unassigned } = nestSites
+                ? groupChildrenBySite(
+                    node.locations,
+                    rawChildIds,
+                    id => nodeById.get(id)?.locations,
+                  )
+                : { buckets: [], unassigned: [] };
+              const unassignedNames = unassigned
+                .map(id => nodeById.get(id)?.name)
+                .filter(Boolean);
+              return (
+                <div key={node.id} className="rounded-xl border border-white/10 bg-black/30 p-3">
+                  <button
+                    type="button"
+                    onClick={() => onOrgClick?.(node.id, node.name)}
+                    className="text-left text-sm font-semibold text-white hover:text-indigo-300"
+                  >
+                    {node.name}
+                  </button>
+                  <p className="mt-0.5 text-[10px] text-white/40">
+                    {node.group_type?.replace(/_/g, ' ') ?? 'group'} · {node.member_count} members
+                  </p>
+                  <div className="mt-2 space-y-1 text-xs text-white/55">
+                    {parentLinks.map((rel, index) => (
+                      <p key={`parent-${index}`}>
+                        <span className="text-white/35">Part of </span>
+                        {nodeById.get(rel.toId)?.name ?? 'Unknown group'}
+                        {rel.inferred && <span className="text-purple-300/70"> · learned</span>}
+                      </p>
+                    ))}
+                    {buckets.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-white/35">Locations:</p>
+                        {buckets.map(bucket => (
+                          <p key={bucket.key} className="pl-2">
+                            <button
+                              type="button"
+                              className="text-teal-200 hover:text-teal-100"
+                              onClick={() => onLocationClick?.(bucket.locationId, bucket.name)}
+                            >
+                              {bucket.name}
+                            </button>
+                            <span className="text-white/35"> — </span>
+                            {bucket.childIds.length > 0
+                              ? bucket.childIds.map(id => nodeById.get(id)?.name).filter(Boolean).join(', ')
+                              : 'no groups yet'}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                    {!nestSites && (node.locations?.length ?? 0) > 0 && (
+                      <p>
+                        <span className="text-white/35">Based at </span>
+                        {(node.locations ?? []).map((loc, index) => (
+                          <span key={`${loc.locationId ?? loc.name}-${index}`}>
+                            {index > 0 ? ', ' : ''}
+                            <button
+                              type="button"
+                              className="text-teal-200 hover:text-teal-100"
+                              onClick={() => onLocationClick?.(loc.locationId, loc.name)}
+                            >
+                              {loc.name}
+                            </button>
+                          </span>
+                        ))}
+                      </p>
+                    )}
+                    {unassignedNames.length > 0 && (
+                      <p>
+                        <span className="text-white/35">
+                          {buckets.length > 0 ? 'Company-wide: ' : subgroupLabel}
+                        </span>
+                        {unassignedNames.join(', ')}
+                      </p>
+                    )}
+                    {connectedLinks.length > 0 && (
+                      <p>
+                        <span className="text-white/35">Connected: </span>
+                        {connectedLinks.map(rel => {
+                          const other = nodeById.get(rel.toId);
+                          return other ? `${other.name} (${REL_LABEL[rel.relationshipType] ?? rel.relationshipType})` : null;
+                        }).filter(Boolean).join(', ')}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </TabsContent>
         </Tabs>
       </CardContent>

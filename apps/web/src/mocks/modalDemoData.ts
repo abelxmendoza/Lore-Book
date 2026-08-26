@@ -137,6 +137,21 @@ const DEMO_ORG_RELATIONSHIP_LINKS: Record<
   'mock-5': [{ toId: 'mock-4', type: 'affiliated_with' }],
   'mock-6': [{ toId: 'mock-7', type: 'rival_of', notes: 'Friendly gym rivalry.' }],
   'mock-7': [{ toId: 'mock-6', type: 'rival_of' }],
+  'mock-19': [
+    { toId: 'mock-20', type: 'affiliated_with', notes: 'Staffing pipeline for the Northwind Logistics job.' },
+  ],
+  'mock-20': [
+    { toId: 'mock-19', type: 'affiliated_with', notes: 'Hired through Summit Staffing.' },
+  ],
+  'mock-22': [
+    { toId: 'mock-20', type: 'part_of', notes: 'On-site crew at Northwind Depot.' },
+  ],
+  'mock-24': [
+    { toId: 'mock-20', type: 'part_of', notes: 'Overnight coverage at Northwind Depot.' },
+  ],
+  'mock-23': [
+    { toId: 'mock-20', type: 'part_of', notes: 'QA team at the Hollywood lab.' },
+  ],
 };
 
 function defaultDemoAnalytics(org: Organization): NonNullable<Organization['analytics']> {
@@ -298,6 +313,40 @@ export function getMockOrganizationRelationships(
       notes: link.notes,
       created_at: now,
     }));
+
+  for (const peer of peers) {
+    const childLinks = DEMO_ORG_RELATIONSHIP_LINKS[peer.id] ?? [];
+    for (const [index, link] of childLinks.entries()) {
+      if (link.toId !== org.id) continue;
+      if (link.type !== 'part_of' && link.type !== 'spawned_from') continue;
+      relationships.push({
+        id: `${peer.id}-rel-parent-${index}`,
+        user_id: 'demo',
+        from_org_id: peer.id,
+        to_org_id: org.id,
+        relationship_type: link.type,
+        notes: link.notes,
+        created_at: now,
+      });
+    }
+    if (peer.parent_group_id !== org.id) continue;
+    const already = relationships.some(
+      (rel) =>
+        rel.from_org_id === peer.id &&
+        rel.to_org_id === org.id &&
+        (rel.relationship_type === 'part_of' || rel.relationship_type === 'spawned_from'),
+    );
+    if (already) continue;
+    relationships.push({
+      id: `${peer.id}-rel-parent-group`,
+      user_id: 'demo',
+      from_org_id: peer.id,
+      to_org_id: org.id,
+      relationship_type: 'part_of',
+      notes: `Nested under ${org.name}.`,
+      created_at: now,
+    });
+  }
 
   return { relationships, relatedOrgs: peers };
 }
