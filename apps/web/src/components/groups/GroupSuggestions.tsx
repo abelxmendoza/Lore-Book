@@ -8,7 +8,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { shortDisplayName } from '../../lib/displayName';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
-import { Users, X, Check, ChevronDown, ChevronUp, Sparkles, Loader2, Copy } from 'lucide-react';
+import { Users, X, Check, ChevronDown, ChevronUp, ChevronRight, Sparkles, Loader2, Copy } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { useToast } from '../ui/toast';
@@ -72,6 +72,8 @@ interface GroupSuggestionsProps {
   /** Called after a candidate is accepted. Receives the created organization so
    *  the parent can render its card immediately and open it in the modal. */
   onGroupCreated?: (created?: Organization) => void;
+  /** Open the full group modal for a pending suggestion (preview / accept flow). */
+  onOpenCandidate?: (organization: Organization) => void;
   categoryFilter?: OrganizationCategory;
   searchTerm?: string;
   demoMode?: boolean;
@@ -152,9 +154,14 @@ const buildSubtitle = (c: GroupCandidate): string => {
 
 /** Build a full Organization card from an accepted candidate, so a card can
  *  render immediately (with members + a starting profile) without a round trip. */
-const candidateToOrganization = (c: GroupCandidate, id?: string): Organization => {
+const candidateToOrganization = (
+  c: GroupCandidate,
+  id?: string,
+  options?: { preview?: boolean },
+): Organization => {
   const now = new Date().toISOString();
-  const orgId = id ?? `org-${c.id}`;
+  const preview = options?.preview === true;
+  const orgId = id ?? (preview ? `candidate-${c.id}` : `org-${c.id}`);
   const members: OrganizationMember[] = c.detected_members.map((name, i) => ({
     id: `${orgId}-member-${i}`,
     character_name: name,
@@ -189,7 +196,9 @@ const candidateToOrganization = (c: GroupCandidate, id?: string): Organization =
     last_seen: now,
     created_at: now,
     updated_at: now,
-    metadata: { profile, created_from_candidate: c.id },
+    metadata: preview
+      ? { profile, preview_candidate: true, group_candidate_id: c.id }
+      : { profile, created_from_candidate: c.id },
     profile,
   };
 };
@@ -232,7 +241,13 @@ const DEMO_GROUP_CANDIDATES: GroupCandidate[] = [
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreated, categoryFilter = 'all', searchTerm = '', demoMode = false }) => {
+export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({
+  onGroupCreated,
+  onOpenCandidate,
+  categoryFilter = 'all',
+  searchTerm = '',
+  demoMode = false,
+}) => {
   const { success, error, ToastContainer } = useToast({ maxVisible: 1 });
   const [candidates, setCandidates] = useState<GroupCandidate[]>(() => demoMode ? DEMO_GROUP_CANDIDATES : []);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -439,6 +454,16 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
     copyTimer.current = setTimeout(() => setCopied(false), 2000);
   };
 
+  const openCandidateModal = (candidate: GroupCandidate) => {
+    if (!onOpenCandidate) return;
+    const overriddenType = typeOverride[candidate.id];
+    const effective =
+      overriddenType && overriddenType !== candidate.suggested_group_type
+        ? { ...candidate, suggested_group_type: overriddenType }
+        : candidate;
+    onOpenCandidate(candidateToOrganization(cleanCandidate(effective), undefined, { preview: true }));
+  };
+
   const visible = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
 
@@ -516,7 +541,7 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
         <div className="px-2.5 pb-3 sm:px-3 space-y-2">
           {demoMode && (
             <p className="text-[10px] leading-relaxed text-purple-200/70 rounded-md border border-purple-500/20 bg-purple-500/5 px-2.5 py-1.5">
-              LoreBook found recurring groups in sample conversations. Tap Create to add them to your Organizations book.
+              LoreBook found recurring groups in sample conversations. Tap a name to open the card, or Create to add it to your Organizations book.
             </p>
           )}
           <div className="space-y-2">
@@ -539,9 +564,21 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
                       <Users className="h-2.5 w-2.5" />
                       New
                     </span>
-                    <h3 className="truncate text-sm font-semibold text-white leading-tight">
-                      {groupName}
-                    </h3>
+                    {onOpenCandidate ? (
+                      <button
+                        type="button"
+                        onClick={() => openCandidateModal(c)}
+                        aria-label={`Open ${groupName} suggestion`}
+                        className="min-w-0 flex-1 truncate rounded-md text-left text-sm font-semibold text-white leading-tight hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/40 inline-flex items-center gap-1 px-0.5 -mx-0.5"
+                      >
+                        <span className="min-w-0 truncate">{groupName}</span>
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/35" />
+                      </button>
+                    ) : (
+                      <h3 className="truncate text-sm font-semibold text-white leading-tight">
+                        {groupName}
+                      </h3>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleDismissLocal(c.id)}
@@ -553,9 +590,19 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
                     </button>
                   </div>
 
-                  <p className="mt-0.5 text-[10px] sm:text-[11px] text-white/50 leading-snug line-clamp-1">
-                    {buildSubtitle(c)}
-                  </p>
+                  {onOpenCandidate ? (
+                    <button
+                      type="button"
+                      onClick={() => openCandidateModal(c)}
+                      className="mt-0.5 w-full text-left text-[10px] sm:text-[11px] text-white/50 leading-snug line-clamp-1 hover:text-white/70"
+                    >
+                      {buildSubtitle(c)}
+                    </button>
+                  ) : (
+                    <p className="mt-0.5 text-[10px] sm:text-[11px] text-white/50 leading-snug line-clamp-1">
+                      {buildSubtitle(c)}
+                    </p>
+                  )}
 
                   <div className="mt-1 flex flex-wrap items-center gap-1">
                     <select
