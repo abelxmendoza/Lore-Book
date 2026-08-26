@@ -30,6 +30,24 @@ describe('extractResponseActions', () => {
     expect(actions.some((a) => a.type === 'delete_family_member')).toBe(false);
   });
 
+  it('extracts a delete_household candidate from the confirmation phrasing', () => {
+    const actions = extractResponseActions(
+      "Delete the **Mom and Dad's House** household? This removes it from your household list and can't be undone.",
+    );
+    expect(actions).toEqual([
+      expect.objectContaining({
+        type: 'delete_household',
+        label: "Delete Mom and Dad's House household",
+        payload: { householdName: "Mom and Dad's House" },
+      }),
+    ]);
+  });
+
+  it('does not extract a delete_household candidate from unrelated text', () => {
+    const actions = extractResponseActions("Ralph lives at Mom and Dad's House.");
+    expect(actions.some((a) => a.type === 'delete_household')).toBe(false);
+  });
+
   it('returns no actions for plain narrative text', () => {
     expect(extractResponseActions('It was a quiet afternoon at the lake house.')).toEqual([]);
   });

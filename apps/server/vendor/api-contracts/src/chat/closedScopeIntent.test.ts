@@ -13,6 +13,7 @@ import {
   isSkillWriteRequest,
   isQuestWriteRequest,
   isFamilyWriteRequest,
+  isHouseholdWriteRequest,
   isRomanceWriteRequest,
   isClosedScopeQuery,
   isFocusEntityRelevant,
@@ -95,6 +96,21 @@ describe('isFamilyWriteRequest / isRomanceWriteRequest', () => {
 
   it('does not confuse a hard delete with a character-book delete', () => {
     expect(isFamilyWriteRequest('delete Marcus from my character book')).toBe(false);
+  });
+});
+
+describe('isHouseholdWriteRequest', () => {
+  it('matches create/add/remove/move/delete household commands', () => {
+    expect(isHouseholdWriteRequest("create a household called Grandma's House")).toBe(true);
+    expect(isHouseholdWriteRequest("add Ralph to the Mom and Dad's House household")).toBe(true);
+    expect(isHouseholdWriteRequest("remove Ralph from the Mom and Dad's House household")).toBe(true);
+    expect(isHouseholdWriteRequest("Ralph moved out of the Mom and Dad's House household")).toBe(true);
+    expect(isHouseholdWriteRequest("move the Mom and Dad's House household to 456 Oak Ave")).toBe(true);
+    expect(isHouseholdWriteRequest("delete the Mom and Dad's House household")).toBe(true);
+  });
+
+  it('does not match unrelated household mentions', () => {
+    expect(isHouseholdWriteRequest('my parents live in a nice house')).toBe(false);
   });
 });
 
