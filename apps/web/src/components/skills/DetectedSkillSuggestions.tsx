@@ -184,10 +184,6 @@ export const DetectedSkillSuggestions = ({
 
   const handleAdd = async (s: SkillSuggestion) => {
     const k = keyFor(s);
-    if (isSimilarSuggestion(s)) {
-      setDismissed(prev => new Set(prev).add(k));
-      return;
-    }
     setAdding(k);
     try {
       if (showDemo) {
@@ -218,6 +214,27 @@ export const DetectedSkillSuggestions = ({
         next.delete(k);
         return next;
       });
+    } finally {
+      setAdding(null);
+    }
+  };
+
+  const handleMerge = async (s: SkillSuggestion, target: { id: string; name: string }) => {
+    const k = keyFor(s);
+    setAdding(k);
+    try {
+      if (showDemo) {
+        mockDataService.mutate.skills.mergeSuggestionInto(s, target.id);
+      } else {
+        await skillsApi.materializeSuggestion({ ...s, merge_into_skill_id: target.id });
+      }
+      setRescanNotice(`“${s.skill_name}” merged into ${target.name}.`);
+      setAdded((prev) => new Set(prev).add(k));
+      setSuggestions((prev) => prev.filter((item) => keyFor(item) !== k));
+      setOpenSuggestion((current) => (current && keyFor(current) === k ? null : current));
+      onSkillAdded?.();
+    } catch (err) {
+      console.error('Failed to merge skill suggestion:', err);
     } finally {
       setAdding(null);
     }
@@ -439,9 +456,13 @@ export const DetectedSkillSuggestions = ({
 
                     <div className="mt-auto flex justify-stretch sm:justify-end pt-0.5">
                       {isSimilarSuggestion(s) ? (
-                        <span className="text-[9px] sm:text-xs text-amber-200/80 px-1 sm:px-2 py-1 leading-tight">
-                          Already tracked
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setOpenSuggestion(s)}
+                          className="flex w-full sm:w-auto items-center justify-center gap-1 text-[10px] sm:text-xs font-medium px-2 sm:px-2.5 py-2 sm:py-1 min-h-[44px] sm:min-h-0 rounded bg-amber-500/15 text-amber-100 border border-amber-500/35 hover:bg-amber-500/25 touch-manipulation"
+                        >
+                          Review match
+                        </button>
                       ) : (
                         <button
                           type="button"
@@ -467,8 +488,10 @@ export const DetectedSkillSuggestions = ({
         <SkillSuggestionDetailModal
           suggestion={openSuggestion}
           adding={adding === keyFor(openSuggestion)}
+          bookEntries={bookEntries}
           onClose={() => setOpenSuggestion(null)}
           onAdd={(s) => void handleAdd(s)}
+          onMerge={(s, target) => void handleMerge(s, target)}
           onDismiss={(s, reason) => void handleDismiss(s, reason)}
         />
       )}

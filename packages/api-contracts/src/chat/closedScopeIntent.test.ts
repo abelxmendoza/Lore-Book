@@ -64,6 +64,7 @@ describe('isProjectWriteRequest / isSkillWriteRequest / isQuestWriteRequest', ()
   it('matches create phrasing', () => {
     expect(isProjectWriteRequest('add MemoVault as a project')).toBe(true);
     expect(isSkillWriteRequest('add Welding as a skill')).toBe(true);
+    expect(isSkillWriteRequest('merge Prototyping into Hardware Prototyping')).toBe(true);
     expect(isQuestWriteRequest('add Ship MemoVault as a quest')).toBe(true);
     expect(isQuestWriteRequest('mark the quest Ship MemoVault as done')).toBe(true);
   });
@@ -121,6 +122,14 @@ describe('isOrganizationGroupWriteRequest', () => {
     expect(isOrganizationGroupWriteRequest('make Field Crew a team at Northwind Depot under Northwind Logistics')).toBe(true);
     expect(isOrganizationGroupWriteRequest('add Northwind Depot as a location of Northwind Logistics')).toBe(true);
     expect(isOrganizationGroupWriteRequest('Jamie is going to the store')).toBe(false);
+  });
+
+  it('matches type and relationship classification corrections', () => {
+    expect(isOrganizationGroupWriteRequest("Mom's House is a household")).toBe(true);
+    expect(isOrganizationGroupWriteRequest("Abuela's Family is a family, not a household")).toBe(true);
+    expect(isOrganizationGroupWriteRequest('I belong to Eastside BJJ')).toBe(true);
+    expect(isOrganizationGroupWriteRequest('put Radiohead in mentioned')).toBe(true);
+    expect(isOrganizationGroupWriteRequest("I'm close to Summit Staffing")).toBe(true);
   });
 
   it('defers wrong-book corrections to reclassify', () => {

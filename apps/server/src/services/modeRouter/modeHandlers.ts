@@ -41,6 +41,7 @@ class ModeHandlers {
       threadId?: string;
       focusCharacterId?: string;
       focusCharacterName?: string;
+      focusOrganizationName?: string;
     }
   ): Promise<ModeHandlerResponse> {
     switch (mode) {
@@ -254,6 +255,7 @@ class ModeHandlers {
       threadId?: string;
       focusCharacterId?: string;
       focusCharacterName?: string;
+      focusOrganizationName?: string;
     },
   ): Promise<ModeHandlerResponse> {
     const threadId = options?.threadId;
@@ -301,6 +303,7 @@ class ModeHandlers {
         conversationHistory: options?.conversationHistory,
         threadTitle,
         focusCharacterName,
+        focusOrganizationName: options?.focusOrganizationName?.trim() || null,
       });
       return {
         content: result.summary,
@@ -543,6 +546,7 @@ class ModeHandlers {
       ]);
       const request = skillQueryRequestSchema.parse({ query: message, limit: 30 });
       const result = await querySkillsForUser(userId, request);
+      const similarQuery = /\b(similar|duplicates?|related|merge)\b/i.test(message);
       const lines = result.results.map((skill) => {
         const details = [
           skill.category.replaceAll('_', ' '),
@@ -552,10 +556,15 @@ class ModeHandlers {
         ].filter(Boolean);
         return `- **${skill.name}** — ${details.join(' · ')}`;
       });
+      const hint = similarQuery
+        ? '\n\nMerge two cards with “merge X into Y”, or open a skill and use Merge in the modal.'
+        : '';
       return {
         content: lines.length
-          ? `I found ${result.total} matching skill${result.total === 1 ? '' : 's'}:\n\n${lines.join('\n')}`
-          : `I couldn't find a grounded skill matching that. I checked category, activity, practice, growth, work use, related projects, confidence, and evidence.`,
+          ? `I found ${result.total} matching skill${result.total === 1 ? '' : 's'}:\n\n${lines.join('\n')}${hint}`
+          : similarQuery
+            ? `I didn't find related skill pairs in your book. You can still merge two cards with “merge X into Y”.`
+            : `I couldn't find a grounded skill matching that. I checked category, activity, practice, growth, work use, related projects, confidence, and evidence.`,
         response_mode: 'SKILL_QUERY',
         confidence: 0.94,
         metadata: { skillQuery: result },

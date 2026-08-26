@@ -146,4 +146,19 @@ describe("skillQueryService", () => {
 
     expect(result.results.map((row) => row.skillId)).toEqual(["skill-1"]);
   });
+
+  it("returns related skill pairs for a similar-skills query", () => {
+    const request = skillQueryRequestSchema.parse({ query: "which skills are similar?" });
+    const result = compileSkillQuery([
+      skill({ id: "fe", skill_name: "Front-End Development" }),
+      skill({ id: "web", skill_name: "Web UI Development" }),
+      skill({ id: "muay", skill_name: "Muay Thai", skill_category: "physical" }),
+    ], request);
+
+    expect(result.results.map((row) => row.name).sort()).toEqual([
+      "Front-End Development",
+      "Web UI Development",
+    ]);
+    expect(result.results[0]?.matchedReasons[0]).toMatch(/similar to/i);
+  });
 });

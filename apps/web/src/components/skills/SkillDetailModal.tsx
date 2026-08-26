@@ -55,13 +55,20 @@ import {
 import { formatSkillCertaintyDetail, levelLabel, skillCertaintyFieldLabel } from '../../lib/skillStory';
 import type { Skill, SkillProgress, SkillMetadata } from '../../types/skill';
 import type { Achievement } from '../../types/achievement';
+import { skillBookDemoSkills } from '../../mocks/skillBookDemo';
 import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
+
+function demoSkillPeers(): Skill[] {
+  const registered = mockDataService.get.skills();
+  return registered.length > 0 ? registered : skillBookDemoSkills;
+}
 
 type SkillDetailModalProps = {
   skill: Skill;
   onClose: () => void;
   onUpdate?: () => void;
   onNavigateToSkill?: (skillNameOrId: string) => void;
+  peerSkills?: Skill[];
 };
 
 type ChatMessage = {
@@ -96,11 +103,19 @@ type RelatedPhoto = {
   people?: string[];
 };
 
-export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate, onNavigateToSkill }: SkillDetailModalProps) => {
-  const [skill, setSkill] = useState<Skill>(initialSkill);
+export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate, onNavigateToSkill, peerSkills }: SkillDetailModalProps) => {
+  const [skill, setSkill] = useState<Skill>(() =>
+    shouldUseMockData() ? enrichSkillForDemo(initialSkill, demoSkillPeers()) : initialSkill,
+  );
   const [activeTab, setActiveTab] = useState<SkillDetailTabKey>('overview');
   const [showMetaTab, setShowMetaTab] = useState(false);
-  const [skillDetails, setSkillDetails] = useState<SkillMetadata | null>(null);
+  const [skillDetails, setSkillDetails] = useState<SkillMetadata | null>(
+    () =>
+      (shouldUseMockData()
+        ? enrichSkillForDemo(initialSkill, demoSkillPeers())
+        : initialSkill
+      ).metadata?.skill_details || null,
+  );
   const [, setLoadingDetails] = useState(false);
   
   // Chat state
@@ -132,6 +147,9 @@ export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate, onNav
   const [skillPhotos, setSkillPhotos] = useState<RelatedPhoto[]>([]);
   const [loadingPhotos, setLoadingPhotos] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<RelatedPhoto | null>(null);
+  const [peers, setPeers] = useState<Skill[]>(() => peerSkills ?? (shouldUseMockData() ? demoSkillPeers() : []));
+  const [mergeBusy, setMergeBusy] = useState(false);
+  const [mergeError, setMergeError] = useState<string | null>(null);
   
   const { openCharacter, openLocation, openMemory } = useEntityModal();
   const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
@@ -177,17 +195,62 @@ export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate, onNav
     if (activeTab === 'connections') {
       void loadConnections();
     }
+  }, [activeTab, skill.id, skillDetails]);
+
+  useEffect(() => {
     if (activeTab === 'timeline') {
       void loadTimelineEvents();
     }
     void loadProgressHistory();
   }, [activeTab, skill.id]);
 
+  useEffect(() => {
+    if (peerSkills && peerSkills.length > 0) {
+      setPeers(peerSkills);
+      return;
+    }
+    if (shouldUseMockData()) {
+      setPeers(demoSkillPeers());
+      return;
+    }
+    void skillsApi.getSkills({ active_only: true }).then(setPeers).catch(() => setPeers([]));
+  }, [peerSkills, skill.id]);
+
+  const handleMergeSkills = async (sourceId: string, targetId: string) => {
+    setMergeBusy(true);
+    setMergeError(null);
+    try {
+      if (shouldUseMockData()) {
+        mockDataService.mutate.skills.mergeInto(sourceId, targetId);
+        const next = demoSkillPeers().find((row) => row.id === targetId);
+        onUpdate?.();
+        if (next) {
+          setSkill(enrichSkillForDemo(next, demoSkillPeers()));
+          setPeers(demoSkillPeers());
+        } else {
+          onClose();
+        }
+        return;
+      }
+      const result = await skillsApi.mergeSkills(sourceId, targetId, 'Merged from skill modal');
+      onUpdate?.();
+      if (result.skill) {
+        setSkill(result.skill);
+        const nextPeers = await skillsApi.getSkills({ active_only: true }).catch(() => peers);
+        setPeers(nextPeers);
+      }
+    } catch (err) {
+      setMergeError(err instanceof Error ? err.message : 'Failed to merge skills');
+    } finally {
+      setMergeBusy(false);
+    }
+  };
+
   const loadSkillDetails = async () => {
     setLoadingDetails(true);
     try {
       if (shouldUseMockData()) {
-        const enriched = enrichSkillForDemo(skill);
+        const enriched = enrichSkillForDemo(skill, demoSkillPeers());
         setSkill(enriched);
         setSkillDetails(enriched.metadata?.skill_details || null);
         return;
@@ -276,78 +339,35 @@ export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate, onNav
     setLoadingConnections(true);
     try {
       if (shouldUseMockData()) {
-        const { relatedCharacters, relatedOrganizations } = getMockSkillConnections(
-          skill,
-          mockDataService.get.characters(),
-        );
+        const enriched = enrichSkillForDemo(skill, demoSkillPeers());
+        const { relatedCharacters, relatedOrganizations } = getMockSkillConnections(enriched);
         setRelatedCharacters(relatedCharacters);
         setRelatedOrganizations(relatedOrganizations);
         return;
       }
-      // Use skillDetails for connections
-      if (skillDetails) {
-        // Learned from characters
-        const learnedFrom = (skillDetails.learned_from || []).map(teacher => ({
-          id: teacher.character_id,
-          name: teacher.character_name,
-          role: teacher.relationship_type,
-          relationship: 'Teacher/Mentor'
-        }));
-        
-        // Practiced with characters
-        const practicedWith = (skillDetails.practiced_with || []).map(partner => ({
-          id: partner.character_id,
-          name: partner.character_name,
-          role: 'Practice Partner',
-          relationship: `${partner.practice_count} sessions`
-        }));
-        
-        setRelatedCharacters([...learnedFrom, ...practicedWith]);
-      } else {
-        // Fallback: try to fetch from API
-        try {
-          const { fetchCharacterList } = await import('../../api/characterList');
-          const characters = await fetchCharacterList<{
-            id: string;
-            name?: string;
-            avatar_url?: string;
-            role?: string;
-          }>().catch(() => []);
+      const details = skillDetails ?? skill.metadata?.skill_details ?? null;
+      const learnedFrom = (details?.learned_from || []).map((teacher) => ({
+        id: teacher.character_id,
+        name: teacher.character_name,
+        role: teacher.relationship_type,
+        relationship: 'Teacher/Mentor',
+      }));
+      const practicedWith = (details?.practiced_with || []).map((partner) => ({
+        id: partner.character_id,
+        name: partner.character_name,
+        role: 'Practice Partner',
+        relationship: `${partner.practice_count} sessions`,
+      }));
+      setRelatedCharacters([...learnedFrom, ...practicedWith]);
 
-          const related = characters.slice(0, 5).map((char) => ({
-            id: char.id,
-            name: char.name ?? 'Unknown',
-            avatar_url: char.avatar_url,
-            role: char.role,
-            relationship: 'Related',
-          }));
-          setRelatedCharacters(related);
-        } catch (error) {
-          console.error('Failed to load connections:', error);
-          setRelatedCharacters([]);
-        }
-      }
-
-      // Fetch organizations
-      try {
-        const orgs = await fetchJson<{ entities: Array<{ entity_id: string; primary_name: string; entity_type: string }> }>(
-          '/api/entity-resolution/entities?include_secondary=false'
-        ).catch(() => ({ entities: [] }));
-        
-        const relatedOrgs = (orgs.entities || [])
-          .filter(e => e.entity_type === 'ORG')
-          .slice(0, 5)
-          .map(org => ({
-            id: org.entity_id,
-            name: org.primary_name,
-            type: 'organization',
-            member_count: undefined
-          }));
-        setRelatedOrganizations(relatedOrgs);
-      } catch (error) {
-        console.error('Failed to load organizations:', error);
-        setRelatedOrganizations([]);
-      }
+      const jobs = readSkillProfile(skill.metadata)?.related_jobs ?? [];
+      setRelatedOrganizations(
+        jobs.map((job) => ({
+          id: `job-${job.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+          name: job,
+          type: 'work',
+        })),
+      );
     } catch (error) {
       console.error('Failed to load connections:', error);
     } finally {
@@ -861,6 +881,10 @@ When the user provides information about who they learned from, where they pract
                 profile={profile}
                 nav={entityNav}
                 onOpenChatTab={() => setActiveTab('chat')}
+                peerSkills={peers}
+                mergeBusy={mergeBusy}
+                mergeError={mergeError}
+                onMergeSkills={(sourceId, targetId) => void handleMergeSkills(sourceId, targetId)}
               />
             </TabsContent>
 

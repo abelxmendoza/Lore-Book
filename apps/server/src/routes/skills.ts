@@ -9,9 +9,15 @@ import { skillService } from '../services/skills/skillService';
 import { skillSuggestionService } from '../services/skills/skillSuggestionService';
 import { skillRelationshipService } from '../services/skills/skillRelationshipService';
 import { querySkillsForUser } from '../services/skills/skillQueryService';
+import { isMatchableBookSkill, readSkillAliases } from '../services/skills/skillMerge';
+import { skillMergeService } from '../services/skills/skillMergeService';
 import { supabaseAdmin } from '../services/supabaseClient';
-import { buildBookIndexFromLabels, enrichNameWithBookMatch } from '../services/suggestionMatchEnricher';
-import { resolveBookNameMatch } from '../utils/suggestionBookFilter';
+import { buildBookIndexFromLabels } from '../services/suggestionMatchEnricher';
+import {
+  clusterSkillSuggestionsByBookMatch,
+  clusterSkillSuggestionsByCanonical,
+  matchDetectedSkillToBook,
+} from '../services/skills/skillSimilarityResolver';
 
 const router = Router();
 
@@ -51,9 +57,15 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
       skillSuggestionService.hasAnySuggestions(userId),
     ]);
 
+    const matchable = existing.filter(isMatchableBookSkill);
     const skillBookIndex = buildBookIndexFromLabels(
-      existing.map((s) => ({ id: s.id, label: s.skill_name }))
+      matchable.map((s) => ({ id: s.id, label: s.skill_name, aliases: readSkillAliases(s.metadata) }))
     );
+    const bookRows = matchable.map((s) => ({
+      id: s.id,
+      name: s.skill_name,
+      aliases: readSkillAliases(s.metadata),
+    }));
 
     const shouldScan = rescan || (!everScanned && pending.length === 0);
 
@@ -86,7 +98,7 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
         const detected = await skillExtractionService.extractSkillsFromEntry(userId, 'suggestions-scan', combined);
         for (const s of detected) {
           if (!s.skill_name?.trim()) continue;
-          if (resolveBookNameMatch(s.skill_name, skillBookIndex.exactKeys, skillBookIndex.entries).status === 'existing') {
+          if (matchDetectedSkillToBook(s.skill_name, bookRows, skillBookIndex).match_status === 'existing') {
             continue;
           }
           await skillSuggestionService.upsertFromExtraction(userId, s, { source: 'llm_scan' });
@@ -99,9 +111,9 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
       ? await skillSuggestionService.getPendingSuggestions(userId)
       : pending;
 
-    const suggestions = freshPending
-      .map((row) => {
-        const match = enrichNameWithBookMatch(row.skill_name, skillBookIndex);
+    const suggestions = clusterSkillSuggestionsByBookMatch(
+      clusterSkillSuggestionsByCanonical(freshPending).map((row) => {
+        const match = matchDetectedSkillToBook(row.skill_name, bookRows, skillBookIndex);
         return {
           id: row.id,
           skill_name: row.skill_name,
@@ -126,7 +138,8 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
           matched_book_id: match.matched_book_id,
           matched_book_name: match.matched_book_name,
         };
-      })
+      }),
+    )
       .filter((row) => row.match_status !== 'existing')
       .sort((a, b) => Number(b.confidence ?? 0) - Number(a.confidence ?? 0))
       .slice(0, 12);
@@ -178,6 +191,7 @@ router.post('/suggestions/materialize', requireAuth, async (req: AuthenticatedRe
       related_skill_names: z.array(z.string()).optional(),
       evidence: z.array(z.union([z.string(), z.object({ text: z.string() })])).optional(),
       suggestion_id: z.string().uuid().optional(),
+      merge_into_skill_id: z.string().uuid().optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -204,6 +218,7 @@ router.post('/suggestions/materialize', requireAuth, async (req: AuthenticatedRe
       evidence: d.evidence,
       suggestionId: d.suggestion_id,
       source: 'suggestion',
+      mergeIntoSkillId: d.merge_into_skill_id,
     });
     res.json({ skill });
   } catch (error) {
@@ -267,6 +282,33 @@ router.post('/query', requireAuth, async (req: AuthenticatedRequest, res) => {
   } catch (error) {
     logger.error({ err: error }, 'Failed to query skills');
     res.status(500).json({ success: false, error: 'Failed to query skills' });
+  }
+});
+
+/**
+ * Merge one skill into another. The kept skill absorbs aliases, evidence, and stats.
+ */
+router.post('/merge', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = z.object({
+      source_id: z.string().uuid(),
+      target_id: z.string().uuid(),
+      reason: z.string().optional(),
+    }).safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid merge request', details: parsed.error.flatten() });
+    }
+    const { skill, report } = await skillMergeService.merge(
+      req.user!.id,
+      parsed.data.source_id,
+      parsed.data.target_id,
+      { reason: parsed.data.reason },
+    );
+    res.json({ merged: true, skill, report });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to merge skills');
+    const message = error instanceof Error ? error.message : 'Failed to merge skills';
+    res.status(400).json({ error: message });
   }
 });
 

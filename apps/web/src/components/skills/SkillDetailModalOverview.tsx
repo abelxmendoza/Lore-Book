@@ -19,6 +19,7 @@ import {
   usageCountLabel,
 } from '../../lib/skillStory';
 import { SkillOverviewExtras, SkillOverviewDepth, type SkillEntityNavigation } from './SkillDetailTabPanels';
+import { SkillMergePanel } from './SkillMergePanel';
 
 type Props = {
   skill: Skill;
@@ -32,6 +33,10 @@ type Props = {
   nav?: SkillEntityNavigation;
   /** Stay in the modal — switches to the Chat tab (does not open main chat). */
   onOpenChatTab?: () => void;
+  peerSkills?: Skill[];
+  mergeBusy?: boolean;
+  mergeError?: string | null;
+  onMergeSkills?: (sourceId: string, targetId: string) => void;
 };
 
 export function SkillDetailModalOverview({
@@ -43,6 +48,10 @@ export function SkillDetailModalOverview({
   profile,
   nav,
   onOpenChatTab,
+  peerSkills = [],
+  mergeBusy,
+  mergeError,
+  onMergeSkills,
 }: Props) {
   const theme = skillCategoryTheme(skill.skill_category);
   const storySummary = buildStorySummary(skill, profile, skillDetails);
@@ -68,6 +77,16 @@ export function SkillDetailModalOverview({
       )}
 
       <SkillOverviewExtras skill={skill} profile={profile} theme={theme} nav={nav} />
+
+      {onMergeSkills && (
+        <SkillMergePanel
+          skill={skill}
+          peers={peerSkills}
+          busy={mergeBusy}
+          error={mergeError}
+          onMerge={onMergeSkills}
+        />
+      )}
 
       <div className="grid grid-cols-2 gap-2 text-[11px]">
         {[

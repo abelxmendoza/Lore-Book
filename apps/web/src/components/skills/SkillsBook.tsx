@@ -5,7 +5,7 @@
 // =====================================================
 
 import { subDays } from 'date-fns';
-import { RefreshCw, ChevronLeft, ChevronRight, BookOpen, SlidersHorizontal } from 'lucide-react';
+import { RefreshCw, ChevronLeft, ChevronRight, BookOpen, SlidersHorizontal, GitMerge } from 'lucide-react';
 import { useState, useEffect, useMemo, useRef } from 'react';
 
 import type { Skill, SkillCategory } from '../../types/skill';
@@ -55,6 +55,9 @@ import {
   selectSkillsBookNumericFilters,
 } from '../../store/selectors';
 import { Button } from '../ui/button';
+import { MergeKeepSelectionBar, mergeNoticeWithReview } from '../common/MergeKeepSelectionBar';
+import { skillsApi } from '../../api/skills';
+import { skillAliasesFromMetadata } from '../../lib/skillAliases';
 import {
   GridListViewToolbar,
   readStoredCardViewMode,
@@ -179,6 +182,11 @@ export const SkillsBook: React.FC = () => {
   const [viewMode, setViewMode] = useState<CardViewMode>(() =>
     readStoredCardViewMode(SKILLS_VIEW_STORAGE_KEY, 'grid'),
   );
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedForMerge, setSelectedForMerge] = useState<Set<string>>(new Set());
+  const [mergeBusy, setMergeBusy] = useState(false);
+  const [mergeError, setMergeError] = useState<string | null>(null);
+  const [mergeNotice, setMergeNotice] = useState<string | null>(null);
   const bookPageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -398,7 +406,54 @@ export const SkillsBook: React.FC = () => {
   );
 
   const handleSkillClick = (skill: Skill) => {
+    if (selectionMode) {
+      setSelectedForMerge((prev) => {
+        const next = new Set(prev);
+        if (next.has(skill.id)) next.delete(skill.id);
+        else next.add(skill.id);
+        return next;
+      });
+      return;
+    }
     setSelectedSkill(skill);
+  };
+
+  const cancelMerge = () => {
+    setSelectionMode(false);
+    setSelectedForMerge(new Set());
+    setMergeError(null);
+  };
+
+  const mergeSelectedSkills = async (targetId: string) => {
+    const sources = [...selectedForMerge].filter((id) => id !== targetId);
+    if (sources.length === 0) return;
+    setMergeBusy(true);
+    setMergeError(null);
+    setMergeNotice(null);
+    try {
+      let mergedName = skills.find((row) => row.id === targetId)?.skill_name ?? 'the selected skill';
+      let reviewCount = 0;
+      if (isMockDataEnabled) {
+        for (const sourceId of sources) {
+          mockDataService.mutate.skills.mergeInto(sourceId, targetId);
+        }
+        cancelMerge();
+        setMergeNotice(`Merged ${sources.length + 1} selected skills into ${mergedName}.`);
+        return;
+      }
+      for (const sourceId of sources) {
+        const result = await skillsApi.mergeSkills(sourceId, targetId);
+        mergedName = result.skill?.skill_name ?? mergedName;
+        reviewCount += result.report?.reviewFlags?.length ?? 0;
+      }
+      cancelMerge();
+      setMergeNotice(mergeNoticeWithReview(mergedName, reviewCount, 'combined aliases, evidence, and practice'));
+      await loadSkills();
+    } catch (err) {
+      setMergeError(err instanceof Error ? err.message : 'Failed to merge skills');
+    } finally {
+      setMergeBusy(false);
+    }
   };
 
   const handleNavigateToSkill = (skillNameOrId: string) => {
@@ -455,10 +510,14 @@ export const SkillsBook: React.FC = () => {
 
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-7xl space-y-3 sm:space-y-5 pb-4 sm:pb-10">
+    <div className={`mx-auto w-full min-w-0 max-w-7xl space-y-3 sm:space-y-5 ${selectionMode && selectedForMerge.size >= 2 ? 'pb-28 sm:pb-10' : 'pb-4 sm:pb-10'}`}>
       <DetectedSkillSuggestions
         demoMode={isMockDataEnabled}
-        existingBookEntries={skills.map(s => ({ id: s.id, name: s.skill_name }))}
+        existingBookEntries={skills.map((s) => ({
+          id: s.id,
+          name: s.skill_name,
+          aliases: skillAliasesFromMetadata(s.metadata),
+        }))}
         existingSkillNames={skills.map(s => s.skill_name)}
         onSkillAdded={() => void loadSkills()}
       />
@@ -483,6 +542,18 @@ export const SkillsBook: React.FC = () => {
             copyDisabled={sortedSkills.length === 0}
             storageKey={SKILLS_VIEW_STORAGE_KEY}
           />
+          <button
+            type="button"
+            onClick={() => {
+              setSelectionMode((mode) => !mode);
+              setSelectedForMerge(new Set());
+              setMergeError(null);
+            }}
+            className="flex items-center gap-1.5 text-xs text-white/40 hover:text-teal-400 transition-colors"
+          >
+            <GitMerge className="h-3.5 w-3.5" />
+            {selectionMode ? 'Cancel merge' : 'Merge skills'}
+          </button>
           <button
             type="button"
             onClick={() => void loadSkills()}
@@ -516,6 +587,41 @@ export const SkillsBook: React.FC = () => {
         inputClassName="bg-black/40 border-white/10 text-white placeholder:text-white/30 text-sm"
         emptyHint="No matching skills"
       />
+
+      {mergeNotice && (
+        <p className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+          {mergeNotice}
+        </p>
+      )}
+      {selectionMode && (
+        <div className="rounded-lg border border-teal-500/25 bg-teal-500/10 px-3 py-2 text-xs text-teal-100 space-y-2">
+          <p>
+            Select two or more related skills, then choose which name to keep. The others become aliases on that card.
+          </p>
+          {selectedForMerge.size >= 2 && (
+            <div className="flex flex-wrap gap-2">
+              {skills
+                .filter((skill) => selectedForMerge.has(skill.id))
+                .map((skill) => (
+                  <button
+                    key={skill.id}
+                    type="button"
+                    disabled={mergeBusy}
+                    onClick={() => void mergeSelectedSkills(skill.id)}
+                    className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {mergeBusy ? 'Merging…' : `Keep ${skill.skill_name}`}
+                  </button>
+                ))}
+            </div>
+          )}
+          {mergeError && (
+            <p className="text-red-200" role="alert">
+              {mergeError}
+            </p>
+          )}
+        </div>
+      )}
 
       <div
         className={cn(
@@ -736,8 +842,21 @@ export const SkillsBook: React.FC = () => {
                       key={skill.id}
                       type="button"
                       onClick={() => handleSkillClick(skill)}
-                      className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-white/5"
+                      className={`flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-white/5 ${
+                        selectedForMerge.has(skill.id) ? 'bg-primary/10' : ''
+                      }`}
                     >
+                      {selectionMode && (
+                        <span
+                          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[10px] font-bold ${
+                            selectedForMerge.has(skill.id)
+                              ? 'border-primary bg-primary text-black'
+                              : 'border-white/30 text-transparent'
+                          }`}
+                        >
+                          ✓
+                        </span>
+                      )}
                       <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-violet-300/70" />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-2">
@@ -770,6 +889,8 @@ export const SkillsBook: React.FC = () => {
                     skill={skill}
                     onClick={() => handleSkillClick(skill)}
                     showProgress
+                    selected={selectedForMerge.has(skill.id)}
+                    selectionMode={selectionMode}
                     className="h-full"
                   />
                 ))}
@@ -874,8 +995,21 @@ export const SkillsBook: React.FC = () => {
           onClose={handleCloseModal}
           onUpdate={loadSkills}
           onNavigateToSkill={handleNavigateToSkill}
+          peerSkills={primarySkills}
         />
       )}
+
+      <MergeKeepSelectionBar
+        visible={selectionMode && selectedForMerge.size >= 2}
+        selectedCount={selectedForMerge.size}
+        options={primarySkills
+          .filter((skill) => selectedForMerge.has(skill.id))
+          .map((skill) => ({ id: skill.id, name: skill.skill_name }))}
+        busy={mergeBusy}
+        error={mergeError}
+        onKeep={(targetId) => void mergeSelectedSkills(targetId)}
+        hint="Choose which skill name to keep — the others become aliases on that card."
+      />
     </div>
   );
 };

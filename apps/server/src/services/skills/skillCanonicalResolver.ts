@@ -18,6 +18,8 @@ const CANONICAL_GROUPS: Array<{ canonical: string; aliases: string[] }> = [
       'ai coding tools',
       'ai-assisted coding',
       'ai assisted coding',
+      'ai-assisted development',
+      'ai assisted development',
       'ai coding',
       'coding with ai',
       'ai pair programming',
@@ -31,6 +33,10 @@ const CANONICAL_GROUPS: Array<{ canonical: string; aliases: string[] }> = [
       'front end development',
       'frontend',
       'front-end',
+      'web ui development',
+      'web ui',
+      'webui',
+      'ui development',
     ],
   },
   {
@@ -43,7 +49,7 @@ const CANONICAL_GROUPS: Array<{ canonical: string; aliases: string[] }> = [
   },
   {
     canonical: 'Interviewing',
-    aliases: ['interviewing', 'job interviews', 'interview skills'],
+    aliases: ['interviewing', 'job interviewing', 'job interviews', 'interview skills'],
   },
   {
     canonical: 'Networking',
@@ -68,6 +74,9 @@ const CANONICAL_GROUPS: Array<{ canonical: string; aliases: string[] }> = [
       'product iteration',
       'coding',
       'software development',
+      'lorebook app development',
+      'lorebook development',
+      'app development',
     ],
   },
   {
@@ -95,6 +104,22 @@ const CANONICAL_GROUPS: Array<{ canonical: string; aliases: string[] }> = [
       'socializing in goth/underground scenes',
       'socializing in goth underground scenes',
     ],
+  },
+  {
+    canonical: 'Club Dancing',
+    aliases: ['club dancing', 'dance', 'dancing', 'club dance', 'clubbing'],
+  },
+  {
+    canonical: 'Hardware Prototyping',
+    aliases: ['hardware prototyping', 'prototyping', 'hardware prototype', 'prototype'],
+  },
+  {
+    canonical: 'Cosplay',
+    aliases: ['cosplay', 'cosplay planning'],
+  },
+  {
+    canonical: 'Music Release',
+    aliases: ['music release', 'independent music release', 'music distribution'],
   },
   {
     canonical: 'Muay Thai',

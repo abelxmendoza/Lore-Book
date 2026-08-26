@@ -65,8 +65,11 @@ export class SkillCognitionEngine {
     const reality = classifyEvidenceRealityContext(originalSpan, evidenceText);
     rulesFired.push(`reality:${reality.context}`);
 
-    // 4. Ontology routing
-    const routed = routeCapabilityOntology(canonical.canonicalTitle, evidenceText);
+    // 4. Ontology routing — prefer the raw span so aliases like "clubbing" stay
+    // activities even when the book folds them into a skill such as Club Dancing.
+    const routedOriginal = routeCapabilityOntology(originalSpan, evidenceText);
+    const routedCanonical = routeCapabilityOntology(canonical.canonicalTitle, evidenceText);
+    const routed = routedOriginal.entityType !== 'SKILL' ? routedOriginal : routedCanonical;
     let entityType: CapabilityEntityType = routed.entityType;
     rulesFired.push(...routed.reasons.map((r) => `ontology:${r}`));
 

@@ -11,6 +11,7 @@ import { skillService, type SkillCategory, type Skill } from './skillService';
 import { skillLoreService } from './skillLoreService';
 import { skillRelationshipService } from './skillRelationshipService';
 import { skillIndexService } from './skillIndexService';
+import { skillMergeService } from './skillMergeService';
 import { normalizeSkillKey } from './skillIdentity';
 import { progressionTracker } from '../progression/progressionTracker';
 import { suggestionDismissalService } from '../suggestionDismissalService';
@@ -62,6 +63,7 @@ export type MaterializeSkillInput = {
   suggestionId?: string;
   sourceMessageId?: string | null;
   source?: 'chat' | 'journal' | 'suggestion' | 'llm_scan';
+  mergeIntoSkillId?: string;
 };
 
 function isTableMissing(error: unknown): boolean {
@@ -441,6 +443,30 @@ class SkillSuggestionService {
       is_active: true,
       last_used_at: new Date().toISOString(),
     };
+
+    if (input.mergeIntoSkillId) {
+      const absorbed = await skillMergeService.absorbName(
+        userId,
+        input.mergeIntoSkillId,
+        input.skill_name,
+        profile,
+        {
+          description: input.description,
+          suggestionId: input.suggestionId,
+        },
+      );
+      await skillLoreService.persistEvidenceRows(userId, absorbed.id, profile.evidence ?? [], {
+        suggestionId: input.suggestionId,
+        sourceType: input.source,
+      });
+      await skillRelationshipService.linkFromExtraction(userId, absorbed.id, {
+        parent_skill_name: input.parent_skill_name ?? undefined,
+        related_skill_names: input.related_skill_names,
+        confidence: input.confidence,
+      });
+      void progressionTracker.afterSkillMaterialized(userId, absorbed.id, input.suggestionId);
+      return absorbed;
+    }
 
     const existing = (await skillService.getSkills(userId)).find(
       (s) => normalizeSkillKey(s.skill_name) === normalizeSkillKey(input.skill_name)

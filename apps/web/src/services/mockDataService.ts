@@ -426,6 +426,65 @@ class MockDataRegistry {
     return skill;
   }
 
+  mergeSkillInto(sourceId: string, targetId: string): Skill | null {
+    const skills = this.getSkills();
+    const source = skills.find((row) => row.id === sourceId);
+    const target = skills.find((row) => row.id === targetId);
+    if (!source || !target || source.id === target.id) return null;
+    const aliases = [
+      ...new Set(
+        [
+          ...(Array.isArray(target.metadata?.aliases) ? (target.metadata.aliases as string[]) : []),
+          source.skill_name,
+        ]
+          .map((value) => value.trim())
+          .filter(Boolean),
+      ),
+    ].filter((name) => name.toLowerCase() !== target.skill_name.toLowerCase());
+    const merged: Skill = {
+      ...target,
+      description: [target.description, source.description].filter(Boolean).join('\n\n') || target.description,
+      total_xp: (target.total_xp ?? 0) + (source.total_xp ?? 0),
+      practice_count: (target.practice_count ?? 0) + (source.practice_count ?? 0),
+      last_practiced_at: source.last_practiced_at ?? target.last_practiced_at,
+      metadata: {
+        ...(target.metadata ?? {}),
+        aliases,
+        archived: false,
+      },
+      updated_at: new Date().toISOString(),
+    };
+    this.skills = skills
+      .filter((row) => row.id !== source.id)
+      .map((row) => (row.id === target.id ? merged : row));
+    this.emitChange('skills');
+    return merged;
+  }
+
+  mergeSuggestionIntoSkill(suggestion: SkillSuggestion, targetId: string): Skill | null {
+    const target = this.getSkills().find((row) => row.id === targetId);
+    if (!target) return null;
+    const aliases = [
+      ...new Set(
+        [
+          ...(Array.isArray(target.metadata?.aliases) ? (target.metadata.aliases as string[]) : []),
+          suggestion.skill_name,
+        ]
+          .map((value) => value.trim())
+          .filter(Boolean),
+      ),
+    ].filter((name) => name.toLowerCase() !== target.skill_name.toLowerCase());
+    const merged: Skill = {
+      ...target,
+      metadata: { ...(target.metadata ?? {}), aliases },
+      updated_at: new Date().toISOString(),
+    };
+    this.skills = this.getSkills().map((row) => (row.id === target.id ? merged : row));
+    this.removeSkillSuggestion({ id: suggestion.id, skill_name: suggestion.skill_name });
+    this.emitChange('skills');
+    return merged;
+  }
+
   removeSkillSuggestion(match: { id?: string; skill_name?: string }): void {
     const key = match.skill_name?.trim().toLowerCase();
     this.skillSuggestions = this.getSkillSuggestions().filter((s) => {
@@ -1009,6 +1068,9 @@ export const mockDataService = {
     skills: {
       createFromSuggestion: (suggestion: SkillSuggestion) =>
         mockDataRegistry.createSkillFromSuggestion(suggestion),
+      mergeInto: (sourceId: string, targetId: string) => mockDataRegistry.mergeSkillInto(sourceId, targetId),
+      mergeSuggestionInto: (suggestion: SkillSuggestion, targetId: string) =>
+        mockDataRegistry.mergeSuggestionIntoSkill(suggestion, targetId),
       removeSuggestion: (match: { id?: string; skill_name?: string }) =>
         mockDataRegistry.removeSkillSuggestion(match),
     },

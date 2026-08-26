@@ -6,6 +6,8 @@ import type {
 } from "@lorebook/api-contracts";
 
 import { readSkillProfile } from "./skillProfile";
+import { readSkillAliases } from "./skillMerge";
+import { clusterRelatedBookSkills } from "./skillSimilarityResolver";
 import { skillService, type Skill } from "./skillService";
 
 const SKILL_CATEGORIES = [
@@ -83,6 +85,17 @@ function isPrimarySkill(row: Skill): boolean {
   return entityType === "SKILL";
 }
 
+export function isSkillSimilarityQuery(query: string): boolean {
+  const text = normalize(query);
+  return /\b(similar|duplicates?|related|merge candidates?|should be merged|look related)\b/.test(text);
+}
+
+export function parseSimilarToSkillName(query: string): string | null {
+  const match = query.match(/\b(?:similar|related|duplicates?)\s+to\s+(?:the\s+)?(?:skill\s+)?(.+?)\??$/i);
+  const name = match?.[1]?.trim();
+  return name ? name.replace(/[.!]+$/g, "").trim() : null;
+}
+
 export function deriveSkillQueryHints(query: string): SkillQueryHints {
   const text = normalize(query);
   const scopes: SkillQueryScope[] = [];
@@ -155,6 +168,7 @@ function intentFor(
 ): SkillQueryResponse["intent"] {
   const scopes = unique([...(request.filters.scopes ?? []), ...hints.scopes]);
   if (scopes.includes("needs_review")) return "quality";
+  if (isSkillSimilarityQuery(request.query)) return "find";
   if (request.sort !== "relevance" || hints.sort?.endsWith("_desc")) return "ranking";
   if (request.filters.relatedProjects?.length || hints.relatedProjects.length) return "find";
   if (scopes.some((scope) => ["improving", "stagnant", "declining"].includes(scope))) return "growth";
@@ -196,7 +210,7 @@ export function compileSkillQuery(
     .split(/[^\p{L}\p{N}_-]+/u)
     .filter((term) => term.length > 2 && !STOP_WORDS.has(term));
 
-  const matches = rows.flatMap<SkillQueryResult>((row) => {
+  let matches = rows.flatMap<SkillQueryResult>((row) => {
     const profile = readSkillProfile(row.metadata);
     const scopes = scopesFor(row);
     const relatedProjects = profile?.related_projects ?? [];
@@ -298,6 +312,34 @@ export function compileSkillQuery(
   }
   else if (sort === "evidence_desc") matches.sort((a, b) => b.evidenceCount - a.evidenceCount);
   else matches.sort((a, b) => b.score - a.score || b.practiceCount - a.practiceCount);
+
+  if (isSkillSimilarityQuery(request.query)) {
+    const book = rows.map((row) => ({
+      id: row.id,
+      name: row.skill_name,
+      aliases: readSkillAliases(row.metadata),
+    }));
+    const clusters = clusterRelatedBookSkills(book);
+    const focus = parseSimilarToSkillName(request.query);
+    const focusKey = focus ? normalize(focus) : "";
+    const allowed = new Map<string, string>();
+    for (const cluster of clusters) {
+      const names = cluster.members.map((member) => member.name);
+      if (focusKey && !names.some((name) => normalize(name).includes(focusKey) || focusKey.includes(normalize(name)))) {
+        continue;
+      }
+      for (const member of cluster.members) {
+        const others = names.filter((name) => name !== member.name);
+        allowed.set(member.id, others.length ? `similar to ${others.join(", ")}` : "related skill");
+      }
+    }
+    matches = matches.filter((row) => allowed.has(row.skillId));
+    for (const row of matches) {
+      const reason = allowed.get(row.skillId);
+      if (reason) row.matchedReasons = [reason, ...row.matchedReasons.filter((item) => item !== reason)];
+      row.score += 20;
+    }
+  }
 
   const total = matches.length;
   const results = matches.slice(request.offset, request.offset + request.limit);
