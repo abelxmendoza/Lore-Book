@@ -747,9 +747,7 @@ export const LocationDetailModal = ({
       sourceSurface: 'locations',
       sourceLabel: CHAT_FOCUS_SOURCE_LABELS.locations,
       knowledgeScope: 'place memories, visits, and significance',
-      initialPrompt:
-        prompt ??
-        `Tell me about ${location.name} — what I've shared, how it fits in my life, and what stands out.`,
+      initialPrompt: prompt ?? '',
     });
   };
 
