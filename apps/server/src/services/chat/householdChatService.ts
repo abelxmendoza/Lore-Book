@@ -17,10 +17,17 @@ export type HouseholdWriteResult = {
   householdName: string | null;
 };
 
+/** Trims trailing .!?," one character at a time — a regex here (`[.!?,"]+$`)
+ *  is a polynomial-ReDoS shape on uncontrolled chat text (CodeQL-flagged);
+ *  this is provably linear since there's no backtracking at all. */
+function stripTrailingPunctuation(s: string): string {
+  let end = s.length;
+  while (end > 0 && '.!?,"'.includes(s[end - 1])) end--;
+  return s.slice(0, end);
+}
+
 function cleanPhrase(raw: string): string {
-  return raw
-    .replace(/^(?:the|a|an|my)\s+/i, '')
-    .replace(/[.!?,"]+$/g, '')
+  return stripTrailingPunctuation(raw.replace(/^(?:the|a|an|my)\s+/i, ''))
     .replace(/\s+/g, ' ')
     .trim();
 }
