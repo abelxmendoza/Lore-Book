@@ -16,6 +16,20 @@ export type FamilyWriteResult = {
   relation: string | null;
 };
 
+// Bounded, unambiguous "1-4 name-like words" for use inside a larger regex
+// via string interpolation — no lazy `.{1,60}?` next to a `\s+` boundary,
+// which CodeQL flags as a polynomial-time ReDoS risk on uncontrolled
+// (chat-message) input: `.` also matches whitespace, so a lazy dot-group
+// immediately followed by `\s+` has to try every possible split point across
+// a run of whitespace. A token class that never matches whitespace itself
+// removes that ambiguity entirely.
+// Lazy throughout (`*?`/`{0,3}?`) so this prefers the SHORTEST valid name —
+// matching the original `.{1,60}?` semantics of deferring an optional
+// trailing word ("'s", "as", "my") to its own group instead of swallowing it
+// into the name. Laziness doesn't reopen the ReDoS risk: safety here comes
+// from the token class never overlapping `\s`, not from greedy vs lazy.
+const NAME_TOKENS = `[a-zA-Z][a-zA-Z'’.-]*?(?:\\s+[a-zA-Z][a-zA-Z'’.-]*?){0,3}?`;
+
 function cleanName(raw: string): string {
   return raw
     .replace(/^(?:the|a|an|my)\s+/i, '')
@@ -116,7 +130,10 @@ export async function writeFamilyFromChat(userId: string, message: string): Prom
   const text = message.trim();
 
   const kin = text.match(
-    /\b(?:mark|set|add)\s+(.{1,60}?)\s+(?:as\s+)?(?:my\s+)?(mom|mother|dad|father|brother|sister|cousin|uncle|aunt|grandma|grandmother|grandpa|grandfather|sibling|parent|child|son|daughter|niece|nephew)\b/i,
+    new RegExp(
+      `\\b(?:mark|set|add)\\s+(${NAME_TOKENS})\\s+(?:as\\s+)?(?:my\\s+)?(mom|mother|dad|father|brother|sister|cousin|uncle|aunt|grandma|grandmother|grandpa|grandfather|sibling|parent|child|son|daughter|niece|nephew)\\b`,
+      'i',
+    ),
   );
   if (kin) {
     const name = cleanName(kin[1]);
@@ -133,7 +150,9 @@ export async function writeFamilyFromChat(userId: string, message: string): Prom
     };
   }
 
-  const add = text.match(/\badd\s+(.{1,60}?)\s+(?:to|into)\s+(?:my\s+)?(?:family(?:\s+tree)?|kin)\b/i);
+  const add = text.match(
+    new RegExp(`\\badd\\s+(${NAME_TOKENS})\\s+(?:to|into)\\s+(?:my\\s+)?(?:family(?:\\s+tree)?|kin)\\b`, 'i'),
+  );
   if (add) {
     const name = cleanName(add[1]);
     const character = await findOrCreateCharacter(userId, name);
@@ -151,7 +170,7 @@ export async function writeFamilyFromChat(userId: string, message: string): Prom
   }
 
   const side = text.match(
-    /\b(?:change|set|correct)\s+(.{1,60}?)(?:'s)?\s+side\s+to\s+(maternal|paternal|both|other)\b/i,
+    new RegExp(`\\b(?:change|set|correct)\\s+(${NAME_TOKENS})(?:'s)?\\s+side\\s+to\\s+(maternal|paternal|both|other)\\b`, 'i'),
   );
   if (side) {
     const lookup = await findFamilyMemberByName(userId, side[1]);
@@ -180,9 +199,14 @@ export async function writeFamilyFromChat(userId: string, message: string): Prom
   // the Character card). Checked before the delete patterns below; delete
   // requires an explicit "entirely"/"permanently"/"as a character" suffix
   // (or a bare "delete X" with no "from my family tree" clause at all).
-  const exclude = text.match(/\b(?:remove|exclude)\s+(.{1,60}?)\s+from\s+(?:my\s+)?family(?:\s+tree)?\b/i);
+  const exclude = text.match(
+    new RegExp(`\\b(?:remove|exclude)\\s+(${NAME_TOKENS})\\s+from\\s+(?:my\\s+)?family(?:\\s+tree)?\\b`, 'i'),
+  );
   const deleteEntirely = text.match(
-    /\bremove\s+(.{1,60}?)\s+(?:entirely|permanently|as\s+a\s+(?:character|person)|for\s+good)\b/i,
+    new RegExp(
+      `\\bremove\\s+(${NAME_TOKENS})\\s+(?:entirely|permanently|as\\s+a\\s+(?:character|person)|for\\s+good)\\b`,
+      'i',
+    ),
   );
   if (exclude && !deleteEntirely) {
     const lookup = await findFamilyMemberByName(userId, exclude[1]);
@@ -203,8 +227,10 @@ export async function writeFamilyFromChat(userId: string, message: string): Prom
     };
   }
 
-  const deleteBare = text.match(/\bdelete\s+((?:[a-zA-Z'’.-]+\s*){1,4})[.!]?$/i);
-  const deleteWithFamily = text.match(/\bdelete\s+(.{1,60}?)\s+from\s+(?:my\s+)?family(?:\s+tree)?\s*[.!]?$/i);
+  const deleteBare = text.match(new RegExp(`\\bdelete\\s+(${NAME_TOKENS})[.!]?$`, 'i'));
+  const deleteWithFamily = text.match(
+    new RegExp(`\\bdelete\\s+(${NAME_TOKENS})\\s+from\\s+(?:my\\s+)?family(?:\\s+tree)?\\s*[.!]?$`, 'i'),
+  );
   const deleteName = deleteWithFamily?.[1] ?? deleteEntirely?.[1] ?? deleteBare?.[1];
   if (deleteName) {
     const lookup = await findFamilyMemberByName(userId, deleteName);

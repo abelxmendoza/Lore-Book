@@ -259,16 +259,36 @@ export function isQuestWriteRequest(message: string): boolean {
   );
 }
 
-const FAMILY_WRITE_RE =
-  /\b(?:mark|set|add)\s+(.{1,60}?)\s+(?:as\s+)?(?:my\s+)?(mom|mother|dad|father|brother|sister|cousin|uncle|aunt|grandma|grandmother|grandpa|grandfather|sibling|parent|child|son|daughter|niece|nephew)\b/i;
-const FAMILY_ADD_MEMBER_RE =
-  /\badd\s+(.{1,60}?)\s+(?:to|into)\s+(?:my\s+)?(?:family(?:\s+tree)?|kin)\b/i;
+// Bounded, unambiguous "1-4 name-like words" — no lazy `.{1,60}?` next to a
+// `\s+` boundary, which CodeQL flags as a polynomial-time ReDoS risk on
+// uncontrolled (chat-message) input: `.` also matches whitespace, so a lazy
+// dot-group immediately followed by `\s+` has to try every possible split
+// point across a run of whitespace. A token class that never matches
+// whitespace itself removes that ambiguity entirely.
+// Lazy throughout (`*?`/`{0,3}?`) so this prefers the SHORTEST valid name —
+// matching the original `.{1,60}?` semantics of deferring an optional
+// trailing word ("'s", "as", "my") to its own group instead of swallowing it
+// into the name. Laziness doesn't reopen the ReDoS risk: safety here comes
+// from the token class never overlapping `\s`, not from greedy vs lazy.
+const NAME_TOKENS = `[a-zA-Z][a-zA-Z'’.-]*?(?:\\s+[a-zA-Z][a-zA-Z'’.-]*?){0,3}?`;
+const FAMILY_WRITE_RE = new RegExp(
+  `\\b(?:mark|set|add)\\s+(${NAME_TOKENS})\\s+(?:as\\s+)?(?:my\\s+)?(mom|mother|dad|father|brother|sister|cousin|uncle|aunt|grandma|grandmother|grandpa|grandfather|sibling|parent|child|son|daughter|niece|nephew)\\b`,
+  'i',
+);
+const FAMILY_ADD_MEMBER_RE = new RegExp(
+  `\\badd\\s+(${NAME_TOKENS})\\s+(?:to|into)\\s+(?:my\\s+)?(?:family(?:\\s+tree)?|kin)\\b`,
+  'i',
+);
 /** "change/set/correct Abuela's side to paternal" — side-only correction, no relation change. */
-const FAMILY_SIDE_RE =
-  /\b(?:change|set|correct)\s+(.{1,60}?)(?:'s)?\s+side\s+to\s+(maternal|paternal|both|other)\b/i;
+const FAMILY_SIDE_RE = new RegExp(
+  `\\b(?:change|set|correct)\\s+(${NAME_TOKENS})(?:'s)?\\s+side\\s+to\\s+(maternal|paternal|both|other)\\b`,
+  'i',
+);
 /** "remove/exclude X from my family (tree)" — soft, reversible (keeps the Character card). */
-const FAMILY_EXCLUDE_RE =
-  /\b(?:remove|exclude)\s+(.{1,60}?)\s+from\s+(?:my\s+)?family(?:\s+tree)?\b/i;
+const FAMILY_EXCLUDE_RE = new RegExp(
+  `\\b(?:remove|exclude)\\s+(${NAME_TOKENS})\\s+from\\s+(?:my\\s+)?family(?:\\s+tree)?\\b`,
+  'i',
+);
 /**
  * "delete X" / "delete X from my family tree" / "remove X entirely" — a real,
  * cascading, permanent character delete. Deliberately distinct in shape from
@@ -278,11 +298,15 @@ const FAMILY_EXCLUDE_RE =
  * can't swallow an unrelated trailing clause, and the "family" form requires
  * the literal word "family" so it never matches a character-book delete.
  */
-const FAMILY_DELETE_BARE_RE = /\bdelete\s+((?:[a-zA-Z'’.-]+\s*){1,4})[.!]?$/i;
-const FAMILY_DELETE_WITH_FAMILY_RE =
-  /\bdelete\s+(.{1,60}?)\s+from\s+(?:my\s+)?family(?:\s+tree)?\s*[.!]?$/i;
-const FAMILY_DELETE_ENTIRELY_RE =
-  /\bremove\s+(.{1,60}?)\s+(?:entirely|permanently|as\s+a\s+(?:character|person)|for\s+good)\b/i;
+const FAMILY_DELETE_BARE_RE = new RegExp(`\\bdelete\\s+(${NAME_TOKENS})[.!]?$`, 'i');
+const FAMILY_DELETE_WITH_FAMILY_RE = new RegExp(
+  `\\bdelete\\s+(${NAME_TOKENS})\\s+from\\s+(?:my\\s+)?family(?:\\s+tree)?\\s*[.!]?$`,
+  'i',
+);
+const FAMILY_DELETE_ENTIRELY_RE = new RegExp(
+  `\\bremove\\s+(${NAME_TOKENS})\\s+(?:entirely|permanently|as\\s+a\\s+(?:character|person)|for\\s+good)\\b`,
+  'i',
+);
 
 export function isFamilyWriteRequest(message: string): boolean {
   const text = message.trim();
