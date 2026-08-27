@@ -150,7 +150,17 @@ class SkillService {
 
       if (error) {
         logger.error({ error, userId, input, schema }, 'Failed to create skill');
-        throw error;
+        // Supabase/Postgrest errors are plain {message, details, hint, code}
+        // objects, not real Error instances — throwing one raw means callers
+        // that check `error instanceof Error` (e.g. the reclassify route)
+        // can never see the real reason and fall back to a generic message.
+        // Skills have no pre-insert dedupe check (unlike organizations/
+        // projects), so a unique-constraint violation on skill_name is the
+        // most common real failure here — give it a clear, actionable reason.
+        if (error.code === '23505') {
+          throw new Error(`You already have a skill named "${input.skill_name}"`);
+        }
+        throw new Error(error.message || 'Could not create skill');
       }
 
       return normalizeSkillRow(data as Record<string, unknown>);

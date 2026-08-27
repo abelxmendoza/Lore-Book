@@ -111,6 +111,7 @@ import { characterTitleApi, type CharacterDisplayTitle } from '../../api/charact
 import { useCharacterQuery } from '../../hooks/useCharacterQuery';
 import type { CharacterChatMention } from '../../hooks/useCharacterProfileBundleTypes';
 import { useUpdateCharacterMutation, useReclassifyEntityMutation, useAddCharacterToDatingBookMutation } from '../../store/api/entitiesApi';
+import { isFetchJsonError } from '../../store/api/baseApi';
 import { useAccountAuthority } from '../../hooks/useAccountAuthority';
 import { canManuallyAddDatingRomanceCharacters } from '../../lib/datingRomanceManualAdd';
 import { isDemoRuntimeActive } from '../../lib/demoRuntime';
@@ -890,9 +891,16 @@ export const CharacterDetailModal = ({
     } catch (err) {
       console.error('Reclassify failed', err);
       // 422 = the target book's rules rejected the move; surface the reason.
-      const serverMessage = (err as { data?: { error?: string } })?.data?.error;
+      // This app's RTK Query base query rejects with { status, message } (see
+      // isFetchJsonError in store/api/baseApi.ts) — never { data: { error } }
+      // and never a real Error instance — so those two checks alone always
+      // missed the server's actual message and fell back to the generic text.
       setReclassifyError(
-        serverMessage ?? (err instanceof Error ? err.message : 'Failed to reclassify entity')
+        isFetchJsonError(err) && err.message
+          ? err.message
+          : err instanceof Error && err.message
+            ? err.message
+            : 'Failed to reclassify entity'
       );
     } finally {
       setReclassifyBusy(false);

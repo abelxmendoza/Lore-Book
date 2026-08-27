@@ -807,7 +807,11 @@ export class OrganizationService {
         .select()
         .single();
 
-      if (error) throw error;
+      // Supabase/Postgrest errors are plain {message, details, hint, code}
+      // objects, not real Error instances — throwing one raw means callers
+      // that check `error instanceof Error` (e.g. the reclassify route) can
+      // never see the real reason and fall back to a generic message.
+      if (error) throw new Error(error.message || 'Could not create organization');
 
       void import('./lorebook/suggestions/suggestionEntityTimeline')
         .then(({ hydrateEntityTimelineAfterSuggestionAccept }) =>

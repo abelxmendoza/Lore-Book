@@ -577,9 +577,15 @@ describe('CharacterDetailModal', () => {
     });
 
     it('surfaces the target book rule rejection and keeps the menu open', async () => {
+      // Real shape rejected by this app's RTK Query base query (see
+      // isFetchJsonError in store/api/baseApi.ts): { status, message } —
+      // never { data: { error } }. A prior version of this test mocked the
+      // wrong shape, which matched a real bug in the component's error
+      // handling instead of catching it.
       reclassifyTrigger.mockImplementationOnce(() => ({
         unwrap: vi.fn().mockRejectedValue({
-          data: { error: 'Places rules rejected "John Doe" — it reads as a person name.' },
+          status: 422,
+          message: 'Places rules rejected "John Doe" — it reads as a person name.',
         }),
       }));
 
