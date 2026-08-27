@@ -77,6 +77,11 @@ function isAmbiguousVenueName(text: string): boolean {
   return /^[A-Z][a-z]+(?:\s+[A-Z][a-z.]+)+$/.test(text.trim());
 }
 
+/** Months, weekdays, and other pure time expressions — never a place, regardless of source phase. */
+export function isTimeExpressionOnly(text: string): boolean {
+  return TIME_ONLY.test(norm(text));
+}
+
 export type PlaceGuardResult = {
   allowed: boolean;
   rejectedAs?: NonPlaceEntityType | string;

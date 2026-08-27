@@ -5,6 +5,7 @@
 
 import { runLexicalIntelligence } from './lexicalIntelligenceService';
 import type { EntityType, LexicalIntelligenceSpan } from './lexicalIntelligenceTypes';
+import { isTimeExpressionOnly } from '../places/placeTypeGuard';
 
 const PERSON_TYPES = new Set<EntityType>(['PERSON']);
 const PLACE_TYPES = new Set<EntityType>([
@@ -50,7 +51,12 @@ export function collectPersonNamesFromIntelligence(text: string, userId?: string
 }
 
 export function collectPlaceNamesFromIntelligence(text: string, userId?: string): string[] {
-  return uniqueSpanTexts(scanEpisodeWithLexicalIntelligence(text, userId), PLACE_TYPES);
+  // Generic preposition-based PLACE patterns (e.g. "in June") have no built-in
+  // month/weekday exclusion — filter pure time expressions out here so they
+  // don't surface as place suggestions.
+  return uniqueSpanTexts(scanEpisodeWithLexicalIntelligence(text, userId), PLACE_TYPES).filter(
+    (name) => !isTimeExpressionOnly(name)
+  );
 }
 
 export function collectOrganizationNamesFromIntelligence(text: string, userId?: string): string[] {

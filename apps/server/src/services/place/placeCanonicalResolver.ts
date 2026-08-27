@@ -85,6 +85,14 @@ const GENERIC_PLACE_NOUNS = new Set([
   'the school',
   'the restaurant',
   'the building',
+  'club',
+  'the club',
+  'bar',
+  'the bar',
+  'park',
+  'the park',
+  'house',
+  'the house',
 ]);
 
 export function isGenericPlaceNoun(name: string): boolean {

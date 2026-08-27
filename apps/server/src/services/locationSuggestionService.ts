@@ -24,6 +24,7 @@ import {
 } from '../utils/namedPlaceExtractor';
 import { normalizeNameKey } from '../utils/nameNormalization';
 import { collectNameKeys, resolveBookNameMatch, type BookNameEntryWithId } from '../utils/suggestionBookFilter';
+import { isGenericPlaceNoun } from './place/placeCanonicalResolver';
 import { locationSuggestionId } from '../utils/entitySuggestionId';
 import { locationService } from './locationService';
 import { locationNicknameService } from './locationNicknameService';
@@ -245,7 +246,14 @@ class LocationSuggestionService {
       const key = normalizeNameKey(safeName);
       if (!key || key.length < 2 || seen.has(key)) return;
       if (learning.suppressedByDomain.has(`locations:${key}`)) return;
-      const match = resolveBookNameMatch(safeName, bookExact, bookEntries);
+      let match = resolveBookNameMatch(safeName, bookExact, bookEntries);
+      // A bare generic noun ("Club", "Bar", "Gym") is trivially token-contained in
+      // any multi-word book name that starts with it ("Club Bar Sinister") — that's
+      // not evidence the chat actually referenced that specific place, so don't
+      // surface a 'similar' match on containment alone for these.
+      if (match.status === 'similar' && isGenericPlaceNoun(safeName)) {
+        match = { status: 'new' };
+      }
       seen.add(key);
 
       const { cognition: _cognition, ...cognizedSuggestion } = cognized;
