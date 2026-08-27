@@ -56,7 +56,7 @@ export function inferCompanionSpecies(name: string, context?: string): string | 
   const matched =
     firstKindMatch(context, new RegExp(`\\b(?:my|our)\\s+(${kind})\\s+${n}\\b`, 'i')) ||
     firstKindMatch(context, new RegExp(`\\b${n}\\s+(?:is|was)\\s+(?:my|our)\\s+(${kind})\\b`, 'i')) ||
-    firstKindMatch(context, new RegExp(`\\b(?:${kind})(?:'s|’s)?\\s+name\\s+is\\s+${n}\\b`, 'i'));
+    firstKindMatch(context, new RegExp(`\\b(${kind})(?:'s|’s)?\\s+name\\s+is\\s+${n}\\b`, 'i'));
   return matched ? speciesFromKindWord(matched) : undefined;
 }
 
