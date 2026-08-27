@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { planEpithetPrimaryNameRepair } from './epithetPrimaryNameRepair';
+import { planEpithetPrimaryNameRepair, planSelfIdentityPresentationCleanup } from './epithetPrimaryNameRepair';
 
 describe('planEpithetPrimaryNameRepair', () => {
   it('moves epithet into alias + contextual_title', () => {
@@ -30,5 +30,32 @@ describe('planEpithetPrimaryNameRepair', () => {
     });
     expect(plan.needsRepair).toBe(false);
     expect(plan.name).toBe('Aunt Maribel');
+  });
+});
+
+describe('planSelfIdentityPresentationCleanup', () => {
+  it('disables unpinned theme epithets and drops composed aliases', () => {
+    const plan = planSelfIdentityPresentationCleanup({
+      name: 'Jamie Rivera',
+      alias: [
+        'Jamie',
+        'Isolation And Resilience',
+        'Jamie Rivera the Isolation And Resilience',
+      ],
+      metadata: { is_self: true, epithet: 'Isolation And Resilience' },
+    });
+    expect(plan.needsRepair).toBe(true);
+    expect(plan.metadata.epithet_disabled).toBe(true);
+    expect(plan.alias).toEqual(['Jamie']);
+  });
+
+  it('keeps a pinned epithet on the protagonist', () => {
+    const plan = planSelfIdentityPresentationCleanup({
+      name: 'Jamie Rivera',
+      alias: ['Jamie', 'Hallway Guardian'],
+      metadata: { is_self: true, epithet: 'Hallway Guardian', epithet_pinned: true },
+    });
+    expect(plan.needsRepair).toBe(false);
+    expect(plan.alias).toEqual(['Jamie', 'Hallway Guardian']);
   });
 });

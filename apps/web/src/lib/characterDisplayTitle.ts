@@ -2,6 +2,7 @@ import type { Character } from '../components/characters/CharacterProfileCard';
 import type { CharacterDisplayTitle, TitleStability } from '../api/characterTitle';
 import {
   composeDisplayNameWithEpithet,
+  isThemeShapedEpithet,
   resolveStoredEpithet,
   stripPersonNameEpithet,
 } from './personNameEpithet';
@@ -84,6 +85,12 @@ export function getCharacterDisplayTitle(
   }
 
   const epithet = resolveStoredEpithet(meta as Record<string, unknown>);
+  // The protagonist card is identity, not a story-epithet composition, unless
+  // the user pinned one.
+  const isSelf = meta.is_self === true || meta.is_user === true;
+  if (isSelf && meta.epithet_pinned !== true) {
+    return baseIdentityTitle(character);
+  }
   // When an epithet is present, prefer the clean Character Book primary name so
   // kinship titles ("Aunt Maribel") aren't reduced to first-name-only.
   const primary = stripPersonNameEpithet(character.name || '').trim();
@@ -148,15 +155,28 @@ function storedTitleStillValid(
   return aliases.some((alias) => alias.toLowerCase() === nick.toLowerCase());
 }
 
-export function getCharacterAliases(character: Pick<Character, 'metadata' | 'alias'>): string[] {
+export function getCharacterAliases(character: Pick<Character, 'metadata' | 'alias' | 'name'>): string[] {
   const meta = character.metadata ?? {};
   const stored = meta.display_title as CharacterDisplayTitle | undefined;
   const fromTitle = stored?.aliases?.map((a) => a.value) ?? [];
   const legacy = character.alias ?? [];
   // The alias column is the curated list. Don't resurrect nicknames the user
   // already removed from the card just because display_title metadata is stale.
-  if (Array.isArray(character.alias)) {
-    return [...new Set(legacy.filter(Boolean))];
-  }
-  return [...new Set([...fromTitle, ...legacy].filter(Boolean))];
+  const raw = Array.isArray(character.alias)
+    ? [...new Set(legacy.filter(Boolean))]
+    : [...new Set([...fromTitle, ...legacy].filter(Boolean))];
+
+  const epithet = resolveStoredEpithet(meta as Record<string, unknown>);
+  const composed = epithet
+    ? composeDisplayNameWithEpithet(stripPersonNameEpithet(character.name || ''), epithet)
+    : null;
+  const isSelf = meta.is_self === true || meta.is_user === true;
+
+  return raw.filter((alias) => {
+    if (composed && alias.trim().toLowerCase() === composed.toLowerCase()) return false;
+    if (epithet && alias.trim().toLowerCase() === epithet.toLowerCase() && isSelf) return false;
+    if (isThemeShapedEpithet(alias)) return false;
+    if (/\s+the\s+/i.test(alias) && isSelf) return false;
+    return true;
+  });
 }

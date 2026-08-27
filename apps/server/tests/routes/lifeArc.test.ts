@@ -49,4 +49,26 @@ describe('LifeArc API Routes', () => {
     const res = await request(app).get('/api/life-arc/').expect(200);
     expect(res.body).toHaveProperty('success', true);
   });
+
+  it('GET /?active_only=true excludes day occasions', async () => {
+    const { arcService } = await import('../../src/services/continuityRuntime/arcs/arcService');
+    vi.mocked(arcService.getActiveArcs).mockResolvedValue([
+      { id: 'work-1', title: 'Career Transition Arc', arc_type: 'work' },
+      { id: 'shop-1', title: 'A Costco Shopping Trip With Jamie', arc_type: 'occasion' },
+    ] as any);
+
+    const res = await request(app).get('/api/life-arc/?active_only=true').expect(200);
+    expect(res.body.arcs.map((arc: { title: string }) => arc.title)).toEqual(['Career Transition Arc']);
+  });
+
+  it('GET /?is_active=true is an alias for active_only', async () => {
+    const { arcService } = await import('../../src/services/continuityRuntime/arcs/arcService');
+    vi.mocked(arcService.getActiveArcs).mockResolvedValue([
+      { id: 'work-1', title: 'Career Transition Arc', arc_type: 'work' },
+    ] as any);
+
+    const res = await request(app).get('/api/life-arc/?is_active=true').expect(200);
+    expect(arcService.getActiveArcs).toHaveBeenCalled();
+    expect(res.body.arcs).toHaveLength(1);
+  });
 });

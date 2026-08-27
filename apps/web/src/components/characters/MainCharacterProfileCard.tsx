@@ -19,8 +19,11 @@ import {
   getCharacterContextHooks,
   getCharacterWittyTagline,
   getMainCharacterDisplayName,
+  isTemplateProtagonistBlurb,
+  resolveProfileContextHooks,
+  resolveProfileTagline,
 } from '../../lib/characterDisplay';
-import { getCharacterDisplayTitle } from '../../lib/characterDisplayTitle';
+import { getCharacterDisplayTitle, getCharacterAliases } from '../../lib/characterDisplayTitle';
 import type { Character } from './CharacterProfileCard';
 
 type CharacterAttribute = {
@@ -114,7 +117,9 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
   const middle = (typeof resolvedCharacter.metadata?.middle_name === 'string' ? resolvedCharacter.metadata.middle_name : resolvedCharacter.middle_name) || '';
   const last = resolvedCharacter.last_name || '';
   const fullStructured = [first, middle, last].filter(Boolean).join(' ').trim();
-  const aliases = (resolvedCharacter.alias || []).filter(Boolean);
+  const aliases = getCharacterAliases(resolvedCharacter).filter(
+    (alias) => alias.toLowerCase() !== displayName.toLowerCase() && alias.toLowerCase() !== officialTitle.toLowerCase(),
+  );
   const namesUnderTitle = fullStructured || aliases.length > 0
     ? `${fullStructured}${aliases.length > 0 ? (fullStructured ? ' · ' : '') + aliases.join(' / ') : ''}`
     : null;
@@ -154,9 +159,9 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
             isCurrent: a.isCurrent,
           }))
         );
-        setWittyTagline(profile.wittyTagline ?? getCharacterWittyTagline(profile.character));
+        setWittyTagline(resolveProfileTagline(profile.character, profile.wittyTagline));
         setRoleTagline(profile.roleTagline ?? profile.character.role ?? null);
-        setContextHooks(profile.contextHooks ?? getCharacterContextHooks(profile.character));
+        setContextHooks(resolveProfileContextHooks(profile.character, profile.contextHooks));
         setProfileSummary(profile.profileSummary ?? profile.character.summary ?? null);
       } catch {
         if (!cancelled && !isSyntheticSelfId(character.id)) {
@@ -180,15 +185,21 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
   }, [character.id, dataUpdatedAt]);
 
   const summary =
-    wittyTagline ||
-    profileSummary ||
-    resolvedCharacter.summary ||
+    [wittyTagline, profileSummary, resolvedCharacter.summary].find(
+      (value) =>
+        Boolean(value?.trim()) &&
+        !isTemplateProtagonistBlurb(value) &&
+        !/your story grows with every chat/i.test(value ?? ''),
+    ) ||
     'Your story grows with every conversation — attributes and facts sync from chat and resume.';
   // Reflect modal's occupation emphasis
   const occupationFromAttrs = attributes.length > 0 ? attributes.find((a: any) => a.attributeType === 'occupation')?.attributeValue : null;
   const occupation = resolvedCharacter.role || occupationFromAttrs || roleTagline;
   const subtitle = occupation || 'Protagonist · Your story';
   const sceneNetwork = getSceneNetwork(resolvedCharacter);
+  const displayTags = (resolvedCharacter.tags ?? []).filter(
+    (tag) => !/auto-generated|mentioned in relation/i.test(tag),
+  );
 
   return (
     <Card
@@ -250,7 +261,9 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
                     {namesUnderTitle}
                   </p>
                 )}
-                {officialTitle && officialTitle !== displayName && (
+                {officialTitle &&
+                  officialTitle !== displayName &&
+                  officialTitle.toLowerCase() !== namesUnderTitle?.toLowerCase() && (
                   <p className="text-xs sm:text-sm text-amber-200/70 mt-0.5 font-medium">
                     {officialTitle}
                   </p>
@@ -314,10 +327,10 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
                   {resolvedCharacter.relationship_count} connections
                 </span>
               )}
-              {resolvedCharacter.tags && resolvedCharacter.tags.length > 0 && (
+              {displayTags.length > 0 && (
                 <span className="flex items-center gap-1 truncate max-w-[12rem]">
                   <Tag className="h-3 w-3 text-amber-400/70 flex-shrink-0" />
-                  {resolvedCharacter.tags.slice(0, 3).join(' · ')}
+                  {displayTags.slice(0, 3).join(' · ')}
                 </span>
               )}
             </div>
@@ -339,7 +352,7 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
                   </Badge>
                 ))}
               </div>
-            ) : (
+            ) : occupation ? null : (
               <p className="text-[10px] text-white/35 italic line-clamp-2">
                 {canOpenDetail
                   ? 'Upload a resume or keep chatting — LoreBook fills in occupation, skills, and contact.'

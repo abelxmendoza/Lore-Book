@@ -5,7 +5,11 @@
 
 import { logger } from '../../logger';
 import { splitPersonName, normalizeNameKey } from '../../utils/nameNormalization';
-import { splitPersonNameEpithet } from '../../utils/personNameEpithet';
+import {
+  composeDisplayNameWithEpithet,
+  isThemeShapedEpithet,
+  splitPersonNameEpithet,
+} from '../../utils/personNameEpithet';
 import { supabaseAdmin } from '../supabaseClient';
 
 export type EpithetPrimaryNameRepair = {
@@ -61,6 +65,47 @@ export function planEpithetPrimaryNameRepair(row: {
   };
 }
 
+/**
+ * The protagonist card is an identity surface. Unpinned story epithets and
+ * composed "Name the Epithet" aliases should not occupy the name line.
+ */
+export function planSelfIdentityPresentationCleanup(row: {
+  name: string;
+  alias?: string[] | null;
+  metadata?: Record<string, unknown> | null;
+}): {
+  needsRepair: boolean;
+  alias: string[];
+  metadata: Record<string, unknown>;
+} {
+  const metadata = { ...(row.metadata ?? {}) };
+  const alias = [...(row.alias ?? [])].filter(Boolean);
+  const pinned = metadata.epithet_pinned === true;
+  const epithet =
+    (typeof metadata.epithet === 'string' && metadata.epithet) ||
+    (typeof metadata.contextual_title === 'string' && metadata.contextual_title) ||
+    null;
+  const composed = epithet
+    ? composeDisplayNameWithEpithet(row.name, epithet)
+    : null;
+
+  const nextAlias = alias.filter((value) => {
+    const key = normalizeNameKey(value);
+    if (composed && key === normalizeNameKey(composed)) return false;
+    if (epithet && !pinned && key === normalizeNameKey(epithet)) return false;
+    if (isThemeShapedEpithet(value)) return false;
+    return true;
+  });
+
+  let changed = nextAlias.length !== alias.length;
+  if (!pinned && epithet && metadata.epithet_disabled !== true) {
+    metadata.epithet_disabled = true;
+    changed = true;
+  }
+
+  return { needsRepair: changed, alias: nextAlias, metadata };
+}
+
 /** Persist epithet→alias repair when the primary name still carries "the …". */
 export async function repairEpithetPrimaryNameIfNeeded(
   userId: string,
@@ -102,4 +147,33 @@ export async function repairEpithetPrimaryNameIfNeeded(
     'Repaired epithet baked into character primary name',
   );
   return { repaired: true, name: plan.name, epithet: plan.epithet ?? undefined };
+}
+
+export async function repairSelfIdentityPresentationIfNeeded(
+  userId: string,
+  characterId: string,
+  row: {
+    name: string;
+    alias?: string[] | null;
+    metadata?: Record<string, unknown> | null;
+  },
+): Promise<{ repaired: boolean }> {
+  const plan = planSelfIdentityPresentationCleanup(row);
+  if (!plan.needsRepair) return { repaired: false };
+
+  const { error } = await supabaseAdmin
+    .from('characters')
+    .update({
+      alias: plan.alias.length ? plan.alias : null,
+      metadata: plan.metadata,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', characterId)
+    .eq('user_id', userId);
+
+  if (error) {
+    logger.warn({ err: error, characterId }, 'self identity presentation cleanup failed');
+    return { repaired: false };
+  }
+  return { repaired: true };
 }
