@@ -1057,6 +1057,13 @@ class FamilyTreeService {
       source: 'USER',
       metadata: { operation_type: 'family_exclude' },
     });
+
+    const { householdWriteService } = await import('./kinship/householdWriteService');
+    await householdWriteService.removeCharacterFromAllHouseholds(
+      userId,
+      characterId,
+      reason ?? 'Removed from the family tree',
+    );
     return true;
   }
 

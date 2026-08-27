@@ -26,7 +26,7 @@ type Row = Record<string, unknown>;
 /** Chainable stub for the subset of the Supabase builder this service uses. */
 function chain(data: Row[] | Row | null, error: unknown = null, spies: Record<string, (...a: unknown[]) => unknown> = {}) {
   const builder: Record<string, unknown> = {};
-  for (const m of ['select', 'eq', 'is', 'order', 'insert', 'update', 'maybeSingle']) {
+  for (const m of ['select', 'eq', 'is', 'order', 'insert', 'update', 'maybeSingle', 'ilike', 'limit', 'in']) {
     builder[m] = (...args: unknown[]) => {
       spies[m]?.(...args);
       return builder;
@@ -71,7 +71,11 @@ describe('householdWriteService', () => {
   it('addHouseholdMember adds to the roster and opens a new stay', async () => {
     addMemberMock.mockResolvedValueOnce({ character_id: 'char-1', character_name: 'Ralph' });
     const insertSpy = vi.fn();
-    fromMock.mockImplementationOnce(() => chain(null, null, { insert: insertSpy }));
+    fromMock
+      .mockImplementationOnce(() =>
+        chain([{ id: 'char-1', name: 'Ralph', archetype: 'family', metadata: {} }]),
+      )
+      .mockImplementationOnce(() => chain(null, null, { insert: insertSpy }));
 
     const { householdWriteService } = await import('./householdWriteService');
     const result = await householdWriteService.addHouseholdMember('user-1', 'org-1', 'Ralph', {
@@ -81,6 +85,114 @@ describe('householdWriteService', () => {
     expect(result).toEqual({ characterId: 'char-1', characterName: 'Ralph' });
     expect(insertSpy).toHaveBeenCalledWith(
       expect.objectContaining({ organization_id: 'org-1', character_id: 'char-1', join_reason: 'moved in after college' }),
+    );
+  });
+
+  it('rejects adding a character the user already removed from the family tree', async () => {
+    fromMock.mockImplementationOnce(() =>
+      chain({
+        id: 'char-x',
+        name: 'Alex Friend',
+        archetype: 'friend',
+        metadata: { family_excluded: { value: true, reason: 'tree_remove' } },
+      }),
+    );
+
+    const { householdWriteService } = await import('./householdWriteService');
+    await expect(
+      householdWriteService.addHouseholdMember('user-1', 'org-1', 'Alex Friend', { characterId: 'char-x' }),
+    ).rejects.toMatchObject({
+      message: 'Only people in your family tree can be added to a household',
+      statusCode: 400,
+    });
+    expect(addMemberMock).not.toHaveBeenCalled();
+  });
+
+  it('updateHousehold renames without moving when the location is unchanged', async () => {
+    getOrganizationMock
+      .mockResolvedValueOnce({
+        id: 'org-1',
+        name: "Jamie's House",
+        location: '123 Maple St',
+        metadata: { inference_source: 'household_residence', residence_name: '123 Maple St' },
+      })
+      .mockResolvedValueOnce({
+        id: 'org-1',
+        name: "Jamie's House",
+        metadata: { inference_source: 'household_residence', residence_name: '123 Maple St' },
+      });
+
+    const { householdWriteService } = await import('./householdWriteService');
+    const ok = await householdWriteService.updateHousehold('user-1', 'org-1', {
+      name: "Jamie and Marcus's House",
+      reason: 'after the wedding',
+    });
+
+    expect(ok).toBe(true);
+    expect(updateOrganizationMock).toHaveBeenCalledWith(
+      'user-1',
+      'org-1',
+      expect.objectContaining({ name: "Jamie and Marcus's House" }),
+    );
+  });
+
+  it('mergeHouseholds soft-deletes the source when it has no extra members', async () => {
+    const house = {
+      id: 'org-keep',
+      name: "Jamie's House",
+      metadata: { inference_source: 'household_residence' },
+    };
+    const source = {
+      id: 'org-drop',
+      name: 'Duplicate House',
+      metadata: { inference_source: 'household_residence' },
+    };
+    getOrganizationMock
+      .mockResolvedValueOnce(house)
+      .mockResolvedValueOnce(source)
+      .mockResolvedValueOnce(source);
+    fromMock.mockImplementationOnce(() => chain([]));
+
+    const { householdWriteService } = await import('./householdWriteService');
+    const ok = await householdWriteService.mergeHouseholds('user-1', 'org-keep', 'org-drop', 'same home');
+
+    expect(ok).toBe(true);
+    expect(updateOrganizationMock).toHaveBeenCalledWith(
+      'user-1',
+      'org-drop',
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          household_deleted: expect.objectContaining({ reason: 'same home' }),
+        }),
+      }),
+    );
+  });
+
+  it('removeCharacterFromAllHouseholds soft-removes roster rows on household orgs only', async () => {
+    const memberUpdateSpy = vi.fn();
+    const stayUpdateSpy = vi.fn();
+    fromMock
+      .mockImplementationOnce(() => chain([{ organization_id: 'org-1' }, { organization_id: 'org-crew' }]))
+      .mockImplementationOnce(() =>
+        chain([
+          { id: 'org-1', name: "Jamie's House", type: 'family', metadata: { inference_source: 'household_residence' } },
+          { id: 'org-crew', name: 'Holiday Planning Crew', type: 'family', metadata: { inference_source: 'kinship_graph' } },
+        ]),
+      )
+      .mockImplementationOnce(() => chain({ id: 'member-row-1' }))
+      .mockImplementationOnce(() => chain(null, null, { update: memberUpdateSpy }))
+      .mockImplementationOnce(() => chain(null, null, { update: stayUpdateSpy }));
+
+    const { householdWriteService } = await import('./householdWriteService');
+    const removed = await householdWriteService.removeCharacterFromAllHouseholds(
+      'user-1',
+      'char-x',
+      'Removed from the family tree',
+    );
+
+    expect(removed).toBe(1);
+    expect(memberUpdateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'former', notes: 'Removed from the family tree' }),
     );
   });
 
