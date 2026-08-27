@@ -123,4 +123,17 @@ describe('placeIntelligence', () => {
     expect(review.canMerge).toBe(true);
     expect(review.relationship).toBe('alias_of');
   });
+
+  it('does not merge the same chain at different streets or numbered suffixes', () => {
+    const sites = reviewPlaceDuplicateCompatibility(
+      'EOS Gym — Katella & Euclid',
+      'EOS Gym — State College & Chapman',
+    );
+    expect(sites.canMerge).toBe(false);
+    expect(sites.evidence.some((item) => /distinct chain sites/i.test(item))).toBe(true);
+
+    const numbered = reviewPlaceDuplicateCompatibility('Vanguard Fitness gym 1', 'Vanguard Fitness gym 2');
+    expect(numbered.canMerge).toBe(false);
+    expect(placeDuplicateScore('Vanguard Fitness gym 1', 'Vanguard Fitness gym 2')).toBe(0);
+  });
 });
