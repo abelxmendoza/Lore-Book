@@ -111,4 +111,42 @@ describe('householdService.listHouseholds', () => {
     expect(households[0].residents.find((m) => m.characterId === 'char-x')).toBeUndefined();
     expect(getUserFamilyTreeMock).not.toHaveBeenCalled();
   });
+
+  it('omits archived characters from household rosters', async () => {
+    fromMock
+      .mockImplementationOnce(() =>
+        chain([
+          {
+            id: 'org-1',
+            name: "Jamie's House",
+            description: null,
+            metadata: { inference_source: 'household_residence' },
+          },
+        ]),
+      )
+      .mockImplementationOnce(() =>
+        chain([
+          { id: 'char-1', metadata: {}, status: 'active' },
+          { id: 'char-archived', metadata: {}, status: 'archived' },
+        ]),
+      );
+    getMembersForOrganizationsMock.mockResolvedValueOnce(
+      new Map([
+        [
+          'org-1',
+          [
+            { character_id: 'char-1', character_name: 'Jamie', role: 'resident', status: 'active' },
+            { character_id: 'char-archived', character_name: 'Alex Friend', role: 'resident', status: 'active' },
+          ],
+        ],
+      ]),
+    );
+
+    const { householdService } = await import('./householdService');
+    const households = await householdService.listHouseholds('user-1', {
+      familyMemberIds: ['char-1', 'char-archived'],
+    });
+
+    expect(households[0].residents.map((m) => m.name)).toEqual(['Jamie']);
+  });
 });

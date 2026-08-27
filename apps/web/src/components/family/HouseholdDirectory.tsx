@@ -176,9 +176,10 @@ function MemberList({
                 type="button"
                 onClick={() => onRemoveMember(m)}
                 aria-label={`Remove ${m.name} from this household`}
-                className="opacity-0 group-hover/member:opacity-100 focus:opacity-100 text-white/30 hover:text-red-300 transition"
+                title={`Remove ${m.name} from this household`}
+                className="text-white/40 hover:text-red-300 transition"
               >
-                <X className="h-3 w-3" />
+                <X className="h-3.5 w-3.5" />
               </button>
             )}
           </li>
@@ -344,6 +345,7 @@ export function HouseholdDirectory({
                         type="button"
                         onClick={() => setDialog({ type: 'merge', household: h })}
                         aria-label={`Merge ${h.name} into another household`}
+                        title="Merge into another household"
                         className="text-white/30 hover:text-amber-200 transition"
                       >
                         <GitMerge className="h-3.5 w-3.5" />

@@ -5,6 +5,7 @@ import { booksApi, type PossibleFamilyMatch } from '../../api/books';
 import { onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { DEMO_FAMILY_SUMMARY, DEMO_FAMILY_CHARACTERS_BY_ID } from '../../mocks/family';
+import { mockDataService } from '../../services/mockDataService';
 import { FamilyTreePanel } from './FamilyTreePanel';
 import { FamilyTreeCopyAllButton } from './FamilyTreeCopyAllButton';
 import { HierarchicalFamilyTree } from './HierarchicalFamilyTree';
@@ -43,8 +44,8 @@ export function FamilyBook() {
   const load = useCallback(async () => {
     if (shouldUseMock) {
       const base = DEMO_FAMILY_SUMMARY as SummaryResponse;
-      setSummary(base);
-      setDemoTree(base.tree);
+      setSummary((prev) => prev ?? base);
+      setDemoTree((prev) => prev ?? base.tree);
       setLoading(false);
       return;
     }
@@ -83,6 +84,21 @@ export function FamilyBook() {
 
   const patchDemoHouseholds = useCallback((updater: (prev: HouseholdDTO[]) => HouseholdDTO[]) => {
     setSummary((prev) => (prev ? { ...prev, households: updater(prev.households ?? []) } : prev));
+  }, []);
+
+  const dropDemoFamilyIds = useCallback((ids: Iterable<string>) => {
+    const dropped = new Set([...ids].filter(Boolean));
+    if (dropped.size === 0) return;
+    setDemoTree((prev) => (prev ? { ...prev, members: prev.members.filter((m) => !dropped.has(m.id)) } : prev));
+    setSummary((prev) => {
+      if (!prev) return prev;
+      const members = (prev.tree?.members ?? []).filter((m) => !dropped.has(m.id));
+      return {
+        ...prev,
+        tree: { ...prev.tree, members },
+        households: filterHouseholdsToListedFamily(prev.households ?? [], members.map((m) => m.id)),
+      };
+    });
   }, []);
 
   const openCharacter = async (characterId: string, name: string) => {
@@ -764,7 +780,17 @@ export function FamilyBook() {
         <CharacterDetailModal
           character={selectedCharacter}
           onClose={() => setSelectedCharacter(null)}
-          onUpdate={() => void load()}
+          onUpdate={() => {
+            if (shouldUseMock) {
+              dropDemoFamilyIds(
+                mockDataService.get.characters()
+                  .filter((c) => c.status === 'archived' || c.status === 'pending_deletion' || c.status === 'reclassified')
+                  .map((c) => c.id),
+              );
+              return;
+            }
+            void load();
+          }}
         />
       )}
 

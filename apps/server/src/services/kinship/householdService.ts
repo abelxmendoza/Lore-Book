@@ -87,13 +87,19 @@ export class HouseholdService {
     }
 
     const metadataById = new Map<string, Record<string, unknown> | null>();
+    const droppedIds = new Set<string>();
     if (rosterIds.size > 0) {
       const { data: characters } = await supabaseAdmin
         .from('characters')
-        .select('id, metadata')
+        .select('id, metadata, status')
         .eq('user_id', userId)
         .in('id', [...rosterIds]);
       for (const row of characters ?? []) {
+        const status = String((row as { status?: string | null }).status ?? '').toLowerCase();
+        if (status === 'archived' || status === 'pending_deletion' || status === 'reclassified') {
+          droppedIds.add(row.id as string);
+          continue;
+        }
         metadataById.set(row.id as string, (row.metadata ?? null) as Record<string, unknown> | null);
       }
     }
@@ -110,6 +116,7 @@ export class HouseholdService {
       const memberDtos: HouseholdMember[] = [];
       for (const m of members) {
         if (!m.character_id) continue;
+        if (droppedIds.has(m.character_id)) continue;
         if (m.status === 'former' || /former/.test((m.role ?? '').toLowerCase())) continue;
         if (!isListedFamilyMember(m.character_id, familyMemberIds, metadataById.get(m.character_id))) {
           continue;
