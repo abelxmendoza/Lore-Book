@@ -599,13 +599,6 @@ export const ProjectBook = () => {
       {notice && <div className="mb-3 rounded-xl bg-primary/10 border border-primary/30 px-4 py-2.5 text-sm text-primary">{notice}</div>}
       {error && <div className="mb-3 rounded-xl bg-red-500/10 border border-red-500/30 px-4 py-2.5 text-sm text-red-300">{error}</div>}
 
-      <DetectedProjectSuggestions
-        demoMode={isMockDataEnabled}
-        existingBookEntries={projects.map((p) => ({ id: p.id, name: p.name }))}
-        existingProjectNames={projects.map((p) => p.name)}
-        onProjectAdded={() => void load()}
-      />
-
       {duplicateGroups.length > 0 && (
         <div className="mb-5 sm:mb-6 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 sm:p-4">
           <div className="text-sm font-medium text-amber-300 mb-2">Possible duplicates</div>
@@ -811,6 +804,13 @@ export const ProjectBook = () => {
           </div>
         </>
       )}
+
+      <DetectedProjectSuggestions
+        demoMode={isMockDataEnabled}
+        existingBookEntries={projects.map((p) => ({ id: p.id, name: p.name }))}
+        existingProjectNames={projects.map((p) => p.name)}
+        onProjectAdded={() => void load()}
+      />
 
       {active && (
         <ProjectDetailModal
