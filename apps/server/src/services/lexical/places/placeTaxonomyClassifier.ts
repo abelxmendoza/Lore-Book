@@ -63,7 +63,7 @@ export function classifyPlaceTaxonomy(span: string, context = ''): TaxonomyClass
     return { placeType: 'event_space', confidence: 0.9, rulesFired: ['known_event_space'] };
   }
 
-  if (n === 'club nova') {
+  if (n === 'club nova' || n === 'catch one') {
     return { placeType: 'nightclub', confidence: 0.88, rulesFired: ['known_nightclub'] };
   }
 
