@@ -1525,7 +1525,7 @@ export const CharacterDetailModal = ({
         sourceSurface: 'characters',
         sourceLabel: CHAT_FOCUS_SOURCE_LABELS.characters,
         knowledgeScope: FOCUSED_ENTITY_CHAT_PRESETS.characters.knowledgeScope,
-        initialPrompt: trimmed || FOCUSED_ENTITY_CHAT_PRESETS.characters.existingPrompt(getCharacterDisplayTitle(editedCharacter)),
+        initialPrompt: trimmed,
         arrivedAt: Date.now(),
       });
     }

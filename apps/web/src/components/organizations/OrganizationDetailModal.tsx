@@ -325,7 +325,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
         sourceSurface: 'organizations',
         sourceLabel: CHAT_FOCUS_SOURCE_LABELS.organizations,
         knowledgeScope: knowledgeScope ?? preset.knowledgeScope,
-        initialPrompt: prompt ?? preset.existingPrompt(editedOrg.name),
+        initialPrompt: prompt ?? '',
         arrivedAt: Date.now(),
       });
     },
