@@ -231,6 +231,62 @@ async function retireConflictingFamilyEdgesBetween(
 }
 
 /**
+ * Soft-retire specific typed family edges between two characters (and their
+ * inverses). Unlike a typed upsert, this does not keep a replacement edge —
+ * used when unlinking a child or pet from a romantic relationship without
+ * deleting the character card.
+ */
+export async function retireFamilyEdgesOfTypesBetween(
+  userId: string,
+  a: string,
+  b: string,
+  types: string[],
+): Promise<number> {
+  if (!userId || !a || !b || a === b || types.length === 0) return 0;
+
+  const wanted = new Set<string>();
+  for (const raw of types) {
+    const type = normalizeFamilyEdgeType(raw);
+    wanted.add(type);
+    const inverse = inverseFamilyEdgeType(type);
+    if (inverse) wanted.add(inverse);
+  }
+
+  const { data: rows, error: selectError } = await supabaseAdmin
+    .from('character_relationships')
+    .select('id, relationship_type')
+    .eq('user_id', userId)
+    .eq('relationship_category', 'family')
+    .eq('status', 'active')
+    .or(
+      `and(source_character_id.eq.${a},target_character_id.eq.${b}),and(source_character_id.eq.${b},target_character_id.eq.${a})`,
+    );
+  if (selectError) {
+    const code = (selectError as { code?: string }).code;
+    if (code === 'PGRST205' || code === '42P01') return 0;
+    logger.debug({ error: selectError, userId, a, b }, 'Could not read family edges to unlink');
+    return 0;
+  }
+
+  const staleIds = (rows ?? [])
+    .filter((r) => wanted.has(r.relationship_type as string))
+    .map((r) => r.id as string);
+  if (staleIds.length === 0) return 0;
+
+  const { error } = await supabaseAdmin
+    .from('character_relationships')
+    .update({ status: 'superseded', updated_at: new Date().toISOString() })
+    .in('id', staleIds);
+  if (error) {
+    const code = (error as { code?: string }).code;
+    if (code === 'PGRST205' || code === '42P01') return 0;
+    logger.debug({ error, userId, a, b, staleIds }, 'Could not retire family edges of requested types');
+    return 0;
+  }
+  return staleIds.length;
+}
+
+/**
  * Upsert a family edge and its inverse (when known). Convention: source IS the
  * `<kin>` of target for types like parent_of / aunt_of.
  */

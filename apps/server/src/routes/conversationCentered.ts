@@ -4379,6 +4379,29 @@ router.get(
   })
 );
 
+function partnerCharacterIdFromRomanticRow(rel: {
+  character_id?: string | null;
+  person_id?: string | null;
+  person_type?: string | null;
+  metadata?: unknown;
+}): string | null {
+  const meta = (rel.metadata ?? {}) as Record<string, unknown>;
+  const linkedFromMeta = typeof meta.linked_character_id === 'string' ? meta.linked_character_id : null;
+  return rel.character_id ?? linkedFromMeta ?? (rel.person_type === 'character' ? rel.person_id ?? null : null);
+}
+
+const relationshipDependentWriteSchema = z
+  .object({
+    kind: z.enum(['child', 'pet']),
+    belongsTo: z.enum(['both', 'self', 'partner']).optional(),
+    characterId: z.string().trim().min(1).max(80).optional(),
+    name: z.string().trim().min(1).max(80).optional(),
+    species: z.string().trim().max(40).optional(),
+  })
+  .refine((body) => Boolean(body.characterId || body.name), {
+    message: 'characterId or name is required',
+  });
+
 /**
  * GET /api/conversation/romantic-relationships/:id/kids
  *
@@ -4405,13 +4428,7 @@ router.get(
       return res.status(404).json({ success: false, error: 'Relationship not found' });
     }
 
-    const linkedFromMeta =
-      typeof (rel.metadata as Record<string, unknown> | null)?.linked_character_id === 'string'
-        ? ((rel.metadata as Record<string, unknown>).linked_character_id as string)
-        : null;
-    const partnerCharacterId =
-      rel.character_id ?? linkedFromMeta ?? (rel.person_type === 'character' ? rel.person_id : null);
-
+    const partnerCharacterId = partnerCharacterIdFromRomanticRow(rel);
     const [kids, pets] = await Promise.all([
       familyTreeService.getKidsTogetherForRelationship(
         userId,
@@ -4427,6 +4444,99 @@ router.get(
 
     return res.json({ success: true, kids, pets });
   })
+);
+
+/**
+ * POST /api/conversation/romantic-relationships/:id/kids
+ * Manually link a child or pet to this romantic relationship.
+ */
+router.post(
+  '/romantic-relationships/:id/kids',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { id: relationshipId } = req.params;
+    const parsed = relationshipDependentWriteSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid kid or pet link',
+        details: parsed.error.flatten(),
+      });
+    }
+
+    const { data: rel, error: relError } = await supabaseAdmin
+      .from('romantic_relationships')
+      .select('id, person_id, person_type, character_id, relationship_type, metadata')
+      .eq('id', relationshipId)
+      .eq('user_id', userId)
+      .single();
+
+    if (relError || !rel) {
+      return res.status(404).json({ success: false, error: 'Relationship not found' });
+    }
+
+    const partnerCharacterId = partnerCharacterIdFromRomanticRow(rel);
+    if (!partnerCharacterId) {
+      return res.status(400).json({ success: false, error: 'This relationship is not linked to a partner character.' });
+    }
+
+    const result = await familyTreeService.linkDependentToRomanticRelationship(
+      userId,
+      partnerCharacterId,
+      rel.relationship_type as string | null,
+      parsed.data,
+    );
+    if (!result.ok) {
+      return res.status(result.status).json({ success: false, error: result.error });
+    }
+    return res.json({ success: true, kids: result.kids, pets: result.pets });
+  }),
+);
+
+/**
+ * DELETE /api/conversation/romantic-relationships/:id/kids/:characterId
+ * Unlink a child or pet from this romantic relationship. The character card remains.
+ */
+router.delete(
+  '/romantic-relationships/:id/kids/:characterId',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { id: relationshipId, characterId } = req.params;
+    const kindParse = z.enum(['child', 'pet']).optional().safeParse(req.query.kind);
+    if (!kindParse.success) {
+      return res.status(400).json({ success: false, error: 'kind must be child or pet when provided' });
+    }
+
+    const { data: rel, error: relError } = await supabaseAdmin
+      .from('romantic_relationships')
+      .select('id, person_id, person_type, character_id, relationship_type, metadata')
+      .eq('id', relationshipId)
+      .eq('user_id', userId)
+      .single();
+
+    if (relError || !rel) {
+      return res.status(404).json({ success: false, error: 'Relationship not found' });
+    }
+
+    const partnerCharacterId = partnerCharacterIdFromRomanticRow(rel);
+    if (!partnerCharacterId) {
+      return res.status(400).json({ success: false, error: 'This relationship is not linked to a partner character.' });
+    }
+
+    const result = await familyTreeService.unlinkDependentFromRomanticRelationship(
+      userId,
+      partnerCharacterId,
+      rel.relationship_type as string | null,
+      characterId as string,
+      kindParse.data,
+    );
+    if (!result.ok) {
+      return res.status(result.status).json({ success: false, error: result.error });
+    }
+    return res.json({ success: true, kids: result.kids, pets: result.pets });
+  }),
 );
 
 /**
