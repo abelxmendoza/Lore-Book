@@ -36,7 +36,6 @@ import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
 import { openFocusedEntityChat } from '../../lib/openFocusedEntityChat';
 import { DetectedLocationSuggestions } from './DetectedLocationSuggestions';
 import { LocationMergePanel } from './LocationMergePanel';
-import { OntologyCompliancePanel } from '../ontology/OntologyCompliancePanel';
 import { useLocationsBookData } from '../../store/hooks/useEntityBooks';
 import { locationBookDemoLocations } from '../../mocks/locationBookDemo';
 
@@ -385,7 +384,6 @@ export const LocationBook = () => {
         onClearSelection={() => setSelectedForMerge(new Set())}
       />
 
-      <OntologyCompliancePanel book="locations" />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h2 className="text-lg sm:text-xl font-bold text-white truncate">Places</h2>
