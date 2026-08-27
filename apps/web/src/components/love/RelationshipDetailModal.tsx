@@ -21,7 +21,13 @@ import { RelationshipAnalytics } from './RelationshipAnalytics';
 import { TheirConnectionsPanel } from './TheirConnectionsPanel';
 import { RelationshipFlagsPanel } from './RelationshipFlagsPanel';
 import { RelationshipLifeImpactPanel } from './RelationshipLifeImpactPanel';
-import { KidsTogetherPanel, type KidTogether, type PetTogether } from './KidsTogetherPanel';
+import {
+  KidsTogetherPanel,
+  type AddDependentInput,
+  type DependentCandidate,
+  type KidTogether,
+  type PetTogether,
+} from './KidsTogetherPanel';
 import { getMockRelationshipInfluence } from '../../mocks/romanticLifeImpact';
 import type { MockRelationshipInfluence } from '../../mocks/romanticLifeImpact';
 import { getMockKidsTogether, getMockPetsTogether } from '../../mocks/romanticRelationships';
@@ -170,6 +176,9 @@ export const RelationshipDetailModal = ({
   const [pets, setPets] = useState<PetTogether[]>([]);
   const [kidsLoading, setKidsLoading] = useState(false);
   const [kidsLoaded, setKidsLoaded] = useState(false);
+  const [dependentCandidates, setDependentCandidates] = useState<DependentCandidate[]>([]);
+  const [dependentsBusy, setDependentsBusy] = useState(false);
+  const [dependentsError, setDependentsError] = useState<string | null>(null);
   const [crudBusy, setCrudBusy] = useState(false);
   const [crudError, setCrudError] = useState<string | null>(null);
   const [peripheralOpenError, setPeripheralOpenError] = useState<string | null>(null);
@@ -194,6 +203,8 @@ export const RelationshipDetailModal = ({
     setKids([]);
     setPets([]);
     setKidsLoaded(false);
+    setDependentCandidates([]);
+    setDependentsError(null);
   }, [relationshipId, shouldUseMockData]);
 
   useEffect(() => {
@@ -291,6 +302,104 @@ export const RelationshipDetailModal = ({
   useEffect(() => {
     if (activeTab === 'kids') loadKids();
   }, [activeTab, loadKids]);
+
+  const loadDependentCandidates = useCallback(async () => {
+    if (shouldUseMockData) {
+      setDependentCandidates([
+        { id: 'demo-char-riley', name: 'Riley', archetype: 'family' },
+        { id: 'demo-char-sam', name: 'Sam', archetype: 'family' },
+        { id: 'demo-char-waffles', name: 'Waffles', archetype: 'pet', species: 'dog' },
+        { id: 'demo-char-pixel', name: 'Pixel', archetype: 'pet', species: 'cat' },
+      ]);
+      return;
+    }
+    try {
+      const index = await fetchJson<{
+        entities?: Array<{ id?: string; name?: string; type?: string }>;
+      }>('/api/entities/book-index?types=character&limit=100').catch(() => null);
+      const rows = (index?.entities ?? [])
+        .filter((row) => row.id && row.name && (!row.type || row.type === 'character'))
+        .map((row) => ({ id: String(row.id), name: String(row.name) }));
+      setDependentCandidates(rows);
+    } catch {
+      setDependentCandidates([]);
+    }
+  }, [shouldUseMockData]);
+
+  const handleAddDependent = useCallback(
+    async (input: AddDependentInput) => {
+      setDependentsBusy(true);
+      setDependentsError(null);
+      try {
+        if (shouldUseMockData) {
+          const id = input.characterId || `demo-${input.kind}-${Date.now()}`;
+          const relation = input.belongsTo === 'both' ? ('together' as const) : ('step' as const);
+          if (input.kind === 'pet') {
+            setPets((prev) =>
+              prev.some((pet) => pet.id === id)
+                ? prev
+                : [...prev, { id, name: input.name, relation, belongsTo: input.belongsTo, species: input.species ?? null }],
+            );
+          } else {
+            setKids((prev) =>
+              prev.some((kid) => kid.id === id)
+                ? prev
+                : [...prev, { id, name: input.name, relation, belongsTo: input.belongsTo }],
+            );
+          }
+          return;
+        }
+        const data = await fetchJson<{ success: boolean; kids?: KidTogether[]; pets?: PetTogether[]; error?: string }>(
+          `/api/conversation/romantic-relationships/${relationshipId}/kids`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(input),
+          },
+        );
+        if (!data?.success) {
+          setDependentsError(data?.error || 'Could not add that child or pet.');
+          return;
+        }
+        setKids(data.kids ?? []);
+        setPets(data.pets ?? []);
+      } catch (err) {
+        setDependentsError(err instanceof Error ? err.message : 'Could not add that child or pet.');
+      } finally {
+        setDependentsBusy(false);
+      }
+    },
+    [relationshipId, shouldUseMockData],
+  );
+
+  const handleRemoveDependent = useCallback(
+    async (characterId: string, kind: 'child' | 'pet') => {
+      setDependentsBusy(true);
+      setDependentsError(null);
+      try {
+        if (shouldUseMockData) {
+          if (kind === 'pet') setPets((prev) => prev.filter((pet) => pet.id !== characterId));
+          else setKids((prev) => prev.filter((kid) => kid.id !== characterId));
+          return;
+        }
+        const data = await fetchJson<{ success: boolean; kids?: KidTogether[]; pets?: PetTogether[]; error?: string }>(
+          `/api/conversation/romantic-relationships/${relationshipId}/kids/${encodeURIComponent(characterId)}?kind=${kind}`,
+          { method: 'DELETE' },
+        );
+        if (!data?.success) {
+          setDependentsError(data?.error || 'Could not unlink that child or pet.');
+          return;
+        }
+        setKids(data.kids ?? []);
+        setPets(data.pets ?? []);
+      } catch (err) {
+        setDependentsError(err instanceof Error ? err.message : 'Could not unlink that child or pet.');
+      } finally {
+        setDependentsBusy(false);
+      }
+    },
+    [relationshipId, shouldUseMockData],
+  );
 
   const loadData = async () => {
     setLoading(true);
@@ -1012,6 +1121,13 @@ export const RelationshipDetailModal = ({
               partnerName={displayName}
               onOpenPeripheralCharacter={handleOpenPeripheralCharacter}
               onCloseModal={onClose}
+              candidateCharacters={dependentCandidates}
+              excludeCharacterIds={[relationship.person_id, relationship.character_id ?? ''].filter(Boolean)}
+              busy={dependentsBusy}
+              error={dependentsError}
+              onAddDependent={handleAddDependent}
+              onRemoveDependent={handleRemoveDependent}
+              onOpenAddPanel={() => void loadDependentCandidates()}
             />
           </TabsContent>
 
