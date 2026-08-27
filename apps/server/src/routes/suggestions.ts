@@ -23,7 +23,7 @@ const dismissSchema = z.object({
   suggestion_id: z.string().optional(),
   source_message_id: z.string().optional(),
   thread_id: z.string().optional(),
-  reason: z.enum(['not_entity', 'wrong_book', 'duplicate', 'noise']).optional(),
+  reason: z.enum(['not_entity', 'wrong_book', 'duplicate', 'noise', 'not_a_person', 'error']).optional(),
 });
 
 function dismissResponse(result: RecordDismissalResult | null, domain: SuggestionDismissalDomain, name: string) {

@@ -58,6 +58,25 @@ describe('DetectedCharacterSuggestions', () => {
     expect(screen.getByText(/fictional sample conversations/i)).toBeInTheDocument();
   });
 
+  it('offers person-specific dismiss reasons, not the generic entity set', async () => {
+    const user = userEvent.setup();
+    render(
+      <DetectedCharacterSuggestions
+        demoMode
+        variant="general"
+        existingCharacterNames={getMockCharacterSuggestionBookNames('general')}
+      />
+    );
+
+    await user.click(screen.getAllByLabelText('Dismiss')[0]);
+
+    expect(screen.getByRole('menuitem', { name: /not a real person/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /this is an error/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /duplicate.*already tracked/i })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /wrong book/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /not this kind of thing/i })).not.toBeInTheDocument();
+  });
+
   it('shows romantic demo suggestions for Love view variant', () => {
     render(
       <DetectedCharacterSuggestions

@@ -205,9 +205,13 @@ class EntityLearningService {
               ? 'user_marked_duplicate'
               : input.result?.reason === 'noise'
                 ? 'user_marked_noise'
-                : input.result?.isPermanent
-                  ? 'permanent_suggestion_suppression'
-                  : 'user_dismissed_suggestion',
+                : input.result?.reason === 'not_a_person'
+                  ? 'user_marked_not_a_person'
+                  : input.result?.reason === 'error'
+                    ? 'user_marked_error'
+                    : input.result?.isPermanent
+                      ? 'permanent_suggestion_suppression'
+                      : 'user_dismissed_suggestion',
       },
     ];
 
