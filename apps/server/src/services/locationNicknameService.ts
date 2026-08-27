@@ -326,8 +326,15 @@ Generate a unique, contextual nickname that includes relationship information:`
         nickname = this.generateContextualFallbackNickname(location);
       }
 
-      // Ensure uniqueness
+      // Ensure uniqueness. Prefer a site qualifier over "Gym 1".
+      const siteHint = [location.proximityTarget, location.description]
+        .filter((value): value is string => Boolean(value && value.trim()))
+        .map((value) => value.replace(/^(?:the\s+)?(?:gym|studio)\s+(?:on|at|off|near|by)\s+/i, '').trim())
+        [0];
       let uniqueNickname = nickname;
+      if (existingNames.has(uniqueNickname.toLowerCase()) && siteHint && siteHint.length < 40) {
+        uniqueNickname = `${nickname} — ${siteHint}`;
+      }
       let counter = 1;
       while (existingNames.has(uniqueNickname.toLowerCase())) {
         uniqueNickname = `${nickname} ${counter}`;

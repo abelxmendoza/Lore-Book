@@ -109,6 +109,7 @@ export function scorePlaceDisplayName(name: string): number {
   if (/^the\s/i.test(name)) score -= 30;
   if (/\b(where|when|that|with|bought|testing|highlight|filled|shop with)\b/i.test(name)) score -= 25;
   if (/'s\s/i.test(name)) score += 18;
+  if (/\s[—–-]\s/.test(name)) score += 40;
   const key = normalizeNameKey(name);
   if (BRAND_NAMES.has(key)) score += 25;
   for (const brand of BRAND_NAMES) {

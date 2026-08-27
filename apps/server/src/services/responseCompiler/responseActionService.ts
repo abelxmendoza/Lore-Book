@@ -2,6 +2,8 @@ import { logger } from '../../logger';
 import { organizationService } from '../organizationService';
 import { familyTreeService } from '../familyTreeService';
 import { findFamilyMemberByName } from '../chat/familyWriteService';
+import { findHouseholdByName } from '../chat/householdChatService';
+import { householdWriteService } from '../kinship/householdWriteService';
 import type { ResponseActionCandidate } from './responseCompilerTypes';
 
 /**
@@ -153,6 +155,59 @@ export async function applyResponseAction(
         actionType: action.type,
         message: `Deleted ${lookup.name}.`,
         entity: { kind: 'character', id: lookup.id, name: lookup.name },
+      };
+    }
+
+    case 'delete_household': {
+      const name = String((action.payload?.householdName as string | undefined) ?? '').trim();
+      if (!name) {
+        return {
+          applied: false,
+          status: 'invalid',
+          actionType: action.type,
+          message: 'Could not determine which household to delete from the action.',
+        };
+      }
+
+      // Re-resolve fresh at confirm time, same reasoning as delete_family_member above.
+      const lookup = await findHouseholdByName(userId, name);
+      if (lookup.status === 'not_found') {
+        return {
+          applied: false,
+          status: 'not_found',
+          actionType: action.type,
+          message: `Couldn't find a "${name}" household anymore — nothing was deleted.`,
+        };
+      }
+      if (lookup.status === 'ambiguous') {
+        return {
+          applied: false,
+          status: 'not_found',
+          actionType: action.type,
+          message: `Found more than one household matching "${name}" (${lookup.candidates.join(', ')}) — nothing was deleted.`,
+        };
+      }
+
+      const ok = await householdWriteService.deleteHousehold(userId, lookup.id, 'Deleted via chat confirmation');
+      if (!ok) {
+        return {
+          applied: false,
+          status: 'invalid',
+          actionType: action.type,
+          message: `Couldn't delete the ${lookup.name} household.`,
+        };
+      }
+
+      logger.info(
+        { userId, householdId: lookup.id, name: lookup.name },
+        'responseAction: deleted household from user-confirmed action chip',
+      );
+      return {
+        applied: true,
+        status: 'deleted',
+        actionType: action.type,
+        message: `Deleted the ${lookup.name} household.`,
+        entity: { kind: 'organization', id: lookup.id, name: lookup.name },
       };
     }
 

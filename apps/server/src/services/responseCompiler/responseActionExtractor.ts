@@ -87,6 +87,21 @@ const ACTION_PATTERNS: ActionPattern[] = [
       payload: { characterName: m[1].trim() },
     }),
   },
+  {
+    // Matches householdChatService's delete-pending confirmation phrasing:
+    // "Delete the **Mom and Dad's House** household? This removes it..." —
+    // the chip carries the plain household name only; applyResponseAction
+    // re-resolves it fresh at confirm time rather than trusting a stale id.
+    type: 'delete_household',
+    pattern: /\bDelete the\s+\*\*(.+?)\*\*\s+household\?/i,
+    build: (m) => ({
+      type: 'delete_household',
+      label: `Delete ${m[1].trim()} household`,
+      confidence: 0.95,
+      requiresConfirmation: true,
+      payload: { householdName: m[1].trim() },
+    }),
+  },
 ];
 
 export function extractResponseActions(rawResponse: string): ResponseActionCandidate[] {
