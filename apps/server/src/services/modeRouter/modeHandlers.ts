@@ -90,6 +90,9 @@ class ModeHandlers {
       case 'FAMILY_WRITE':
         return await this.handleFamilyWrite(userId, message);
 
+      case 'HOUSEHOLD_WRITE':
+        return await this.handleHouseholdWrite(userId, message);
+
       case 'ROMANCE_WRITE':
         return await this.handleRomanceWrite(userId, message);
 
@@ -791,6 +794,26 @@ class ModeHandlers {
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Could not update Family.';
       return { content: msg, response_mode: 'FAMILY_WRITE', confidence: 0.55 };
+    }
+  }
+
+  private async handleHouseholdWrite(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const { writeHouseholdFromChat } = await import('../chat/householdChatService');
+      const result = await writeHouseholdFromChat(userId, message);
+      return {
+        content: result.summary,
+        response_mode: 'HOUSEHOLD_WRITE',
+        confidence: 0.92,
+        metadata: {
+          householdWriteOperation: result.operation,
+          householdId: result.householdId,
+          householdName: result.householdName,
+        },
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Could not update the household.';
+      return { content: msg, response_mode: 'HOUSEHOLD_WRITE', confidence: 0.55 };
     }
   }
 

@@ -16,6 +16,7 @@ export type ClosedScopeReason =
   | 'skill_write_request'
   | 'quest_write_request'
   | 'family_write_request'
+  | 'household_write_request'
   | 'romance_write_request'
   | 'event_write_request';
 
@@ -375,6 +376,41 @@ export function isFamilyWriteRequest(message: string): boolean {
   );
 }
 
+// Household names/addresses run longer than person names (e.g. "Mom and
+// Dad's House", "456 Oak Ave"), so this token class allows 1-6 words and
+// digits, but keeps the same ReDoS-safe shape as NAME_TOKENS above: no lazy
+// `.{1,80}?` next to a `\s+` boundary.
+const HOUSEHOLD_PHRASE_TOKENS = `[a-zA-Z0-9][a-zA-Z0-9'’.-]*?(?:\\s+[a-zA-Z0-9][a-zA-Z0-9'’.-]*?){0,5}?`;
+const HOUSEHOLD_CREATE_RE = new RegExp(
+  `\\bcreate\\s+(?:a\\s+)?household\\s+(?:called|named)\\s+(${HOUSEHOLD_PHRASE_TOKENS})\\b`,
+  'i',
+);
+const HOUSEHOLD_ADD_MEMBER_RE = new RegExp(
+  `\\badd\\s+(${HOUSEHOLD_PHRASE_TOKENS})\\s+to\\s+(?:the\\s+)?(${HOUSEHOLD_PHRASE_TOKENS})\\s+household\\b`,
+  'i',
+);
+const HOUSEHOLD_REMOVE_MEMBER_RE = new RegExp(
+  `\\b(?:remove\\s+(${HOUSEHOLD_PHRASE_TOKENS})\\s+from|(${HOUSEHOLD_PHRASE_TOKENS})\\s+moved\\s+out\\s+of)\\s+(?:the\\s+)?(${HOUSEHOLD_PHRASE_TOKENS})\\s+household\\b`,
+  'i',
+);
+const HOUSEHOLD_MOVE_RE = new RegExp(
+  `\\bmove\\s+(?:the\\s+)?(${HOUSEHOLD_PHRASE_TOKENS})\\s+household\\s+to\\s+(${HOUSEHOLD_PHRASE_TOKENS})\\b`,
+  'i',
+);
+const HOUSEHOLD_DELETE_RE = new RegExp(`\\bdelete\\s+(?:the\\s+)?(${HOUSEHOLD_PHRASE_TOKENS})\\s+household\\b`, 'i');
+
+export function isHouseholdWriteRequest(message: string): boolean {
+  const text = message.trim();
+  if (!text) return false;
+  return (
+    HOUSEHOLD_CREATE_RE.test(text) ||
+    HOUSEHOLD_ADD_MEMBER_RE.test(text) ||
+    HOUSEHOLD_REMOVE_MEMBER_RE.test(text) ||
+    HOUSEHOLD_MOVE_RE.test(text) ||
+    HOUSEHOLD_DELETE_RE.test(text)
+  );
+}
+
 const ROMANCE_STATUS_RE =
   /\b(?:mark|set)\s+(.{1,60}?)\s+(?:as\s+)?(dating|ex|broke\s*up|no\s*contact|complicated|crush|partner|married)\b/i;
 const ROMANCE_BREAKUP_RE =
@@ -432,6 +468,9 @@ export function isClosedScopeQuery(message: string): { closedScope: boolean; rea
   }
   if (isFamilyWriteRequest(message)) {
     return { closedScope: true, reason: 'family_write_request' };
+  }
+  if (isHouseholdWriteRequest(message)) {
+    return { closedScope: true, reason: 'household_write_request' };
   }
   if (isRomanceWriteRequest(message)) {
     return { closedScope: true, reason: 'romance_write_request' };

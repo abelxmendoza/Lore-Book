@@ -41,6 +41,7 @@ export {
   isSkillWriteRequest,
   isQuestWriteRequest,
   isFamilyWriteRequest,
+  isHouseholdWriteRequest,
   isRomanceWriteRequest,
   isEventWriteRequest,
   isClosedScopeQuery,

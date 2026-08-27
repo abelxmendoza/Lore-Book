@@ -30,6 +30,7 @@ export type HouseholdDTO = {
 };
 
 function isHouseholdOrg(name: string, metadata: Record<string, unknown>): boolean {
+  if (metadata.household_deleted) return false;
   return (
     metadata.inference_source === 'household_residence' ||
     /household|house|home|apartment|condo|casa/i.test(name)
