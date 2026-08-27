@@ -7,7 +7,6 @@ import { MainCharacterDetailModal } from './MainCharacterDetailModal';
 import { CharacterBookPage } from './CharacterBookPage';
 import { CharacterDetailModal } from './CharacterDetailModal';
 import { CastTrendsStrip } from './CastTrendsStrip';
-import { UserProfile } from './UserProfile';
 import { OnboardingReprompt } from '../onboarding/OnboardingReprompt';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { Button } from '../ui/button';
@@ -3751,11 +3750,6 @@ export const CharacterBook = () => {
       className={`space-y-4 sm:space-y-6 ${selectionMode && selectedForMerge.size >= 2 ? 'pb-44 sm:pb-4' : ''}`}
       data-testid="character-book"
     >
-
-      {/* The user's own story context leads the Character Book before the cast. */}
-      <div className="space-y-3 sm:space-y-4" data-testid="character-book-user-profile">
-        <UserProfile characters={characters} />
-      </div>
 
       {/* Narrative onboarding re-prompt — shows until the user builds their profile */}
       <OnboardingReprompt />

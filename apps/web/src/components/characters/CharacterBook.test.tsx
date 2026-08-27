@@ -237,6 +237,15 @@ describe('CharacterBook', () => {
     }, { timeout: 3000 });
   });
 
+  it('no longer renders a standalone UserProfile card above the character list', () => {
+    // Regression: UserProfile duplicated the Main Character card's identity
+    // chrome (name, "you" tag, attribute line, people count) on the same
+    // page. It was removed — "Currently In"/active-arc count/since-date now
+    // live on MainCharacterProfileCard itself (see MainCharacterProfileCard.test.tsx).
+    render(<CharacterBook />);
+    expect(screen.queryByTestId('character-book-user-profile')).not.toBeInTheDocument();
+  });
+
   it('10. refetches the book list after a relationship story refresh without a full page reload', async () => {
     const refetch = vi.fn();
     mockUseGetCharactersBookQuery.mockReturnValue({
