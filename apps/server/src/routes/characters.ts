@@ -2057,6 +2057,8 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
           alias: (existing.alias as string[] | null) ?? [],
           metadata: (existing.metadata as Record<string, unknown> | null) ?? {},
         }, { mode: 'archive', reason: archiveReason });
+        const { householdWriteService } = await import('../services/kinship/householdWriteService');
+        await householdWriteService.removeCharacterFromAllHouseholds(userId, existing.id, archiveReason);
       }
       if (updateData.status === 'active' && existing.status === 'archived') {
         void import('../services/characterIdentityIndexService').then(({ characterIdentityIndexService }) =>

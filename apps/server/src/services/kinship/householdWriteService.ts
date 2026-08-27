@@ -19,6 +19,8 @@
 import { supabaseAdmin } from '../supabaseClient';
 import { organizationService } from '../organizationService';
 import { logger } from '../../logger';
+import { isFamilyExcluded, isFamilyTreeEligibleCharacter } from '../familyTreeService';
+import { isHouseholdOrg } from './householdService';
 
 export type HouseholdHistoryEntry =
   | {
@@ -88,9 +90,16 @@ class HouseholdWriteService {
     characterName: string,
     opts: { characterId?: string; role?: string; reason?: string } = {},
   ): Promise<{ characterId: string | null; characterName: string }> {
+    const listed = await this.resolveListedFamilyCharacter(userId, opts.characterId, characterName);
+    if (!listed) {
+      const err = new Error('Only people in your family tree can be added to a household');
+      (err as Error & { statusCode?: number }).statusCode = 400;
+      throw err;
+    }
+
     const member = await organizationService.addMember(userId, householdId, {
-      character_id: opts.characterId,
-      character_name: characterName,
+      character_id: listed.id,
+      character_name: listed.name,
       role: opts.role,
       status: 'active',
       notes: opts.reason,
@@ -220,6 +229,161 @@ class HouseholdWriteService {
       const bDate = b.kind === 'stay' ? b.joinedAt : b.movedInAt;
       return new Date(bDate).getTime() - new Date(aDate).getTime();
     });
+  }
+
+  async updateHousehold(
+    userId: string,
+    householdId: string,
+    patch: { name?: string; locationName?: string; reason?: string },
+  ): Promise<boolean> {
+    const org = await organizationService.getOrganization(userId, householdId);
+    if (!org) return false;
+
+    const name = patch.name?.trim();
+    const locationName = patch.locationName?.trim();
+    if (!name && !locationName) return true;
+
+    if (locationName && locationName !== ((org.metadata as Record<string, unknown> | null)?.residence_name || org.location)) {
+      await this.moveHousehold(userId, householdId, locationName, patch.reason);
+    }
+
+    if (name && name !== org.name) {
+      const latest = await organizationService.getOrganization(userId, householdId);
+      await organizationService.updateOrganization(userId, householdId, {
+        name,
+        metadata: {
+          ...((latest?.metadata ?? org.metadata) as Record<string, unknown>),
+          household_rename_reason: patch.reason ?? null,
+        },
+      });
+    }
+    return true;
+  }
+
+  /**
+   * Absorb `sourceId` into `primaryId`: move unique active members, then
+   * soft-delete the source so its stay history is kept but it leaves the list.
+   */
+  async mergeHouseholds(
+    userId: string,
+    primaryId: string,
+    sourceId: string,
+    reason?: string,
+  ): Promise<boolean> {
+    if (!primaryId || !sourceId || primaryId === sourceId) return false;
+    const [primary, source] = await Promise.all([
+      organizationService.getOrganization(userId, primaryId),
+      organizationService.getOrganization(userId, sourceId),
+    ]);
+    if (!primary || !source) return false;
+    if (!isHouseholdOrg(primary.name, (primary.metadata ?? {}) as Record<string, unknown>)) return false;
+    if (!isHouseholdOrg(source.name, (source.metadata ?? {}) as Record<string, unknown>)) return false;
+
+    const { data: sourceMembers } = await supabaseAdmin
+      .from('organization_members')
+      .select('character_id, character_name, role')
+      .eq('user_id', userId)
+      .eq('organization_id', sourceId)
+      .eq('status', 'active');
+
+    const mergeReason = reason?.trim() || `Merged into ${primary.name}`;
+    for (const row of sourceMembers ?? []) {
+      const characterId = row.character_id as string | null;
+      const characterName = String(row.character_name ?? '').trim();
+      if (!characterName) continue;
+      try {
+        await this.addHouseholdMember(userId, primaryId, characterName, {
+          characterId: characterId ?? undefined,
+          role: (row.role as string | undefined) ?? undefined,
+          reason: mergeReason,
+        });
+      } catch (err) {
+        logger.warn({ err, userId, primaryId, characterName }, 'Skipped household merge member');
+      }
+      if (characterId) {
+        await this.removeHouseholdMember(userId, sourceId, characterId, mergeReason);
+      }
+    }
+
+    return this.deleteHousehold(userId, sourceId, mergeReason);
+  }
+
+  /** Soft-remove a character from every household roster (tree exclude / not-family). */
+  async removeCharacterFromAllHouseholds(
+    userId: string,
+    characterId: string,
+    reason?: string,
+  ): Promise<number> {
+    const { data: rows } = await supabaseAdmin
+      .from('organization_members')
+      .select('organization_id')
+      .eq('user_id', userId)
+      .eq('character_id', characterId)
+      .eq('status', 'active');
+    const orgIds = [...new Set((rows ?? []).map((r) => r.organization_id as string).filter(Boolean))];
+    if (orgIds.length === 0) return 0;
+
+    const { data: orgs } = await supabaseAdmin
+      .from('organizations')
+      .select('id, name, type, metadata')
+      .eq('user_id', userId)
+      .in('id', orgIds);
+
+    const leaveReason = reason?.trim() || 'Removed from the family tree';
+    let removed = 0;
+    for (const org of orgs ?? []) {
+      if ((org.type as string | undefined) !== 'family') continue;
+      if (!isHouseholdOrg(org.name as string, (org.metadata ?? {}) as Record<string, unknown>)) continue;
+      const ok = await this.removeHouseholdMember(userId, org.id as string, characterId, leaveReason);
+      if (ok) removed += 1;
+    }
+    return removed;
+  }
+
+  private async resolveListedFamilyCharacter(
+    userId: string,
+    characterId: string | undefined,
+    characterName: string,
+  ): Promise<{ id: string; name: string } | null> {
+    const select = 'id, name, archetype, metadata, species';
+    let row: {
+      id: string;
+      name: string;
+      archetype?: string | null;
+      metadata?: Record<string, unknown> | null;
+      species?: string | null;
+    } | null = null;
+
+    if (characterId) {
+      const { data } = await supabaseAdmin
+        .from('characters')
+        .select(select)
+        .eq('user_id', userId)
+        .eq('id', characterId)
+        .maybeSingle();
+      row = data as typeof row;
+    } else if (characterName.trim()) {
+      const { data } = await supabaseAdmin
+        .from('characters')
+        .select(select)
+        .eq('user_id', userId)
+        .ilike('name', characterName.trim())
+        .limit(2);
+      const matches = (data ?? []) as NonNullable<typeof row>[];
+      if (matches.length === 1) row = matches[0];
+    }
+
+    if (!row) return null;
+    if (isFamilyExcluded(row.metadata)) return null;
+    if (!isFamilyTreeEligibleCharacter({
+      id: row.id,
+      name: row.name,
+      archetype: row.archetype,
+      metadata: row.metadata,
+    })) {
+      return null;
+    }
+    return { id: row.id, name: row.name };
   }
 }
 

@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { TreePine, Home, Users, BarChart3, Loader2, GitBranch, Check, X } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
 import { booksApi, type PossibleFamilyMatch } from '../../api/books';
 import { onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { DEMO_FAMILY_SUMMARY, DEMO_FAMILY_CHARACTERS_BY_ID } from '../../mocks/family';
+import { mockDataService } from '../../services/mockDataService';
 import { FamilyTreePanel } from './FamilyTreePanel';
 import { FamilyTreeCopyAllButton } from './FamilyTreeCopyAllButton';
 import { HierarchicalFamilyTree } from './HierarchicalFamilyTree';
 import { FamilyTreeView } from './FamilyTreeView';
-import { HouseholdDirectory, type HouseholdDTO } from './HouseholdDirectory';
+import { filterHouseholdsToListedFamily, HouseholdDirectory, type HouseholdDTO } from './HouseholdDirectory';
 import { FamilyAnalyticsPanel, type RelationshipAnalyticDTO } from './FamilyAnalyticsPanel';
 import { FamilyExtendedNetworkPanel } from './FamilyExtendedNetworkPanel';
 import { CharacterDetailModal } from '../characters/CharacterDetailModal';
@@ -43,8 +44,8 @@ export function FamilyBook() {
   const load = useCallback(async () => {
     if (shouldUseMock) {
       const base = DEMO_FAMILY_SUMMARY as SummaryResponse;
-      setSummary(base);
-      setDemoTree(base.tree);
+      setSummary((prev) => prev ?? base);
+      setDemoTree((prev) => prev ?? base.tree);
       setLoading(false);
       return;
     }
@@ -67,6 +68,38 @@ export function FamilyBook() {
   useEffect(() => onStoryDataUpdated(() => { void load(); }, 'family'), [load]);
 
   const activeTree = demoTree || summary?.tree || null;
+
+  const familyCandidates = useMemo(
+    () =>
+      (activeTree?.members ?? [])
+        .filter((m) => m.id && !m.is_placeholder && !String(m.id).startsWith('__') && !String(m.id).startsWith('head-'))
+        .map((m) => ({ id: m.id, name: m.name, relationLabel: m.relation_label || m.kinship_title })),
+    [activeTree],
+  );
+
+  const visibleHouseholds = useMemo(
+    () => filterHouseholdsToListedFamily(summary?.households ?? [], familyCandidates.map((c) => c.id)),
+    [summary?.households, familyCandidates],
+  );
+
+  const patchDemoHouseholds = useCallback((updater: (prev: HouseholdDTO[]) => HouseholdDTO[]) => {
+    setSummary((prev) => (prev ? { ...prev, households: updater(prev.households ?? []) } : prev));
+  }, []);
+
+  const dropDemoFamilyIds = useCallback((ids: Iterable<string>) => {
+    const dropped = new Set([...ids].filter(Boolean));
+    if (dropped.size === 0) return;
+    setDemoTree((prev) => (prev ? { ...prev, members: prev.members.filter((m) => !dropped.has(m.id)) } : prev));
+    setSummary((prev) => {
+      if (!prev) return prev;
+      const members = (prev.tree?.members ?? []).filter((m) => !dropped.has(m.id));
+      return {
+        ...prev,
+        tree: { ...prev.tree, members },
+        households: filterHouseholdsToListedFamily(prev.households ?? [], members.map((m) => m.id)),
+      };
+    });
+  }, []);
 
   const openCharacter = async (characterId: string, name: string) => {
     if (characterId.startsWith('head-') || characterId.startsWith('group-') || characterId.startsWith('__')) return;
@@ -218,11 +251,11 @@ export function FamilyBook() {
       `Couldn't create ${name}`,
     ), [runEdit]);
 
-  const addHouseholdMember = useCallback((householdId: string, characterName: string, reason?: string) =>
+  const addHouseholdMember = useCallback((householdId: string, characterName: string, reason?: string, characterId?: string) =>
     runEdit(
       () => fetchJson(`/api/family/household/${householdId}/members`, {
         method: 'POST',
-        body: JSON.stringify({ characterName, reason }),
+        body: JSON.stringify({ characterName, characterId, reason }),
       }),
       `Added ${characterName} to the household`,
       `Couldn't add ${characterName}`,
@@ -253,6 +286,20 @@ export function FamilyBook() {
       () => fetchJson(`/api/family/household/${householdId}`, { method: 'DELETE', body: JSON.stringify({ reason }) }),
       `Deleted the ${householdName} household`,
       `Couldn't delete ${householdName}`,
+    ), [runEdit]);
+
+  const updateHousehold = useCallback((householdId: string, patch: { name?: string; locationName?: string; reason?: string }) =>
+    runEdit(
+      () => fetchJson(`/api/family/household/${householdId}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+      'Updated the household',
+      "Couldn't update the household",
+    ), [runEdit]);
+
+  const mergeHouseholds = useCallback((primaryId: string, sourceId: string, reason?: string) =>
+    runEdit(
+      () => fetchJson('/api/family/household/merge', { method: 'POST', body: JSON.stringify({ primaryId, sourceId, reason }) }),
+      'Merged households',
+      "Couldn't merge those households",
     ), [runEdit]);
 
   const fetchHouseholdHistory = useCallback(async (householdId: string) => {
@@ -329,7 +376,13 @@ export function FamilyBook() {
       const updatedMembers = demoTree.members.filter(mem => mem.id !== m.id);
       const updatedTree = { ...demoTree, members: updatedMembers };
       setDemoTree(updatedTree);
-      if (summary) setSummary({ ...summary, tree: updatedTree });
+      if (summary) {
+        setSummary({
+          ...summary,
+          tree: updatedTree,
+          households: filterHouseholdsToListedFamily(summary.households ?? [], updatedMembers.map((mem) => mem.id)),
+        });
+      }
       success(`Removed ${m.name} (demo)`);
     },
     onDelete: (m: FamilyMember) => {
@@ -338,7 +391,13 @@ export function FamilyBook() {
       const updatedMembers = demoTree.members.filter(mem => mem.id !== m.id);
       const updatedTree = { ...demoTree, members: updatedMembers };
       setDemoTree(updatedTree);
-      if (summary) setSummary({ ...summary, tree: updatedTree });
+      if (summary) {
+        setSummary({
+          ...summary,
+          tree: updatedTree,
+          households: filterHouseholdsToListedFamily(summary.households ?? [], updatedMembers.map((mem) => mem.id)),
+        });
+      }
       success(`Deleted ${m.name} (demo)`);
     },
     onMoveToGroup: (m: FamilyMember) => {
@@ -346,7 +405,13 @@ export function FamilyBook() {
       const updatedMembers = demoTree.members.filter(mem => mem.id !== m.id);
       const updatedTree = { ...demoTree, members: updatedMembers };
       setDemoTree(updatedTree);
-      if (summary) setSummary({ ...summary, tree: updatedTree });
+      if (summary) {
+        setSummary({
+          ...summary,
+          tree: updatedTree,
+          households: filterHouseholdsToListedFamily(summary.households ?? [], updatedMembers.map((mem) => mem.id)),
+        });
+      }
       success(`Moved ${m.name} to Groups (demo)`);
     },
     onKeep: (m: FamilyMember) => {
@@ -565,14 +630,99 @@ export function FamilyBook() {
 
           {tab === 'households' && (
             <HouseholdDirectory
-              households={summary?.households ?? []}
+              households={visibleHouseholds}
+              familyCandidates={familyCandidates}
               onMemberClick={(id, name) => void openCharacter(id, name)}
-              onCreateHousehold={shouldUseMock ? undefined : (name, locationName) => void createHousehold(name, locationName)}
-              onAddMember={shouldUseMock ? undefined : (id, name, reason) => void addHouseholdMember(id, name, reason)}
-              onRemoveMember={shouldUseMock ? undefined : (hid, cid, name, reason) => void removeHouseholdMember(hid, cid, name, reason)}
-              onMoveHousehold={shouldUseMock ? undefined : (id, loc, reason) => void moveHousehold(id, loc, reason)}
-              onDeleteHousehold={shouldUseMock ? undefined : (id, name, reason) => void deleteHousehold(id, name, reason)}
-              onFetchHistory={shouldUseMock ? undefined : fetchHouseholdHistory}
+              onCreateHousehold={shouldUseMock
+                ? (name, locationName) => {
+                    patchDemoHouseholds((hs) => [
+                      ...hs,
+                      {
+                        id: `demo-hh-${Date.now()}`,
+                        name,
+                        locationName: locationName || name,
+                        residents: [],
+                        visitors: [],
+                        residentCount: 0,
+                        confidence: 1,
+                      },
+                    ]);
+                    success(`Created the ${name} household`);
+                  }
+                : (name, locationName) => void createHousehold(name, locationName)}
+              onUpdateHousehold={shouldUseMock
+                ? (id, patch) => {
+                    patchDemoHouseholds((hs) => hs.map((h) => (
+                      h.id === id
+                        ? { ...h, name: patch.name?.trim() || h.name, locationName: patch.locationName?.trim() || h.locationName }
+                        : h
+                    )));
+                    success('Updated the household');
+                  }
+                : (id, patch) => void updateHousehold(id, patch)}
+              onAddMember={shouldUseMock
+                ? (id, name, _reason, characterId) => {
+                    if (!characterId) return;
+                    patchDemoHouseholds((hs) => hs.map((h) => {
+                      if (h.id !== id) return h;
+                      if (h.residents.some((m) => m.characterId === characterId) || h.visitors.some((m) => m.characterId === characterId)) {
+                        return h;
+                      }
+                      const residents = [...h.residents, { characterId, name, householdRole: 'resident', confidence: 1 }];
+                      return { ...h, residents, residentCount: residents.length };
+                    }));
+                    success(`Added ${name} to the household`);
+                  }
+                : (id, name, reason, characterId) => void addHouseholdMember(id, name, reason, characterId)}
+              onRemoveMember={shouldUseMock
+                ? (hid, cid, name) => {
+                    patchDemoHouseholds((hs) => hs.map((h) => {
+                      if (h.id !== hid) return h;
+                      const residents = h.residents.filter((m) => m.characterId !== cid);
+                      const visitors = h.visitors.filter((m) => m.characterId !== cid);
+                      return {
+                        ...h,
+                        residents,
+                        visitors,
+                        residentCount: residents.length,
+                        headOfHousehold: h.headOfHousehold === name ? undefined : h.headOfHousehold,
+                      };
+                    }));
+                    success(`Removed ${name} from the household`);
+                  }
+                : (hid, cid, name, reason) => void removeHouseholdMember(hid, cid, name, reason)}
+              onMoveHousehold={shouldUseMock
+                ? (id, loc) => {
+                    patchDemoHouseholds((hs) => hs.map((h) => (h.id === id ? { ...h, locationName: loc } : h)));
+                    success(`Moved the household to ${loc}`);
+                  }
+                : (id, loc, reason) => void moveHousehold(id, loc, reason)}
+              onDeleteHousehold={shouldUseMock
+                ? (id, name) => {
+                    patchDemoHouseholds((hs) => hs.filter((h) => h.id !== id));
+                    success(`Deleted the ${name} household`);
+                  }
+                : (id, name, reason) => void deleteHousehold(id, name, reason)}
+              onMergeHouseholds={shouldUseMock
+                ? (primaryId, sourceId) => {
+                    patchDemoHouseholds((hs) => {
+                      const source = hs.find((h) => h.id === sourceId);
+                      if (!source) return hs;
+                      return hs.filter((h) => h.id !== sourceId).map((h) => {
+                        if (h.id !== primaryId) return h;
+                        const existing = new Set([...h.residents, ...h.visitors].map((m) => m.characterId));
+                        const extraResidents = source.residents.filter((m) => !existing.has(m.characterId));
+                        const extraVisitors = source.visitors.filter(
+                          (m) => !existing.has(m.characterId) && !extraResidents.some((r) => r.characterId === m.characterId),
+                        );
+                        const residents = [...h.residents, ...extraResidents];
+                        return { ...h, residents, visitors: [...h.visitors, ...extraVisitors], residentCount: residents.length };
+                      });
+                    });
+                    success('Merged households');
+                  }
+                : (primaryId, sourceId, reason) => void mergeHouseholds(primaryId, sourceId, reason)}
+              onFetchHistory={shouldUseMock ? async () => [] : fetchHouseholdHistory}
             />
           )}
 
@@ -630,7 +780,17 @@ export function FamilyBook() {
         <CharacterDetailModal
           character={selectedCharacter}
           onClose={() => setSelectedCharacter(null)}
-          onUpdate={() => void load()}
+          onUpdate={() => {
+            if (shouldUseMock) {
+              dropDemoFamilyIds(
+                mockDataService.get.characters()
+                  .filter((c) => c.status === 'archived' || c.status === 'pending_deletion' || c.status === 'reclassified')
+                  .map((c) => c.id),
+              );
+              return;
+            }
+            void load();
+          }}
         />
       )}
 

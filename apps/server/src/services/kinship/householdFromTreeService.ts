@@ -9,6 +9,7 @@
  */
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { isFamilyExcluded } from '../familyTreeService';
 import { normalizeFamilyEdgeType } from './familyEdgeWriter';
 
 export type HouseholdMemberRole = 'spouse' | 'child' | 'pet';
@@ -32,6 +33,7 @@ type CharacterRow = {
   id: string;
   name: string;
   species: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 const SPOUSE_TYPE = normalizeFamilyEdgeType('spouse');
@@ -103,7 +105,7 @@ export async function deriveHouseholdMembers(
 
     const { data: characters, error: charErr } = await supabaseAdmin
       .from('characters')
-      .select('id, name, species')
+      .select('id, name, species, metadata')
       .eq('user_id', userId)
       .in('id', [...byRole.keys()]);
     if (charErr) throw charErr;
@@ -114,6 +116,7 @@ export async function deriveHouseholdMembers(
     for (const [characterId, info] of byRole) {
       const character = characterById.get(characterId);
       if (!character) continue; // don't fabricate a member for a dangling edge
+      if (isFamilyExcluded(character.metadata)) continue;
       members.push({
         characterId,
         name: character.name,
