@@ -1,4 +1,8 @@
 import { fetchJson } from '../lib/api';
+import {
+  resolveCompanionSpecies,
+  shouldRetryAddAsRobotCompanion,
+} from '../lib/companionSpecies';
 import type { AlternativeCategory } from '../lib/suggestionMatchTypes';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -24,6 +28,8 @@ export type CharacterSuggestion = {
   matched_book_id?: string | null;
   matched_book_name?: string | null;
   alternative_categories?: AlternativeCategory[];
+  kind?: 'person' | 'pet';
+  species?: string;
 };
 
 export type CharacterCardReviewSuggestion = {
@@ -40,7 +46,7 @@ export type CharacterCardReviewSuggestion = {
 };
 
 export type CharacterSuggestionAddResponse = {
-  character: { id?: string; name?: string };
+  character: { id?: string; name?: string; species?: string | null };
   deduplicated?: boolean;
   restored?: boolean;
 };
@@ -65,21 +71,47 @@ export const characterSuggestionsApi = {
       body: JSON.stringify({ action }),
     }),
 
-  add: (suggestion: CharacterSuggestion) =>
-    fetchJson<CharacterSuggestionAddResponse>('/api/characters', {
-      method: 'POST',
-      body: JSON.stringify({
-        name: suggestion.name,
-        archetype: suggestion.archetype ?? (suggestion.relationship === 'romantic' ? 'romantic' : undefined),
-        role: suggestion.role,
-        relationshipDepth: suggestion.archetype === 'romantic' ? 'moderate' : 'acquaintance',
-        hasMet: true,
-        proximity: 'direct',
-        omegaEntityId: optionalUuidField(suggestion.omegaEntityId),
-        questionId: optionalUuidField(suggestion.questionId),
-        suggestionId: suggestion.id,
-      }),
-    }),
+  add: async (suggestion: CharacterSuggestion) => {
+    const species = resolveCompanionSpecies({
+      name: suggestion.name,
+      species: suggestion.species,
+      context: suggestion.context,
+      kind: suggestion.kind,
+    });
+    const body = {
+      name: suggestion.name,
+      archetype: suggestion.archetype ?? (suggestion.relationship === 'romantic' ? 'romantic' : undefined),
+      role: suggestion.role,
+      relationshipDepth: suggestion.archetype === 'romantic' ? 'moderate' : 'acquaintance',
+      hasMet: true,
+      proximity: 'direct',
+      omegaEntityId: optionalUuidField(suggestion.omegaEntityId),
+      questionId: optionalUuidField(suggestion.questionId),
+      suggestionId: suggestion.id,
+      context: suggestion.context,
+      kind: suggestion.kind,
+      species,
+    };
+    try {
+      return await fetchJson<CharacterSuggestionAddResponse>('/api/characters', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : '';
+      if (
+        /rejected|non_person/i.test(raw) &&
+        !species &&
+        shouldRetryAddAsRobotCompanion(suggestion.name, suggestion.context)
+      ) {
+        return fetchJson<CharacterSuggestionAddResponse>('/api/characters', {
+          method: 'POST',
+          body: JSON.stringify({ ...body, species: 'robot' }),
+        });
+      }
+      throw err;
+    }
+  },
 };
 
 export type LocationSuggestion = {

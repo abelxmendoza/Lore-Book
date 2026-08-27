@@ -7,6 +7,7 @@ import { logger } from '../logger';
 import { normalizeNameKey } from '../utils/nameNormalization';
 import { isIndividualPersonName } from '../utils/personNameValidation';
 import { classifyMentionKind } from '../utils/entityMentionClassifier';
+import { inferCompanionSpecies } from '../utils/companionSpecies';
 import { collectNameKeys, resolveBookNameMatch, type BookNameEntry, type BookNameEntryWithId } from '../utils/suggestionBookFilter';
 import { characterSuggestionId } from '../utils/entitySuggestionId';
 import type { AlternativeCategory } from './suggestionCrossBookService';
@@ -39,6 +40,8 @@ export type CharacterSuggestion = {
   alternative_categories?: AlternativeCategory[];
   /** 'pet' when classifyMentionKind detected pet-context evidence (e.g. "my dog Max"). */
   kind?: 'person' | 'pet';
+  /** Companion species when kind is pet (dog, robot, …). */
+  species?: string;
 };
 
 export type CharacterSuggestionContext = 'general' | 'romantic';
@@ -117,6 +120,7 @@ class CharacterSuggestionService {
       const match = resolveBookNameMatch(safeName, bookExact, bookEntries);
       if (match.status === 'existing') return;
       seen.add(key);
+      const kind = mentionKind === 'pet' ? 'pet' : 'person';
       suggestions.push({
         ...s,
         name: safeName,
@@ -124,7 +128,8 @@ class CharacterSuggestionService {
         match_status: match.status,
         matched_book_id: match.matchedId ?? null,
         matched_book_name: match.matchedName ?? null,
-        kind: mentionKind === 'pet' ? 'pet' : 'person',
+        kind,
+        species: kind === 'pet' ? inferCompanionSpecies(safeName, s.context) : undefined,
       });
     };
 

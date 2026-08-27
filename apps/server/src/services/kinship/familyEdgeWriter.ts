@@ -66,6 +66,10 @@ export function normalizeFamilyEdgeType(type: string): string {
     rabbit: 'pet_of',
     hamster: 'pet_of',
     reptile: 'pet_of',
+    robot: 'pet_of',
+    android: 'pet_of',
+    droid: 'pet_of',
+    bot: 'pet_of',
     owner: 'owner_of',
   };
   return aliases[t] ?? t;

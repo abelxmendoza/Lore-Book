@@ -119,9 +119,9 @@ function personContextEvidence(name: string, context?: string): boolean {
 }
 
 // Same vocabulary as apps/web/src/lib/significantComposerCandidates.ts's
-// PET_KIND_WORDS, so client-side chip detection and server-side classification
-// agree on what counts as a pet mention.
-const PET_KIND_WORDS = 'dog|cat|bird|bunny|rabbit|hamster|horse|pet|puppy|kitten';
+// PET_KIND_WORDS / companionSpecies, so client-side chip detection and
+// server-side classification agree on what counts as a companion mention.
+const PET_KIND_WORDS = 'dog|cat|bird|bunny|rabbit|hamster|horse|pet|puppy|kitten|robot|bot|android|droid';
 
 function petContextEvidence(name: string, context?: string): boolean {
   if (!context) return false;
@@ -129,6 +129,7 @@ function petContextEvidence(name: string, context?: string): boolean {
   const ctx = context;
   if (new RegExp(`\\b(?:my|our)\\s+(?:${PET_KIND_WORDS})\\s+${n}\\b`, 'i').test(ctx)) return true;
   if (new RegExp(`\\b${n}\\s+(?:is|was)\\s+(?:my|our)\\s+(?:${PET_KIND_WORDS})\\b`, 'i').test(ctx)) return true;
+  if (new RegExp(`\\b(?:${PET_KIND_WORDS})(?:'s|’s)?\\s+name\\s+is\\s+${n}\\b`, 'i').test(ctx)) return true;
   return false;
 }
 
@@ -160,6 +161,10 @@ export function classifyEntity(name: string, context?: string): Classification {
 
     const productContext = new RegExp(`${escaped}\\s+(?:camera|cameras|device|devices|product|products)\\b`, 'i');
     if (productContext.test(context)) return result('PRODUCT', 0.92, 'product noun-phrase context');
+
+    // Companion mentions beat generic "building/shipping X" so "building my robot Omega1"
+    // is a PET, not a product. Bare "I shipped Omega1" still falls through to project.
+    if (petContextEvidence(raw, context)) return result('PET', 0.85, 'pet-context predicate');
 
     const projectContext = new RegExp(
       `\\b(?:working on|building|developing|shipping)\\s+(?:[\\w'-]+\\s+){0,4}${escaped}\\b`,

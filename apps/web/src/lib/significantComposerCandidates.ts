@@ -27,7 +27,10 @@ const THING_HEAD_WORDS = new Set([
   'notebook', 'phone', 'photo', 'ring', 'song', 'tool', 'truck', 'watch',
 ]);
 
-const PET_KIND_WORDS = new Set(['cat', 'dog', 'bird', 'bunny', 'rabbit', 'hamster', 'horse', 'pet', 'puppy', 'kitten']);
+const PET_KIND_WORDS = new Set([
+  'cat', 'dog', 'bird', 'bunny', 'rabbit', 'hamster', 'horse', 'pet', 'puppy', 'kitten',
+  'robot', 'bot', 'android', 'droid',
+]);
 
 function normalizeNameKey(value: string): string {
   return value
@@ -102,8 +105,8 @@ function extractPetCandidates(text: string, textKey: string): EntityPromotionCan
   const candidates: EntityPromotionCandidate[] = [];
   const seen = new Set<string>();
   const patterns = [
-    /\b(?:my|our)\s+(dog|cat|bird|bunny|rabbit|hamster|horse|pet|puppy|kitten)\s+([A-ZÀ-Ý][\wÀ-ÿ'’-]{1,30})\b/gi,
-    /\b([A-ZÀ-Ý][\wÀ-ÿ'’-]{1,30})\s+(?:is|was)\s+(?:my|our)\s+(dog|cat|bird|bunny|rabbit|hamster|horse|pet|puppy|kitten)\b/gi,
+    /\b(?:my|our)\s+(dog|cat|bird|bunny|rabbit|hamster|horse|pet|puppy|kitten|robot|bot|android|droid)\s+([A-ZÀ-Ý][\wÀ-ÿ'’-]{1,30})\b/gi,
+    /\b([A-ZÀ-Ý][\wÀ-ÿ'’-]{1,30})\s+(?:is|was)\s+(?:my|our)\s+(dog|cat|bird|bunny|rabbit|hamster|horse|pet|puppy|kitten|robot|bot|android|droid)\b/gi,
   ];
   for (const pattern of patterns) {
     pattern.lastIndex = 0;
