@@ -48,6 +48,18 @@ describe('validateReclassification', () => {
     it('allows real venues', () => {
       expect(validateReclassification('Club Nova', '', 'location').allowed).toBe(true);
     });
+
+    it('allows Catch One as a nightclub even without venue context', () => {
+      const r = validateReclassification('Catch One', '', 'location');
+      expect(r.allowed).toBe(true);
+      expect(r.reason ?? '').not.toMatch(/person/i);
+    });
+
+    it('still rejects two-word person names as locations', () => {
+      const r = validateReclassification('Marcus Whitfield', '', 'location');
+      expect(r.allowed).toBe(false);
+      expect(r.reason).toMatch(/person/i);
+    });
   });
 
   describe('project target follows Projects rules', () => {

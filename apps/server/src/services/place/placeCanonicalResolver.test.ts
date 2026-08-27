@@ -14,7 +14,7 @@ describe('isGenericPlaceNoun', () => {
   });
 
   it('does not flag specific, non-generic place names', () => {
-    for (const name of ['Club Bar Sinister', 'Bad Dogg Compound', 'Fullerton']) {
+    for (const name of ['Club Bar Sinister', 'Bad Dogg Compound', 'Fullerton', 'Catch One']) {
       expect(isGenericPlaceNoun(name)).toBe(false);
     }
   });

@@ -115,6 +115,16 @@ describe('place suggestion hardening', () => {
     });
   });
 
+  it('allows Catch One as a registered nightclub without an evidence line', () => {
+    expect(guardPlaceCandidate('Catch One', '')).toMatchObject({
+      allowed: true,
+      rulesFired: expect.arrayContaining(['known_named_place']),
+    });
+    expect(guardPlaceCandidate('Catch One the club', '')).toMatchObject({
+      allowed: true,
+    });
+  });
+
   it('records debug rejection reasons for representative non-places', () => {
     expect(guardPlaceCandidate("mom's car", 'I forgot my phone in my moms car')).toMatchObject({
       allowed: false,
