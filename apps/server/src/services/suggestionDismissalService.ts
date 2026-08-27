@@ -31,7 +31,9 @@ export type DismissSuggestionReason =
   | 'not_entity'
   | 'wrong_book'
   | 'duplicate'
-  | 'noise';
+  | 'noise'
+  | 'not_a_person'
+  | 'error';
 
 export type RecordDismissalResult = {
   dismissCount: number;
@@ -118,7 +120,11 @@ class SuggestionDismissalService {
       null;
 
     const existing = await this.loadStatRow(userId, domain, normalizedName);
-    const forcePermanent = input.reason === 'not_entity' || input.reason === 'noise';
+    const forcePermanent =
+      input.reason === 'not_entity' ||
+      input.reason === 'noise' ||
+      input.reason === 'not_a_person' ||
+      input.reason === 'error';
     const nextCount = forcePermanent
       ? MAX_SUGGESTION_DISMISSALS
       : Math.min(MAX_SUGGESTION_DISMISSALS, (existing?.dismiss_count ?? 0) + 1);

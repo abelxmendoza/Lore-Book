@@ -13,7 +13,7 @@ import { apiCache } from '../../lib/cache';
 import { filterVisibleSuggestions } from '../../lib/suggestionBookFilter';
 import { SuggestionMergeHint, suggestionPrimaryActionLabel } from '../suggestions/SuggestionMergeHint';
 import { SuggestionCategoryRedirect } from '../suggestions/SuggestionCategoryRedirect';
-import { SuggestionDismissButton } from '../suggestions/SuggestionDismissButton';
+import { PERSON_DISMISS_REASONS, SuggestionDismissButton } from '../suggestions/SuggestionDismissButton';
 import { isSimilarSuggestion, suggestionMatchedId, suggestionMatchedName } from '../../lib/suggestionMatchTypes';
 import { isIndividualPersonName } from '../../lib/personNameValidation';
 import { getMockCharacterSuggestions } from '../../mocks/characterSuggestions';
@@ -697,7 +697,10 @@ export const DetectedCharacterSuggestions = ({
                             </>
                           )}
                         </button>
-                        <SuggestionDismissButton onDismiss={(reason) => handleDismiss(s, reason)} />
+                        <SuggestionDismissButton
+                          onDismiss={(reason) => handleDismiss(s, reason)}
+                          reasons={PERSON_DISMISS_REASONS}
+                        />
                       </div>
                     </>
                   ) : (
@@ -758,7 +761,10 @@ export const DetectedCharacterSuggestions = ({
                         </>
                       )}
                     </button>
-                    <SuggestionDismissButton onDismiss={(reason) => handleDismiss(s, reason)} />
+                    <SuggestionDismissButton
+                      onDismiss={(reason) => handleDismiss(s, reason)}
+                      reasons={PERSON_DISMISS_REASONS}
+                    />
                   </div>
                     </>
                   )}
