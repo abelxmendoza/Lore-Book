@@ -4,6 +4,7 @@ import { isPetCharacter } from './isPetCharacter';
 describe('isPetCharacter', () => {
   it('treats an explicit species as a pet', () => {
     expect(isPetCharacter({ species: 'dog' })).toBe(true);
+    expect(isPetCharacter({ species: 'robot' })).toBe(true);
     expect(isPetCharacter({ metadata: { species: 'tortoise' } })).toBe(true);
   });
 

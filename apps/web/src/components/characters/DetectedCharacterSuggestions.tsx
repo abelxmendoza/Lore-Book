@@ -16,6 +16,7 @@ import { SuggestionCategoryRedirect } from '../suggestions/SuggestionCategoryRed
 import { PERSON_DISMISS_REASONS, SuggestionDismissButton } from '../suggestions/SuggestionDismissButton';
 import { isSimilarSuggestion, suggestionMatchedId, suggestionMatchedName } from '../../lib/suggestionMatchTypes';
 import { isIndividualPersonName } from '../../lib/personNameValidation';
+import { shouldRetryAddAsRobotCompanion, resolveCompanionSpecies } from '../../lib/companionSpecies';
 import { getMockCharacterSuggestions } from '../../mocks/characterSuggestions';
 import { useGetCharactersBookQuery } from '../../store/api/entitiesApi';
 import { invalidateEntityTags } from '../../store/invalidateEntityCache';
@@ -76,6 +77,7 @@ export const DetectedCharacterSuggestions = ({
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
   const [celebrate, setCelebrate] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retryAsRobot, setRetryAsRobot] = useState<CharacterSuggestion | null>(null);
   const [rescanning, setRescanning] = useState(false);
   const [rescanNotice, setRescanNotice] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -316,6 +318,7 @@ export const DetectedCharacterSuggestions = ({
     setOpenSuggestion(null);
     setAdding(k);
     setError(null);
+    setRetryAsRobot(null);
     let addResult: Awaited<ReturnType<typeof characterSuggestionsApi.add>> | undefined;
     try {
       if (showDemo) {
@@ -323,7 +326,7 @@ export const DetectedCharacterSuggestions = ({
       } else {
         apiCache.deletePattern(/\/api\/(characters|knowledge|books)/);
         addResult = await characterSuggestionsApi.add(s);
-        const saved = addResult.character as { id?: string; name?: string } | undefined;
+        const saved = addResult.character as { id?: string; name?: string; species?: string | null } | undefined;
         const deduplicated = Boolean(addResult.deduplicated);
         const restored = Boolean(addResult.restored);
         if (deduplicated) {
@@ -341,6 +344,12 @@ export const DetectedCharacterSuggestions = ({
         } else if (variant === 'romantic') {
           setCelebrate(true);
           setSuccessNotice(`${s.name} added to your love story`);
+        } else if (
+          saved?.species === 'robot' ||
+          s.species === 'robot' ||
+          resolveCompanionSpecies({ name: s.name, species: s.species, context: s.context, kind: s.kind }) === 'robot'
+        ) {
+          setSuccessNotice(`${s.name} added as a robot companion`);
         } else {
           setSuccessNotice(`${s.name} added to your Character Book`);
         }
@@ -381,7 +390,10 @@ export const DetectedCharacterSuggestions = ({
       } else if (/ambiguous|question_queued/i.test(raw)) {
         message = `“${s.name}” could match more than one person — check the merge panel or confirm who you mean.`;
       } else if (/rejected|non_person/i.test(raw)) {
-        message = `“${s.name}” doesn’t look like a person name — try editing before adding.`;
+        message = shouldRetryAddAsRobotCompanion(s.name, s.context)
+          ? `“${s.name}” doesn’t look like a person name. Add it as a robot companion instead.`
+          : `“${s.name}” doesn’t look like a person name. If this is a robot or pet, add it as a companion.`;
+        setRetryAsRobot(s);
       } else if (/Security validation/i.test(raw)) {
         message = 'Session expired — refresh the page and try again.';
       }
@@ -542,7 +554,18 @@ export const DetectedCharacterSuggestions = ({
             </p>
           )}
           {error && (
-            <p className="text-xs text-red-400 rounded border border-red-500/30 bg-red-500/10 px-3 py-2">{error}</p>
+            <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 space-y-2">
+              <p className="text-xs text-red-400">{error}</p>
+              {retryAsRobot && (
+                <button
+                  type="button"
+                  onClick={() => void handleAdd({ ...retryAsRobot, species: 'robot', kind: 'pet' })}
+                  className="inline-flex items-center gap-1 rounded border border-amber-500/30 bg-amber-500/20 px-2 py-1 text-[11px] font-medium text-amber-100 hover:bg-amber-500/30"
+                >
+                  Add as robot companion
+                </button>
+              )}
+            </div>
           )}
           {rescanNotice && (
             <p className="text-xs text-emerald-200 rounded border border-emerald-500/25 bg-emerald-500/10 px-3 py-2">

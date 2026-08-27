@@ -1,12 +1,12 @@
 /**
- * Pets live in the Character Book as cards, but they are animals: family trees,
- * parents and children are human-kinship UI that reads as nonsense on a dog's
- * card (and the demo tree even falls back to the user's own family). Use this
- * to keep those surfaces off pet cards.
+ * Pets and robot companions live in the Character Book as cards, but they are
+ * not people: family trees, parents and children are human-kinship UI that
+ * reads as nonsense on a dog's (or robot's) card. Use this to keep those
+ * surfaces off companion cards.
  *
  * Word list mirrors the server's `PET_KIND_WORDS` (entityClassifier) plus the
  * species aliases `familyEdgeWriter` maps to `pet_of`, so client and server
- * agree on what counts as a pet.
+ * agree on what counts as a companion.
  */
 
 const PET_WORDS = new Set([
@@ -23,6 +23,10 @@ const PET_WORDS = new Set([
   'fish',
   'reptile',
   'ferret',
+  'robot',
+  'android',
+  'droid',
+  'bot',
 ]);
 
 type PetCandidate = {

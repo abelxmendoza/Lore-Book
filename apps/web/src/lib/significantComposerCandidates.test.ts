@@ -46,4 +46,18 @@ describe('significantComposerCandidatesToMatches', () => {
       ])
     );
   });
+
+  it('surfaces a named robot companion as a pet-kind character chip', () => {
+    const matches = significantComposerCandidatesToMatches(
+      'My robot Omega1 needs a charge before we leave.',
+      [],
+      []
+    );
+
+    expect(matches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'Omega1', type: 'character', loreKind: 'pet' }),
+      ])
+    );
+  });
 });
