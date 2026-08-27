@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { TreePine, Home, Users, BarChart3, Loader2, GitBranch, Check, X, MessageSquare } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { TreePine, Home, Users, BarChart3, Loader2, GitBranch, Check, X, MessageSquare, Clock } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
 import { booksApi, type PossibleFamilyMatch } from '../../api/books';
 import { onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
@@ -20,7 +21,7 @@ import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
 import type { Character } from '../characters/CharacterProfileCard';
 
-type Tab = 'tree' | 'households' | 'groups' | 'analytics' | 'extended' | 'chat';
+type Tab = 'tree' | 'households' | 'groups' | 'analytics' | 'extended' | 'chat' | 'timeline';
 
 type SummaryResponse = {
   success: boolean;
@@ -32,6 +33,7 @@ type SummaryResponse = {
 };
 
 export function FamilyBook() {
+  const navigate = useNavigate();
   const shouldUseMock = useShouldUseMockData();
   const [tab, setTab] = useState<Tab>('tree');
   const [loading, setLoading] = useState(true);
@@ -432,6 +434,10 @@ export function FamilyBook() {
     });
   };
 
+  const openFamilyOmniTimeline = () => {
+    navigate('/timeline?view=events');
+  };
+
   const tabs: Array<{ key: Tab; label: string; icon: typeof TreePine }> = [
     { key: 'tree', label: 'Family Tree', icon: TreePine },
     { key: 'households', label: 'Households', icon: Home },
@@ -439,6 +445,7 @@ export function FamilyBook() {
     { key: 'analytics', label: 'Analytics', icon: BarChart3 },
     { key: 'extended', label: 'Extended family', icon: GitBranch },
     { key: 'chat', label: 'Chat', icon: MessageSquare },
+    { key: 'timeline', label: 'Timeline', icon: Clock },
   ];
 
   return (
@@ -660,6 +667,31 @@ export function FamilyBook() {
                 <span className="shrink-0 rounded-full border border-emerald-300/25 bg-emerald-300/10 px-2.5 py-1 text-[11px] font-medium text-emerald-100 transition group-hover:bg-emerald-300/20">
                   Open in chat
                 </span>
+              </button>
+            </div>
+          )}
+
+          {tab === 'timeline' && (
+            <div
+              className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-8 text-center space-y-4"
+              data-testid="family-timeline-handoff"
+            >
+              <Clock className="h-10 w-10 mx-auto text-amber-300/70" />
+              <div className="space-y-1.5">
+                <h3 className="text-base font-semibold text-white">Family history on Omni Timeline</h3>
+                <p className="text-sm text-white/50 max-w-md mx-auto">
+                  Chronology, arcs, and event search live in Omni Timeline — open it to explore
+                  moments connected to your family across time.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={openFamilyOmniTimeline}
+                data-testid="family-open-omni-timeline"
+                className="inline-flex items-center gap-2 rounded-lg border border-amber-400/35 bg-amber-500/25 px-4 py-2 text-sm font-medium text-amber-100 transition hover:bg-amber-500/35"
+              >
+                <Clock className="h-4 w-4" />
+                Open Omni Timeline
               </button>
             </div>
           )}
