@@ -3,8 +3,6 @@ import { X, Calendar, MapPin, Users, Tag, Sparkles, FileText, Brain, Clock, Tren
 import { XProvenanceBadge } from '../integrations/XProvenanceBadge';
 import { MemoryCardComponent } from '../memory-explorer/MemoryCard';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
-import { ChatComposer } from '../../features/chat/composer/ChatComposer';
-import { ChatMessage } from '../../features/chat/message/ChatMessage';
 import { fetchJson } from '../../lib/api';
 import { apiCache } from '../../lib/cache';
 import {
@@ -19,7 +17,6 @@ import type { LocationProfile } from './LocationProfileCard';
 // Re-export so consumers (e.g. CharacterDetailModal) can import the type from here.
 export type { LocationProfile } from './LocationProfileCard';
 import { useMockData } from '../../contexts/MockDataContext';
-import { schedulePostChatRefresh } from '../../lib/storyRefresh';
 import { mockDataService } from '../../services/mockDataService';
 import { getMockLocationFacts, getMockLocationPeople } from '../../mocks/modalDemoData';
 import {
@@ -395,8 +392,6 @@ export const LocationDetailModal = ({
   >([]);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
-  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date }>>([]);
-  const [chatLoading, setChatLoading] = useState(false);
   const [insights, setInsights] = useState<any>(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
   const [locationFacts, setLocationFacts] = useState<any[]>([]);
@@ -413,7 +408,6 @@ export const LocationDetailModal = ({
   const [organizationSearch, setOrganizationSearch] = useState('');
   const [selectedOrganizationId, setSelectedOrganizationId] = useState('');
   const contentRef = useRef<HTMLDivElement>(null);
-  const chatMessagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Reset scroll position when tab changes
@@ -675,13 +669,6 @@ export const LocationDetailModal = ({
     };
   }, [location.id, isMockDataEnabled]);
 
-  // Auto-scroll chat to bottom
-  useEffect(() => {
-    if (chatMessagesEndRef.current) {
-      chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [chatMessages]);
-
   // Load insights when Insights tab is active
   useEffect(() => {
     if (activeTab === 'insights' && !insights && !loadingInsights) {
@@ -747,9 +734,7 @@ export const LocationDetailModal = ({
       sourceSurface: 'locations',
       sourceLabel: CHAT_FOCUS_SOURCE_LABELS.locations,
       knowledgeScope: 'place memories, visits, and significance',
-      initialPrompt:
-        prompt ??
-        `Tell me about ${location.name} — what I've shared, how it fits in my life, and what stands out.`,
+      initialPrompt: prompt ?? '',
     });
   };
 
@@ -769,35 +754,6 @@ export const LocationDetailModal = ({
       autoSubmit: true,
       startNewThread: true,
     });
-  };
-
-  const handleChatSubmit = async (message: string) => {
-    if (!message.trim() || chatLoading) return;
-    setChatMessages(prev => [...prev, { role: 'user', content: message, timestamp: new Date() }]);
-    setChatLoading(true);
-    try {
-      const ctx = `Location: ${location.name}. Visits: ${location.visitCount}. Tags: ${location.tagCounts.map(t => t.tag).join(', ')}.`;
-      const response = await fetchJson<{ answer: string }>('/api/chat', {
-        method: 'POST',
-        body: JSON.stringify({
-          message,
-          conversationHistory: [
-            { role: 'assistant', content: ctx },
-            ...chatMessages.map(m => ({ role: m.role, content: m.content })),
-          ],
-          entityContext: { type: 'LOCATION', id: location.id },
-        }),
-      });
-      setChatMessages(prev => [...prev, { role: 'assistant', content: response.answer || 'Got it.', timestamp: new Date() }]);
-      schedulePostChatRefresh({ scopes: ['all'] });
-      window.dispatchEvent(new CustomEvent('lk:locations-updated', { detail: { ids: [location.id] } }));
-      setTimeout(() => { void reloadLocationProfile(); }, 4000);
-      setTimeout(() => { void reloadLocationProfile(); }, 11000);
-    } catch {
-      setChatMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, something went wrong.', timestamp: new Date() }]);
-    } finally {
-      setChatLoading(false);
-    }
   };
 
   const fmt = (iso?: string) =>
@@ -2160,55 +2116,26 @@ export const LocationDetailModal = ({
 
           {/* ── CHAT ── */}
           {activeTab === 'chat' && (
-            <div className="flex flex-col flex-1 min-h-0 h-full" data-testid="location-chat-panel">
-              <div className="flex-shrink-0 px-3 sm:px-0 pt-1 pb-2 sm:pb-3 border-b border-white/8 space-y-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-full gap-2 border-teal-500/30 text-teal-200 hover:bg-teal-500/10 text-xs sm:text-sm h-9"
-                  onClick={() => openLocationMainChat()}
-                >
-                  <MessageSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  Open main chat with focus
-                </Button>
-                <p className="text-[11px] sm:text-xs text-white/40 hidden sm:block">
-                  Quick questions about {location.name} — or open main chat for a full thread.
-                </p>
-              </div>
-
-              <div
-                className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-0 py-2 sm:py-3 space-y-2 sm:space-y-3"
-                style={{ WebkitOverflowScrolling: 'touch' }}
+            <div className="space-y-3" data-testid="location-chat-panel">
+              <button
+                type="button"
+                onClick={() => openLocationMainChat()}
+                data-testid="location-chat-open-main-chat"
+                className="group flex w-full items-center justify-between gap-3 rounded-xl border border-teal-400/30 bg-gradient-to-r from-teal-500/15 via-cyan-500/10 to-transparent px-3.5 py-3 text-left transition hover:border-teal-300/50 hover:from-teal-500/25 focus:outline-none focus:ring-2 focus:ring-teal-400/40"
               >
-                {chatMessages.length === 0 ? (
-                  <div className="text-center py-6 sm:py-10 text-white/50 px-2">
-                    <MessageSquare className="h-8 w-8 sm:h-10 sm:w-10 mx-auto mb-2 opacity-40 text-teal-400" />
-                    <p className="text-sm text-white/60">Ask about visits, people, or memories here</p>
-                  </div>
-                ) : (
-                  chatMessages.map((msg, i) => (
-                    <ChatMessage
-                      key={i}
-                      message={{ id: `msg-${i}`, role: msg.role, content: msg.content, timestamp: msg.timestamp }}
-                    />
-                  ))
-                )}
-                <div ref={chatMessagesEndRef} />
-              </div>
-
-              <div
-                className="flex-shrink-0 border-t border-white/10 bg-black/80 backdrop-blur-sm"
-                style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))' }}
-              >
-                <ChatComposer
-                  variant="embedded"
-                  placeholder={`Ask about ${location.name}…`}
-                  onSubmit={handleChatSubmit}
-                  loading={chatLoading}
-                  threadId={`location-chat:${location.id}`}
-                />
-              </div>
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-teal-50">
+                    <MessageSquare className="h-4 w-4 text-teal-300" />
+                    Ask about {location.name} in main chat
+                  </p>
+                  <p className="mt-1 text-[11px] text-white/50">
+                    Visits, people, and memories connected to this place.
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full border border-teal-300/25 bg-teal-300/10 px-2.5 py-1 text-[11px] font-medium text-teal-100 transition group-hover:bg-teal-300/20">
+                  Open in chat
+                </span>
+              </button>
             </div>
           )}
 
