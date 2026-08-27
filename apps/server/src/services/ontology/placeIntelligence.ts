@@ -16,6 +16,7 @@
  * EVENT_LOCATION so they become an EVENT linked to a venue, never a place card.
  */
 import { scoreKinshipInContext } from './lexicalIntelligence';
+import { sameChainDifferentSite } from '../lexical/places/chainVenueDisambiguator';
 
 export type PlaceClass =
   | 'HOUSEHOLD' | 'ROOM' | 'PROPERTY' | 'VENUE' | 'BUSINESS'
@@ -255,6 +256,19 @@ export function reviewPlaceDuplicateCompatibility(
 
   if (exact) {
     return reviewResult(left, right, 'alias_of', 'possible_alias', 1, true, false, ['normalized name match', ...evidence]);
+  }
+
+  if (sameChainDifferentSite(a, b)) {
+    return reviewResult(
+      left,
+      right,
+      'incompatible_type',
+      'incompatible_type',
+      0.15,
+      false,
+      false,
+      ['distinct chain sites — keep both cards', ...evidence],
+    );
   }
 
   const leftFamily = categoryFamily(left);

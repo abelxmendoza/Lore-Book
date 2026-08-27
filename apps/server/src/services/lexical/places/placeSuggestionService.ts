@@ -15,6 +15,10 @@ import { analyzePrivateResidence, isOrphanPossessiveResidence } from './privateR
 import { resolveExistingPlace } from './existingPlaceResolver';
 import { canonicalPlaceKey } from './placeDuplicateGuard';
 import {
+  extractChainVenueMentions,
+  parseChainVenueTitle,
+} from './chainVenueDisambiguator';
+import {
   BRAND_STORES,
   KNOWN_CITIES,
   PLACE_PREPOSITIONS,
@@ -378,19 +382,56 @@ function processCandidate(
   return outputs;
 }
 
+function chainVenueSuggestions(text: string, options?: PlaceSuggestionOptions): PlaceSuggestion[] {
+  return extractChainVenueMentions(text).map((mention) => {
+    const taxonomy = classifyPlaceTaxonomy(mention.brand, mention.evidence);
+    return {
+      text: mention.displayName,
+      normalizedText: canonicalPlaceKey(mention.displayName),
+      displayName: mention.displayName,
+      start: 0,
+      end: 0,
+      placeType: taxonomy.placeType === 'unknown_place' ? 'gym' : taxonomy.placeType,
+      placeSubtype: taxonomy.placeType === 'unknown_place' ? 'gym' : taxonomy.placeType,
+      confidence: 0.92,
+      status: linkStatus(mention.displayName, options),
+      evidencePhrases: [mention.evidence],
+      originalCandidate: mention.evidence,
+      finalSpan: mention.displayName,
+      rulesFired: ['chain_venue_site'],
+      sourceMessageIds: options?.sourceMessageIds,
+    } satisfies PlaceSuggestion;
+  });
+}
+
+function dropBareBrandWhenSitesExist(items: PlaceSuggestion[]): PlaceSuggestion[] {
+  const siteBrands = new Set(
+    items
+      .map((item) => parseChainVenueTitle(item.displayName || item.text))
+      .filter((parsed) => parsed.qualifier)
+      .map((parsed) => parsed.brand),
+  );
+  if (siteBrands.size === 0) return items;
+  return items.filter((item) => {
+    const parsed = parseChainVenueTitle(item.displayName || item.text);
+    if (parsed.qualifier) return true;
+    return !parsed.brand || !siteBrands.has(parsed.brand);
+  });
+}
+
 /** Process full text and return all place suggestions (including rejected for debug). */
 export function processPlaceSuggestions(
   text: string,
   options?: PlaceSuggestionOptions
 ): PlaceSuggestion[] {
   const candidates = detectPlaceCandidates(text);
-  const all: PlaceSuggestion[] = [];
+  const all: PlaceSuggestion[] = [...chainVenueSuggestions(text, options)];
 
   for (const candidate of candidates) {
     all.push(...processCandidate(candidate, options));
   }
 
-  return dedupeSuggestions(all);
+  return dropBareBrandWhenSitesExist(dedupeSuggestions(all));
 }
 
 /** Return only place-compatible suggestions for UI / API output. */
@@ -420,12 +461,12 @@ export function processPlaceSuggestionsFromCorpus(
   lines: string[],
   options?: PlaceSuggestionOptions
 ): PlaceSuggestion[] {
-  const merged: PlaceSuggestion[] = [];
+  const merged: PlaceSuggestion[] = [...chainVenueSuggestions(lines.join('\n'), options)];
   for (const line of lines) {
     if (!line.trim()) continue;
     merged.push(...processPlaceSuggestionsForOutput(line, options));
   }
-  return dedupeSuggestions(merged);
+  return dropBareBrandWhenSitesExist(dedupeSuggestions(merged));
 }
 
 export const placeSuggestionPipeline = {
