@@ -88,6 +88,7 @@ import { ContradictionResolutionPanel } from './ContradictionResolutionPanel';
 import { CharacterStoryPanel } from './CharacterStoryPanel';
 import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileControl';
 import { CharacterKnowledgeBase, type CharacterKnowledgeBaseData } from './CharacterKnowledgeBase';
+import { buildFactsFromAttributes, mergeAttributeFactsIntoFacts, type RawEntityAttribute } from '../../lib/attributeFactsAdapter';
 import { CharacterEvidenceLocker } from './CharacterEvidenceLocker';
 import { CharacterMediaPanel } from './CharacterMediaPanel';
 import { RelationshipPeripheralsPanel } from './RelationshipPeripheralsPanel';
@@ -425,6 +426,23 @@ export const CharacterDetailModal = ({
   const profileBundleLoading = characterQueryLoading;
   const profileBundleError = characterQueryError;
   const profileBundleEnabled = characterQueryEnabled;
+  // Fold the structured entity_attributes system (occupation/workplace/school/etc,
+  // otherwise stuck in a small read-only Info-tab list) into the same facts list
+  // "What I Know" renders and copies — previously Copy All silently missed these.
+  // .history is the full current+past set (see characterQueryService), so it alone
+  // is the source; entity_facts wins on any text duplicate.
+  const knowledgeBaseInitialData = useMemo(() => {
+    const kb = profileBundle?.knowledgeBase;
+    const rawAttributes = (profileBundle?.attributes as { current?: unknown[]; history?: unknown[] } | undefined);
+    const attributeSource = rawAttributes?.history ?? rawAttributes?.current;
+    if (!attributeSource?.length) return kb;
+    const attributeFacts = buildFactsFromAttributes(attributeSource as RawEntityAttribute[]);
+    if (!attributeFacts.length) return kb;
+    return {
+      ...(kb ?? {}),
+      facts: mergeAttributeFactsIntoFacts(kb?.facts ?? [], attributeFacts),
+    } as CharacterKnowledgeBaseData;
+  }, [profileBundle?.knowledgeBase, profileBundle?.attributes]);
   const [editedCharacter, setEditedCharacter] = useState<CharacterDetail>(character as CharacterDetail);
   const [profileWittyTagline, setProfileWittyTagline] = useState<string | null>(
     getCharacterWittyTagline(character)
@@ -5311,7 +5329,7 @@ export const CharacterDetailModal = ({
                 character={editedCharacter as Character}
                 mockMode={isMockDataEnabled}
                 active={activeTab === 'knowledge'}
-                initialData={profileBundle?.knowledgeBase}
+                initialData={knowledgeBaseInitialData}
                 skipFetch={Boolean(profileBundle?.knowledgeBase)}
                 chatMentions={profileBundle?.chatMentions}
                 onAskInChat={askInChat}

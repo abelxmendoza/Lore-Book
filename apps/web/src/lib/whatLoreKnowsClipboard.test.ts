@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { buildFactsFromAttributes, mergeAttributeFactsIntoFacts } from './attributeFactsAdapter';
 import { buildWhatLoreKnowsClipboardText } from './whatLoreKnowsClipboard';
 
 describe('buildWhatLoreKnowsClipboardText', () => {
@@ -73,6 +74,38 @@ describe('buildWhatLoreKnowsClipboardText', () => {
     expect(text).toContain('Music is a recurring creative outlet');
     expect(text).toContain('Vanguard Robotics');
     expect(text).toContain('I used to dye my hair pink.');
+  });
+
+  it('includes structured entity_attributes facts merged in under their own category', () => {
+    // End-to-end: previously Copy All only ever saw entity_facts, so a
+    // detected attribute like "school: CSUF" never made it into the export.
+    const attributeFacts = buildFactsFromAttributes([
+      { attributeType: 'school', attributeValue: 'CSUF', isCurrent: false },
+    ]);
+    const facts = mergeAttributeFactsIntoFacts(
+      [{ id: 'f1', category: 'career', fact: 'Works at Ring', confidence: 0.9 }],
+      attributeFacts,
+    );
+
+    const text = buildWhatLoreKnowsClipboardText({
+      title: 'Entity Knowledge Base',
+      characterName: 'Jordan',
+      knowledgeBase: {
+        aliases: [],
+        identityMentions: [],
+        summary: null,
+        facts: facts as never,
+        knowledgeClaims: [],
+        relatedEntities: [],
+        conversationLinks: [],
+        profile: { relationshipToUser: null, memoryCount: 0, timelineEventCount: 0, timelineEvents: [] },
+      },
+    });
+
+    expect(text).toContain('### Education');
+    expect(text).toContain('Attended CSUF');
+    expect(text).toContain('### Career');
+    expect(text).toContain('Works at Ring');
   });
 
   it('still produces a header when the knowledge base is empty', () => {
