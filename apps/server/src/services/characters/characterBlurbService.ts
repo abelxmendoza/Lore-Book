@@ -34,16 +34,6 @@ function stableIndex(seed: string, mod: number): number {
   return h;
 }
 
-const PROTAGONIST_HOOK_RULES: Array<{ pattern: RegExp; hook: string }> = [
-  { pattern: /\binterview\b/, hook: 'has an interview on the horizon' },
-  { pattern: /\bepirus\b/, hook: 'Epirus enters the chat' },
-  { pattern: /\brobot|robotics|ros2|px4|jetson\b/, hook: 'runs on caffeine and firmware' },
-  { pattern: /\bamazon\b/, hook: 'speaks fluent warehouse diagnostics' },
-  { pattern: /\bresume\b/, hook: 'resume lore unlocked' },
-  { pattern: /\bunemploy|between jobs|gap\b/, hook: 'between-arc transition era' },
-  { pattern: /\bdeploy|field\b/, hook: 'field-ops protagonist energy' },
-];
-
 const CHARACTER_HOOK_RULES: Array<{ pattern: RegExp; hook: string }> = [
   { pattern: /\bfamily|relative|cousin|sibling\b/, hook: 'family tree material' },
   { pattern: /\bvisit|visited|reunion|holiday\b/, hook: 'shows up for the good scenes' },
@@ -69,11 +59,12 @@ function extractContextHooks(
   texts: string[],
   options: { isSelf: boolean; kinshipRole?: string | null }
 ): string[] {
+  // Protagonist chips used to be joke status lines ("warehouse diagnostics").
+  // Occupation already lives on the card; don't invent a second personality row.
+  if (options.isSelf) return [];
   const hooks = new Set<string>();
   const blob = texts.join(' ').toLowerCase();
-  const rules = options.isSelf
-    ? PROTAGONIST_HOOK_RULES
-    : options.kinshipRole
+  const rules = options.kinshipRole
       ? CHARACTER_HOOK_RULES
       : CHARACTER_HOOK_RULES.filter((rule) => rule.hook !== 'family tree material');
 
@@ -101,30 +92,10 @@ function composeWittyTagline(ctx: BlurbContext): string {
   const hook = hooks[stableIndex(label, Math.max(hooks.length, 1))] ?? hooks[0];
 
   if (ctx.isSelf) {
-    const openers = [
-      'Main character energy:',
-      'Protagonist log, entry:',
-      'LoreBook canon confirms:',
-      'Your saga, summarized:',
-    ];
-    const cores = [
-      occupation && workplace
-        ? `${occupation} at ${workplace}`
-        : occupation
-          ? occupation
-          : school
-            ? `scholar of ${school}`
-            : 'builder of timelines and trouble',
-    ];
-    const closers = [
-      hook ? `${hook}.` : 'still collecting plot twists.',
-      'attributes syncing from chat, journal, and resume.',
-      'certified protagonist — side quests optional.',
-      'the one the assistant is legally required to remember.',
-    ];
-    const o = stableIndex(label, openers.length);
-    const c = stableIndex(`${label}-close`, closers.length);
-    return `${openers[o]} ${cores[0]} — ${closers[c]}`;
+    if (occupation && workplace) return `${occupation} at ${workplace}`;
+    if (occupation) return occupation;
+    if (school) return `Studied at ${school}`;
+    return 'Your story grows with every chat.';
   }
 
   const archetype = (ctx.archetype || 'character').replace(/_/g, ' ');
@@ -156,7 +127,7 @@ function composeProfileSummary(ctx: BlurbContext): string {
   if (parts.length === 0 && ctx.summary?.trim()) return ctx.summary.trim().slice(0, 280);
   if (parts.length === 0) {
     return ctx.isSelf
-      ? 'Your story grows with every chat — upload a resume or keep talking to fill this in.'
+      ? 'Your story grows with every chat.'
       : `${ctx.name} is still being written into your lore.`;
   }
   return parts.join(' · ');

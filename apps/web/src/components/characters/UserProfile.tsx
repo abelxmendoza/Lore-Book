@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { BookOpen, TrendingUp, Sparkles, AlertCircle, GitBranch, Brain, Activity, ChevronRight } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
+import { selectProfileLifeArcs } from '../../lib/durableLifeArcs';
 import { useAuth } from '../../lib/supabase';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { useMockData } from '../../contexts/MockDataContext';
@@ -144,8 +145,8 @@ export const UserProfile = ({ characters = [] }: UserProfileProps) => {
   // ── Load active life arcs ───────────────────────────────────────────────────
   useEffect(() => {
     if (isMockEnabled) { setActiveArcs(MOCK_ARCS); return; }
-    fetchJson<{ arcs?: LifeArc[]; life_arcs?: LifeArc[] }>('/api/life-arcs?is_active=true&limit=5')
-      .then(r => setActiveArcs(r.arcs ?? r.life_arcs ?? []))
+    fetchJson<{ arcs?: LifeArc[]; life_arcs?: LifeArc[] }>('/api/life-arcs?active_only=true')
+      .then(r => setActiveArcs(selectProfileLifeArcs(r.arcs ?? r.life_arcs ?? [])))
       .catch(() => {});
   }, [isMockEnabled]);
 

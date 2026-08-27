@@ -9,6 +9,8 @@ import {
   getCharacterContextHooks,
   getCharacterRealName,
   getCharacterWittyTagline,
+  resolveProfileContextHooks,
+  resolveProfileTagline,
 } from '../lib/characterDisplay';
 
 export type MainCharacterAttribute = {
@@ -71,9 +73,9 @@ export function useMainCharacterProfile(character: Character) {
     setFacts(profile.facts ?? []);
     setKnowledgeClaims(profile.knowledgeClaims ?? []);
     setStats(profile.stats ?? null);
-    setWittyTagline(profile.wittyTagline ?? getCharacterWittyTagline(profile.character));
+    setWittyTagline(resolveProfileTagline(profile.character, profile.wittyTagline));
     setRoleTagline(profile.roleTagline ?? profile.character.role ?? null);
-    setContextHooks(profile.contextHooks ?? getCharacterContextHooks(profile.character));
+    setContextHooks(resolveProfileContextHooks(profile.character, profile.contextHooks));
     setProfileSummary(profile.profileSummary ?? profile.character.summary ?? null);
     setRealName(profile.realName ?? getCharacterRealName(profile.character));
     setRelationships((profile.character.relationships ?? []) as MainCharacterRelationship[]);

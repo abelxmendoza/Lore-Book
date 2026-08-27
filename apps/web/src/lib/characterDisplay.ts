@@ -1,4 +1,5 @@
 import type { Character } from '../components/characters/CharacterProfileCard';
+import { stripPersonNameEpithet } from './personNameEpithet';
 
 export function getCharacterRealName(character: Pick<Character, 'name' | 'first_name' | 'last_name' | 'metadata'>): string | null {
   const meta = character.metadata ?? {};
@@ -10,20 +11,59 @@ export function getCharacterRealName(character: Pick<Character, 'name' | 'first_
   return null;
 }
 
+const JOKE_PROTAGONIST_HOOK_RE =
+  /interview on the horizon|warehouse diagnostics|between-arc transition|caffeine and firmware|resume lore|field-ops protagonist|epirus enters the chat/i;
+
 export function getCharacterWittyTagline(character: Pick<Character, 'metadata' | 'summary'>): string | null {
   const meta = character.metadata ?? {};
   const witty =
     (typeof meta.witty_tagline === 'string' && meta.witty_tagline) ||
     (typeof meta.character_blurb === 'string' && meta.character_blurb) ||
     null;
-  return witty || null;
+  return sanitizeProtagonistTagline(witty);
+}
+
+/** Joke/template protagonist copy — never show this as a biography. */
+export function isTemplateProtagonistBlurb(text: string | null | undefined): boolean {
+  if (!text?.trim()) return false;
+  return /main character energy|builder of timelines and trouble|legally required to remember|protagonist log|certified protagonist|side quests optional|still collecting plot twists/i.test(
+    text,
+  );
+}
+
+export function sanitizeProtagonistTagline(text: string | null | undefined): string | null {
+  if (!text?.trim() || isTemplateProtagonistBlurb(text)) return null;
+  return text;
+}
+
+export function filterCharacterContextHooks(hooks: string[]): string[] {
+  return hooks.filter(
+    (hook) => typeof hook === 'string' && hook.trim().length > 0 && !JOKE_PROTAGONIST_HOOK_RE.test(hook),
+  );
 }
 
 export function getCharacterContextHooks(character: Pick<Character, 'metadata'>): string[] {
   const meta = character.metadata ?? {};
-  return Array.isArray(meta.context_hooks)
+  const hooks = Array.isArray(meta.context_hooks)
     ? (meta.context_hooks as string[]).filter((h) => typeof h === 'string' && h.trim())
     : [];
+  return filterCharacterContextHooks(hooks);
+}
+
+/** Prefer API copy, but never let joke/template protagonist lines through. */
+export function resolveProfileTagline(
+  character: Pick<Character, 'metadata' | 'summary'>,
+  override?: string | null,
+): string | null {
+  return sanitizeProtagonistTagline(override) ?? getCharacterWittyTagline(character);
+}
+
+export function resolveProfileContextHooks(
+  character: Pick<Character, 'metadata'>,
+  override?: string[] | null,
+): string[] {
+  if (Array.isArray(override)) return filterCharacterContextHooks(override);
+  return getCharacterContextHooks(character);
 }
 
 export function getMainCharacterDisplayName(
@@ -32,7 +72,7 @@ export function getMainCharacterDisplayName(
 ): string {
   return (
     getCharacterRealName(character) ||
-    character.name?.trim() ||
+    stripPersonNameEpithet(character.name?.trim() || '') ||
     (user?.user_metadata?.full_name as string | undefined) ||
     (user?.user_metadata?.name as string | undefined) ||
     user?.email?.split('@')[0] ||

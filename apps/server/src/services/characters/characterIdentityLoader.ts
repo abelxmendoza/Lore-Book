@@ -103,7 +103,9 @@ export async function loadCharacterIdentity(
   if (error || !character) return null;
 
   // Move "Person the Epithet" out of primary name into alias + contextual_title.
-  const { repairEpithetPrimaryNameIfNeeded } = await import('./epithetPrimaryNameRepair');
+  const { repairEpithetPrimaryNameIfNeeded, repairSelfIdentityPresentationIfNeeded } = await import(
+    './epithetPrimaryNameRepair'
+  );
   const epithetRepair = await repairEpithetPrimaryNameIfNeeded(userId, character.id, {
     name: character.name,
     alias: character.alias,
@@ -121,9 +123,31 @@ export async function loadCharacterIdentity(
     if (refreshed) Object.assign(character, refreshed);
   }
 
+  const earlyMeta = (character.metadata as Record<string, unknown> | null) ?? {};
+  const isSelfEarly = Boolean(
+    earlyMeta.is_self || earlyMeta.is_user || /^me$/i.test(character.name),
+  );
+  if (isSelfEarly) {
+    const selfCleanup = await repairSelfIdentityPresentationIfNeeded(userId, character.id, {
+      name: character.name,
+      alias: character.alias,
+      metadata: character.metadata as Record<string, unknown> | null,
+    });
+    if (selfCleanup.repaired) {
+      const { data: refreshed } = await supabaseAdmin
+        .from('characters')
+        .select('*')
+        .eq('id', characterId)
+        .eq('user_id', userId)
+        .single();
+      if (refreshed) Object.assign(character, refreshed);
+    }
+  }
+
   // Suggest a story epithet when none exists yet (async — next open shows it).
+  // Skip the protagonist: that card is identity, not a fantasy epithet.
   const { resolveStoredEpithet } = await import('../../utils/personNameEpithet');
-  if (!resolveStoredEpithet(character.metadata as Record<string, unknown>)) {
+  if (!isSelfEarly && !resolveStoredEpithet(character.metadata as Record<string, unknown>)) {
     void import('./epithetGenerationService')
       .then(({ maybeGenerateCharacterEpithet }) =>
         maybeGenerateCharacterEpithet(userId, characterId),
@@ -230,20 +254,25 @@ export async function loadCharacterIdentity(
   const isSelfCharacter = Boolean(
     metadata.is_self || metadata.is_user || /^me$/i.test(character.name),
   );
-  const pollutedHooks =
-    !isSelfCharacter && Array.isArray(metadata.context_hooks)
-      ? metadata.context_hooks.some(
-          (hook) =>
-            typeof hook === 'string' &&
-            /interview|epirus|resume|warehouse diagnostics|caffeine and firmware/i.test(hook),
-        )
-      : false;
-
   let wittyTagline =
     (typeof metadata.witty_tagline === 'string' && metadata.witty_tagline) ||
     (typeof metadata.character_blurb === 'string' ? metadata.character_blurb : null);
+  const pollutedHooks =
+    Array.isArray(metadata.context_hooks) &&
+    metadata.context_hooks.some(
+      (hook) =>
+        typeof hook === 'string' &&
+        /interview|epirus|resume|warehouse diagnostics|caffeine and firmware|between-arc transition|main character energy|legally required/i.test(
+          hook,
+        ),
+    );
+  const pollutedTagline =
+    typeof wittyTagline === 'string' &&
+    /main character energy|builder of timelines and trouble|legally required to remember|protagonist log|certified protagonist/i.test(
+      wittyTagline,
+    );
 
-  if (refreshBlurb && (!wittyTagline || pollutedHooks)) {
+  if (refreshBlurb && (!wittyTagline || pollutedHooks || pollutedTagline)) {
     try {
       const { characterBlurbService } = await import('./characterBlurbService');
       const blurb = await characterBlurbService.refreshAndPersist(userId, character.id, {
