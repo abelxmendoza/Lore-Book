@@ -161,6 +161,63 @@ describe('extractBiographyFacts — authoritative fact hierarchy (Sprint O)', ()
     expect(sol?.status).toBe('ended');
   });
 
+  it('excludes relationships pointing at an archived or reclassified character — they never cascade an "ended" status onto character_relationships, so the edge stays active forever unless filtered here', async () => {
+    const DROPPED_ARCHIVED_ID = 'char-dropped-archived';
+    const DROPPED_RECLASSIFIED_ID = 'char-dropped-reclassified';
+    baseTables({
+      characters: {
+        data: [
+          { id: PROTAGONIST_ID, name: 'Rene Alvarez', alias: [], metadata: { is_self: true, mention_count: 20 } },
+          { id: SOL_ID, name: 'Sam Chen', alias: [], metadata: { mention_count: 5 } },
+          { id: ABUELA_ID, name: 'Grandma Rose', alias: [], metadata: { mention_count: 5 } },
+          // Real production case: a genre reference ("ska") miscategorized as
+          // a Character, later reclassified out — but the relationship edge
+          // pointing at it was never touched by the reclassify write path.
+          { id: DROPPED_RECLASSIFIED_ID, name: 'One Piece', alias: [], metadata: {}, status: 'reclassified' },
+          { id: DROPPED_ARCHIVED_ID, name: 'one girl', alias: [], metadata: {}, status: 'archived' },
+        ],
+        error: null,
+      },
+      character_relationships: {
+        data: [
+          {
+            id: 'rel-sol',
+            source_character_id: PROTAGONIST_ID,
+            target_character_id: SOL_ID,
+            relationship_type: 'romantic',
+            status: 'active',
+            metadata: {},
+          },
+          {
+            id: 'rel-dropped-reclassified',
+            source_character_id: PROTAGONIST_ID,
+            target_character_id: DROPPED_RECLASSIFIED_ID,
+            relationship_type: 'acquaintance',
+            status: 'active',
+            metadata: {},
+          },
+          {
+            id: 'rel-dropped-archived',
+            source_character_id: DROPPED_ARCHIVED_ID,
+            target_character_id: PROTAGONIST_ID,
+            relationship_type: 'acquaintance',
+            status: 'active',
+            metadata: {},
+          },
+        ],
+        error: null,
+      },
+    });
+
+    const facts = await biographyFoundationService.extractBiographyFacts(USER_ID);
+
+    expect(facts.relationships.find(r => r.characterId === SOL_ID)).toBeDefined();
+    expect(facts.relationships.find(r => r.characterId === DROPPED_RECLASSIFIED_ID)).toBeUndefined();
+    expect(facts.relationships.find(r => r.characterId === DROPPED_ARCHIVED_ID)).toBeUndefined();
+    expect(facts.relationships.some(r => r.name === 'One Piece')).toBe(false);
+    expect(facts.relationships.some(r => r.name === 'one girl')).toBe(false);
+  });
+
   it('3. derives employment from explicit content signal only — does not invent a status when absent', async () => {
     baseTables({
       journal_entries: {

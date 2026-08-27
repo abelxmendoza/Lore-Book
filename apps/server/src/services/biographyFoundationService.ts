@@ -202,7 +202,7 @@ class BiographyFoundationService {
     // once made a third-party card the biography subject). ──────────────────
     const { data: chars } = await supabaseAdmin
       .from('characters')
-      .select('id, name, alias, metadata')
+      .select('id, name, alias, metadata, status')
       .eq('user_id', userId);
 
     const { pickBiographySubject } = await import('./identity/biographySubjectInvariant');
@@ -244,31 +244,51 @@ class BiographyFoundationService {
       .eq('user_id', userId);
 
     const charNameMap = new Map((chars ?? []).map(c => [c.id, c.name]));
-    const relationships: BiographyFacts['relationships'] = (rels ?? []).map(r => {
-      const other = r.source_character_id === protagonist?.id
-        ? r.target_character_id
-        : r.source_character_id;
+    // Archiving or reclassifying a character (moving it out of the Character
+    // Book — e.g. a genre/interest miscategorized as a person, like "One
+    // Piece" turning out to be a ska reference) never cascades to
+    // character_relationships: those edges are left status:'active' forever.
+    // Biography's own relationship rows are trustworthy per the Sprint O note
+    // below, but the CHARACTER on the other end of the edge may no longer be
+    // a live person in this user's book — exclude those before they leak into
+    // "People who matter" as dropped/error characters that keep reappearing
+    // on every regeneration.
+    const DROPPED_CHARACTER_STATUSES = new Set(['archived', 'pending_deletion', 'reclassified']);
+    const activeCharIds = new Set(
+      (chars ?? []).filter(c => !DROPPED_CHARACTER_STATUSES.has(c.status ?? 'active')).map(c => c.id),
+    );
+    const relationships: BiographyFacts['relationships'] = (rels ?? [])
+      .filter(r => {
+        const other = r.source_character_id === protagonist?.id
+          ? r.target_character_id
+          : r.source_character_id;
+        return activeCharIds.has(other);
+      })
+      .map(r => {
+        const other = r.source_character_id === protagonist?.id
+          ? r.target_character_id
+          : r.source_character_id;
 
-      // Trust recovery (Sprint O): `character_relationships.status` is the
-      // authoritative record — Biography is a narrator over it, not an editor.
-      // A previous keyword-matching heuristic here re-derived status from raw
-      // journal text and overwrote the structured value (e.g. turning an
-      // 'active' family relationship into 'ended' because *another*
-      // relationship's breakup language appeared in a co-mentioned entry).
-      // Derived layers may summarize and rank — they may not contradict
-      // structured truth. Use the DB value as-is.
-      const status = r.status ?? 'active';
-      const memIds: string[] = (r.metadata as any)?.source_memory_ids ?? [];
+        // Trust recovery (Sprint O): `character_relationships.status` is the
+        // authoritative record — Biography is a narrator over it, not an editor.
+        // A previous keyword-matching heuristic here re-derived status from raw
+        // journal text and overwrote the structured value (e.g. turning an
+        // 'active' family relationship into 'ended' because *another*
+        // relationship's breakup language appeared in a co-mentioned entry).
+        // Derived layers may summarize and rank — they may not contradict
+        // structured truth. Use the DB value as-is.
+        const status = r.status ?? 'active';
+        const memIds: string[] = (r.metadata as any)?.source_memory_ids ?? [];
 
-      return {
-        name: charNameMap.get(other) ?? 'Unknown',
-        type: r.relationship_type,
-        status,
-        characterId: other,
-        relationshipId: r.id,
-        sourceMemoryIds: memIds,
-      };
-    });
+        return {
+          name: charNameMap.get(other) ?? 'Unknown',
+          type: r.relationship_type,
+          status,
+          characterId: other,
+          relationshipId: r.id,
+          sourceMemoryIds: memIds,
+        };
+      });
 
     // ── Key events from canonical character chronology ───────────────────────
     const keyEvents: BiographyFacts['keyEvents'] = [];
