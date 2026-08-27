@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { TreePine, Home, Users, BarChart3, Loader2, GitBranch, Check, X } from 'lucide-react';
+import { TreePine, Home, Users, BarChart3, Loader2, GitBranch, Check, X, MessageSquare } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
 import { booksApi, type PossibleFamilyMatch } from '../../api/books';
 import { onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
@@ -15,10 +15,12 @@ import { FamilyExtendedNetworkPanel } from './FamilyExtendedNetworkPanel';
 import { CharacterDetailModal } from '../characters/CharacterDetailModal';
 import { useToast } from '../ui/toast';
 import { RelationshipEditor, type RelationshipEdit } from './RelationshipEditor';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
 import type { Character } from '../characters/CharacterProfileCard';
 
-type Tab = 'tree' | 'households' | 'groups' | 'analytics' | 'extended';
+type Tab = 'tree' | 'households' | 'groups' | 'analytics' | 'extended' | 'chat';
 
 type SummaryResponse = {
   success: boolean;
@@ -417,12 +419,26 @@ export function FamilyBook() {
         onDisconnectParent: (m: FamilyMember) => void disconnectParent(m),
       };
 
+  const openFamilyMainChat = () => {
+    openChatWithFocus({
+      entityId: 'family',
+      entityName: 'Your family',
+      entityType: 'memory',
+      sourceSurface: 'family',
+      sourceLabel: CHAT_FOCUS_SOURCE_LABELS.family,
+      knowledgeScope: 'family tree, households, relationships, and family history',
+      initialPrompt:
+        'Tell me about my family — the people, relationships, households, and what stands out.',
+    });
+  };
+
   const tabs: Array<{ key: Tab; label: string; icon: typeof TreePine }> = [
     { key: 'tree', label: 'Family Tree', icon: TreePine },
     { key: 'households', label: 'Households', icon: Home },
     { key: 'groups', label: 'Family Groups', icon: Users },
     { key: 'analytics', label: 'Analytics', icon: BarChart3 },
     { key: 'extended', label: 'Extended family', icon: GitBranch },
+    { key: 'chat', label: 'Chat', icon: MessageSquare },
   ];
 
   return (
@@ -622,6 +638,30 @@ export function FamilyBook() {
             <FamilyExtendedNetworkPanel
               onMemberClick={(id, name) => void openCharacter(id, name)}
             />
+          )}
+
+          {tab === 'chat' && (
+            <div className="space-y-3" data-testid="family-chat-panel">
+              <button
+                type="button"
+                onClick={() => openFamilyMainChat()}
+                data-testid="family-chat-open-main-chat"
+                className="group flex w-full items-center justify-between gap-3 rounded-xl border border-emerald-400/30 bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-transparent px-3.5 py-3 text-left transition hover:border-emerald-300/50 hover:from-emerald-500/25 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+              >
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-emerald-50">
+                    <MessageSquare className="h-4 w-4 text-emerald-300" />
+                    Ask about your family in main chat
+                  </p>
+                  <p className="mt-1 text-[11px] text-white/50">
+                    Relationships, households, and family history.
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full border border-emerald-300/25 bg-emerald-300/10 px-2.5 py-1 text-[11px] font-medium text-emerald-100 transition group-hover:bg-emerald-300/20">
+                  Open in chat
+                </span>
+              </button>
+            </div>
           )}
         </>
       )}
