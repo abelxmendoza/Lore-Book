@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { render } from '../../test/utils';
 import { fetchJson } from '../../lib/api';
 import { EventsBook } from './EventsBook';
@@ -110,7 +110,7 @@ describe('EventsBook', () => {
     expect(searchInput).toBeInTheDocument();
   });
 
-  it('keeps Moments and Patterns as the only primary tabs with quiet Also see links', async () => {
+  it('keeps Moments and Patterns as the only primary tabs and shares the Timeline/Anchors nav', async () => {
     render(<EventsBook />);
     await screen.findByText('Night out with Jamie');
 
@@ -120,11 +120,17 @@ describe('EventsBook', () => {
     expect(screen.queryByRole('button', { name: /^Search facts$/i })).toBeInTheDocument();
     expect(screen.getByText(/Scenes from your conversations/i)).toBeInTheDocument();
     expect(screen.queryByText(/Timeline puts them in order/i)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/Connected story views/i)).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/Also see/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Narrative Anchors/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^Calendar$/i })).toBeInTheDocument();
-    expect(screen.getByText(/1 moment/i)).toBeInTheDocument();
+    // Moments now shares StorySurfaceLinks with Timeline/Anchors instead of a
+    // one-off "Also see" nav, so the page chrome matches across all three.
+    expect(screen.queryByLabelText(/Also see/i)).not.toBeInTheDocument();
+    const storyNav = screen.getByLabelText(/Connected story views/i);
+    expect(storyNav).toBeInTheDocument();
+    expect(within(storyNav).getByText(/^Moments$/i).closest('[aria-current="page"]')).toBeTruthy();
+    expect(within(storyNav).getByRole('button', { name: /Timeline/i })).toBeInTheDocument();
+    expect(within(storyNav).getByRole('button', { name: /Anchors/i })).toBeInTheDocument();
+    // Header stat tile mirrors Anchors' pattern: count and label are separate
+    // nodes (a big number over a small caption), not one combined text run.
+    expect(screen.getByText(/moment captured|moments captured/i)).toBeInTheDocument();
   });
 
   it('restores Life Log celebration classifiers with nested subcategories', async () => {
