@@ -57,7 +57,17 @@ export const PREVIEW_PATTERNS: PreviewPattern[] = [
   L({ id: 'work_live_robot_support', literal: 'live robot support', type: 'WORK_ACTIVITY', subtype: 'FIELD_OPERATIONS', colorKey: 'work_activity', confidenceBase: 0.84, priority: 31 }),
   L({ id: 'task_gripper_swap', literal: 'gripper swap', literalVariants: ['gripper swaps'], type: 'TASK', subtype: 'MAINTENANCE_TASK', colorKey: 'task', confidenceBase: 0.82, requiresReview: true, priority: 30 }),
   L({ id: 'person_coworker_with', regex: /\b(?<=with\s)[A-Z][a-z]+(?=\s+and\b)/g, type: 'PERSON', subtype: 'COWORKER', colorKey: 'person', confidenceBase: 0.85, priority: 29 }),
-  L({ id: 'person_coworker_and', regex: /\b(?<=and\s)[A-Z][a-z]+(?=\s*[,.]|$|\s+(?:I|at)\b)/g, type: 'PERSON', subtype: 'COWORKER', colorKey: 'person', confidenceBase: 0.85, priority: 28 }),
+  // The lookahead is a continuation whitelist, not a full name — it originally
+  // only covered "and Name," / "and Name." / "and Name" (end of message) /
+  // "and Name I" / "and Name at". A bare "and Name <verb>" shape ("at V and
+  // Romi saw and heard...") fell through because ordinary narrative verbs
+  // weren't in that whitelist. Extended to cover common ones without removing
+  // the original terminators.
+  L({ id: 'person_coworker_and', regex: /\b(?<=and\s)[A-Z][a-z]+(?=\s*[,.]|$|\s+(?:I|at|saw|said|told|heard|went|came|left|felt|was|were|yelled|asked|looked|walked|ran|cried|laughed|screamed|and)\b)/g, type: 'PERSON', subtype: 'COWORKER', colorKey: 'person', confidenceBase: 0.85, priority: 28 }),
+  // A bare name immediately following a person-descriptor noun ("little girl
+  // Olive who I met", "my friend Romi") — a shape none of the other PERSON
+  // patterns cover since they require a two-word full name or a with/and trigger.
+  L({ id: 'person_appositive_noun', regex: /\b(?<=(?:girl|boy|guy|kid|friend|coworker|neighbor|man|woman)\s)[A-Z][a-z]+\b/g, type: 'PERSON', subtype: 'APPOSITIVE', colorKey: 'person', confidenceBase: 0.8, priority: 27 }),
   L({ id: 'place_city_in', regex: /\b(?<=in\s)[A-Z][a-z]+(?=\s*[,.]|$)/g, type: 'PLACE', subtype: 'CITY', colorKey: 'place', confidenceBase: 0.84, priority: 27 }),
   L({ id: 'role_robot_tech', literal: 'robot tech', type: 'ROLE', subtype: 'JOB_TITLE', colorKey: 'role', confidenceBase: 0.9, priority: 38 }),
   L({ id: 'person_gary', literal: 'Gary', type: 'PERSON', subtype: 'COWORKER', colorKey: 'person', confidenceBase: 0.88, caseSensitive: true, priority: 37 }),
