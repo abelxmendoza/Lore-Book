@@ -7,7 +7,7 @@ describe('resolveCognitionPlaceBoundary', () => {
     // Real production suggestions: extraction over-captured plain narration
     // as a place-name span. Neither of these is a place.
     expect(resolveCognitionPlaceBoundary('V and Romi saw').clearBoundary).toBe(false);
-    expect(resolveCognitionPlaceBoundary('Genni she freaked out').clearBoundary).toBe(false);
+    expect(resolveCognitionPlaceBoundary('Jordan she freaked out').clearBoundary).toBe(false);
   });
 
   it('does not reject legitimate multi-word venue and school names', () => {
