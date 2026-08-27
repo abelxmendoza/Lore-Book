@@ -272,7 +272,13 @@ export async function loadCharacterIdentity(
       wittyTagline,
     );
 
-  if (refreshBlurb && (!wittyTagline || pollutedHooks || pollutedTagline)) {
+  const pollutedSummary =
+    typeof character.summary === 'string' &&
+    /main character energy|builder of timelines and trouble|legally required to remember|protagonist log|certified protagonist/i.test(
+      character.summary,
+    );
+
+  if (refreshBlurb && (!wittyTagline || pollutedHooks || pollutedTagline || pollutedSummary)) {
     try {
       const { characterBlurbService } = await import('./characterBlurbService');
       const blurb = await characterBlurbService.refreshAndPersist(userId, character.id, {
@@ -285,6 +291,9 @@ export async function loadCharacterIdentity(
         metadata.profile_summary = blurb.profileSummary;
         metadata.context_hooks = blurb.contextHooks;
         metadata.ontology_tags = blurb.ontologyTags;
+        if (pollutedSummary || isSelfCharacter) {
+          character.summary = blurb.profileSummary;
+        }
       }
     } catch (err) {
       logger.debug({ err, characterId }, 'character identity blurb refresh skipped');

@@ -4,6 +4,7 @@ import {
   getCharacterWittyTagline,
   getMainCharacterDisplayName,
   isTemplateProtagonistBlurb,
+  personalizeSelfSummary,
   resolveProfileContextHooks,
   resolveProfileTagline,
 } from './characterDisplay';
@@ -68,5 +69,13 @@ describe('characterDisplay protagonist copy', () => {
         metadata: { is_self: true },
       } as any),
     ).toBe('Jamie Rivera');
+  });
+
+  it('does not personalize joke protagonist summaries into the hero bio', () => {
+    expect(
+      personalizeSelfSummary(
+        'Main character energy: builder of timelines and trouble — the one the assistant is legally required to remember.',
+      ),
+    ).toMatch(/your story grows with every conversation/i);
   });
 });

@@ -19,6 +19,7 @@ import {
   getCharacterContextHooks,
   getCharacterWittyTagline,
   getMainCharacterDisplayName,
+  isTemplateProtagonistBlurb,
   resolveProfileContextHooks,
   resolveProfileTagline,
 } from '../../lib/characterDisplay';
@@ -184,9 +185,12 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
   }, [character.id, dataUpdatedAt]);
 
   const summary =
-    (wittyTagline && !/your story grows with every chat/i.test(wittyTagline) ? wittyTagline : null) ||
-    profileSummary ||
-    resolvedCharacter.summary ||
+    [wittyTagline, profileSummary, resolvedCharacter.summary].find(
+      (value) =>
+        Boolean(value?.trim()) &&
+        !isTemplateProtagonistBlurb(value) &&
+        !/your story grows with every chat/i.test(value ?? ''),
+    ) ||
     'Your story grows with every conversation — attributes and facts sync from chat and resume.';
   // Reflect modal's occupation emphasis
   const occupationFromAttrs = attributes.length > 0 ? attributes.find((a: any) => a.attributeType === 'occupation')?.attributeValue : null;

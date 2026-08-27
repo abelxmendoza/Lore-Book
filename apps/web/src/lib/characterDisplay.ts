@@ -92,7 +92,7 @@ export function getSelfProfileRoleTagline(role?: string | null): string {
 
 /** Prefer second-person copy when the stored summary reads like a character sheet. */
 export function personalizeSelfSummary(summary: string | null | undefined): string {
-  if (!summary?.trim()) {
+  if (!summary?.trim() || isTemplateProtagonistBlurb(summary)) {
     return 'Your story grows with every conversation — Lore learns about you from chat and resume.';
   }
   return summary

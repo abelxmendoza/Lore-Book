@@ -265,8 +265,13 @@ class CharacterBlurbService {
       blurb_updated_at: new Date().toISOString(),
     };
 
-    const summary =
-      (typeof existing?.summary === 'string' && existing.summary.trim()) || blurb.profileSummary;
+    const existingSummary =
+      typeof existing?.summary === 'string' && existing.summary.trim() ? existing.summary.trim() : '';
+    const summaryIsTemplate =
+      /main character energy|builder of timelines and trouble|legally required to remember|protagonist log|certified protagonist|side quests optional|still collecting plot twists/i.test(
+        existingSummary,
+      );
+    const summary = !existingSummary || summaryIsTemplate ? blurb.profileSummary : existingSummary;
 
     const { error } = await supabaseAdmin
       .from('characters')
