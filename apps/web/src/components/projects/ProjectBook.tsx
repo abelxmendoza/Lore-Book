@@ -559,53 +559,6 @@ export const ProjectBook = () => {
       {notice && <div className="mb-3 rounded-xl bg-primary/10 border border-primary/30 px-4 py-2.5 text-sm text-primary">{notice}</div>}
       {error && <div className="mb-3 rounded-xl bg-red-500/10 border border-red-500/30 px-4 py-2.5 text-sm text-red-300">{error}</div>}
 
-      <DetectedProjectSuggestions
-        demoMode={isMockDataEnabled}
-        existingBookEntries={projects.map((p) => ({ id: p.id, name: p.name }))}
-        existingProjectNames={projects.map((p) => p.name)}
-        onProjectAdded={() => void load()}
-      />
-
-      {/* Status + type filters (derived from your projects) */}
-      {(statusOptions.length > 1 || typeOptions.length > 1) && (
-        <div className="flex flex-col gap-3 mb-5 max-w-2xl mx-auto w-full">
-          {statusOptions.length > 1 && (
-            <div className="rounded-xl border border-white/10 bg-black/25 p-3 sm:p-4 space-y-3 text-center">
-              <span className="block text-[11px] uppercase tracking-wider text-white/35">Status</span>
-              <div className="flex flex-wrap gap-2 justify-center">
-                <FilterChip label="All" count={projects.length} active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} />
-                {statusOptions.map(({ id, count }) => (
-                  <FilterChip
-                    key={id}
-                    label={titleizeFilter(id, STATUS_LABELS)}
-                    count={count}
-                    active={statusFilter === id}
-                    onClick={() => setStatusFilter((cur) => (cur === id ? 'all' : id))}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-          {typeOptions.length > 1 && (
-            <div className="rounded-xl border border-white/10 bg-black/25 p-3 sm:p-4 space-y-3 text-center">
-              <span className="block text-[11px] uppercase tracking-wider text-white/35">Type</span>
-              <div className="flex flex-wrap gap-2 justify-center">
-                <FilterChip label="All" count={projects.length} active={typeFilter === 'all'} onClick={() => setTypeFilter('all')} />
-                {typeOptions.map(({ id, count }) => (
-                  <FilterChip
-                    key={id}
-                    label={titleizeFilter(id, TYPE_LABELS)}
-                    count={count}
-                    active={typeFilter === id}
-                    onClick={() => setTypeFilter((cur) => (cur === id ? 'all' : id))}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       {duplicateGroups.length > 0 && (
         <div className="mb-5 sm:mb-6 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 sm:p-4">
           <div className="text-sm font-medium text-amber-300 mb-2">Possible duplicates</div>
