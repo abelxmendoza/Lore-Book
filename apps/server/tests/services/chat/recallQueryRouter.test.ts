@@ -47,6 +47,13 @@ vi.mock('../../../src/services/livingBiographyService', () => ({
   getNarrativeIdentityRecall: getNarrativeIdentityRecallMock,
 }));
 
+const getResumeDocumentsMock = vi.fn();
+vi.mock('../../../src/services/profileClaims/resumeParsingService', () => ({
+  resumeParsingService: {
+    getResumeDocuments: getResumeDocumentsMock,
+  },
+}));
+
 import { routeRecallQuery } from '../../../src/services/chat/recallQueryRouter';
 import { formatCharacterRosterForChat } from '../../../src/services/chat/foundationRecallDataService';
 import { stitchedTimelineService } from '../../../src/services/chronologyV2/stitchedTimelineService';
@@ -110,6 +117,7 @@ describe('Sprint AF — foundation recall', () => {
       narrative_accounts: { data: { narrative_text: 'Abel lives in Anaheim.', metadata: {} }, error: null },
       journal_entries: { data: [], error: null },
     };
+    getResumeDocumentsMock.mockResolvedValue([]);
   });
 
   it('returns character roster with memory and timeline counts — not journal snippets', async () => {
@@ -211,6 +219,158 @@ describe('Sprint AF — foundation recall', () => {
   it('does not query people_places for entity routing', async () => {
     await routeRecallQuery('user-1', 'Tell me about Sam Chen');
     expect(fromMock).not.toHaveBeenCalledWith('people_places');
+  });
+
+  it('returns the complete deduplicated employment history with work-specific sources', async () => {
+    getResumeDocumentsMock.mockResolvedValue([
+      {
+        id: 'resume-new',
+        file_name: 'current-resume.pdf',
+        uploaded_at: '2026-08-28T00:00:00.000Z',
+        processing_status: 'completed',
+        parsed_data: {
+          structured: {
+            employment: [
+              { company: 'Vanguard Robotics', title: 'Test Engineer', startDate: '2025-01', endDate: null, isCurrent: true },
+              { company: 'Northwind Labs', title: 'Technician', startDate: '2023-04', endDate: '2024-12' },
+            ],
+          },
+        },
+      },
+      {
+        id: 'resume-old',
+        file_name: 'older-resume.pdf',
+        uploaded_at: '2025-01-01T00:00:00.000Z',
+        processing_status: 'completed',
+        parsed_data: {
+          structured: {
+            employment: [
+              { company: 'Northwind Labs', title: 'Technician', startDate: '2023-04', endDate: '2024-12' },
+              { company: 'Northwind Depot', title: 'Assembler', startDate: '2021', endDate: '2023-03' },
+            ],
+          },
+        },
+      },
+    ]);
+
+    const result = await routeRecallQuery('user-1', 'what jobs have i had');
+
+    expect(result.intent).toBe('work');
+    expect(result.foundationPrimary).toBe(true);
+    expect(result.contextBlock).toContain('Vanguard Robotics');
+    expect(result.contextBlock).toContain('Jan 2025 – Present');
+    expect(result.contextBlock).toContain('Northwind Labs');
+    expect(result.contextBlock).toContain('Northwind Depot');
+    expect(result.contextBlock.match(/Northwind Labs/g)).toHaveLength(1);
+    expect(result.metadata).toMatchObject({ work_history_count: 3 });
+    expect(result.metadata?.sources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ title: 'Test Engineer at Vanguard Robotics', type: 'knowledge' }),
+        expect.objectContaining({ title: 'Assembler at Northwind Depot', type: 'knowledge' }),
+      ]),
+    );
+    expect(result.metadata?.sources).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ title: 'Northwind Labs' })]),
+    );
+  });
+
+  it('returns the complete deduplicated education history with school-specific sources', async () => {
+    getResumeDocumentsMock.mockResolvedValue([
+      {
+        id: 'resume-new',
+        file_name: 'current-resume.pdf',
+        uploaded_at: '2026-08-28T00:00:00.000Z',
+        processing_status: 'completed',
+        parsed_data: {
+          structured: {
+            education: [
+              { institution: 'Northwind University', degree: 'Bachelor of Science', field: 'Computer Engineering', startDate: '2018', endDate: '2022' },
+              { institution: 'Northwind Community College', degree: 'Associate Degree', field: 'Electronics', startDate: '2016', endDate: '2018' },
+            ],
+          },
+        },
+      },
+      {
+        id: 'resume-old',
+        file_name: 'older-resume.pdf',
+        uploaded_at: '2025-01-01T00:00:00.000Z',
+        processing_status: 'completed',
+        parsed_data: {
+          structured: {
+            education: [
+              { institution: 'Northwind University', degree: 'Bachelor of Science', field: 'Computer Engineering', startDate: '2018', endDate: '2022' },
+            ],
+          },
+        },
+      },
+    ]);
+    tableResults.profile_claims = {
+      data: [
+        {
+          id: 'claim-education-chat',
+          claim_text: 'Studied embedded systems at Northwind Technical Institute',
+          source: 'chat',
+          confidence: 0.9,
+          verified_status: 'unverified',
+          user_confirmed: false,
+          last_updated_at: '2026-08-27T00:00:00.000Z',
+        },
+      ],
+      error: null,
+    };
+
+    const result = await routeRecallQuery('user-1', 'what schools have I been to?');
+
+    expect(result.intent).toBe('education');
+    expect(result.foundationPrimary).toBe(true);
+    expect(result.contextBlock).toContain('Northwind University');
+    expect(result.contextBlock).toContain('Northwind Community College');
+    expect(result.contextBlock).toContain('Northwind Technical Institute');
+    expect(result.contextBlock.match(/Northwind University/g)).toHaveLength(1);
+    expect(result.metadata).toMatchObject({ education_history_count: 3 });
+    expect(result.metadata?.sources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ title: 'Northwind University', type: 'knowledge' }),
+        expect.objectContaining({ title: 'Northwind Community College', type: 'knowledge' }),
+        expect.objectContaining({ title: 'Studied embedded systems at Northwind Technical Institute', type: 'knowledge' }),
+      ]),
+    );
+  });
+
+  it('returns both domains for a combined work-and-education query', async () => {
+    getResumeDocumentsMock.mockResolvedValue([
+      {
+        id: 'resume-combined',
+        file_name: 'career-record.pdf',
+        uploaded_at: '2026-08-28T00:00:00.000Z',
+        processing_status: 'completed',
+        parsed_data: {
+          structured: {
+            employment: [
+              { company: 'Vanguard Robotics', title: 'Test Engineer', startDate: '2025', endDate: null, isCurrent: true },
+            ],
+            education: [
+              { institution: 'Northwind University', degree: 'Bachelor of Science', field: 'Computer Engineering', startDate: '2018', endDate: '2022' },
+            ],
+          },
+        },
+      },
+    ]);
+    tableResults.profile_claims = { data: [], error: null };
+
+    const result = await routeRecallQuery('user-1', 'what jobs have i had and schools ive been to?');
+
+    expect(result.intent).toBe('work_and_education');
+    expect(result.contextBlock).toContain('## Work history');
+    expect(result.contextBlock).toContain('Vanguard Robotics');
+    expect(result.contextBlock).toContain('## Education');
+    expect(result.contextBlock).toContain('Northwind University');
+    expect(result.metadata?.sources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ title: 'Test Engineer at Vanguard Robotics' }),
+        expect.objectContaining({ title: 'Northwind University' }),
+      ]),
+    );
   });
 });
 

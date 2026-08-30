@@ -26,6 +26,8 @@ const LEGACY_TO_QUERY_TYPE: Record<string, QueryType> = {
   entity: QueryType.IDENTITY,
   location: QueryType.LOCATION,
   work: QueryType.ORGANIZATION,
+  education: QueryType.ORGANIZATION,
+  work_and_education: QueryType.ORGANIZATION,
   temporal: QueryType.TIMELINE,
   thread: QueryType.WORKING_MEMORY,
   conversation: QueryType.WORKING_MEMORY,

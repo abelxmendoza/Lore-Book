@@ -15,6 +15,7 @@ describe('stitchedItemsToChronology', () => {
       sourceIds: ['canonical', 'duplicate'],
       sourceKind: 'resolved_event',
       sourceType: 'calendar',
+      timelineTrack: 'career',
       sortTime: '2026-07-18T12:00:00.000Z',
       userSortIndex: null,
       title: 'Launch day',
@@ -37,7 +38,8 @@ describe('stitchedItemsToChronology', () => {
         source_type: 'calendar',
         title: 'Launch day',
         content: 'Launch day\nThe product launched.',
-        timeline_names: ['calendar'],
+        timeline_names: ['career', 'calendar'],
+        timeline_track: 'career',
         tags: ['career'],
         user_presence: 'attended',
         time_precision: 'day',
@@ -66,18 +68,34 @@ describe('stitchedItemsToChronology', () => {
 
   it('preserves a fuzzy historical range instead of flattening it to one date', () => {
     const item: StitchedTimelineItem = {
-      id: 'event:kiley', kind: 'event', sourceId: 'kiley', sourceIds: ['kiley'],
-      sourceKind: 'resolved_event', sourceType: 'chat',
-      sortTime: '2015-01-01T00:00:00.000Z', userSortIndex: null,
-      title: 'Relationship with Kiley', body: '2015–2019', timePrecision: 'year',
+      id: 'event:kiley',
+      kind: 'event',
+      sourceId: 'kiley',
+      sourceIds: ['kiley'],
+      sourceKind: 'resolved_event',
+      sourceType: 'chat',
+      sortTime: '2015-01-01T00:00:00.000Z',
+      userSortIndex: null,
+      title: 'Relationship with Kiley',
+      body: '2015–2019',
+      timePrecision: 'year',
       temporal: {
         occurred: {
-          start: '2015-01-01T00:00:00.000Z', end: '2019-12-31T23:59:59.999Z',
-          precision: 'year', source: 'user_stated', status: 'approximate', confidence: 0.9,
-          expression: '2015–2019', timezone: null,
+          start: '2015-01-01T00:00:00.000Z',
+          end: '2019-12-31T23:59:59.999Z',
+          precision: 'year',
+          source: 'user_stated',
+          status: 'approximate',
+          confidence: 0.9,
+          expression: '2015–2019',
+          timezone: null,
         },
-        mentionedAt: null, recordedAt: null, knownFrom: 'message-1',
-        validFrom: null, validUntil: null, provenance: [],
+        mentionedAt: null,
+        recordedAt: null,
+        knownFrom: 'message-1',
+        validFrom: null,
+        validUntil: null,
+        provenance: [],
       },
     };
     const [entry] = stitchedItemsToChronology([item]);
@@ -89,39 +107,59 @@ describe('stitchedItemsToChronology', () => {
   it('finds every canonical source on the selected calendar day', () => {
     const entries = stitchedItemsToChronology([
       {
-        id: 'moment:1', kind: 'moment', sourceId: '1', sourceIds: ['1'],
-        sourceKind: 'journal_entry', sourceType: 'calendar',
-        sortTime: '2026-07-18T09:00:00.000Z', userSortIndex: null,
-        title: 'Breakfast', body: 'Breakfast',
+        id: 'moment:1',
+        kind: 'moment',
+        sourceId: '1',
+        sourceIds: ['1'],
+        sourceKind: 'journal_entry',
+        sourceType: 'calendar',
+        sortTime: '2026-07-18T09:00:00.000Z',
+        userSortIndex: null,
+        title: 'Breakfast',
+        body: 'Breakfast',
       },
       {
-        id: 'event:2', kind: 'event', sourceId: '2', sourceIds: ['2'],
-        sourceKind: 'resolved_event', sourceType: 'resolved_event',
-        sortTime: '2026-07-19T01:00:00.000Z', userSortIndex: null,
-        title: 'Next day', body: 'Next day',
+        id: 'event:2',
+        kind: 'event',
+        sourceId: '2',
+        sourceIds: ['2'],
+        sourceKind: 'resolved_event',
+        sourceType: 'resolved_event',
+        sortTime: '2026-07-19T01:00:00.000Z',
+        userSortIndex: null,
+        title: 'Next day',
+        body: 'Next day',
       },
     ]);
 
-    expect(filterChronologyByExactDate(entries, '2026-07-18').map((entry) => entry.id))
-      .toEqual(['moment:1']);
+    expect(filterChronologyByExactDate(entries, '2026-07-18').map((entry) => entry.id)).toEqual(['moment:1']);
   });
 
   it('places the newest Omni event first without mutating canonical order', () => {
     const older = {
-      id: 'event:older', kind: 'event' as const, sourceId: 'older', sourceIds: ['older'],
-      sourceKind: 'resolved_event' as const, sourceType: 'resolved_event',
-      sortTime: '2025-01-01T00:00:00.000Z', userSortIndex: null,
-      title: 'Older', body: 'Older',
+      id: 'event:older',
+      kind: 'event' as const,
+      sourceId: 'older',
+      sourceIds: ['older'],
+      sourceKind: 'resolved_event' as const,
+      sourceType: 'resolved_event',
+      sortTime: '2025-01-01T00:00:00.000Z',
+      userSortIndex: null,
+      title: 'Older',
+      body: 'Older',
     };
     const newer = {
       ...older,
-      id: 'event:newer', sourceId: 'newer', sourceIds: ['newer'],
-      sortTime: '2026-07-18T00:00:00.000Z', title: 'Newer', body: 'Newer',
+      id: 'event:newer',
+      sourceId: 'newer',
+      sourceIds: ['newer'],
+      sortTime: '2026-07-18T00:00:00.000Z',
+      title: 'Newer',
+      body: 'Newer',
     };
     const canonical = [older, newer];
 
-    expect(sortStitchedItemsNewestFirst(canonical).map((item) => item.id))
-      .toEqual(['event:newer', 'event:older']);
+    expect(sortStitchedItemsNewestFirst(canonical).map((item) => item.id)).toEqual(['event:newer', 'event:older']);
     expect(canonical.map((item) => item.id)).toEqual(['event:older', 'event:newer']);
   });
 });

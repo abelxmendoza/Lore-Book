@@ -9,6 +9,7 @@ import { readSkillProfile } from "./skillProfile";
 import { readSkillAliases } from "./skillMerge";
 import { clusterRelatedBookSkills } from "./skillSimilarityResolver";
 import { skillService, type Skill } from "./skillService";
+import { isReviewPending } from "../reviewableRecord";
 
 const SKILL_CATEGORIES = [
   "professional",
@@ -75,12 +76,13 @@ function overlaps(values: string[], needles: string[] | undefined): boolean {
   return needles.some((needle) => haystack.some((value) => value.includes(normalize(needle))));
 }
 
-function isPrimarySkill(row: Skill): boolean {
+function isPrimarySkill(row: Skill, includeReviewPending = false): boolean {
   const metadata = row.metadata ?? {};
   const entityType = normalize(metadata.capability_entity_type || "skill").toUpperCase();
   const archived =
     metadata.archived === true || normalize(metadata.migration_status).startsWith("archive");
   if (archived || metadata.skill_book_visible === false) return false;
+  if (!includeReviewPending && isReviewPending(metadata)) return false;
   if (row.is_active === false && metadata.migration_status) return false;
   return entityType === "SKILL";
 }
@@ -144,6 +146,7 @@ export function deriveSkillQueryHints(query: string): SkillQueryHints {
 function scopesFor(row: Skill): SkillQueryScope[] {
   const profile = readSkillProfile(row.metadata);
   const scopes: SkillQueryScope[] = [row.is_active ? "active" : "inactive"];
+  if (isReviewPending(row.metadata)) scopes.push("needs_review");
   if (dateMs(row.last_practiced_at) >= Date.now() - 90 * 86_400_000) scopes.push("recent");
   if (row.auto_detected) scopes.push("auto_detected");
   if (profile?.monetization === "paid" || profile?.monetization === "potentially_paid") scopes.push("paid");
@@ -200,9 +203,11 @@ export function compileSkillQuery(
   inputRows: Skill[],
   request: SkillQueryRequest,
 ): SkillQueryResponse {
-  const rows = inputRows.filter(isPrimarySkill);
   const hints = deriveSkillQueryHints(request.query);
   const filters = request.filters;
+  const includeReviewPending =
+    filters.needsReview === true || hints.scopes.includes("needs_review");
+  const rows = inputRows.filter((row) => isPrimarySkill(row, includeReviewPending));
   const requestedScopes = unique([...(filters.scopes ?? []), ...hints.scopes]);
   const requestedCategories = unique([...(filters.categories ?? []), ...hints.categories]);
   const requestedProjects = unique([...(filters.relatedProjects ?? []), ...hints.relatedProjects]);

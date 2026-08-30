@@ -45,8 +45,8 @@ export function openDatingRomanceCharacterChat(input: DatingRomanceChatInput): v
     sourceSurface: 'love',
     sourceLabel: CHAT_FOCUS_SOURCE_LABELS.love,
     knowledgeScope: DATING_ROMANCE_KNOWLEDGE_SCOPE,
-    initialPrompt: trimmed || datingRomanceExistingPrompt(input.entityName),
-    autoSubmit: input.autoSubmit,
+    initialPrompt: trimmed,
+    autoSubmit: trimmed ? input.autoSubmit : undefined,
     arrivedAt: Date.now(),
     baseline: input.baseline,
   });

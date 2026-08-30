@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Star, Sparkles, ChevronRight, BookOpen, Users, Tag,
-  Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home,
+  Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, GitBranch,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -9,6 +9,7 @@ import { CharacterAvatar } from './CharacterAvatar';
 import { fetchJson } from '../../lib/api';
 import { useGetCharactersBookQuery } from '../../store/api/entitiesApi';
 import { canCallAuthenticatedApi } from '../../lib/runtimeIdentity';
+import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { isSyntheticSelfId } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
 import {
@@ -29,6 +30,35 @@ type CharacterAttribute = {
   attributeValue: string;
   confidence: number;
   isCurrent: boolean;
+};
+
+type LifeArc = {
+  id: string;
+  title: string;
+  arc_type: string;
+  track?: string;
+  confidence: number;
+  is_active: boolean;
+  emotional_arc?: string;
+  dominant_emotion?: string;
+};
+
+const EMOTIONAL_ARC_LABELS: Record<string, string> = {
+  building:   '↑ Building',
+  climax:     '⚡ Peak',
+  resolution: '→ Resolving',
+  grief:      '↓ Grief',
+  recovery:   '↑ Recovery',
+  neutral:    '— Stable',
+};
+
+const TRACK_COLORS: Record<string, string> = {
+  career:        'text-orange-300',
+  relationships: 'text-pink-300',
+  creative:      'text-rose-300',
+  health:        'text-teal-300',
+  inner:         'text-violet-300',
+  mixed:         'text-blue-300',
 };
 
 type Props = {
@@ -93,9 +123,11 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
   const [roleTagline, setRoleTagline] = useState<string | null>(character.role ?? null);
   const [contextHooks, setContextHooks] = useState<string[]>(getCharacterContextHooks(character));
   const [profileSummary, setProfileSummary] = useState<string | null>(character.summary ?? null);
+  const [activeArcs, setActiveArcs] = useState<LifeArc[]>([]);
   const { dataUpdatedAt } = useGetCharactersBookQuery(undefined, {
     skip: !canCallAuthenticatedApi(),
   });
+  const { entries = [] } = useLoreKeeper();
 
   useEffect(() => {
     setResolvedCharacter(character);
@@ -179,6 +211,20 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
     };
   }, [character.id, dataUpdatedAt]);
 
+  useEffect(() => {
+    if (!canCallAuthenticatedApi()) {
+      setActiveArcs([]);
+      return;
+    }
+    let cancelled = false;
+    fetchJson<{ arcs?: LifeArc[]; life_arcs?: LifeArc[] }>('/api/life-arcs?is_active=true&limit=5')
+      .then(r => { if (!cancelled) setActiveArcs(r.arcs ?? r.life_arcs ?? []); })
+      .catch(() => { if (!cancelled) setActiveArcs([]); });
+    return () => {
+      cancelled = true;
+    };
+  }, [dataUpdatedAt]);
+
   const summary =
     wittyTagline ||
     profileSummary ||
@@ -189,6 +235,14 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
   const occupation = resolvedCharacter.role || occupationFromAttrs || roleTagline;
   const subtitle = occupation || 'Protagonist · Your story';
   const sceneNetwork = getSceneNetwork(resolvedCharacter);
+  const primaryArc = activeArcs[0] ?? null;
+  const additionalArcCount = Math.max(0, activeArcs.length - 1);
+  const activeSince = (() => {
+    const valid = entries.map(e => new Date(e.date)).filter(d => !isNaN(d.getTime()));
+    if (!valid.length) return null;
+    return new Date(Math.min(...valid.map(d => d.getTime())))
+      .toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  })();
 
   return (
     <Card
@@ -286,6 +340,31 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
             <p className="text-xs sm:text-sm text-white/75 leading-relaxed line-clamp-2 sm:line-clamp-4 italic">
               {summary}
             </p>
+            {primaryArc && (
+              <div className="rounded-lg border border-amber-500/15 bg-black/30 px-3 py-2">
+                <p className="text-[9px] font-semibold text-amber-200/50 uppercase tracking-widest mb-1">
+                  Currently In
+                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <GitBranch className={`h-3.5 w-3.5 flex-shrink-0 ${TRACK_COLORS[primaryArc.track ?? ''] ?? 'text-white/50'}`} />
+                    <span className="text-xs sm:text-sm font-semibold text-white/90 truncate">
+                      {primaryArc.title}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {primaryArc.emotional_arc && (
+                      <span className="text-[10px] text-white/40">
+                        {EMOTIONAL_ARC_LABELS[primaryArc.emotional_arc] ?? primaryArc.emotional_arc}
+                      </span>
+                    )}
+                    {additionalArcCount > 0 && (
+                      <span className="text-[10px] text-white/30">+{additionalArcCount} more</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
             {contextHooks.length > 0 && (
               <div className="hidden sm:flex flex-wrap gap-1.5">
                 {contextHooks.slice(0, 4).map((hook) => (
@@ -320,6 +399,13 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
                   {resolvedCharacter.tags.slice(0, 3).join(' · ')}
                 </span>
               )}
+              {activeArcs.length > 0 && (
+                <span className="flex items-center gap-1">
+                  <GitBranch className="h-3 w-3 text-amber-400/70" />
+                  {activeArcs.length} active arc{activeArcs.length !== 1 ? 's' : ''}
+                </span>
+              )}
+              {activeSince && <span>since {activeSince}</span>}
             </div>
 
             {/* Life attributes */}

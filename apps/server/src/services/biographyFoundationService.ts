@@ -38,6 +38,12 @@ function stitchedOccurredStart(item: StitchedTimelineItem): string | null {
   return item.temporal?.occurred.start ?? null;
 }
 
+/** Cap on recording-time-only key events folded in as a "recent" fallback. */
+const MAX_UNDATED_KEY_EVENTS = 10;
+
+/** Cap on unpromoted narrative Scenes folded in as a "recent" fallback. */
+const MAX_SCENE_FALLBACK_KEY_EVENTS = 10;
+
 // ── Fact types ────────────────────────────────────────────────────────────────
 
 export type BiographyFacts = {
@@ -60,6 +66,13 @@ export type BiographyFacts = {
     title: string;
     eventType: string;
     date: string;
+    /**
+     * False when `date` is a recording-time fallback (no resolved occurrence
+     * date exists — see the honesty fix in 30b51ba1). Undefined on older
+     * fixtures/callers is treated as true (occurrence-dated) for backward
+     * compatibility.
+     */
+    dateIsOccurrence?: boolean;
     connection: string | null;
     confidence: number;
     sourceEntryIds: string[];
@@ -202,7 +215,7 @@ class BiographyFoundationService {
     // once made a third-party card the biography subject). ──────────────────
     const { data: chars } = await supabaseAdmin
       .from('characters')
-      .select('id, name, alias, metadata')
+      .select('id, name, alias, metadata, status')
       .eq('user_id', userId);
 
     const { pickBiographySubject } = await import('./identity/biographySubjectInvariant');
@@ -244,31 +257,51 @@ class BiographyFoundationService {
       .eq('user_id', userId);
 
     const charNameMap = new Map((chars ?? []).map(c => [c.id, c.name]));
-    const relationships: BiographyFacts['relationships'] = (rels ?? []).map(r => {
-      const other = r.source_character_id === protagonist?.id
-        ? r.target_character_id
-        : r.source_character_id;
+    // Archiving or reclassifying a character (moving it out of the Character
+    // Book — e.g. a genre/interest miscategorized as a person, like "One
+    // Piece" turning out to be a ska reference) never cascades to
+    // character_relationships: those edges are left status:'active' forever.
+    // Biography's own relationship rows are trustworthy per the Sprint O note
+    // below, but the CHARACTER on the other end of the edge may no longer be
+    // a live person in this user's book — exclude those before they leak into
+    // "People who matter" as dropped/error characters that keep reappearing
+    // on every regeneration.
+    const DROPPED_CHARACTER_STATUSES = new Set(['archived', 'pending_deletion', 'reclassified']);
+    const activeCharIds = new Set(
+      (chars ?? []).filter(c => !DROPPED_CHARACTER_STATUSES.has(c.status ?? 'active')).map(c => c.id),
+    );
+    const relationships: BiographyFacts['relationships'] = (rels ?? [])
+      .filter(r => {
+        const other = r.source_character_id === protagonist?.id
+          ? r.target_character_id
+          : r.source_character_id;
+        return activeCharIds.has(other);
+      })
+      .map(r => {
+        const other = r.source_character_id === protagonist?.id
+          ? r.target_character_id
+          : r.source_character_id;
 
-      // Trust recovery (Sprint O): `character_relationships.status` is the
-      // authoritative record — Biography is a narrator over it, not an editor.
-      // A previous keyword-matching heuristic here re-derived status from raw
-      // journal text and overwrote the structured value (e.g. turning an
-      // 'active' family relationship into 'ended' because *another*
-      // relationship's breakup language appeared in a co-mentioned entry).
-      // Derived layers may summarize and rank — they may not contradict
-      // structured truth. Use the DB value as-is.
-      const status = r.status ?? 'active';
-      const memIds: string[] = (r.metadata as any)?.source_memory_ids ?? [];
+        // Trust recovery (Sprint O): `character_relationships.status` is the
+        // authoritative record — Biography is a narrator over it, not an editor.
+        // A previous keyword-matching heuristic here re-derived status from raw
+        // journal text and overwrote the structured value (e.g. turning an
+        // 'active' family relationship into 'ended' because *another*
+        // relationship's breakup language appeared in a co-mentioned entry).
+        // Derived layers may summarize and rank — they may not contradict
+        // structured truth. Use the DB value as-is.
+        const status = r.status ?? 'active';
+        const memIds: string[] = (r.metadata as any)?.source_memory_ids ?? [];
 
-      return {
-        name: charNameMap.get(other) ?? 'Unknown',
-        type: r.relationship_type,
-        status,
-        characterId: other,
-        relationshipId: r.id,
-        sourceMemoryIds: memIds,
-      };
-    });
+        return {
+          name: charNameMap.get(other) ?? 'Unknown',
+          type: r.relationship_type,
+          status,
+          characterId: other,
+          relationshipId: r.id,
+          sourceMemoryIds: memIds,
+        };
+      });
 
     // ── Key events from canonical character chronology ───────────────────────
     const keyEvents: BiographyFacts['keyEvents'] = [];
@@ -280,11 +313,68 @@ class BiographyFoundationService {
           title: item.eventTitle,
           eventType: item.eventType ?? item.timelineType,
           date: item.occurredStart,
+          dateIsOccurrence: true,
           connection: item.connectionCharacter ?? null,
           confidence: item.confidence,
           sourceEntryIds: [],
         });
       }
+
+      // Events the temporal resolver couldn't anchor to a real occurrence
+      // date (see 30b51ba1) would otherwise vanish from every date-sorted
+      // view entirely. Fold in the most recently *captured* undated items
+      // too, honestly flagged as recording-time only rather than faking an
+      // occurrence date — so genuinely recent activity still surfaces.
+      const recentUndated = modal.unresolved
+        .filter(item => !item.occurredStart && item.recordedAt)
+        .sort((a, b) => new Date(b.recordedAt!).getTime() - new Date(a.recordedAt!).getTime())
+        .slice(0, MAX_UNDATED_KEY_EVENTS);
+      for (const item of recentUndated) {
+        keyEvents.push({
+          title: item.eventTitle,
+          eventType: item.eventType ?? item.timelineType,
+          date: item.recordedAt!,
+          dateIsOccurrence: false,
+          connection: item.connectionCharacter ?? null,
+          confidence: item.confidence,
+          sourceEntryIds: [],
+        });
+      }
+    }
+
+    // Narrative Scenes that haven't cleared the (structurally strict — see
+    // sceneSignificance.ts) bar to be promoted into a canonical Event would
+    // otherwise never reach "recent developments" at all, no matter how
+    // recent or real. A single-moment scene rarely crosses that bar since
+    // its synergy bonus requires >=2 moments, so ordinary day-to-day life
+    // content can go unpromoted indefinitely. Fold in the user's most
+    // recent unpromoted scenes as a last-resort fallback tier — same
+    // honesty principle as the recording-time fallback above: real, recent,
+    // just not (yet) elevated to formal Event status.
+    const { data: recentScenes } = await supabaseAdmin
+      .from('narrative_scenes')
+      .select('title, time_start, created_at, promoted_event_id')
+      .eq('user_id', userId)
+      .is('promoted_event_id', null)
+      .order('created_at', { ascending: false })
+      .limit(MAX_SCENE_FALLBACK_KEY_EVENTS);
+
+    const seenTitleKeys = new Set(keyEvents.map(e => e.title.trim().toLowerCase()));
+    for (const scene of recentScenes ?? []) {
+      const title = (scene.title as string | null)?.trim();
+      if (!title) continue;
+      const titleKey = title.toLowerCase();
+      if (seenTitleKeys.has(titleKey)) continue;
+      seenTitleKeys.add(titleKey);
+      keyEvents.push({
+        title,
+        eventType: 'scene',
+        date: (scene.time_start as string | null) ?? (scene.created_at as string),
+        dateIsOccurrence: Boolean(scene.time_start),
+        connection: null,
+        confidence: 0.5,
+        sourceEntryIds: [],
+      });
     }
 
     // ── Living situation ─────────────────────────────────────────────────────

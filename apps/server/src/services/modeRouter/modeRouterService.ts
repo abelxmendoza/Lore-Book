@@ -30,7 +30,11 @@ import {
 import { logger } from '../../logger';
 import { isReplyToGroupNamingPrompt } from '../chat/groupWriteService';
 import { classifyQuestionIntent } from '../chat/questionIntentClassifier';
-import { matchesFoundationRecallQuery } from '../chat/recallIntentPatterns';
+import {
+  EDUCATION_RE,
+  matchesFoundationRecallQuery,
+  WORK_RE,
+} from '../chat/recallIntentPatterns';
 import {
   shouldSuppressTherapist,
   shouldPreferBiographyWriter,
@@ -58,13 +62,14 @@ export type ChatMode =
   | 'EVENT_WRITE'            // Explicit Life Log user-posted Event create
   | 'SUGGESTION_DISMISS_WRITE' // Explicit "that suggestion is wrong" correction
   | 'ORGANIZATION_QUERY'     // Relational read over the Groups & Organizations Book
+  | 'CHARACTER_QUERY'        // Grounded read over the People / Character Book
   | 'FAMILY_QUERY'           // Relational read over Family + Family Tree
   | 'LOCATION_QUERY'         // Relational read over Places and Locations
   | 'ROMANCE_QUERY'          // Grounded read over Dating and Romance
   | 'PROJECT_QUERY'          // Grounded read over the Projects Book
   | 'SKILL_QUERY'            // Grounded read over the Skills Book
   | 'QUEST_QUERY'            // Grounded read over the Quest Log
-  | 'BOOK_QUERY'             // Cross-Book or generic People/Event/Document/Narrative read
+  | 'BOOK_QUERY'             // Cross-Book or generic Event/Document/Narrative read
   | 'EXPERIENCE_INGESTION'   // Mode 4: Lived experiences (macro: duration, context, narrative arc)
   | 'ACTION_LOG'             // Mode 5: Atomic actions (micro: verb-forward, instant)
   | 'NEEDS_CLARIFICATION'    // Ambiguous milestone/achievement: ask what they mean before ingesting
@@ -294,9 +299,19 @@ class ModeRouterService {
       };
     }
 
-    // Cross-Book questions and Books without dedicated mature handlers use
-    // the normalized registry. This must run before the single-Book checks so
-    // "What skills support my active quests?" is not reduced to Quest-only.
+    // Work and education recall have a deterministic handler. These terms can
+    // also look like document or organization domains, so resolve them before
+    // the generic Book registry.
+    if (WORK_RE.test(message) || EDUCATION_RE.test(message)) {
+      return {
+        mode: 'FOUNDATION_RECALL',
+        confidence: 0.95,
+        reasoning: 'Foundation work or education recall query detected',
+      };
+    }
+
+    // Cross-Book questions must be recognized before a single Book handler
+    // captures one of their domains.
     if (isUniversalBookQueryRequest(message)) {
       return {
         mode: 'BOOK_QUERY',
@@ -318,6 +333,14 @@ class ModeRouterService {
         mode: 'FAMILY_QUERY',
         confidence: 0.95,
         reasoning: 'Relational Family and Family Tree query detected',
+      };
+    }
+
+    if (isCharacterBookQueryRequest(message)) {
+      return {
+        mode: 'CHARACTER_QUERY',
+        confidence: 0.94,
+        reasoning: 'Grounded People / Character Book query detected',
       };
     }
 
@@ -363,6 +386,16 @@ class ModeRouterService {
       };
     }
 
+    // Remaining foundation queries are checked after dedicated domain modes
+    // so questions such as "who am I dating?" stay in the romance compiler.
+    if (matchesFoundationRecallQuery(message)) {
+      return {
+        mode: 'FOUNDATION_RECALL',
+        confidence: 0.95,
+        reasoning: 'Foundation recall query detected (biography, roster, family, or entity)',
+      };
+    }
+
     // NEEDS_CLARIFICATION: Milestone/achievement-ish but ambiguous (app vs life, or vague).
     // Ask what they mean before ingesting. Run before greeting/meta so
     // "I got the chat working. Does it work?" gets clarify, not plain UNKNOWN.
@@ -380,15 +413,6 @@ class ModeRouterService {
         mode: 'UNKNOWN',
         confidence: 0.9,
         reasoning: 'Greeting, meta-question, or small talk; use normal chat',
-      };
-    }
-
-    // Foundation recall queries — structured lore, not LLM + journal fallback
-    if (matchesFoundationRecallQuery(message)) {
-      return {
-        mode: 'FOUNDATION_RECALL',
-        confidence: 0.95,
-        reasoning: 'Foundation recall query detected (biography, roster, family, or entity)',
       };
     }
 
@@ -751,13 +775,14 @@ Modes:
 10h. ROMANCE_WRITE - Explicit Dating & Romance status write: "mark Jamie as dating", "we broke up with Jamie".
 10i. EVENT_WRITE - Explicit Life Log Event post: "we played a backyard show at Northwind Depot", "post an event: House Show at Ritual Coffee".
 11. ORGANIZATION_QUERY - Read-only query over the Groups & Organizations Book: "which groups am I in?", "what organizations is Marcus connected to?", "show unlinked bands".
+11b. CHARACTER_QUERY - Grounded query over the People / Character Book: "which people need review?", "who do I know from Vanguard Robotics?", "which people look related?", "show people in my character book". NOT "who is Marcus?" (foundation recall) and NOT family-tree questions.
 12. FAMILY_QUERY - Read-only query over Family and Family Tree: "who is on my maternal side?", "show my cousins", "who lives in the Solenne House?", "which relatives need review?".
 13. LOCATION_QUERY - Read-only query over Places and Locations: "which places did I visit with Marcus?", "show places linked to Vanguard Robotics", "which locations need coordinates?".
 14. ROMANCE_QUERY - Grounded query over Dating and Romance: "who am I currently dating?", "show my past relationships", "which romantic records need review?", "rank my evidence-backed connections by compatibility".
 15. PROJECT_QUERY - Grounded query over the Projects Book: "show my active software projects", "which projects did I finish in 2025?", "rank my projects by grounded importance".
 16. SKILL_QUERY - Grounded query over the Skills Book: "show my improving technical skills", "which skills do I use for Vanguard Robotics?", "rank my evidence-backed skills by proficiency", "which skills are similar?", "what skills are similar to Interviewing".
 17. QUEST_QUERY - Grounded query over the Quest Log: "what quests am I currently working on?", "show blocked quests", "which quests are due soon?", "rank my quests by priority".
-18. BOOK_QUERY - Cross-Book query, or a grounded query over People, Life Log, Documents, or Narrative Anchors: "what skills support my active quests?", "which documents mention MemoVault?", "show people connected to Vanguard Robotics".
+18. BOOK_QUERY - Cross-Book query, or a grounded query over Life Log, Documents, or Narrative Anchors: "what skills support my active quests?", "which documents mention MemoVault?", "show Life Log events with Marcus".
 
 Key rules:
 - When in doubt between ACTION_LOG/EXPERIENCE and UNKNOWN, always choose UNKNOWN.
@@ -771,7 +796,8 @@ Key rules:
 - Explicit lists, filters, timelines, or rankings over projects are PROJECT_QUERY. "What happened while building X?" remains narrative recall.
 - Explicit lists, filters, growth checks, project associations, or rankings over skills are SKILL_QUERY. Advice about learning a new skill remains ordinary conversation.
 - Explicit lists, filters, progress checks, schedules, or rankings over quests are QUEST_QUERY. Asking for help completing a quest remains ordinary conversation.
-- Questions naming multiple Books, or explicit queries over People, Life Log, Documents, or Narrative Anchors, are BOOK_QUERY.
+- Explicit lists, filters, or rankings over people in the Character Book are CHARACTER_QUERY. "Who is Marcus?" remains foundation recall. Family-tree questions remain FAMILY_QUERY.
+- Questions naming multiple Books, or explicit queries over Life Log, Documents, or Narrative Anchors, are BOOK_QUERY.
 
 Respond with JSON:
 {
@@ -792,7 +818,7 @@ Respond with JSON:
       const result = JSON.parse(response.choices[0].message.content || '{}');
       
       // Validate mode
-      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'CURRENT_STORY_CAST', 'CHARACTER_BOOK_WRITE', 'ORGANIZATION_GROUP_WRITE', 'ENTITY_RECLASSIFY_WRITE', 'LOCATION_WRITE', 'PROJECT_WRITE', 'SKILL_WRITE', 'QUEST_WRITE', 'FAMILY_WRITE', 'ROMANCE_WRITE', 'EVENT_WRITE', 'SUGGESTION_DISMISS_WRITE', 'ORGANIZATION_QUERY', 'FAMILY_QUERY', 'LOCATION_QUERY', 'ROMANCE_QUERY', 'PROJECT_QUERY', 'SKILL_QUERY', 'QUEST_QUERY', 'BOOK_QUERY', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
+      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'CURRENT_STORY_CAST', 'CHARACTER_BOOK_WRITE', 'ORGANIZATION_GROUP_WRITE', 'ENTITY_RECLASSIFY_WRITE', 'LOCATION_WRITE', 'PROJECT_WRITE', 'SKILL_WRITE', 'QUEST_WRITE', 'FAMILY_WRITE', 'ROMANCE_WRITE', 'EVENT_WRITE', 'SUGGESTION_DISMISS_WRITE', 'ORGANIZATION_QUERY', 'CHARACTER_QUERY', 'FAMILY_QUERY', 'LOCATION_QUERY', 'ROMANCE_QUERY', 'PROJECT_QUERY', 'SKILL_QUERY', 'QUEST_QUERY', 'BOOK_QUERY', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
       const mode = validModes.includes(result.mode) ? result.mode : 'UNKNOWN';
       
       return {
@@ -896,9 +922,37 @@ export function isOrganizationQueryRequest(message: string): boolean {
   );
 }
 
+export function isCharacterBookQueryRequest(message: string): boolean {
+  const text = message.trim();
+  if (!text || !looksLikeQueryPhrasing(text)) return false;
+  const peopleSubject =
+    /\b(?:people|persons?|characters?|character book|people book|coworkers?|colleagues?)\b/i.test(text)
+    || /\bwho do i know\b/i.test(text)
+    || /\bpeople i know\b/i.test(text);
+  if (!peopleSubject) return false;
+  if (/\b(?:family tree|maternal|paternal|cousins?|siblings?|households?)\b/i.test(text)
+    && !/\b(?:character book|people book)\b/i.test(text)) {
+    return false;
+  }
+  if (/\b(?:dating|romance|romantic|exes?|crushes?|situationships?)\b/i.test(text)) return false;
+  if (/\b(?:this (?:story|chat|thread|conversation)|in my (?:story|life)|new and returning)\b/i.test(text)) return false;
+  return (
+    /\b(?:which|what|who|show|find|list|how many|rank|compare)\b/i.test(text) &&
+    /\b(?:my|book|review|unverified|similar|duplicates?|related|connected|from|at|with|know|active|inactive|coworkers?|colleagues?|people|characters?)\b/i.test(text)
+  );
+}
+
 export function isFamilyQueryRequest(message: string): boolean {
   const text = message.trim();
   if (!text || !looksLikeQueryPhrasing(text)) return false;
+  // People-book similarity ("which people look related?") is CHARACTER_QUERY, not kinship.
+  if (
+    /\b(?:people|persons?|characters?)\b/i.test(text)
+    && /\b(?:look related|similar|duplicates?)\b/i.test(text)
+    && !/\b(?:family|family tree|relatives?|kinship|maternal|paternal|cousins?|siblings?|parents?|households?)\b/i.test(text)
+  ) {
+    return false;
+  }
   if (!/\b(?:family|family tree|relatives?|related|moms?|mothers?|dads?|fathers?|parents?|siblings?|sisters?|brothers?|grandparents?|grandmas?|grandpas?|aunts?|uncles?|cousins?|households?)\b/i.test(text)) {
     return false;
   }

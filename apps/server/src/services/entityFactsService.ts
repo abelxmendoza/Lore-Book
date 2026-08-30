@@ -12,6 +12,7 @@
 
 import { config } from '../config';
 import { logger } from '../logger';
+import { isReviewPending } from './reviewableRecord';
 import { openai } from '../lib/openai';
 import { isIndividualPersonName } from '../utils/personNameValidation';
 import { supabaseAdmin } from './supabaseClient';
@@ -1001,7 +1002,10 @@ Respond JSON: {"archetype": "...", "relationship_type": "family|romantic|mentor|
     const needle = matchSubstring.trim().toLowerCase();
     if (!needle || !entityId) return;
 
-    const active = await this.getEntityFacts(userId, entityId, entityType, false, { dedupe: false });
+    const active = await this.getEntityFacts(userId, entityId, entityType, false, {
+      dedupe: false,
+      includeReviewPending: true,
+    });
     const matches = active.filter(
       (f) => f.category === category && f.fact.toLowerCase().includes(needle),
     );
@@ -1177,7 +1181,7 @@ Respond JSON: {"archetype": "...", "relationship_type": "family|romantic|mentor|
     entityId: string,
     entityType: EntityType,
     includeContradicted = false,
-    opts?: { dedupe?: boolean },
+    opts?: { dedupe?: boolean; includeReviewPending?: boolean },
   ): Promise<EntityFact[]> {
     const dedupe = opts?.dedupe !== false;
     let query = supabaseAdmin
@@ -1198,7 +1202,9 @@ Respond JSON: {"archetype": "...", "relationship_type": "family|romantic|mentor|
       logger.error({ error, entityId, entityType }, 'Failed to fetch entity facts');
       return [];
     }
-    const rows = (data ?? []) as EntityFact[];
+    const rows = (data ?? [])
+      .filter((row) => opts?.includeReviewPending || !isReviewPending(row.metadata))
+      .map((row) => row as EntityFact);
     if (!dedupe || includeContradicted) return rows;
     return dedupeEntityFactsForDisplay(rows);
   }

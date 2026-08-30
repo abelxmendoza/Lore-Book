@@ -20,7 +20,6 @@ import { isIndividualPersonName } from '../../lib/personNameValidation';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import {
   DATING_ROMANCE_KNOWLEDGE_SCOPE,
-  datingRomanceIntroducePrompt,
   openDatingRomanceCharacterChat,
 } from '../../lib/datingRomanceChatFocus';
 import { 
@@ -545,7 +544,6 @@ export const LoveAndRelationshipsView = () => {
             sourceSurface: 'love',
             sourceLabel: 'Dating & Romance',
             knowledgeScope: DATING_ROMANCE_KNOWLEDGE_SCOPE,
-            initialPrompt: datingRomanceIntroducePrompt(name),
             arrivedAt: Date.now(),
           });
         }

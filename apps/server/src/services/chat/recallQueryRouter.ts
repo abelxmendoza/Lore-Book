@@ -41,12 +41,16 @@ import {
   THREAD_RE,
   LOCATION_RE,
   WORK_RE,
+  EDUCATION_RE,
+  isWorkAndEducationRecall,
 } from './recallIntentPatterns';
 import { buildConversationSummaryWithRosterFallback } from './conversationSummaryBuilder';
 import { buildThreadRecall, THREAD_RECALL_RE } from './threadRecallService';
 import { loadFoundationEntityIndex } from './foundationEntityIndex';
 import { composeIdentityRecall, getIdentitySnapshot } from '../identitySnapshot';
 import { getNarrativeIdentityRecall } from '../livingBiographyService';
+import type { ResumeEducation, ResumeEmployment } from '../profileClaims/resumeStructuredTypes';
+import type { ResumeDocument } from '../profileClaims/resumeParsingService';
 
 async function loadKnownEntities(userId: string): Promise<Map<string, { id: string; type: string }>> {
   return loadFoundationEntityIndex(userId);
@@ -618,6 +622,243 @@ async function fetchFactContext(userId: string, factType: 'location' | 'work'): 
   return '';
 }
 
+function workHistoryKey(job: ResumeEmployment): string {
+  return [
+    job.company,
+    job.title,
+    job.startDate ?? '',
+    job.endDate ?? (job.isCurrent ? 'current' : ''),
+  ].map((value) => value.trim().toLocaleLowerCase()).join('|');
+}
+
+function formatWorkDateRange(job: ResumeEmployment): string {
+  const start = formatHistoryDate(job.startDate);
+  const end = job.isCurrent ? 'Present' : formatHistoryDate(job.endDate);
+  if (start && end) return `${start} – ${end}`;
+  return start || end || 'dates not recorded';
+}
+
+function formatHistoryDate(value?: string | null): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  const month = trimmed.match(/^(\d{4})-(\d{2})$/);
+  if (month) {
+    const date = new Date(Date.UTC(Number(month[1]), Number(month[2]) - 1, 1));
+    if (!Number.isNaN(date.getTime())) {
+      return new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }).format(date);
+    }
+  }
+  return trimmed;
+}
+
+type WorkHistoryRecall = {
+  contextBlock: string;
+  sources: Array<{
+    type: 'knowledge';
+    id: string;
+    title: string;
+    snippet: string;
+    date?: string;
+    relevanceScore: number;
+    relevanceReasons: string[];
+  }>;
+};
+
+/**
+ * Work-history questions need the complete structured employment record, not
+ * the recent-memory window used by ordinary chat. Every resume is considered
+ * and duplicate roles are collapsed while retaining the newest source.
+ */
+async function loadResumeDocuments(userId: string): Promise<ResumeDocument[]> {
+  const { resumeParsingService } = await import('../profileClaims/resumeParsingService');
+  return resumeParsingService.getResumeDocuments(userId);
+}
+
+async function fetchWorkHistoryContext(
+  userId: string,
+  resumeDocuments?: ResumeDocument[],
+): Promise<WorkHistoryRecall> {
+  const resumes = resumeDocuments ?? await loadResumeDocuments(userId);
+  const jobs = new Map<string, { job: ResumeEmployment; resumeId: string; fileName: string; uploadedAt: string }>();
+
+  for (const resume of resumes) {
+    if (resume.processing_status && resume.processing_status !== 'completed') continue;
+    const structured = resume.parsed_data?.structured as { employment?: ResumeEmployment[] } | undefined;
+    for (const job of structured?.employment ?? []) {
+      if (!job?.company?.trim() || !job?.title?.trim()) continue;
+      const key = workHistoryKey(job);
+      if (!jobs.has(key)) {
+        jobs.set(key, {
+          job,
+          resumeId: resume.id,
+          fileName: resume.file_name,
+          uploadedAt: resume.uploaded_at,
+        });
+      }
+    }
+  }
+
+  const ordered = [...jobs.values()].sort((left, right) =>
+    (right.job.startDate ?? '').localeCompare(left.job.startDate ?? ''),
+  );
+  if (ordered.length === 0) {
+    return {
+      contextBlock: await fetchFactContext(userId, 'work'),
+      sources: [],
+    };
+  }
+
+  const sources = ordered.map(({ job, resumeId, fileName, uploadedAt }, index) => {
+    const title = `${job.title} at ${job.company}`;
+    const snippet = `${title} · ${formatWorkDateRange(job)}${job.location ? ` · ${job.location}` : ''}${job.description ? ` · ${job.description}` : ''}`;
+    return {
+      type: 'knowledge' as const,
+      id: `resume-employment:${resumeId}:${index}`,
+      title,
+      snippet,
+      date: uploadedAt,
+      relevanceScore: 100,
+      relevanceReasons: ['direct work-history record', `uploaded resume: ${fileName}`],
+    };
+  });
+  const lines = ordered.map(({ job }) =>
+    `- **${job.title}** — ${job.company} · ${formatWorkDateRange(job)}${job.location ? ` · ${job.location}` : ''}`,
+  );
+
+  return {
+    contextBlock: [
+      '## Work history',
+      `I found ${ordered.length} role${ordered.length === 1 ? '' : 's'} in your uploaded resume records:`,
+      ...lines,
+      '*Source: uploaded resume records. Dates or titles marked as uncertain in the source still need confirmation.*',
+    ].join('\n'),
+    sources,
+  };
+}
+
+async function fetchEducationHistoryContext(
+  userId: string,
+  resumeDocuments?: ResumeDocument[],
+): Promise<WorkHistoryRecall> {
+  const [{ data: educationClaims }, resumes] = await Promise.all([
+    supabaseAdmin
+      .from('profile_claims')
+      .select('id, claim_text, source, source_detail, confidence, verified_status, user_confirmed, last_updated_at')
+      .eq('user_id', userId)
+      .eq('claim_type', 'education')
+      .order('last_updated_at', { ascending: false }),
+    resumeDocuments ? Promise.resolve(resumeDocuments) : loadResumeDocuments(userId),
+  ]);
+  const schools = new Map<string, { school: ResumeEducation; resumeId: string; fileName: string; uploadedAt: string }>();
+
+  for (const resume of resumes) {
+    if (resume.processing_status && resume.processing_status !== 'completed') continue;
+    const structured = resume.parsed_data?.structured as { education?: ResumeEducation[] } | undefined;
+    for (const school of structured?.education ?? []) {
+      if (!school?.institution?.trim()) continue;
+      const key = [
+        school.institution,
+        school.degree ?? '',
+        school.field ?? '',
+        school.startDate ?? '',
+        school.endDate ?? '',
+      ].map((value) => value.trim().toLocaleLowerCase()).join('|');
+      if (!schools.has(key)) {
+        schools.set(key, {
+          school,
+          resumeId: resume.id,
+          fileName: resume.file_name,
+          uploadedAt: resume.uploaded_at,
+        });
+      }
+    }
+  }
+
+  const ordered = [...schools.values()].sort((left, right) =>
+    (right.school.endDate ?? right.school.startDate ?? '').localeCompare(
+      left.school.endDate ?? left.school.startDate ?? '',
+    ),
+  );
+  const normalizedSchoolText = ordered.flatMap(({ school }) =>
+    [school.institution, school.degree, school.field]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.trim().toLocaleLowerCase()),
+  );
+  const additionalClaims = (educationClaims ?? []).filter((claim) => {
+    const text = String(claim.claim_text ?? '').trim();
+    if (!text) return false;
+    const normalizedClaim = text.toLocaleLowerCase();
+    return !normalizedSchoolText.some((value) =>
+      value.includes(normalizedClaim) || normalizedClaim.includes(value),
+    );
+  });
+  if (ordered.length === 0 && additionalClaims.length === 0) {
+    return {
+      contextBlock: 'Education history is not recorded.',
+      sources: [],
+    };
+  }
+
+  const sources = ordered.map(({ school, resumeId, fileName, uploadedAt }, index) => {
+    const qualification = [school.degree, school.field].filter(Boolean).join(' in ');
+    const title = school.institution;
+    const dates = school.startDate || school.endDate
+      ? ` · ${formatHistoryDate(school.startDate) ?? ''}${school.endDate ? ` – ${formatHistoryDate(school.endDate)}` : ''}`
+      : '';
+    const snippet = `${qualification ? `${qualification} · ` : ''}${title}${dates}`;
+    return {
+      type: 'knowledge' as const,
+      id: `resume-education:${resumeId}:${index}`,
+      title,
+      snippet,
+      date: uploadedAt,
+      relevanceScore: 100,
+      relevanceReasons: ['direct education-history record', `uploaded resume: ${fileName}`],
+    };
+  });
+  const claimSources = additionalClaims.map((claim, index) => {
+    const sourceLabel = claim.source === 'chat' ? 'conversation lore' : `${claim.source ?? 'recorded'} education claim`;
+    return {
+      type: 'knowledge' as const,
+      id: `education-claim:${claim.id ?? index}`,
+      title: claim.claim_text,
+      snippet: `${claim.claim_text} · ${sourceLabel}`,
+      date: claim.last_updated_at ?? undefined,
+      relevanceScore: 95,
+      relevanceReasons: [
+        claim.source === 'chat' ? 'user-shared education lore' : 'recorded education claim',
+        claim.verified_status === 'verified' || claim.user_confirmed ? 'confirmed' : 'requires confirmation',
+      ],
+    };
+  });
+  const lines = ordered.map(({ school }) => {
+    const qualification = [school.degree, school.field].filter(Boolean).join(' in ');
+    const dates = school.startDate || school.endDate
+      ? ` · ${formatHistoryDate(school.startDate) ?? ''}${school.endDate ? ` – ${formatHistoryDate(school.endDate)}` : ''}`
+      : '';
+    return `- **${school.institution}**${qualification ? ` — ${qualification}` : ''}${dates}`;
+  });
+  const claimLines = additionalClaims.map((claim) =>
+    `- **${claim.claim_text}** — ${claim.source === 'chat' ? 'from a conversation' : 'recorded education claim'}${claim.verified_status === 'verified' || claim.user_confirmed ? '' : ' · confirmation still needed'}`,
+  );
+  const entryCount = ordered.length + additionalClaims.length;
+
+  return {
+    contextBlock: [
+      '## Education',
+      `I found ${entryCount} education record${entryCount === 1 ? '' : 's'} in your uploaded resumes and conversation lore:`,
+      ...lines,
+      ...claimLines,
+      '*Sources: uploaded resume records and conversation lore. Education details and dates may still need confirmation.*',
+    ].join('\n'),
+    sources: [...sources, ...claimSources],
+  };
+}
+
 export type RecallIntent =
   | 'biography'
   | 'character_list'
@@ -628,6 +869,7 @@ export type RecallIntent =
   | 'temporal'
   | 'location'
   | 'work'
+  | 'work_and_education'
   | 'thread'
   | 'conversation'
   | 'general';
@@ -739,14 +981,59 @@ export async function routeRecallQuery(
     };
   }
 
+  if (isWorkAndEducationRecall(message)) {
+    const resumes = await loadResumeDocuments(userId);
+    const [workHistory, educationHistory] = await Promise.all([
+      fetchWorkHistoryContext(userId, resumes),
+      fetchEducationHistoryContext(userId, resumes),
+    ]);
+    return {
+      intent: 'work_and_education',
+      entityName: null,
+      contextBlock: [
+        'Here’s the work and education history I found:',
+        workHistory.contextBlock,
+        educationHistory.contextBlock,
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
+      confidence: workHistory.contextBlock || educationHistory.contextBlock ? 0.95 : 0.3,
+      foundationPrimary: true,
+      metadata: {
+        sources: [...workHistory.sources, ...educationHistory.sources],
+        work_history_count: workHistory.sources.length,
+        education_history_count: educationHistory.sources.length,
+      },
+    };
+  }
+
   if (WORK_RE.test(message)) {
-    const block = await fetchFactContext(userId, 'work');
+    const workHistory = await fetchWorkHistoryContext(userId);
     return {
       intent: 'work',
       entityName: null,
-      contextBlock: block || 'Work/career information not recorded.',
-      confidence: block ? 0.9 : 0.3,
+      contextBlock: workHistory.contextBlock || 'Work/career information not recorded.',
+      confidence: workHistory.contextBlock ? 0.95 : 0.3,
       foundationPrimary: true,
+      metadata: {
+        sources: workHistory.sources,
+        work_history_count: workHistory.sources.length,
+      },
+    };
+  }
+
+  if (EDUCATION_RE.test(message)) {
+    const educationHistory = await fetchEducationHistoryContext(userId);
+    return {
+      intent: 'education',
+      entityName: null,
+      contextBlock: educationHistory.contextBlock || 'Education history is not recorded.',
+      confidence: educationHistory.contextBlock ? 0.95 : 0.3,
+      foundationPrimary: true,
+      metadata: {
+        sources: educationHistory.sources,
+        education_history_count: educationHistory.sources.length,
+      },
     };
   }
 

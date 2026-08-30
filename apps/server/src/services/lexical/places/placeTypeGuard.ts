@@ -51,6 +51,8 @@ const MUSIC_EVENT = /\b(gothicumbia|rave|show|set)\b/i;
 const AGENT_BY_PATTERN = /\b(?:run|written|hosted|owned|created|made|built|designed|operated)\s+by\s+/i;
 
 const ORG_ONLY = /^(amazon|google|meta|apple|microsoft|netflix)$/i;
+const EMPLOYER_CONTEXT =
+  /\b(?:employed|hired|onboarding|interview(?:ed)?|job|position|role|employer|company)\b[^.!?\n]{0,80}\b(?:at|for|with|from)\b|\b(?:at|for|with|from)\b[^.!?\n]{0,80}\b(?:employed|hired|onboarding|interview(?:ed)?|job|position|role|employer|company)\b/i;
 
 /**
  * The evidence line explicitly marks the name as a venue: "at Catch One the
@@ -75,6 +77,11 @@ function isAmbiguousVenueName(text: string): boolean {
     return false;
   }
   return /^[A-Z][a-z]+(?:\s+[A-Z][a-z.]+)+$/.test(text.trim());
+}
+
+/** Months, weekdays, and other pure time expressions — never a place, regardless of source phase. */
+export function isTimeExpressionOnly(text: string): boolean {
+  return TIME_ONLY.test(norm(text));
 }
 
 export type PlaceGuardResult = {
@@ -119,6 +126,10 @@ export function guardPlaceCandidate(
 
   if (isOrphanPossessiveResidence(text)) {
     return { allowed: false, rejectedAs: 'OBJECT', confidenceBoost: 0, rulesFired: ['orphan_possessive'] };
+  }
+
+  if (EMPLOYER_CONTEXT.test(contextLine)) {
+    return { allowed: false, rejectedAs: 'ORGANIZATION', confidenceBoost: 0, rulesFired: ['employer_context_not_place'] };
   }
 
   if (TIME_ONLY.test(text)) {

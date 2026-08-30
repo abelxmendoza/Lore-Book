@@ -1,4 +1,5 @@
 import { logger } from '../../logger';
+import { isReviewPending } from '../reviewableRecord';
 import { supabaseAdmin } from '../supabaseClient';
 import { BOOK_QUERY_SOURCE_ROW_CAP } from '../query/bookQuerySourceCaps';
 import { skillDetailsExtractionService, type SkillMetadata } from './skillDetailsExtractionService';
@@ -150,7 +151,17 @@ class SkillService {
 
       if (error) {
         logger.error({ error, userId, input, schema }, 'Failed to create skill');
-        throw error;
+        // Supabase/Postgrest errors are plain {message, details, hint, code}
+        // objects, not real Error instances — throwing one raw means callers
+        // that check `error instanceof Error` (e.g. the reclassify route)
+        // can never see the real reason and fall back to a generic message.
+        // Skills have no pre-insert dedupe check (unlike organizations/
+        // projects), so a unique-constraint violation on skill_name is the
+        // most common real failure here — give it a clear, actionable reason.
+        if (error.code === '23505') {
+          throw new Error(`You already have a skill named "${input.skill_name}"`);
+        }
+        throw new Error(error.message || 'Could not create skill');
       }
 
       return normalizeSkillRow(data as Record<string, unknown>);
@@ -163,7 +174,12 @@ class SkillService {
   /**
    * Get all skills for a user
    */
-  async getSkills(userId: string, filters?: { active_only?: boolean; category?: SkillCategory; limit?: number }): Promise<Skill[]> {
+  async getSkills(userId: string, filters?: {
+    active_only?: boolean;
+    category?: SkillCategory;
+    limit?: number;
+    displayable_only?: boolean;
+  }): Promise<Skill[]> {
     try {
       const schema = await getSkillsDbSchema();
       let query = supabaseAdmin
@@ -197,6 +213,9 @@ class SkillService {
       if (schema === 'legacy') {
         if (filters?.active_only) skills = skills.filter((s) => s.is_active);
         if (filters?.category) skills = skills.filter((s) => s.skill_category === filters.category);
+      }
+      if (filters?.displayable_only) {
+        skills = skills.filter((skill) => !isReviewPending(skill.metadata));
       }
       return skills;
     } catch (error) {

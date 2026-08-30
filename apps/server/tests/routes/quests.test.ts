@@ -109,12 +109,12 @@ describe('Quests API Routes', () => {
       expect(response.body).toHaveProperty('total_quests', 0);
     });
 
-    it('GET /api/quests/suggestions reaches deterministic discovery, not getQuest', async () => {
+    it('GET /api/quests/suggestions is read-only and not getQuest', async () => {
       vi.mocked(questExtractor.extractQuests).mockResolvedValue([]);
 
       const response = await request(app).get('/api/quests/suggestions').expect(200);
 
-      expect(rescanQuestLogInference).toHaveBeenCalledWith('user-123', []);
+      expect(rescanQuestLogInference).not.toHaveBeenCalled();
       expect(questStorage.getQuest).not.toHaveBeenCalled();
       expect(response.body).toHaveProperty('suggestions');
       expect(response.body).toHaveProperty('diagnostics');

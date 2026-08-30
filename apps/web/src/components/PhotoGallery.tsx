@@ -1,19 +1,27 @@
+import { Camera, FolderInput, Image as ImageIcon, Loader2, Upload, X } from 'lucide-react';
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Camera, Upload, Image as ImageIcon } from 'lucide-react';
 
-import { Button } from './ui/button';
-import { Card } from './ui/card';
-import { LazyImage } from './ui/LazyImage';
-import { DemoUploadProgressPanel, type DemoUploadProgress } from './demo/DemoUploadProgressPanel';
 import { config } from '../config/env';
 import { useMockData } from '../contexts/MockDataContext';
-import { supabase } from '../lib/supabase';
 import { fetchJson } from '../lib/api';
+import {
+  DOCUMENT_CATEGORIES,
+  DOCUMENT_SUBTYPES,
+  type DocumentCategory,
+  type DocumentSubtype,
+} from '../lib/documentCategories';
+import { dispatchStoryDataUpdated } from '../lib/storyRefresh';
+import { supabase } from '../lib/supabase';
 import {
   DEMO_PHOTO_GALLERY_STAGES,
   shouldSimulatePhotoUpload,
   simulateDemoPhotoGalleryUpload,
 } from '../services/demoPhotoUpload';
+
+import { DemoUploadProgressPanel, type DemoUploadProgress } from './demo/DemoUploadProgressPanel';
+import { Button } from './ui/button';
+import { Card } from './ui/card';
+import { LazyImage } from './ui/LazyImage';
 
 interface PhotoMetadata {
   photoId: string;
@@ -79,6 +87,11 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
   const [uploadProgress, setUploadProgress] = useState<DemoUploadProgress | null>(null);
   const [newPhotoIds, setNewPhotoIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [sendPhotoId, setSendPhotoId] = useState<string | null>(null);
+  const [sendCategory, setSendCategory] = useState<DocumentCategory>('photos_images');
+  const [sendSubtype, setSendSubtype] = useState<DocumentSubtype>('other_id');
+  const [sendingToDocuments, setSendingToDocuments] = useState(false);
+  const [sendNotice, setSendNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchPhotos = useCallback(async () => {
@@ -115,7 +128,8 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
     ];
 
     try {
-      // Fetch entries with source=photo
+      // Use the Photos endpoint because it excludes entries that were
+      // manually moved into the Documents library.
       const data = await fetchJson<{ entries: Array<{
         id: string;
         date: string;
@@ -123,7 +137,7 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
         summary?: string | null;
         tags: string[];
         metadata?: Record<string, unknown>;
-      }>       }>('/api/entries/recent?sources=photo&sources=photo_upload&limit=50', undefined, {
+      }>       }>('/api/photos', undefined, {
         useMockData: isMockDataEnabled,
         mockData: { entries: mockEntries }
       });
@@ -148,7 +162,7 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isMockDataEnabled]);
 
   useEffect(() => {
     fetchPhotos();
@@ -311,6 +325,46 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
     }
   };
 
+  const openSendToDocuments = (photoId: string) => {
+    setSendPhotoId(photoId);
+    setSendCategory('photos_images');
+    setSendSubtype('other_id');
+    setSendNotice(null);
+  };
+
+  const sendToDocuments = async () => {
+    if (!sendPhotoId || sendingToDocuments) return;
+    setSendingToDocuments(true);
+    setSendNotice(null);
+    try {
+      if (!isMockDataEnabled) {
+        await fetchJson(`/api/photos/${sendPhotoId}/send-to-documents`, {
+          method: 'POST',
+          body: JSON.stringify({
+            category: sendCategory,
+            ...(sendCategory === 'personal_identity'
+              ? { documentSubtype: sendSubtype }
+              : {}),
+          }),
+        });
+      }
+      setPhotos((previous) =>
+        previous.filter((photo) => photo.photoId !== sendPhotoId),
+      );
+      setSendNotice('Photo moved to Documents.');
+      setSendPhotoId(null);
+      dispatchStoryDataUpdated({ scopes: ['all'] });
+    } catch (error) {
+      setSendNotice(
+        error instanceof Error
+          ? error.message
+          : 'Could not move this photo to Documents.',
+      );
+    } finally {
+      setSendingToDocuments(false);
+    }
+  };
+
   return (
     <Card className="p-6">
       <div className="flex items-center justify-between mb-4">
@@ -341,6 +395,76 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
           </Button>
         </div>
       </div>
+
+      {sendNotice && (
+        <div className="mb-4 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm text-white">
+          {sendNotice}
+        </div>
+      )}
+
+      {sendPhotoId && (
+        <section className="mb-4 rounded-lg border border-primary/30 bg-black/20 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-semibold text-white">Send photo to Documents</h4>
+              <p className="mt-1 text-xs text-white/55">
+                This moves the original out of Photos and files it in Documents without analyzing it again.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSendPhotoId(null)}
+              disabled={sendingToDocuments}
+              aria-label="Cancel sending photo to Documents"
+              className="text-white/40 hover:text-white disabled:opacity-50"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+            <label className="flex-1 text-xs text-white/55">
+              Documents folder
+              <select
+                value={sendCategory}
+                onChange={(event) => setSendCategory(event.target.value as DocumentCategory)}
+                disabled={sendingToDocuments}
+                className="mt-1 block w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-primary/50 focus:outline-none"
+              >
+                {DOCUMENT_CATEGORIES.map((category) => (
+                  <option key={category.id} value={category.id}>{category.label}</option>
+                ))}
+              </select>
+            </label>
+            {sendCategory === 'personal_identity' && (
+              <label className="flex-1 text-xs text-white/55">
+                Record type
+                <select
+                  value={sendSubtype}
+                  onChange={(event) => setSendSubtype(event.target.value as DocumentSubtype)}
+                  disabled={sendingToDocuments}
+                  className="mt-1 block w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-primary/50 focus:outline-none"
+                >
+                  {DOCUMENT_SUBTYPES.map((subtype) => (
+                    <option key={subtype.id} value={subtype.id}>{subtype.label}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <Button
+              size="sm"
+              onClick={() => void sendToDocuments()}
+              disabled={sendingToDocuments}
+            >
+              {sendingToDocuments ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <FolderInput className="mr-2 h-4 w-4" />
+              )}
+              Move to Documents
+            </Button>
+          </div>
+        </section>
+      )}
 
       <input
         ref={fileInputRef}
@@ -381,6 +505,15 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
                   : ''
               }`}
             >
+              <button
+                type="button"
+                onClick={() => openSendToDocuments(photo.photoId)}
+                className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-md bg-black/75 px-2 py-1 text-[11px] font-medium text-white shadow-sm hover:bg-primary focus:outline-none focus:ring-2 focus:ring-primary"
+                aria-label="Send this photo to Documents"
+              >
+                <FolderInput className="h-3.5 w-3.5" />
+                Documents
+              </button>
               <LazyImage
                 src={photo.url}
                 alt="Photo"

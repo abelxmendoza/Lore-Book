@@ -26,7 +26,11 @@ export const profileClaimsApi = {
     if (params?.source) qs.set('source', params.source);
     if (params?.verified_status) qs.set('verified_status', params.verified_status);
     const suffix = qs.toString() ? `?${qs}` : '';
-    return fetchJson<ProfileClaimsResponse>(`/api/profile-claims${suffix}`);
+    // Review actions change this collection immediately; never show a cached
+    // pending claim after a successful confirm/reject.
+    return fetchJson<ProfileClaimsResponse>(`/api/profile-claims${suffix}`, undefined, {
+      cache: false,
+    });
   },
 
   async confirm(claimId: string, notes?: string): Promise<ProfileClaim> {

@@ -1,8 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Loader2, Plus, RefreshCw, TreePine } from 'lucide-react';
 import { Button } from '../ui/button';
 import { FamilyTreeView } from '../family/FamilyTreeView';
 import { FamilyTreeCopyAllButton } from './FamilyTreeCopyAllButton';
+import { FamilyTreeDepthToggle } from './FamilyTreeDepthToggle';
+import { filterFamilyTreeByDepth, type FamilyTreeDepth } from '../../lib/familyTreeDepth';
 import { fetchJson } from '../../lib/api';
 import { fetchCharacterList } from '../../api/characterList';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
@@ -62,6 +64,10 @@ interface FamilyTreePanelProps {
   onReorderRow?: (orderedIds: string[]) => Promise<void> | void;
   onConnectMembers?: (from: FamilyMember, to: FamilyMember, kind: 'parent' | 'spouse') => Promise<void> | void;
   onDisconnectParent?: (member: FamilyMember) => Promise<void> | void;
+  /** When set, the parent owns Close / Full. Otherwise the panel keeps its own toggle. */
+  depth?: FamilyTreeDepth;
+  onDepthChange?: (next: FamilyTreeDepth) => void;
+  showDepthToggle?: boolean;
 }
 
 export const FamilyTreePanel = ({
@@ -80,9 +86,15 @@ export const FamilyTreePanel = ({
   onReorderRow,
   onConnectMembers,
   onDisconnectParent,
+  depth: depthProp,
+  onDepthChange,
+  showDepthToggle = true,
 }: FamilyTreePanelProps) => {
   const shouldUseMock = useShouldUseMockData();
   const [tree, setTree] = useState<FamilyTree | null>(null);
+  const [internalDepth, setInternalDepth] = useState<FamilyTreeDepth>('close');
+  const depth = depthProp ?? internalDepth;
+  const setDepth = onDepthChange ?? setInternalDepth;
   const [loading, setLoading] = useState(true);
   const [rebuilding, setRebuilding] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -272,9 +284,14 @@ export const FamilyTreePanel = ({
       : scope === 'organization'
         ? 'Organization family tree'
         : 'Character family tree');
+  const visibleTree = useMemo(
+    () => (tree ? filterFamilyTreeByDepth(tree, depth) : null),
+    [tree, depth],
+  );
   const copyFilters = [
     `scope=${scope}`,
     entityId ? `entityId=${entityId}` : null,
+    `depth=${depth}`,
   ].filter(Boolean) as string[];
 
   if (loading) {
@@ -310,11 +327,14 @@ export const FamilyTreePanel = ({
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-white/40">
-          {tree.members.length} relative{tree.members.length !== 1 ? 's' : ''} · inferred from your stories
+          {visibleTree?.members.length ?? 0} relative{(visibleTree?.members.length ?? 0) !== 1 ? 's' : ''}
+          {depth === 'close' && tree.members.length > (visibleTree?.members.length ?? 0)
+            ? ` in close family · ${tree.members.length} in full tree`
+            : ' · inferred from your stories'}
         </p>
         <div className="flex items-center gap-1.5">
           <FamilyTreeCopyAllButton
-            tree={tree}
+            tree={visibleTree}
             title={resolvedCopyTitle}
             filters={copyFilters}
           />
@@ -326,9 +346,12 @@ export const FamilyTreePanel = ({
           )}
         </div>
       </div>
+      {showDepthToggle && (
+        <FamilyTreeDepthToggle value={depth} onChange={setDepth} tree={tree} />
+      )}
       {manualAddPanel}
       <FamilyTreeView
-        tree={tree}
+        tree={visibleTree ?? tree}
         compact={compact}
         onMemberClick={member => {
           if (member.is_self || member.is_placeholder) return;

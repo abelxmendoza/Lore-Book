@@ -11,6 +11,7 @@ import { entityAttributeDetector, type DetectedAttribute } from './conversationC
 import { characterBlurbService } from './characters/characterBlurbService';
 import { factTemporalPolarity } from './entities/entityFactDedup';
 import { supabaseAdmin } from './supabaseClient';
+import { isReviewPending } from './reviewableRecord';
 
 export const SELF_REFERENCE_PATTERN =
   /\b(I|me|my|myself|I'm|I am|I've|I have|I don't|I didn't|I can't|I won't)\b/i;
@@ -686,7 +687,7 @@ class SelfCharacterService {
         .limit(40),
       supabaseAdmin
         .from('journal_entries')
-        .select('id, date, content, summary, tags, source')
+        .select('id, date, content, summary, tags, source, metadata')
         .eq('user_id', userId)
         .order('date', { ascending: false })
         .limit(40),
@@ -729,7 +730,9 @@ class SelfCharacterService {
       facts,
       knowledgeClaims: knowledgeClaims ?? [],
       recentMemories: [
-        ...((recentEntries ?? []).map(entry => ({
+        ...((recentEntries ?? [])
+          .filter((entry) => !isReviewPending(entry.metadata))
+          .map(entry => ({
           id: `entry-${entry.id}`,
           entry_id: entry.id,
           date: entry.date,
@@ -737,7 +740,7 @@ class SelfCharacterService {
           content: entry.content ?? entry.summary ?? '',
           source: 'journal' as const,
           tags: Array.isArray(entry.tags) ? entry.tags : [],
-        }))),
+          }))),
         ...((recentMessages ?? []).map(message => ({
           id: `chat-${message.id}`,
           entry_id: message.id,

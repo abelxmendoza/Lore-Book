@@ -3,10 +3,12 @@ import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { createMemoryUpload } from '../middleware/multerConfig';
+import { DOCUMENT_CATEGORIES } from '../services/documents/documentCategories';
+import { DOCUMENT_SUBTYPES } from '../services/documents/documentSubtypes';
 import type { PhotoAnalysisResult } from '../services/photoAnalysisService';
 import { photoService, type PhotoMetadata } from '../services/photoService';
 import { supabaseAdmin } from '../services/supabaseClient';
-import { createMemoryUpload } from '../middleware/multerConfig';
 
 const router = Router();
 
@@ -377,7 +379,7 @@ router.post('/process', requireAuth, upload.single('photo'), async (req: Authent
       return res.status(400).json({ error: 'No photo file provided' });
     }
 
-    const { options, analysis: analysisRaw } = req.body;
+    const { options, analysis: analysisRaw, caption } = req.body;
     const parsedOptions = typeof options === 'string' ? JSON.parse(options) : options ?? {};
     const clientAnalysis =
       typeof analysisRaw === 'string'
@@ -409,6 +411,7 @@ router.post('/process', requireAuth, upload.single('photo'), async (req: Authent
         addToSelfPhotos: parsedOptions.addToSelfPhotos !== false,
         suggestedLocation: parsedOptions.suggestedLocation,
         analysis: clientAnalysis,
+        caption: typeof caption === 'string' ? caption.trim() || undefined : undefined,
       }
     );
 
@@ -479,6 +482,118 @@ router.patch('/:entryId/category', requireAuth, async (req: AuthenticatedRequest
   }
 });
 
+const sendToDocumentsSchema = z.object({
+  category: z.enum(DOCUMENT_CATEGORIES).default('photos_images'),
+  documentSubtype: z.enum(DOCUMENT_SUBTYPES).optional(),
+}).superRefine((value, context) => {
+  if (value.category === 'personal_identity' && !value.documentSubtype) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['documentSubtype'],
+      message: 'Choose the kind of personal or identity document.',
+    });
+  }
+});
+
+const photoQuerySchema = z.object({
+  query: z.string().trim().min(1).max(500),
+  limit: z.number().int().min(1).max(100).optional(),
+});
+
+/**
+ * Search photo descriptions and extracted metadata without sending the image
+ * back through an AI model. The focused-chat action remains available for
+ * deeper, grounded questions about a selected photo.
+ */
+router.post('/query', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = photoQuerySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json(parsed.error.flatten());
+    }
+
+    const { memoryService } = await import('../services/memoryService');
+    const entries = await memoryService.searchEntries(req.user!.id, {
+      search: '',
+      limit: 1000,
+    });
+    const query = parsed.data.query.toLowerCase();
+    const tokens = query.split(/\s+/).filter(Boolean);
+    const matches = entries
+      .filter((entry) => {
+        const metadata = (entry.metadata ?? {}) as Record<string, unknown>;
+        return Boolean(metadata.photoUrl || metadata.photoId) && !metadata.movedToDocuments;
+      })
+      .map((entry) => {
+        const metadata = (entry.metadata ?? {}) as Record<string, unknown>;
+        const searchable = [
+          entry.content,
+          entry.summary,
+          ...(entry.tags ?? []),
+          typeof metadata.locationName === 'string' ? metadata.locationName : '',
+          ...(Array.isArray(metadata.people) ? metadata.people : []),
+        ]
+          .join(' ')
+          .toLowerCase();
+        const exactBoost = searchable.includes(query) ? 2 : 0;
+        const tokenMatches = tokens.filter((token) => searchable.includes(token)).length;
+        return {
+          entry,
+          score: exactBoost + tokenMatches / Math.max(tokens.length, 1),
+        };
+      })
+      .filter((match) => match.score > 0)
+      .sort((left, right) => {
+        if (right.score !== left.score) return right.score - left.score;
+        return new Date(right.entry.date ?? 0).getTime() - new Date(left.entry.date ?? 0).getTime();
+      })
+      .slice(0, parsed.data.limit ?? 20)
+      .map(({ entry }) => entry);
+
+    res.json({
+      success: true,
+      result: {
+        query: parsed.data.query,
+        photos: matches,
+        total: matches.length,
+        warnings: [],
+      },
+    });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to query photos');
+    res.status(500).json({ error: 'Failed to query photos' });
+  }
+});
+
+/**
+ * Move a Photo Album entry to a user-selected Documents folder. The original
+ * journal row is retained for provenance but excluded from the Photos book.
+ */
+router.post('/:entryId/send-to-documents', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = sendToDocumentsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json(parsed.error.flatten());
+    }
+
+    const result = await photoService.sendToDocuments(
+      req.user!.id,
+      req.params.entryId as string,
+      {
+        category: parsed.data.category,
+        documentSubtype: parsed.data.documentSubtype,
+      },
+    );
+
+    res.json({ success: true, ...result });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to send photo to Documents');
+    const message = error instanceof Error ? error.message : 'Failed to send photo to Documents';
+    const status = message.includes('not found') ? 404 : message.includes('already been sent') ? 409 : 500;
+    res.status(status).json({ error: message });
+  }
+});
+
 /**
  * Get all photos for the authenticated user
  * Returns entries that have photoUrl in metadata
@@ -486,17 +601,18 @@ router.patch('/:entryId/category', requireAuth, async (req: AuthenticatedRequest
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { memoryService } = await import('../services/memoryService');
-    
+
     // Get entries with photo metadata
     const entries = await memoryService.searchEntries(req.user!.id, {
       search: '',
       limit: 1000
     });
 
-    // Filter entries that have photoUrl or photoId in metadata
+    // Filter entries that have photoUrl or photoId in metadata, excluding
+    // any that have been moved to the Documents library.
     const photoEntries = entries.filter(entry => {
       const metadata = entry.metadata || {};
-      return metadata.photoUrl || metadata.photoId;
+      return (metadata.photoUrl || metadata.photoId) && !metadata.movedToDocuments;
     });
 
     res.json({ 

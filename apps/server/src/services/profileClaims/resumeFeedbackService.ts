@@ -23,23 +23,55 @@ export type EducationTimelineEntry = {
   track: 'education';
 };
 
+export type ProjectTimelineEntry = {
+  kind: 'project';
+  name: string;
+  startDate: string | null;
+  endDate: string | null;
+  track: 'projects';
+};
+
+export type CertificationTimelineEntry = {
+  kind: 'certification';
+  name: string;
+  issuer?: string;
+  date: string | null;
+  track: 'education';
+};
+
 export type ResumeChatFeedback = {
   chatFeedback: string;
   careerTimeline: CareerTimelineEntry[];
   educationTimeline: EducationTimelineEntry[];
+  projectTimeline: ProjectTimelineEntry[];
+  certificationTimeline: CertificationTimelineEntry[];
   savedToLibrary: boolean;
   userFileId?: string;
 };
 
 function formatRange(start: string | null, end: string | null, isCurrent?: boolean): string {
-  const s = start ? new Date(start).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : '?';
-  const e = isCurrent ? 'Present' : end ? new Date(end).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : '?';
+  const s = start
+    ? new Date(start).toLocaleDateString(undefined, {
+        month: 'short',
+        year: 'numeric',
+      })
+    : 'Date not stated';
+  const e = isCurrent
+    ? 'Present'
+    : end
+      ? new Date(end).toLocaleDateString(undefined, {
+          month: 'short',
+          year: 'numeric',
+        })
+      : 'End date not stated';
   return `${s} – ${e}`;
 }
 
 export function buildResumeTimelines(parsed: ParsedResume): {
   careerTimeline: CareerTimelineEntry[];
   educationTimeline: EducationTimelineEntry[];
+  projectTimeline: ProjectTimelineEntry[];
+  certificationTimeline: CertificationTimelineEntry[];
 } {
   const careerTimeline: CareerTimelineEntry[] = parsed.employment
     .map((job) => ({
@@ -64,7 +96,32 @@ export function buildResumeTimelines(parsed: ParsedResume): {
     }))
     .sort((a, b) => (a.startDate ?? a.endDate ?? '').localeCompare(b.startDate ?? b.endDate ?? ''));
 
-  return { careerTimeline, educationTimeline };
+  const projectTimeline: ProjectTimelineEntry[] = parsed.projects
+    .map((project) => ({
+      kind: 'project' as const,
+      name: project.name,
+      startDate: normalizeResumeDate(project.startDate),
+      endDate: normalizeResumeDate(project.endDate),
+      track: 'projects' as const,
+    }))
+    .sort((a, b) => (a.startDate ?? a.endDate ?? '').localeCompare(b.startDate ?? b.endDate ?? ''));
+
+  const certificationTimeline: CertificationTimelineEntry[] = parsed.certifications
+    .map((certification) => ({
+      kind: 'certification' as const,
+      name: certification.name,
+      issuer: certification.issuer,
+      date: normalizeResumeDate(certification.date),
+      track: 'education' as const,
+    }))
+    .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
+
+  return {
+    careerTimeline,
+    educationTimeline,
+    projectTimeline,
+    certificationTimeline,
+  };
 }
 
 export function buildResumeChatFeedback(params: {
@@ -81,7 +138,7 @@ export function buildResumeChatFeedback(params: {
   };
 }): ResumeChatFeedback {
   const { parsed, fileName, userFileId, counts } = params;
-  const { careerTimeline, educationTimeline } = buildResumeTimelines(parsed);
+  const { careerTimeline, educationTimeline, projectTimeline, certificationTimeline } = buildResumeTimelines(parsed);
   const name = parsed.contact.fullName?.trim() || 'you';
 
   const careerLines = careerTimeline.map(
@@ -91,22 +148,34 @@ export function buildResumeChatFeedback(params: {
     const label = [e.degree, e.institution].filter(Boolean).join(' — ');
     return `• ${label} (${formatRange(e.startDate, e.endDate)})`;
   });
+  const projectLines = projectTimeline.map(
+    (project) => `• **${project.name}** (${formatRange(project.startDate, project.endDate)})`
+  );
+  const certificationLines = certificationTimeline.map(
+    (certification) =>
+      `• **${certification.name}**${certification.issuer ? ` — ${certification.issuer}` : ''} (${certification.date ? formatRange(certification.date, certification.date) : 'Date unknown'})`
+  );
 
   const skillPreview = parsed.skills.slice(0, 8).join(', ');
-  const projectPreview = parsed.projects.slice(0, 3).map((p) => p.name).join(', ');
+  const projectPreview = parsed.projects
+    .slice(0, 3)
+    .map((p) => p.name)
+    .join(', ');
 
   const sections: string[] = [
-    `I've read **${fileName}** and saved it to your **Documents library** and **memory**.`,
+    `I've read **${fileName}** and saved it to your **Documents library**.`,
     '',
-    `**${name}** — this is now part of your lore: career claims, skills, contact, and your **main character** profile are updating.`,
+    `**${name}** — I extracted career, education, project, skill, contact, and profile evidence. These items are staged for your review before they become confirmed memory.`,
     '',
     '### How your timelines are organized',
     '',
-    '**Career track** (Omni Timeline → Events / Swimlanes): each job becomes a dated **resolved event** and journal entry on the **career** lane. Stories you add about RLH, Vanguard, Serve Robotics, etc. can be tagged to those date ranges.',
+    '**Career track**: dated jobs and employment gaps are staged as reviewable events labeled **Career**.',
     '',
-    '**Education track**: each school is a dated **education** event. Memories from college or coursework attach to that window so you can browse “CSU Fullerton era” vs “Rio Hondo coursework” separately.',
+    '**Education track**: dated schools and certifications are staged as reviewable events labeled **Education**.',
     '',
-    '**Life Log + Chat**: resume facts also land as searchable journal entries with `resume` tags — anything you tell me about those periods cross-links automatically.',
+    '**Projects track**: dated projects are staged as reviewable events labeled **Projects**. Undated projects stay searchable without inventing a date.',
+    '',
+    '**Life Log + Chat**: the original resume evidence is searchable with `resume` tags; confirm claims before relying on them as fact.',
     '',
   ];
 
@@ -116,6 +185,12 @@ export function buildResumeChatFeedback(params: {
   if (eduLines.length > 0) {
     sections.push('### Education timeline', '', ...eduLines, '');
   }
+  if (projectLines.length > 0) {
+    sections.push('### Projects timeline', '', ...projectLines, '');
+  }
+  if (certificationLines.length > 0) {
+    sections.push('### Certifications', '', ...certificationLines, '');
+  }
   if (skillPreview) {
     sections.push(`**Skills detected:** ${skillPreview}${parsed.skills.length > 8 ? '…' : ''}`, '');
   }
@@ -124,18 +199,18 @@ export function buildResumeChatFeedback(params: {
   }
 
   sections.push(
-    '**Saved to memory:**',
-    `• ${counts.journalEntries} lore entries`,
-    `• ${counts.timelineEvents} timeline events`,
+    '**Staged for review:**',
+    `• ${counts.journalEntries} evidence entries`,
+    `• ${counts.timelineEvents} timeline items`,
     `• ${counts.claims} profile claims (review in Documents → Claims)`,
     `• ${counts.skills} skills · ${counts.organizations} employers`,
-    counts.characterAttributes > 0
-      ? `• ${counts.characterAttributes} attributes on your main character card`
-      : '',
+    counts.characterAttributes > 0 ? `• ${counts.characterAttributes} profile attributes` : '',
     '',
     parsed.summary
       ? `**Career snapshot:** ${parsed.summary.slice(0, 280)}${parsed.summary.length > 280 ? '…' : ''}`
       : '',
+    '',
+    '[Open Timeline](/timeline?view=events) · [Open Calendar](/timeline?view=calendar)',
     '',
     'Ask me about any job, school, or skill — I’ll use this timeline when answering.'
   );
@@ -146,6 +221,8 @@ export function buildResumeChatFeedback(params: {
     chatFeedback,
     careerTimeline,
     educationTimeline,
+    projectTimeline,
+    certificationTimeline,
     savedToLibrary: true,
     userFileId,
   };

@@ -553,6 +553,25 @@ ${resumeText.substring(0, 4000)}`;
     }
   }
 
+  async getResumeDocumentsForSourceFiles(
+    userId: string,
+    sourceFileIds: string[],
+  ): Promise<ResumeDocument[]> {
+    if (sourceFileIds.length === 0) return [];
+    const { data, error } = await supabaseAdmin
+      .from('resume_documents')
+      .select('*')
+      .eq('user_id', userId)
+      .in('parsed_data->>source_file_id', sourceFileIds)
+      .order('uploaded_at', { ascending: false });
+
+    if (error) {
+      logger.error({ error, userId }, 'Failed to get resumes for source files');
+      throw error;
+    }
+    return (data ?? []) as ResumeDocument[];
+  }
+
   /**
    * Get a single resume document
    */

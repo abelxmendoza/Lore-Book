@@ -7,6 +7,17 @@
 
 export const ORGANIZATION_MEMBER_ROLE_GROUPS = [
   {
+    label: 'Household',
+    roles: [
+      'lives here',
+      'splits time',
+      'weekends',
+      'head of household',
+      'visitor',
+      'former resident',
+    ],
+  },
+  {
     label: 'Affiliation',
     roles: [
       'member',

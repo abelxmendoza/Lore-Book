@@ -19,8 +19,14 @@ import { resolveDecoratorPlan } from './chat/decoratorRouting';
 import { resolveChatSubjectRetarget } from './chat/chatSubjectRetarget';
 import { enrichChatFocusWithDatingBook, isDatingRomanceChatFocus } from './chat/datingBookChatFocus';
 import { buildClientSourcesWithRejected, type RejectedEvidenceItem } from './chat/clientSourcesBuilder';
-import { BIOGRAPHY_RE } from './chat/recallIntentPatterns';
+import { BIOGRAPHY_RE, EDUCATION_RE, WORK_RE } from './chat/recallIntentPatterns';
 import { cognitiveObservatory } from './cognitiveObservatory';
+import {
+  evaluateComposition,
+  recomposeResponseDraft,
+  type CompositionPlan,
+  type CompositionQualityResult,
+} from './responseComposition';
 
 import {
   isBeliefChallengeAllowed,
@@ -120,8 +126,10 @@ import { timelineManager } from './timelineManager';
 import { extendChatContext } from './timelineInsight';
 
 export type ChatSource = {
-  type: 'entry' | 'event' | 'chapter' | 'character' | 'location' | 'task' | 'hqi' | 'fabric' | 'knowledge';
+  type: 'entry' | 'event' | 'chapter' | 'character' | 'location' | 'task' | 'document' | 'photo' | 'hqi' | 'fabric' | 'knowledge';
   id: string;
+  /** Optional UI id used to open the owning library record. */
+  navigationId?: string;
   title: string;
   snippet?: string;
   date?: string;
@@ -162,6 +170,12 @@ export type ChatFocusPayload = {
     connectionScore?: number;
     healthScore?: number;
   };
+  documentAttachments?: Array<{
+    fileId: string;
+    fileName: string;
+    kind?: string | null;
+    resumeDocumentId?: string | null;
+  }>;
 };
 
 export type OmegaChatResponse = {
@@ -177,6 +191,15 @@ export type OmegaChatResponse = {
   citations?: Array<{ text: string; sourceId: string; sourceType: string }>;
   memories?: MemoryClaim[]; // Memory claims used in this response
   memorySuggestion?: MemorySuggestion; // Proactive memory suggestion
+  compositionPlan?: CompositionPlan;
+  compositionQuality?: {
+    version: string;
+    passed: boolean;
+    score: number;
+    reasons: string[];
+    recompositionAttempted: boolean;
+    recomposed: boolean;
+  };
   mentionedEntities?: Array<{
     id: string;
     name: string;
@@ -208,7 +231,7 @@ export type ChatSuggestedAction = {
   prompt?: string;
   query?: string;
   targetId?: string;
-  surface?: 'characters' | 'family' | 'timeline';
+  surface?: 'characters' | 'family' | 'timeline' | 'documents' | 'photos';
   apiMethod?: 'POST' | 'PATCH';
   apiPath?: string;
   apiBody?: Record<string, unknown>;
@@ -235,6 +258,28 @@ function buildSuggestedActions(input: {
       label: 'Review sources',
       kind: 'open_sources',
       targetId: input.sources[0]?.id,
+    });
+  }
+
+  const wantsToOpenRecord = /\b(open|pull up|show|view|display|bring up)\b/i.test(input.message);
+  const documentSource = input.sources.find((source) => source.type === 'document');
+  const photoSource = input.sources.find((source) => source.type === 'photo');
+  if (wantsToOpenRecord && documentSource) {
+    add({
+      id: `open-document-${documentSource.id}`,
+      label: `Open ${documentSource.title || 'document'}`,
+      kind: 'navigate',
+      surface: 'documents',
+      targetId: documentSource.navigationId ?? documentSource.id,
+    });
+  }
+  if (wantsToOpenRecord && photoSource) {
+    add({
+      id: `open-photo-${photoSource.id}`,
+      label: `Open ${photoSource.title || 'photo'}`,
+      kind: 'navigate',
+      surface: 'photos',
+      targetId: photoSource.navigationId ?? photoSource.id,
     });
   }
 
@@ -357,6 +402,15 @@ export type StreamingChatResponse = {
       cacheHit: boolean;
       retrievalMs: number;
       contextItems: number;
+    };
+    compositionPlan?: CompositionPlan;
+    compositionQuality?: {
+      version: string;
+      passed: boolean;
+      score: number;
+      reasons: string[];
+      recompositionAttempted: boolean;
+      recomposed: boolean;
     };
     citations?: Array<{ text: string; sourceId: string; sourceType: string }>;
     activePersona?: string;
@@ -521,6 +575,8 @@ class OmegaChatService {
     goal?: import('./conversationReasoning').ConversationGoalState | null,
     resolvedTurnState?: { originalMessageText?: string } | null,
     discourseResolution?: import('./conversationReasoning').DiscourseResolution | null,
+    resumeDocumentId?: string,
+    documentIds?: string[],
   ) {
     return _buildRAGPacket(
       userId,
@@ -535,6 +591,8 @@ class OmegaChatService {
       goal,
       resolvedTurnState,
       discourseResolution,
+      resumeDocumentId,
+      documentIds,
     );
   }
 
@@ -853,6 +911,14 @@ class OmegaChatService {
       ? ` They are especially focused on their connection with **${chatFocus.relationshipName}**.`
       : '';
     const scopeLine = chatFocus.knowledgeScope ? ` Scope: ${chatFocus.knowledgeScope}.` : '';
+    const documentNote =
+      chatFocus.sourceSurface === 'documents' || chatFocus.entityType === 'document'
+        ? ' DOCUMENT EVIDENCE MODE: Answer from the explicitly attached files first, cite the file when useful, and distinguish what the documents state from any suggested lore. If the user asks to grow lore, extract only supported claims and keep review-required additions reviewable rather than silently treating them as confirmed canon.'
+        : '';
+    const photoNote =
+      chatFocus.sourceSurface === 'photos'
+        ? ' PHOTO CONTEXT MODE: Answer from the focused photo journal record and its recorded description, date, location, tags, people, and related memories. Do not claim to see details that are not present in the recorded photo context; distinguish recorded facts from interpretation.'
+        : '';
     const loveNote =
       isDatingRomanceChatFocus(chatFocus)
         ? ' Prioritize feelings, attachment, patterns, and relationship dynamics over general lore. Treat emotionally charged sharing as deepening this bond. This person is in Dating & Romance — keep that romantic-interest frame even if the thread started from Character Book.'
@@ -874,7 +940,7 @@ class OmegaChatService {
         ? ' The user opened chat from a stitched Omni Timeline chapter. Treat the focus name and knowledge scope as the chapter’s working knowledge base: help them explore scenes, ask clarifying questions, and connect people/places/projects/skills that belong to this arc. Prefer evidence from their memories over invention. Call out gaps that would unlock a vignette or LoreBook compile, and propose durable connections when the user affirms them (Living Memory review before canon for high-risk claims).'
         : '';
     return `\n\n**USER NAVIGATION FOCUS**
-The user opened chat from **${chatFocus.sourceLabel}** (${chatFocus.sourceSurface}), actively focusing on **${chatFocus.entityName}**.${relationshipLine}${scopeLine}${deepening}${loveNote}${organizationNote}${eventNote}${perceptionNote}${timelineNote}
+The user opened chat from **${chatFocus.sourceLabel}** (${chatFocus.sourceSurface}), actively focusing on **${chatFocus.entityName}**.${relationshipLine}${scopeLine}${deepening}${loveNote}${organizationNote}${eventNote}${perceptionNote}${timelineNote}${documentNote}${photoNote}
 When updating relationship analytics or emotional signals from this thread, weight this focus context heavily. Honor that focus only while the user's words are about this person or they have not named someone else. If they name a different person, treat that person as the subject instead of inventing a connection to ${chatFocus.entityName}.`;
   }
 
@@ -1103,6 +1169,7 @@ When updating relationship analytics or emotional signals from this thread, weig
     images?: ChatImageAttachment[],
     clientIdempotencyKey?: string,
     loreContext?: ChatPhotoLoreContext,
+    documentIds?: string[],
   ): Promise<{
     messageId: string;
     ingestionJobId?: string;
@@ -1261,6 +1328,9 @@ When updating relationship analytics or emotional signals from this thread, weig
     if (attachmentMeta?.length) {
       metadata.attachments = attachmentMeta;
       metadata.vision_pending = true;
+    }
+    if (documentIds?.length) {
+      metadata.document_ids = [...new Set(documentIds)].slice(0, 10);
     }
 
     const insertRow: Record<string, unknown> = {
@@ -1485,6 +1555,8 @@ When updating relationship analytics or emotional signals from this thread, weig
     previewCorrections?: import('./corrections/correctionTypes').CorrectedPreviewSpan[],
     images?: ChatImageAttachment[],
     clientIdempotencyKey?: string,
+    resumeDocumentId?: string,
+    documentIds?: string[],
   ): Promise<StreamingChatResponse> {
     // Caption text for persistence/ingestion; placeholder when image-only.
     message = resolveUserMessageText(message, images);
@@ -1575,7 +1647,11 @@ When updating relationship analytics or emotional signals from this thread, weig
       }
     }
 
-    if (!entityContext && chatFocus?.relationshipId && focusRelevant) {
+    if (chatFocus?.sourceSurface === 'documents' || chatFocus?.sourceSurface === 'photos') {
+      // Document and photo focus are evidence context, not ontology entities.
+      // Do not turn a synthetic focus chip into an ENTITY relationship.
+      entityContext = undefined;
+    } else if (!entityContext && chatFocus?.relationshipId && focusRelevant) {
       entityContext = { type: 'ROMANTIC_RELATIONSHIP', id: chatFocus.relationshipId };
     } else if (!entityContext && chatFocus && focusRelevant) {
       if (chatFocus.entityType === 'character' && chatFocus.entityId) {
@@ -1619,6 +1695,7 @@ When updating relationship analytics or emotional signals from this thread, weig
             : undefined,
           recentTurns: conversationHistory.slice(-4),
         },
+        documentIds,
       );
       entryId = earlyPersist?.messageId;
       ingestionJobId = earlyPersist?.ingestionJobId;
@@ -2269,8 +2346,13 @@ When updating relationship analytics or emotional signals from this thread, weig
 
       // Route to appropriate handler if mode is known
       if (
+        !resumeDocumentId &&
+        !(documentIds?.length) &&
         routing.mode !== 'UNKNOWN' &&
-        !(workingMemoryPrimary && (routing.mode === 'MEMORY_RECALL' || routing.mode === 'FOUNDATION_RECALL'))
+        !(workingMemoryPrimary && (
+          routing.mode === 'MEMORY_RECALL' ||
+          (routing.mode === 'FOUNDATION_RECALL' && !WORK_RE.test(effectiveMessage) && !EDUCATION_RE.test(effectiveMessage))
+        ))
       ) {
         const messageId = entryId;
 
@@ -2285,6 +2367,9 @@ When updating relationship analytics or emotional signals from this thread, weig
             conversationHistory,
             continuityContext: returnToThreadContext || undefined,
             threadId: threadId ?? currentContext?.threadId,
+            focusCharacterId: chatFocus?.entityType === 'character' ? chatFocus.entityId : undefined,
+            focusCharacterName: chatFocus?.entityType === 'character' ? chatFocus.entityName : undefined,
+            focusOrganizationName: chatFocus?.entityType === 'organization' ? chatFocus.entityName : undefined,
           }
         );
 
@@ -2332,6 +2417,8 @@ When updating relationship analytics or emotional signals from this thread, weig
     // "Who's on my team?" gets the roster with role nuances — never the
     // character book, family graph, or memory-layer status.
     if (
+      !resumeDocumentId &&
+      !(documentIds?.length) &&
       scopePlan.intent === 'work' &&
       scopePlan.responseMode === 'focused_recall' &&
       !scopePlan.isCorrection
@@ -2372,7 +2459,7 @@ When updating relationship analytics or emotional signals from this thread, weig
     // biography projection. Keep that fast path available when Working Memory
     // is primary; otherwise a simple "What do you remember about me?" fans out
     // across every memory domain before it can answer.
-    if (!workingMemoryPrimary || BIOGRAPHY_RE.test(effectiveMessage)) try {
+    if (!resumeDocumentId && !(documentIds?.length) && (!workingMemoryPrimary || BIOGRAPHY_RE.test(effectiveMessage))) try {
       const { matchesFoundationRecallQuery } = await import('./chat/recallIntentPatterns');
       if (matchesFoundationRecallQuery(effectiveMessage)) {
         const { executeExplicitRecall } = await import('./chat/explicitRecallService');
@@ -2463,6 +2550,8 @@ When updating relationship analytics or emotional signals from this thread, weig
         conversationGoal,
         retryState ? { originalMessageText: retryState.originalMessageText } : null,
         discourseResolution,
+        resumeDocumentId,
+        documentIds,
       );
     } catch (error) {
       logger.error({ error }, 'Failed to build RAG packet, using minimal context');
@@ -2504,18 +2593,41 @@ When updating relationship analytics or emotional signals from this thread, weig
             downstreamEffects: ['RESPONSE_PLANNING_INPUT_READY'],
           },
         });
-        const answerPlanBlock = (ragPacket as { answerPlanBlock?: string | null }).answerPlanBlock ?? null;
+        const compositionPlan = (ragPacket as { compositionPlan?: CompositionPlan | null }).compositionPlan ?? null;
         cognitiveObservatory.recordStage({
           userId,
           sourceId: entryId,
           trace: {
             stage: 'RESPONSE_PLANNING',
-            status: answerPlanBlock ? 'PASS' : 'SKIPPED',
+            status: compositionPlan ? 'PASS' : 'SKIPPED',
             startedAt: new Date().toISOString(),
             durationMs: 0,
-            counts: { inputs: auditedCount, outputs: answerPlanBlock ? 1 : 0 },
-            decisions: answerPlanBlock ? [answerPlanBlock.slice(0, 200)] : ['no_plan_built'],
+            counts: {
+              inputs: sources.length,
+              outputs: compositionPlan?.selectedEvidenceIds.length ?? 0,
+              discarded: compositionPlan?.discardedEvidenceIds.length ?? discarded,
+            },
+            decisions: compositionPlan
+              ? [
+                  `profile:${compositionPlan.profile}`,
+                  `strategy:${compositionPlan.narrativeStrategy}`,
+                  `ordering:${compositionPlan.ordering.join('>')}`,
+                ]
+              : ['no_plan_built'],
             downstreamEffects: ['SYSTEM_PROMPT_COMPOSITION'],
+            details: compositionPlan
+              ? {
+                  version: compositionPlan.version,
+                  primaryGoal: compositionPlan.primaryGoal,
+                  supportingGoal: compositionPlan.supportingGoal,
+                  evidencePriority: compositionPlan.evidencePriority,
+                  compressionBudget: compositionPlan.compressionBudget,
+                  reflectionBudget: compositionPlan.reflectionBudget,
+                  followUpStrategy: compositionPlan.followUpStrategy,
+                  selectedEvidenceIds: compositionPlan.selectedEvidenceIds,
+                  discardedEvidenceIds: compositionPlan.discardedEvidenceIds,
+                }
+              : undefined,
           },
         });
       } catch (e) {
@@ -2863,6 +2975,9 @@ When updating relationship analytics or emotional signals from this thread, weig
       cognitivePlanBlock: (ragPacket as { cognitivePlanBlock?: string | null }).cognitivePlanBlock ?? null,
       epistemicBlock: (ragPacket as { epistemicBlock?: string | null }).epistemicBlock ?? null,
       answerPlanBlock: (ragPacket as { answerPlanBlock?: string | null }).answerPlanBlock ?? null,
+      compositionPlan: (ragPacket as { compositionPlan?: unknown }).compositionPlan ?? null,
+      compositionPlanBlock: (ragPacket as { compositionPlanBlock?: string | null }).compositionPlanBlock ?? null,
+      attachedResumeBlock: (ragPacket as { attachedResumeBlock?: string | null }).attachedResumeBlock ?? null,
       continuityAliveTrace: (ragPacket as { continuityAliveTrace?: unknown }).continuityAliveTrace ?? null,
       confirmedSkills: (ragPacket as any).confirmedSkills ?? [],
       entityDossierBlock: (ragPacket as { entityDossierBlock?: string | null }).entityDossierBlock ?? null,
@@ -3461,6 +3576,7 @@ When updating relationship analytics or emotional signals from this thread, weig
         staleProjectionHints: staleProjectionHints.length > 0 ? staleProjectionHints : undefined,
         staleProjectionSummary,
         sensemakingContract: (ragPacket as { sensemakingContract?: StreamingChatResponse['metadata']['sensemakingContract'] }).sensemakingContract,
+        compositionPlan: (ragPacket as { compositionPlan?: CompositionPlan }).compositionPlan,
         suggestedActions,
         activePersona: activePersona || undefined,
         modeDecision: modeDecision || undefined,
@@ -3500,7 +3616,9 @@ When updating relationship analytics or emotional signals from this thread, weig
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
     currentContext?: CurrentContext,
     soulProfileContext?: SoulProfileContext,
-    threadId?: string
+    threadId?: string,
+    resumeDocumentId?: string,
+    documentIds?: string[],
   ): Promise<OmegaChatResponse> {
     const sessionId = threadId
       ? await _ensureChatSession(userId, threadId)
@@ -3574,7 +3692,12 @@ When updating relationship analytics or emotional signals from this thread, weig
         sessionId,
         message,
         conversationHistory,
-        entityContext
+        entityContext,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        documentIds,
       );
       entryId = earlyPersist?.messageId;
       interpretationPromise = earlyPersist?.interpretationPromise;
@@ -3604,15 +3727,18 @@ When updating relationship analytics or emotional signals from this thread, weig
       const { modeRouterService } = await import('./modeRouter/modeRouterService');
       const routing = await modeRouterService.routeMessage(userId, message, conversationHistory);
       if (
-        routing.mode === 'SUBJECT_TIMELINE' ||
+        !resumeDocumentId &&
+        !(documentIds?.length) &&
+        (routing.mode === 'SUBJECT_TIMELINE' ||
         routing.mode === 'ORGANIZATION_QUERY' ||
+        routing.mode === 'CHARACTER_QUERY' ||
         routing.mode === 'FAMILY_QUERY' ||
         routing.mode === 'LOCATION_QUERY' ||
         routing.mode === 'ROMANCE_QUERY' ||
         routing.mode === 'PROJECT_QUERY' ||
         routing.mode === 'SKILL_QUERY' ||
         routing.mode === 'QUEST_QUERY' ||
-        routing.mode === 'BOOK_QUERY'
+        routing.mode === 'BOOK_QUERY')
       ) {
         const { modeHandlers } = await import('./modeRouter/modeHandlers');
         const handled = await modeHandlers.handleMode(routing.mode, userId, message, {
@@ -3660,7 +3786,19 @@ When updating relationship analytics or emotional signals from this thread, weig
     }
 
     // Build RAG packet
-    const ragPacket = await this.buildRAGPacket(userId, message, currentContext, scopePlan, entryId, undefined, conversationGoal, null, discourseResolution);
+    const ragPacket = await this.buildRAGPacket(
+      userId,
+      message,
+      currentContext,
+      scopePlan,
+      entryId,
+      undefined,
+      conversationGoal,
+      null,
+      discourseResolution,
+      resumeDocumentId,
+      documentIds,
+    );
     const { orchestratorSummary, hqiResults, sources, extractedDates } = ragPacket;
 
     // Essence + identity-core profiles are independent userId-only loads — fetch
@@ -4132,6 +4270,47 @@ When updating relationship analytics or emotional signals from this thread, weig
     });
 
     const answer = completion.choices[0]?.message?.content ?? 'I understand. Tell me more.';
+    let finalAnswer = answer;
+    let compositionQuality: (CompositionQualityResult & {
+      recompositionAttempted: boolean;
+      recomposed: boolean;
+    }) | undefined;
+    const compositionPlan = (ragPacket as { compositionPlan?: CompositionPlan }).compositionPlan;
+    if (compositionPlan) {
+      const initialQuality = evaluateComposition({
+        userMessage: message,
+        response: answer,
+        plan: compositionPlan,
+      });
+      compositionQuality = {
+        ...initialQuality,
+        recompositionAttempted: false,
+        recomposed: false,
+      };
+      if (initialQuality.recompositionRecommended) {
+        const recomposed = await recomposeResponseDraft({
+          userMessage: message,
+          draft: answer,
+          plan: compositionPlan,
+          quality: initialQuality,
+        });
+        if (recomposed) {
+          const recomposedQuality = evaluateComposition({
+            userMessage: message,
+            response: recomposed,
+            plan: compositionPlan,
+          });
+          compositionQuality = {
+            ...recomposedQuality,
+            recompositionAttempted: true,
+            recomposed: recomposedQuality.score > initialQuality.score,
+          };
+          if (recomposedQuality.score > initialQuality.score) finalAnswer = recomposed;
+        } else {
+          compositionQuality.recompositionAttempted = true;
+        }
+      }
+    }
 
     // RL: Save context for later reward updates (use persisted user message id when available)
     const messageId = entryId || randomUUID();
@@ -4141,6 +4320,8 @@ When updating relationship analytics or emotional signals from this thread, weig
       sources: sources.slice(0, 10).map(s => ({ type: s.type, id: s.id, title: s.title })),
       connections: connections,
       continuity_warnings: continuityWarnings,
+      compositionPlan: (ragPacket as { compositionPlan?: unknown }).compositionPlan,
+      compositionQuality,
     };
 
     // Save assistant message — awaited for durability (non-stream path)
@@ -4151,7 +4332,7 @@ When updating relationship analytics or emotional signals from this thread, weig
           user_id: userId,
           session_id: sessionId,
           role: 'assistant',
-          content: answer,
+      content: finalAnswer,
           metadata: assistantMetadata,
         })
         .select('id')
@@ -4365,6 +4546,8 @@ When updating relationship analytics or emotional signals from this thread, weig
       extractedDates,
       sources: sources.slice(0, 10),
       citations,
+      compositionPlan: (ragPacket as { compositionPlan?: CompositionPlan }).compositionPlan,
+      compositionQuality,
       memorySuggestion: memorySuggestion || undefined,
       suggestedActions,
     };

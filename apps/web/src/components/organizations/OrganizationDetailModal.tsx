@@ -45,6 +45,7 @@ import {
   useUpdateOrganizationMutation,
 } from '../../store/api/entitiesApi';
 import { OrganizationModalHeader } from './OrganizationModalHeader';
+import { OrganizationClassificationEditor } from './OrganizationClassificationEditor';
 import { EntityModalBottomNav } from '../common/EntityModalBottomNav';
 import {
   OrganizationModalNav,
@@ -224,15 +225,18 @@ const GROUP_TYPE_OPTIONS: Array<{ value: Organization['group_type']; label: stri
   { value: 'friend_group', label: 'Friend group' },
   { value: 'company', label: 'Company' },
   { value: 'club', label: 'Club' },
+  { value: 'scene', label: 'Scene' },
   { value: 'community', label: 'Community' },
   { value: 'crew', label: 'Crew' },
   { value: 'collective', label: 'Collective' },
   { value: 'sports_team', label: 'Sports team' },
   { value: 'team', label: 'Team' },
+  { value: 'martial_arts', label: 'Martial arts' },
   { value: 'nonprofit', label: 'Nonprofit' },
   { value: 'institution', label: 'Institution' },
   { value: 'brand', label: 'Brand' },
   { value: 'vendor', label: 'Vendor' },
+  { value: 'software', label: 'Software' },
   { value: 'family', label: 'Family' },
   { value: 'household', label: 'Household' },
   { value: 'public_entity', label: 'Public entity' },
@@ -244,13 +248,15 @@ const GROUP_TYPE_LABEL_BY_VALUE: Partial<Record<string, string>> = Object.fromEn
   GROUP_TYPE_OPTIONS.map(option => [option.value as string, option.label]),
 );
 /**
- * No DB column tracks "unset" — group_type defaults to 'other'. We
- * distinguish "never detected/never set" from a genuine 'other' pick via
- * metadata.group_type_source: absent or 'user_cleared' means unset.
+ * No DB column tracks "unset" — group_type defaults to 'other'. Treat
+ * user_cleared as unset, and treat a bare 'other' with no source as unset.
+ * Detected types (family, household, company, …) still display even without
+ * a group_type_source stamp.
  */
-const isGroupTypeUnset = (org: Pick<Organization, 'metadata'>): boolean => {
-  const source = org.metadata?.group_type_source;
-  return !source || source === 'user_cleared';
+const isGroupTypeUnset = (org: Pick<Organization, 'group_type' | 'metadata'>): boolean => {
+  if (org.metadata?.group_type_source === 'user_cleared') return true;
+  if (org.metadata?.group_type_source) return false;
+  return !org.group_type || org.group_type === 'other';
 };
 const MEMBERSHIP_MODEL_OPTIONS: Array<{ value: Organization['membership_model']; label: string }> = [
   { value: 'strict', label: 'Defined roster' },
@@ -325,7 +331,7 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
         sourceSurface: 'organizations',
         sourceLabel: CHAT_FOCUS_SOURCE_LABELS.organizations,
         knowledgeScope: knowledgeScope ?? preset.knowledgeScope,
-        initialPrompt: prompt ?? preset.existingPrompt(editedOrg.name),
+        initialPrompt: prompt ?? '',
         arrivedAt: Date.now(),
       });
     },
@@ -1362,6 +1368,34 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
       console.error('Failed to save aliases:', error);
       setMemberAddError(error instanceof Error ? error.message : 'Could not update aliases.');
       throw error;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveClassification = async (patch: {
+    group_type?: Organization['group_type'];
+    type?: Organization['type'];
+    user_relationship?: Organization['user_relationship'];
+    metadata?: Organization['metadata'];
+  }) => {
+    setSaving(true);
+    setIdentityError(null);
+    try {
+      await applyOrgPatch({
+        ...patch,
+        metadata: {
+          ...(editedOrg.metadata ?? {}),
+          ...(patch.metadata ?? {}),
+          identity_locked_by_user: true,
+          identity_last_corrected_at: new Date().toISOString(),
+        },
+      });
+      setIdentitySaved('Classification saved.');
+      dispatchStoryDataUpdated({ scopes: ['organizations'], organizationIds: [organization.id] });
+    } catch (error) {
+      console.error('Failed to save classification:', error);
+      setIdentityError(error instanceof Error ? error.message : 'Could not update classification.');
     } finally {
       setSaving(false);
     }
@@ -2579,6 +2613,12 @@ export const OrganizationDetailModal = ({ organization, allOrganizations = [], o
                       </p>
                     )}
                   </div>
+
+                  <OrganizationClassificationEditor
+                    organization={editedOrg}
+                    disabled={saving || (isEphemeralEntityId(organization.id) && !isMockDataEnabled)}
+                    onChange={(patch) => void saveClassification(patch)}
+                  />
 
                   {editingIdentity ? (
                     <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 sm:p-4">

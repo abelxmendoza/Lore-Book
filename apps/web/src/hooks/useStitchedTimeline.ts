@@ -1,12 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  stitchedTimelineApi,
-  type StitchedTimelineItem,
-  type StitchedTimelineResult,
-} from '../api/stitchedTimeline';
+import { stitchedTimelineApi, type StitchedTimelineItem, type StitchedTimelineResult } from '../api/stitchedTimeline';
 import { useAuth } from '../lib/supabase';
 import { useMockData } from '../contexts/MockDataContext';
 import { buildMockStitchedTimeline } from '../mocks/stitchedTimelineMock';
+import { subscribeTemporalRefresh } from '../lib/storyRefresh';
 
 type UseStitchedTimelineOptions = {
   life_arc_id?: string;
@@ -62,33 +59,38 @@ export function useStitchedTimeline(opts: UseStitchedTimelineOptions = {}) {
     void load();
   }, [load]);
 
+  useEffect(() => subscribeTemporalRefresh(() => void load()), [load]);
+
   const reorderItems = useCallback((next: StitchedTimelineItem[]) => {
     setItems(next);
   }, []);
 
-  const persistOrder = useCallback(async (nextItems: StitchedTimelineItem[]) => {
-    if (!data) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await stitchedTimelineApi.saveOrder({
-        scope_type: data.scope_type,
-        scope_id: data.scope_type === 'life_arc' ? data.scope_id : undefined,
-        items: nextItems.map((item, sort_index) => ({
-          kind: item.kind,
-          id: item.sourceId,
-          sort_index,
-        })),
-      });
-      setItems(nextItems.map((item, i) => ({ ...item, userSortIndex: i })));
-      setData((prev) => (prev ? { ...prev, has_user_order: true, items: nextItems } : prev));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save order');
-      throw err;
-    } finally {
-      setSaving(false);
-    }
-  }, [data]);
+  const persistOrder = useCallback(
+    async (nextItems: StitchedTimelineItem[]) => {
+      if (!data) return;
+      setSaving(true);
+      setError(null);
+      try {
+        await stitchedTimelineApi.saveOrder({
+          scope_type: data.scope_type,
+          scope_id: data.scope_type === 'life_arc' ? data.scope_id : undefined,
+          items: nextItems.map((item, sort_index) => ({
+            kind: item.kind,
+            id: item.sourceId,
+            sort_index,
+          })),
+        });
+        setItems(nextItems.map((item, i) => ({ ...item, userSortIndex: i })));
+        setData((prev) => (prev ? { ...prev, has_user_order: true, items: nextItems } : prev));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to save order');
+        throw err;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [data]
+  );
 
   return {
     data,

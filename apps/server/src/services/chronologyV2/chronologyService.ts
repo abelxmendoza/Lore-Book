@@ -1,6 +1,7 @@
 import { logger } from '../../logger';
 import type { MemoryEntry } from '../../types';
 import { supabaseAdmin } from '../supabaseClient';
+import { isReviewPending } from '../reviewableRecord';
 
 export type TimePrecision = 'exact' | 'day' | 'month' | 'year' | 'approximate';
 
@@ -28,6 +29,7 @@ export interface ChronologyEntry {
   mentioned_at?: string | null;
   temporal_source?: string;
   tags?: string[];
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface ChronologyOverlap {
@@ -135,7 +137,8 @@ export class ChronologyService {
     userId: string,
     startTime?: string,
     endTime?: string,
-    timelineIds?: string[]
+    timelineIds?: string[],
+    options: { includeReviewPending?: boolean } = {},
   ): Promise<ChronologyEntry[]> {
     try {
       const runQuery = async () => {
@@ -189,7 +192,10 @@ export class ChronologyService {
       const timelineNames = await this.getTimelineNames(userId, Array.from(allTimelineIds));
 
       // Filter by timeline IDs if provided
-      let filteredData = data || [];
+      let filteredData = (data || []).filter((row: any) => {
+        const metadata = row.journal_entries?.metadata;
+        return options.includeReviewPending || !isReviewPending(metadata);
+      });
       if (timelineIds && timelineIds.length > 0) {
         filteredData = filteredData.filter((row: any) => {
           const entryMemberships = memberships[row.journal_entry_id] || [];
@@ -235,6 +241,7 @@ export class ChronologyService {
         mentioned_at: /chat|conversation/i.test(sourceType) ? journal.created_at ?? null : null,
         temporal_source: inferredTemporalSource,
         tags: journal.tags || [],
+        metadata,
         timeline_memberships: memberships[row.journal_entry_id] || [],
         timeline_names: (memberships[row.journal_entry_id] || []).map((tid: string) => timelineNames[tid] || 'Unknown Timeline')
         };

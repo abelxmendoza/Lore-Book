@@ -5,6 +5,13 @@ import type { CertifiedEntityType } from '../types/certifiedEntity';
 export function focusToEntityContext(
   focus: ChatFocus
 ): { type: 'CHARACTER' | 'LOCATION' | 'ENTITY' | 'ROMANTIC_RELATIONSHIP'; id: string } | undefined {
+  if (
+    focus.sourceSurface === 'documents' ||
+    focus.sourceSurface === 'photos' ||
+    focus.entityType === 'document'
+  ) {
+    return undefined;
+  }
   if (focus.relationshipId) {
     return { type: 'ROMANTIC_RELATIONSHIP', id: focus.relationshipId };
   }
@@ -36,7 +43,13 @@ export function focusToEntityContext(
 export function focusToComposerEntities(focus: ChatFocus): CertifiedEntityMatch[] {
   // A perception focus is conversational context only. Never turn the belief
   // itself into a character or another canonical entity chip.
-  if (focus.entityType === 'perception') return [];
+  if (
+    focus.entityType === 'perception' ||
+    focus.entityType === 'document' ||
+    focus.sourceSurface === 'documents' ||
+    focus.sourceSurface === 'photos'
+  )
+    return [];
 
   const composerType: CertifiedEntityType =
     focus.entityType === 'organization'
@@ -49,7 +62,7 @@ export function focusToComposerEntities(focus: ChatFocus): CertifiedEntityMatch[
             ? 'event'
             : focus.entityType === 'project'
               ? 'project'
-          : 'character';
+              : 'character';
 
   return [
     {

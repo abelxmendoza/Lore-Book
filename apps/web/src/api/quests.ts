@@ -27,6 +27,15 @@ export const questsApi = {
     return response.quest;
   },
 
+  async mergeSuggestion(suggestionId: string, questId: string): Promise<Quest> {
+    const response = await fetchJson<{ quest: Quest }>(`/api/quests/suggestions/${suggestionId}/merge`, {
+      method: 'POST',
+      body: JSON.stringify({ quest_id: questId }),
+    });
+    apiCache.deletePattern(/\/api\/quests(\/|\?|:)/);
+    return response.quest;
+  },
+
   async rejectSuggestion(suggestionId: string): Promise<void> {
     await fetchJson(`/api/quests/suggestions/${suggestionId}/reject`, { method: 'POST' });
   },

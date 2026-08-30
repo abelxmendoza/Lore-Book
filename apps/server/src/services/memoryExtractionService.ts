@@ -4,6 +4,7 @@ import { v4 as uuid } from 'uuid';
 import { config } from '../config';
 import { openai } from '../lib/openai';
 import { logger } from '../logger';
+import { isDiscourseOpener } from '../utils/discourseTokenGuard';
 import type {
   ConversationMessage,
   MemoryEntry,
@@ -359,7 +360,7 @@ Respond in JSON:
     const capitalised = text.match(/\b([A-Z][a-z]{1,}(?:\s+[A-Z][a-z]+)*)\b/g) ?? [];
     const names = new Set<string>();
     for (const name of capitalised) {
-      if (!SKIP.has(name) && name.length >= 3 && name.length <= 40) {
+      if (!SKIP.has(name) && !isDiscourseOpener(name) && name.length >= 3 && name.length <= 40) {
         names.add(name);
       }
     }

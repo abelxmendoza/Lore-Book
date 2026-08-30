@@ -31,6 +31,8 @@ export type NarrativeStoryChapterRow = {
   confidence: number;
   thread_id: string | null;
   era_id?: string | null;
+  created_at?: string;
+  updated_at?: string;
   life_chapter_id?: string | null;
   metadata: Record<string, unknown>;
 };
@@ -38,16 +40,19 @@ export type NarrativeStoryChapterRow = {
 export class NarrativeStoryChapterService {
   async listChapters(
     userId: string,
-    opts: { limit?: number } = {},
+    opts: { limit?: number; projectionGeneration?: string | null } = {},
   ): Promise<NarrativeStoryChapterRow[]> {
-    const limit = Math.min(Math.max(opts.limit ?? 100, 1), 500);
+    const limit = Math.min(Math.max(opts.limit ?? 100, 1), 5000);
     try {
-      const { data, error } = await supabaseAdmin
+      let query = supabaseAdmin
         .from('narrative_story_chapters')
         .select('*')
         .eq('user_id', userId)
-        .order('time_start', { ascending: true })
-        .limit(limit);
+        .order('time_start', { ascending: true });
+      if (opts.projectionGeneration) {
+        query = query.eq('metadata->>projection_generation', opts.projectionGeneration);
+      }
+      const { data, error } = await query.limit(limit);
       if (error) {
         logger.warn({ error, userId }, 'narrative_story_chapters list failed');
         return [];
@@ -69,6 +74,17 @@ export class NarrativeStoryChapterService {
     const { chapter, userId, significanceScore, threadId } = input;
     if (!chapter.title.trim() && !chapter.summary.trim()) return null;
 
+    const normalize = (value: string | null | undefined) =>
+      (value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const projectionKey = [
+      normalize(chapter.ownership?.domain ?? chapter.themes?.[0] ?? 'unknown'),
+      normalize(chapter.ownership?.primarySubject ?? ''),
+      normalize(chapter.title),
+    ].filter(Boolean).join('|');
+    const projectionGeneration =
+      typeof input.metadata?.projection_generation === 'string'
+        ? input.metadata.projection_generation
+        : null;
     const fingerprint = [
       chapter.timeStart?.slice(0, 10) ?? 'undated',
       chapter.title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 80),
@@ -76,13 +92,26 @@ export class NarrativeStoryChapterService {
     ].join('|');
 
     try {
-      const { data: existing } = await supabaseAdmin
+      let projectionKeyQuery = supabaseAdmin
         .from('narrative_story_chapters')
         .select('*')
         .eq('user_id', userId)
-        .eq('metadata->>fingerprint', fingerprint)
-        .limit(1)
-        .maybeSingle();
+        .eq('metadata->>projection_key', projectionKey)
+        .order('updated_at', { ascending: false });
+      if (projectionGeneration) {
+        projectionKeyQuery = projectionKeyQuery.eq('metadata->>projection_generation', projectionGeneration);
+      }
+      const { data: existingByProjectionKey } = await projectionKeyQuery.limit(1).maybeSingle();
+      let fingerprintQuery = supabaseAdmin
+        .from('narrative_story_chapters')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('metadata->>fingerprint', fingerprint);
+      if (projectionGeneration) {
+        fingerprintQuery = fingerprintQuery.eq('metadata->>projection_generation', projectionGeneration);
+      }
+      const { data: existingByFingerprint } = await fingerprintQuery.limit(1).maybeSingle();
+      const existing = existingByProjectionKey ?? existingByFingerprint;
 
       const contributionScores = Object.fromEntries(
         (chapter.contributions ?? []).map((c) => [c.sceneId, c.strength]),
@@ -108,10 +137,12 @@ export class NarrativeStoryChapterService {
         significance_score: significanceScore,
         confidence: chapter.confidence,
         thread_id: threadId ?? null,
+        projection_key: projectionKey,
         updated_at: new Date().toISOString(),
         metadata: {
           ...(input.metadata ?? {}),
           fingerprint,
+          projection_key: projectionKey,
           ownership: chapter.ownership,
           contributions: chapter.contributions,
           milestone_ids: chapter.milestoneIds,

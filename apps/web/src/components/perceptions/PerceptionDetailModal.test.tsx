@@ -58,11 +58,11 @@ describe('PerceptionDetailModal main chat handoff', () => {
       entityType: 'perception',
       sourceSurface: 'perceptions',
       sourceLabel: 'Perception Book',
-      autoSubmit: true,
       startNewThread: true,
     });
-    expect(handoff.detail.initialPrompt).toMatch(/not an objective fact/i);
-    expect(handoff.detail.initialPrompt).toMatch(/clarify, resolve, or retract/i);
+    // Opening a focus chat must never pre-fill or auto-send a starter prompt.
+    expect(handoff.detail.initialPrompt).toBeUndefined();
+    expect(handoff.detail.autoSubmit).toBeUndefined();
     expect(onClose).toHaveBeenCalledOnce();
   });
 

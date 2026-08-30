@@ -29,7 +29,13 @@ export type HouseholdDTO = {
   sourceMessageId?: string;
 };
 
-function isHouseholdOrg(name: string, metadata: Record<string, unknown>): boolean {
+function isHouseholdOrg(
+  name: string,
+  metadata: Record<string, unknown>,
+  groupType?: string | null,
+  type?: string | null,
+): boolean {
+  if (groupType === 'household' || type === 'household') return true;
   return (
     metadata.inference_source === 'household_residence' ||
     /household|house|home|apartment|condo|casa/i.test(name)
@@ -40,12 +46,17 @@ export class HouseholdService {
   async listHouseholds(userId: string): Promise<HouseholdDTO[]> {
     const { data: orgs } = await supabaseAdmin
       .from('organizations')
-      .select('id, name, metadata, description')
+      .select('id, name, metadata, description, group_type, type')
       .eq('user_id', userId)
-      .eq('type', 'family');
+      .or('group_type.eq.household,type.eq.family,type.eq.household');
 
     const householdOrgs = (orgs ?? []).filter((org) =>
-      isHouseholdOrg(org.name as string, (org.metadata ?? {}) as Record<string, unknown>),
+      isHouseholdOrg(
+        org.name as string,
+        (org.metadata ?? {}) as Record<string, unknown>,
+        org.group_type as string | null,
+        org.type as string | null,
+      ),
     );
     if (householdOrgs.length === 0) return [];
 
@@ -65,13 +76,15 @@ export class HouseholdService {
       const memberDtos: HouseholdMember[] = [];
       for (const m of members) {
         if (!m.character_id) continue;
-        const roleRaw = (m.role ?? 'member').toLowerCase();
+        const roleRaw = (m.role ?? 'member').toLowerCase().replace(/_/g, ' ');
         let householdRole: HouseholdRole =
           m.status === 'former' || /former/.test(roleRaw)
             ? 'former_resident'
-            : roleRaw === 'visitor'
+            : /visit|guest/.test(roleRaw)
               ? 'visitor'
-              : 'resident';
+              : /head of household|^head$|elder/.test(roleRaw)
+                ? 'head_of_household'
+                : 'resident';
 
         const parsed = parseKinshipFromName(m.character_name);
         const isHead =

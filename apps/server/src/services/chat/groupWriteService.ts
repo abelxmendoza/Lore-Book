@@ -10,6 +10,8 @@ import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { characterRegistry } from '../characterRegistry';
 import { organizationService } from '../organizationService';
+import { classifyGroup } from '../ontology/groupIntelligence';
+import { groupDetectionService } from '../groupDetectionService';
 import { stripPersonNameEpithet } from '../../utils/personNameEpithet';
 import {
   isAppSurfacePersonName,
@@ -89,6 +91,9 @@ export function parseOrganizationSiteWrite(message: string): OrganizationSiteWri
 /** Explicit hierarchy/connection edits routed through organization chat write. */
 export function parseOrganizationRelationshipWrite(message: string): OrganizationRelationshipWriteIntent | null {
   const text = message.trim();
+  if (/^(?:i|we)\s+belong\s+to\b/i.test(text) || /^(?:i(?:'m|\s+am)|we(?:'re|\s+are))\s+close\s+to\b/i.test(text)) {
+    return null;
+  }
   const names = (left: string, right: string) => {
     const fromName = cleanOrganizationName(left);
     const toName = cleanOrganizationName(right);
@@ -154,6 +159,133 @@ export function parseOrganizationRelationshipWrite(message: string): Organizatio
     const pair = names(connected[1], connected[2]);
     if (pair) return { ...pair, relationshipType: 'affiliated_with', action: 'upsert' };
   }
+  return null;
+}
+
+const CLASSIFY_TYPE_TOKEN: Record<string, string> = {
+  family: 'family',
+  household: 'household',
+  company: 'company',
+  employer: 'company',
+  workplace: 'company',
+  crew: 'crew',
+  band: 'band',
+  club: 'club',
+  community: 'community',
+  scene: 'scene',
+  team: 'team',
+  'sports team': 'sports_team',
+  'friend group': 'friend_group',
+  nonprofit: 'nonprofit',
+  institution: 'institution',
+  school: 'institution',
+  brand: 'brand',
+  vendor: 'vendor',
+  software: 'software',
+  collective: 'collective',
+  'martial arts': 'martial_arts',
+  'public entity': 'public_entity',
+};
+
+const CLASSIFY_STANCE_RELATIONSHIP: Record<string, string> = {
+  mine: 'member',
+  'close to': 'adjacent',
+  'their world': 'aware_of',
+  mentioned: 'referenced',
+};
+
+const CLASSIFY_MEMBERSHIP_TOKEN: Record<string, string> = {
+  member: 'member',
+  founder: 'founder',
+  leader: 'leader',
+  alumnus: 'alumnus',
+  fan: 'fan',
+  collaborator: 'collaborator',
+};
+
+export type OrganizationClassificationWriteIntent = {
+  name: string;
+  groupType?: string;
+  userRelationship?: string;
+  usesFocusName?: boolean;
+};
+
+function classificationName(raw: string): string {
+  return cleanOrganizationName(
+    raw
+      .replace(/\b(?:this|that|the)\s+(?:group|crew|org(?:anization)?)\b/gi, 'this')
+      .replace(/\bnot\s+(?:a\s+|an\s+)?[a-z][a-z\s]{0,24}$/i, ''),
+  );
+}
+
+export function parseOrganizationClassificationWrite(message: string): OrganizationClassificationWriteIntent | null {
+  const text = message.trim();
+  if (!text) return null;
+  if (parseOrganizationRelationshipWrite(text) || parseOrganizationSiteWrite(text)) return null;
+
+  const stance = text.match(
+    /^(?:please\s+)?(?:put|move|mark|set)\s+(.{1,80}?)\s+(?:in(?:to)?|as|under)\s+(?:the\s+)?(mine|close to|their world|mentioned)[.!?]*$/i,
+  );
+  if (stance) {
+    const name = classificationName(stance[1]);
+    const userRelationship = CLASSIFY_STANCE_RELATIONSHIP[stance[2].toLowerCase()];
+    if (name && userRelationship) return { name, userRelationship, usesFocusName: /^(this|it)$/i.test(name) };
+  }
+
+  const belong = text.match(/^(?:please\s+)?i\s+belong\s+to\s+(.{1,80}?)[.!?]*$/i);
+  if (belong) {
+    const name = classificationName(belong[1]);
+    if (name) return { name, userRelationship: 'member', usesFocusName: /^(this|it)$/i.test(name) };
+  }
+
+  const closeTo = text.match(/^(?:please\s+)?i(?:'m|\s+am)\s+close\s+to\s+(.{1,80}?)[.!?]*$/i);
+  if (closeTo) {
+    const name = classificationName(closeTo[1]);
+    if (name) return { name, userRelationship: 'adjacent', usesFocusName: /^(this|it)$/i.test(name) };
+  }
+
+  const former = text.match(
+    /^(?:please\s+)?i\s+used\s+to\s+(?:be\s+(?:in|a member of)|belong to)\s+(.{1,80}?)[.!?]*$/i,
+  );
+  if (former) {
+    const name = classificationName(former[1]);
+    if (name) return { name, userRelationship: 'former_member', usesFocusName: /^(this|it)$/i.test(name) };
+  }
+
+  const membership = text.match(
+    /^(?:please\s+)?(?:i(?:'m|\s+am)?|we(?:'re|\s+are)?)\s+(?:a\s+)?(member|founder|leader|alumnus|fan|collaborator)\s+(?:of|at|with)\s+(.{1,80}?)[.!?]*$/i,
+  );
+  if (membership) {
+    const name = classificationName(membership[2]);
+    const userRelationship = CLASSIFY_MEMBERSHIP_TOKEN[membership[1].toLowerCase()];
+    if (name && userRelationship) return { name, userRelationship, usesFocusName: /^(this|it)$/i.test(name) };
+  }
+
+  const typeNoun = Object.keys(CLASSIFY_TYPE_TOKEN).sort((a, b) => b.length - a.length).join('|');
+  const mark = text.match(
+    new RegExp(
+      `^(?:please\\s+)?(?:mark|set|make|classify)\\s+(.{1,80}?)\\s+(?:as\\s+)?(?:a\\s+|an\\s+|the\\s+)?(${typeNoun})\\b`,
+      'i',
+    ),
+  );
+  if (mark) {
+    const groupType = CLASSIFY_TYPE_TOKEN[mark[2].trim().toLowerCase()];
+    const name = classificationName(mark[1]);
+    if (name && groupType) return { name, groupType, usesFocusName: /^(this|it)$/i.test(name) };
+  }
+
+  const isType = text.match(
+    new RegExp(
+      `^(.{1,80}?)\\s+(?:is|should be)\\s+(?:a\\s+|an\\s+|the\\s+)?(${typeNoun})\\b`,
+      'i',
+    ),
+  );
+  if (isType) {
+    const groupType = CLASSIFY_TYPE_TOKEN[isType[2].trim().toLowerCase()];
+    const name = classificationName(isType[1]);
+    if (name && groupType) return { name, groupType, usesFocusName: /^(this|it)$/i.test(name) };
+  }
+
   return null;
 }
 
@@ -434,6 +566,7 @@ export async function writeOrganizationGroupFromChat(
     conversationHistory?: Array<{ role: string; content: string }>;
     threadTitle?: string | null;
     focusCharacterName?: string | null;
+    focusOrganizationName?: string | null;
   },
 ): Promise<GroupWriteResult> {
   const { getSuggestionWriteContext, withSuggestionWriteContext } = await import(
@@ -470,6 +603,58 @@ export async function writeOrganizationGroupFromChat(
       renamed: false,
       members: [],
       summary: `Linked **${location.location_name}** as a location of **${org.name}**.`,
+    };
+  }
+
+  const classificationIntent = parseOrganizationClassificationWrite(message);
+  if (classificationIntent) {
+    const pending = await readPendingGroup(userId, threadId);
+    const lookupName = classificationIntent.usesFocusName
+      ? (pending?.name || options?.focusOrganizationName || classificationIntent.name)
+      : classificationIntent.name;
+    if (classificationIntent.usesFocusName && /^(this|it)$/i.test(lookupName)) {
+      throw new Error('Say which group to classify, or open it in Groups first.');
+    }
+    const org = await organizationService.findByName(userId, lookupName);
+    if (!org) {
+      throw new Error(`I couldn't find a group named "${lookupName}" to classify.`);
+    }
+    const metadata = {
+      ...(org.metadata ?? {}),
+      ...(classificationIntent.groupType
+        ? { group_type_source: 'user_confirmed', group_type_detected_at: new Date().toISOString() }
+        : {}),
+      ...(classificationIntent.userRelationship
+        ? { user_relationship_source: 'user_confirmed' }
+        : {}),
+    };
+    const updated = await organizationService.updateOrganization(userId, org.id, {
+      ...(classificationIntent.groupType ? { group_type: classificationIntent.groupType as never } : {}),
+      ...(classificationIntent.userRelationship
+        ? { user_relationship: classificationIntent.userRelationship as never }
+        : {}),
+      metadata,
+    });
+    const bits: string[] = [];
+    if (classificationIntent.groupType) bits.push(`type **${classificationIntent.groupType.replace(/_/g, ' ')}**`);
+    if (classificationIntent.userRelationship) {
+      const stanceTab =
+        classificationIntent.userRelationship === 'aware_of'
+          ? 'Their world'
+          : classificationIntent.userRelationship === 'referenced' || classificationIntent.userRelationship === 'fan'
+            ? 'Mentioned'
+            : classificationIntent.userRelationship === 'adjacent' || classificationIntent.userRelationship === 'collaborator'
+              ? 'Close to'
+              : 'Mine';
+      bits.push(`your relationship **${classificationIntent.userRelationship.replace(/_/g, ' ')}** (${stanceTab})`);
+    }
+    return {
+      organizationId: updated.id,
+      organizationName: updated.name,
+      created: false,
+      renamed: false,
+      members: [],
+      summary: `Updated **${updated.name}**: ${bits.join(' and ')}. That correction is locked so auto-detect won't overwrite it.`,
     };
   }
 
@@ -620,12 +805,20 @@ export async function writeOrganizationGroupFromChat(
       organizationId = existing.id;
       organizationName = existing.name;
     } else {
+      const classification = classifyGroup(requestedOrganizationName, message);
+      const groupType = classification.suggestedGroupType !== 'other' ? classification.suggestedGroupType : 'crew';
+      const userRelationship = groupDetectionService.suggestUserRelationship(
+        message,
+        false,
+        requestedOrganizationName,
+        groupType,
+      );
       const { applySuggestionCandidate } = await import('../lorebook/suggestions/applySuggestionCandidate');
       const write = await applySuggestionCandidate({
         userId,
         domain: 'organizations',
         name: requestedOrganizationName,
-        incomingType: 'crew',
+        incomingType: groupType,
         evidence: message,
         extractor: 'group_write_chat',
         source: 'chat_group_write',
@@ -633,10 +826,15 @@ export async function writeOrganizationGroupFromChat(
         onCreate: async () => {
           const org = await organizationService.createOrganization(userId, {
             name: requestedOrganizationName,
-            type: 'club',
-            group_type: 'crew',
+            type: groupType === 'company' ? 'company' : 'club',
+            group_type: groupType,
+            user_relationship: userRelationship,
             description: `Created from chat: ${message.slice(0, 180)}`,
-            metadata: { created_via: 'organization_group_write', source_thread_id: threadId },
+            metadata: {
+              created_via: 'organization_group_write',
+              source_thread_id: threadId,
+              group_type_source: classification.suggestedGroupType !== 'other' ? 'auto' : undefined,
+            },
           });
           organizationId = org.id;
           organizationName = org.name;

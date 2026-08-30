@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 
-import { Router } from 'express';
+import { Router, type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
 
 import { logger } from '../logger';
@@ -12,6 +12,15 @@ import {
   chatGPTLoreMigrationService,
   type ChatGPTLoreMigrationStats,
 } from '../services/chatgptImport/chatGPTLoreMigrationService';
+import {
+  categoryForMetadata,
+  DOCUMENT_CATEGORIES,
+} from '../services/documents/documentCategories';
+import {
+  classifyDocument,
+  hasManualDocumentCategory,
+} from '../services/documents/documentClassification';
+import { subtypeForMetadata } from '../services/documents/documentSubtypes';
 import { documentService } from '../services/documentService';
 import { resolveFileProvenance } from '../services/ingestion/fileProvenanceService';
 import { unifiedFileIngestionService } from '../services/ingestion/unifiedFileIngestionService';
@@ -19,30 +28,67 @@ import { userFileRegistry } from '../services/ingestion/userFileRegistry';
 import { buildResumeChatFeedback } from '../services/profileClaims/resumeFeedbackService';
 import { resumeParsingService } from '../services/profileClaims/resumeParsingService';
 import type { ParsedResume } from '../services/profileClaims/resumeStructuredTypes';
+import { documentFactQueryService } from '../services/query/documentFactQueryService';
 import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
+
+const IMAGE_EXTENSION_RE = /\.(jpe?g|png|webp|gif|heic|heif)$/i;
+
+function isImageUpload(file: Pick<Express.Multer.File, 'mimetype' | 'originalname'>): boolean {
+  return file.mimetype.startsWith('image/') || IMAGE_EXTENSION_RE.test(file.originalname);
+}
+
+function imageMimeType(file: Pick<Express.Multer.File, 'mimetype' | 'originalname'>): string {
+  if (file.mimetype.startsWith('image/')) return file.mimetype;
+  const extension = file.originalname.split('.').pop()?.toLowerCase();
+  if (extension === 'png') return 'image/png';
+  if (extension === 'webp') return 'image/webp';
+  if (extension === 'gif') return 'image/gif';
+  if (extension === 'heic') return 'image/heic';
+  if (extension === 'heif') return 'image/heif';
+  return 'image/jpeg';
+}
 
 const upload = createMemoryUpload({
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter: (_req, file, cb) => {
-    // Accept text files, markdown, and common document formats
+    // Accept text documents plus safe raster image formats. Images uploaded
+    // here are stored as private library files; they are not auto-analyzed as
+    // Photos-book memories.
     const allowedTypes = [
       'text/plain',
       'text/markdown',
       'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/gif',
+      'image/heic',
+      'image/heif',
     ];
-    if (allowedTypes.includes(file.mimetype) || file.originalname.match(/\.(txt|md|pdf|doc|docx)$/i)) {
+    if (allowedTypes.includes(file.mimetype) || file.originalname.match(/\.(txt|md|pdf|docx|jpe?g|png|webp|gif|heic|heif)$/i)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only .txt, .md, .pdf, .doc, .docx files are allowed.'));
+      cb(new Error('Invalid file type. Choose a PDF, DOCX, text file, or photo.'));
     }
   }
 });
+
+const uploadDocument = (req: Request, res: Response, next: NextFunction) => {
+  upload.single('file')(req, res, (error: unknown) => {
+    if (error) {
+      return res.status(400).json({
+        error: 'Unsupported document upload',
+        message: error instanceof Error ? error.message : 'Choose a PDF, DOCX, text file, or photo.',
+      });
+    }
+    next();
+  });
+};
 
 const chatGPTExportUpload = createMemoryUpload({
   limits: {
@@ -73,6 +119,28 @@ const chatGPTProcessSchema = z.object({
   titleQuery: z.string().trim().max(120).optional(),
   includeSensitive: z.boolean().default(false),
   batchSize: z.number().int().min(1).max(25).default(10),
+});
+
+const documentLibraryQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  status: z.enum(['pending', 'processing', 'completed', 'failed']).optional(),
+  kind: z.enum(['document', 'resume', 'photo', 'voice', 'chat_import']).optional(),
+  category: z.enum(DOCUMENT_CATEGORIES).optional(),
+});
+
+const documentCategorySchema = z.object({
+  category: z.enum(DOCUMENT_CATEGORIES),
+});
+
+const documentUploadCategorySchema = z.union([z.literal('auto'), z.enum(DOCUMENT_CATEGORIES)]);
+
+const documentFactQuerySchema = z.object({
+  query: z.string().trim().min(1).max(500),
+  documentId: z.string().uuid().optional(),
+  includePending: z.boolean().optional().default(false),
+  includeEvidence: z.boolean().optional().default(true),
+  limit: z.number().int().min(1).max(100).optional().default(50),
 });
 
 function importConfigHash(value: unknown): string {
@@ -260,19 +328,108 @@ router.delete(
   }),
 );
 
-router.post('/upload', requireAuth, upload.single('file'), async (req: AuthenticatedRequest, res) => {
+router.post('/upload', requireAuth, uploadDocument, async (req: AuthenticatedRequest, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
     const userId = req.user!.id;
+    const caption = typeof req.body?.caption === 'string' ? req.body.caption.trim() : '';
+    const isImage = isImageUpload(req.file);
+    const parsedCategory = documentUploadCategorySchema.safeParse(req.body?.category ?? 'auto');
+    if (!parsedCategory.success) {
+      return res.status(400).json({
+        error: 'Invalid document category',
+        details: parsedCategory.error.flatten(),
+      });
+    }
+
+    const automatic = parsedCategory.data === 'auto';
+
+    if (isImage) {
+      let classification = classifyDocument({
+        filename: req.file.originalname,
+        mimeType: imageMimeType(req.file),
+        ingestKind: 'photo',
+      });
+      let documentSubtype: string | undefined;
+      if (automatic) {
+        try {
+          const { photoAnalysisService } = await import('../services/photoAnalysisService');
+          const analysis = await photoAnalysisService.analyzePhoto(
+            userId,
+            req.file.buffer,
+            req.file.originalname,
+            {},
+          );
+          documentSubtype = analysis.documentSubtype;
+          classification = classifyDocument({
+            filename: req.file.originalname,
+            mimeType: imageMimeType(req.file),
+            ingestKind: 'photo',
+            extractedText: analysis.extractedText,
+            metadata: documentSubtype ? { document_subtype: documentSubtype } : undefined,
+          });
+        } catch (error) {
+          logger.warn({ error, userId }, 'Image document auto-classification fell back to filename');
+        }
+      }
+      const category = automatic ? classification.category : parsedCategory.data;
+      const source = await userFileRegistry.registerOrReuse(userId, req.file.buffer, {
+        filename: req.file.originalname,
+        mimeType: imageMimeType(req.file),
+        ingestKind: 'photo',
+        storeBinary: true,
+        documentCategory: category,
+      });
+      if (!source.storage_url) {
+        await userFileRegistry.setStatus(
+          source.id,
+          'failed',
+          'The private photo file could not be stored.',
+        );
+        return res.status(503).json({
+          error: 'Photo storage unavailable',
+          message: 'The photo was not saved. Please try again.',
+          userFileId: source.id,
+        });
+      }
+      await userFileRegistry.updateMetadata(source.id, {
+        document_library_upload: true,
+        media_kind: 'image',
+        ...(documentSubtype ? { document_subtype: documentSubtype } : {}),
+      });
+      if (automatic) {
+        await userFileRegistry.setAutoDocumentCategoryForUser(userId, source.id, category, classification);
+      } else {
+        await userFileRegistry.setDocumentCategoryForUser(userId, source.id, category);
+      }
+      await userFileRegistry.setStatus(source.id, 'completed');
+
+      return res.json({
+        success: true,
+        userFileId: source.id,
+        kind: 'photo',
+        message: `Photo saved to ${category === 'photos_images' ? 'Photos & images' : 'the selected folder'}.`,
+        derivedCounts: source.derived_counts,
+      });
+    }
+
     const result = await unifiedFileIngestionService.ingest({
       userId,
       buffer: req.file.buffer,
       filename: req.file.originalname,
       mimeType: req.file.mimetype,
       kind: 'document',
+      caption: caption || undefined,
+      documentCategory: automatic
+        ? classifyDocument({
+            filename: req.file.originalname,
+            mimeType: req.file.mimetype,
+            ingestKind: 'document',
+          }).category
+        : parsedCategory.data,
     });
 
     if (result.processingStatus === 'failed') {
@@ -290,6 +447,22 @@ router.post('/upload', requireAuth, upload.single('file'), async (req: Authentic
     // dedicated /api/resume/upload endpoint returns, so the UI doesn't need
     // to know or care which upload surface the user picked.
     const structured = result.structured as ParsedResume | undefined;
+    if (automatic) {
+      const classification = classifyDocument({
+        filename: req.file.originalname,
+        mimeType: req.file.mimetype,
+        ingestKind: structured ? 'resume' : 'document',
+        linkedResume: Boolean(structured),
+      });
+      await userFileRegistry.setAutoDocumentCategoryForUser(
+        userId,
+        result.userFileId,
+        classification.category,
+        classification,
+      );
+    } else {
+      await userFileRegistry.setDocumentCategoryForUser(userId, result.userFileId, parsedCategory.data);
+    }
     const feedback = structured
       ? buildResumeChatFeedback({
           parsed: structured,
@@ -360,11 +533,20 @@ router.get(
   '/files',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const parsedQuery = documentLibraryQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+      return res.status(400).json({
+        error: 'Invalid document library query',
+        details: parsedQuery.error.flatten(),
+      });
+    }
     const userId = req.user!.id;
-    const [files, resumes] = await Promise.all([
-      userFileRegistry.listForUser(userId),
-      resumeParsingService.getResumeDocuments(userId),
-    ]);
+    const filePage = await userFileRegistry.listPageForUser(userId, parsedQuery.data);
+    const files = filePage.files;
+    const resumes = await resumeParsingService.getResumeDocumentsForSourceFiles(
+      userId,
+      files.map((file) => file.id),
+    );
 
     const resumeBySource = new Map<string, (typeof resumes)[0]>();
     for (const r of resumes) {
@@ -380,9 +562,14 @@ router.get(
           filename: f.filename,
           mimeType: f.mime_type,
           kind: f.ingest_kind,
+          category: categoryForMetadata(f.metadata),
+          documentSubtype: subtypeForMetadata(f.metadata),
           uploadedAt: f.uploaded_at,
           processingStatus: f.processing_status,
-          storageUrl: await userFileRegistry.createSignedDownloadUrl(f),
+          // Signed URLs are minted only for the detail view. A library list
+          // should remain cheap and should not expose expiring URLs for every
+          // row on every refresh.
+          storageUrl: null,
           derivedCounts: f.derived_counts,
           errorMessage: f.error_message,
           resumeDocumentId: resume?.id ?? null,
@@ -398,8 +585,124 @@ router.get(
       })
     );
 
-    res.json({ success: true, files: library });
+    res.json({
+      success: true,
+      files: library,
+      pagination: {
+        page: filePage.page,
+        pageSize: filePage.pageSize,
+        total: filePage.total,
+        hasMore: filePage.hasMore,
+      },
+    });
   })
+);
+
+/** POST /api/documents/files/auto-sort — classify unfiled legacy uploads without overriding user choices */
+router.post(
+  '/files/auto-sort',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const files = await userFileRegistry.listAllForUser(userId);
+    const resumes = await resumeParsingService.getResumeDocumentsForSourceFiles(
+      userId,
+      files.map((file) => file.id),
+    );
+    const resumeFileIds = new Set(
+      resumes
+        .map((resume) => (resume.parsed_data as { source_file_id?: string })?.source_file_id)
+        .filter((id): id is string => Boolean(id)),
+    );
+
+    let moved = 0;
+    for (const file of files) {
+      if (hasManualDocumentCategory(file.metadata)) continue;
+      const currentCategory = categoryForMetadata(file.metadata);
+      const linkedResume = resumeFileIds.has(file.id) || file.ingest_kind === 'resume';
+      // Preserve established folders from before source tracking was added.
+      // Resume linkage is authoritative and repairs the legacy issue reported
+      // by users whose parsed resumes only appeared under All Documents.
+      if (currentCategory !== 'unfiled' && !linkedResume) continue;
+      const classification = classifyDocument({
+        filename: file.filename,
+        mimeType: file.mime_type,
+        ingestKind: file.ingest_kind,
+        metadata: file.metadata,
+        linkedResume,
+      });
+      if (classification.confidence <= 0 || classification.category === currentCategory) continue;
+      await userFileRegistry.setAutoDocumentCategoryForUser(
+        userId,
+        file.id,
+        classification.category,
+        classification,
+      );
+      moved += 1;
+    }
+
+    res.json({ success: true, scanned: files.length, moved });
+  }),
+);
+
+/** GET /api/documents/files/categories — folder counts for the authenticated library */
+router.get(
+  '/files/categories',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const files = await userFileRegistry.listAllForUser(req.user!.id);
+    const counts = Object.fromEntries(DOCUMENT_CATEGORIES.map((category) => [category, 0]));
+    for (const file of files) {
+      const category = categoryForMetadata(file.metadata);
+      counts[category] += 1;
+    }
+    res.json({ success: true, total: files.length, counts });
+  }),
+);
+
+/** PATCH /api/documents/files/:fileId/category — move a file between library folders */
+router.patch(
+  '/files/:fileId/category',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const parsed = documentCategorySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: 'Invalid document category',
+        details: parsed.error.flatten(),
+      });
+    }
+    const file = await userFileRegistry.setDocumentCategoryForUser(
+      req.user!.id,
+      String(req.params.fileId),
+      parsed.data.category,
+    );
+    if (!file) return res.status(404).json({ error: 'File not found' });
+    res.json({
+      success: true,
+      file: {
+        id: file.id,
+        category: categoryForMetadata(file.metadata),
+      },
+    });
+  }),
+);
+
+/** POST /api/documents/query — deterministic, user-scoped document facts */
+router.post(
+  '/query',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const parsed = documentFactQuerySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: 'Invalid document fact query',
+        details: parsed.error.flatten(),
+      });
+    }
+    const result = await documentFactQueryService.query(req.user!.id, parsed.data);
+    res.json({ success: true, result });
+  }),
 );
 
 /** GET /api/documents/files/:fileId/provenance */
@@ -434,6 +737,14 @@ router.get(
       file: {
         ...file,
         storage_url: signedDownloadUrl,
+        mimeType: file.mime_type,
+        kind: file.ingest_kind,
+        category: categoryForMetadata(file.metadata),
+        documentSubtype: subtypeForMetadata(file.metadata),
+        processingStatus: file.processing_status,
+        storageUrl: signedDownloadUrl,
+        uploadedAt: file.uploaded_at,
+        derivedCounts: file.derived_counts,
       },
       resume: resume
         ? {

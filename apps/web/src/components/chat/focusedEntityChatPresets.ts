@@ -2,6 +2,7 @@ import {
   Briefcase,
   Building2,
   MapPin,
+  TreePine,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -9,7 +10,7 @@ import {
 import { CHAT_FOCUS_SOURCE_LABELS, type ChatFocusEntityType, type ChatFocusSourceSurface } from '../../types/chatFocus';
 import type { FocusedEntityLauncherCopy, FocusedEntityLauncherTheme } from './FocusedEntityChatLauncher';
 
-export type FocusedEntityBookKind = 'characters' | 'organizations' | 'locations' | 'projects';
+export type FocusedEntityBookKind = 'characters' | 'organizations' | 'locations' | 'projects' | 'family';
 
 export type IntroducePromptMeta = {
   rolePhrase?: string | null;
@@ -61,6 +62,19 @@ const locationsTheme: FocusedEntityLauncherTheme = {
   collapsedBg: 'bg-gradient-to-r from-emerald-950/30 via-teal-950/20 to-black/30',
   expandedBorder: 'border-emerald-400/40',
   expandedBg: 'bg-gradient-to-br from-emerald-950/35 via-teal-950/25 to-black/40',
+  iconWrap: 'border-emerald-400/25 bg-emerald-500/10',
+  iconClass: 'text-emerald-300',
+  ctaClass: 'bg-emerald-600 hover:bg-emerald-500',
+  inputClass: 'border-emerald-500/25 bg-black/40 text-white placeholder:text-white/35',
+  matchHover: 'hover:bg-emerald-500/10 hover:text-white',
+  matchMeta: 'text-emerald-200/65',
+};
+
+const familyTheme: FocusedEntityLauncherTheme = {
+  collapsedBorder: 'border-emerald-500/30',
+  collapsedBg: 'bg-gradient-to-r from-emerald-950/30 via-green-950/20 to-black/30',
+  expandedBorder: 'border-emerald-400/40',
+  expandedBg: 'bg-gradient-to-br from-emerald-950/35 via-green-950/25 to-black/40',
   iconWrap: 'border-emerald-400/25 bg-emerald-500/10',
   iconClass: 'text-emerald-300',
   ctaClass: 'bg-emerald-600 hover:bg-emerald-500',
@@ -214,6 +228,42 @@ export const FOCUSED_ENTITY_CHAT_PRESETS: Record<FocusedEntityBookKind, FocusedE
       `I want to tell you about ${name}, a project I’m working on. ` +
       `Its name is ${name} — help me capture what it is, what I’m trying to do, ` +
       `and where things stand right now.`,
+  },
+  family: {
+    kind: 'family',
+    entityType: 'character',
+    sourceSurface: 'family',
+    sourceLabel: CHAT_FOCUS_SOURCE_LABELS.family,
+    knowledgeScope: 'how this person is related to you, that they are family, and what matters about them right now',
+    icon: TreePine,
+    theme: familyTheme,
+    pendingIdPrefix: 'pending:character',
+    copy: {
+      collapsedTitle: 'A relative not in your tree yet?',
+      collapsedBody:
+        'Start a focused chat. Choose someone already in Character Book or introduce a new relative — LoreBook will create their Character Book entry, mark them as family, and grow their story as you talk.',
+      ctaLabel: 'Add a family member in chat',
+      expandedTitle: 'Add a family member in chat',
+      expandedBody: 'Search Character Book first, or enter a new name to introduce a relative.',
+      namePlaceholder: 'Their name',
+      nameAriaLabel: 'Family member name',
+      matchListAriaLabel: 'Character Book matches',
+      inBookLabel: 'In Character Book',
+      footerNote: 'Tell me how they’re related — parent, sibling, cousin, whatever fits. You decide what becomes part of their story.',
+      introduceVerb: 'Introduce',
+    },
+    existingPrompt: (name) =>
+      `I want to talk about ${name}. Help me capture how they’re related to me, confirm they’re family, and update anything that’s changed about them or us. Please do not invent details I have not shared.`,
+    introducePrompt: (name, meta) => {
+      const roleBit = meta?.rolePhrase ? ` Their role is ${meta.rolePhrase}.` : '';
+      return (
+        `I want to tell you about ${name}, someone in my family who isn’t in LoreBook yet. ` +
+        `Their name is ${name}.${roleBit} ` +
+        `I’ll tell you how they’re related to me — parent, sibling, cousin, in-law, whatever fits — please create their Character Book entry, ` +
+        `mark them as family, and capture the relationship exactly as I describe it. ` +
+        `Please do not invent details I have not shared.`
+      );
+    },
   },
 };
 

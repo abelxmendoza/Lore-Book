@@ -192,7 +192,7 @@ describe('buildCalendarMonthFromStitched', () => {
     expect(matches[0]?.occurredEnd).toBeNull();
   });
 
-  it('preserves canonicalEventType and tags for shared filters', () => {
+  it('preserves canonical event type, tags, and related timeline track for shared UI', () => {
     const month = buildCalendarMonthFromStitched({
       year: 2026,
       month: 8,
@@ -202,6 +202,7 @@ describe('buildCalendarMonthFromStitched', () => {
         stitched({
           id: 'event:career',
           tags: ['career'],
+          timelineTrack: 'career',
           canonicalEventType: 'career_milestone',
           occurredAt: '2026-08-12T18:00:00.000Z',
         }),
@@ -210,5 +211,6 @@ describe('buildCalendarMonthFromStitched', () => {
     const item = month.days.flatMap((day) => day.items).find((row) => row.id === 'event:career');
     expect(item?.tags).toEqual(['career']);
     expect(item?.canonicalEventType).toBe('career_milestone');
+    expect(item?.timelineTrack).toBe('career');
   });
 });

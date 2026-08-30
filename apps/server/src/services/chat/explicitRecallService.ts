@@ -176,6 +176,10 @@ function formatFoundationForChat(routed: RoutedRecall): string {
     return block;
   }
 
+  if (routed.intent === 'work' || routed.intent === 'education' || routed.intent === 'work_and_education') {
+    return block;
+  }
+
   if (routed.intent === 'biography') {
     const cleaned = block.replace(/^## BIOGRAPHY\s*/i, '').trim();
     return cleaned ? `What I know about you:\n\n${cleaned}` : '';

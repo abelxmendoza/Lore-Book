@@ -7,7 +7,6 @@ vi.mock('./openChatWithFocus', () => ({
 import { openChatWithFocus } from './openChatWithFocus';
 import {
   DATING_ROMANCE_KNOWLEDGE_SCOPE,
-  datingRomanceExistingPrompt,
   openDatingRomanceCharacterChat,
 } from './datingRomanceChatFocus';
 
@@ -16,7 +15,7 @@ describe('datingRomanceChatFocus', () => {
     vi.mocked(openChatWithFocus).mockClear();
   });
 
-  it('opens chat with Dating & Romance focus for a book character', () => {
+  it('opens chat with Dating & Romance focus for a book character, with an empty composer', () => {
     openDatingRomanceCharacterChat({
       entityId: 'char-jamie',
       entityName: 'Jamie',
@@ -33,10 +32,12 @@ describe('datingRomanceChatFocus', () => {
         sourceSurface: 'love',
         sourceLabel: 'Dating & Romance',
         knowledgeScope: DATING_ROMANCE_KNOWLEDGE_SCOPE,
-        initialPrompt: datingRomanceExistingPrompt('Jamie'),
         baseline: { affectionScore: 40, healthScore: 50 },
       }),
     );
+    const call = vi.mocked(openChatWithFocus).mock.calls[0][0];
+    expect(call.initialPrompt).toBeUndefined();
+    expect(call.autoSubmit).toBeUndefined();
   });
 
   it('keeps a caller-supplied prompt', () => {

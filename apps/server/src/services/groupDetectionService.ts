@@ -458,7 +458,12 @@ export class GroupDetectionService {
             membership_model: isPublic ? 'none' : this.suggestMembershipModel(groupType),
             user_relationship: isPublic
               ? this.suggestPublicEntityRelationship(groupSourceText)
-              : this.suggestUserRelationship(groupSourceText, scopedNames.length > 0),
+              : this.suggestUserRelationship(
+                groupSourceText,
+                scopedNames.length > 0,
+                groupName,
+                isPublic ? 'public_entity' : groupType,
+              ),
             is_public_entity: isPublic,
             metadata: familyAliases.length > 0 ? { aliases: familyAliases } : {},
           });
@@ -538,7 +543,13 @@ export class GroupDetectionService {
     const m = message.toLowerCase();
     const n = (groupName ?? '').toLowerCase();
 
-    if (/\bfamily\b/i.test(n) || /\b(family|mom|dad|sister|brother|cousin|aunt|uncle|grandma|grandpa|relatives|abuela|abuelo|tía|tío|tia|tio)\b/i.test(m)) {
+    if (/\bhousehold\b/i.test(n) || /'s\s+(house|home|casa)\b/i.test(n) || /\bfamily\s+home\b/i.test(n)) {
+      return 'household';
+    }
+    if (
+      (/\bfamily\b/i.test(n) && !/\bfamily\s+home\b/i.test(n)) ||
+      /\b(family|mom|dad|sister|brother|cousin|aunt|uncle|grandma|grandpa|relatives|abuela|abuelo|tía|tío|tia|tio)\b/i.test(m)
+    ) {
       return 'family';
     }
     if (COMMUNITY_SIGNALS.test(m) || COMMUNITY_SIGNALS.test(n)) return 'community';
@@ -697,7 +708,7 @@ export class GroupDetectionService {
         groupType: 'company',
         lexicalGroupType: 'organization',
         membershipModel: 'strict',
-        userRelationship: this.suggestUserRelationship(orgLine, true),
+        userRelationship: this.suggestUserRelationship(orgLine, true, `${org} Organization`, 'company'),
         confidence: 0.88,
         anchorName: org,
         rulesFired: ['work_organization'],
@@ -898,19 +909,35 @@ export class GroupDetectionService {
 
   // ── User relationship inference ──────────────────────────────────────────
 
-  suggestUserRelationship(message: string, userInvolved: boolean): UserRelationship {
-    if (!userInvolved) return 'aware_of';
-
+  suggestUserRelationship(
+    message: string,
+    hasNamedMembers: boolean,
+    groupName?: string,
+    groupType?: GroupType,
+  ): UserRelationship {
     const m = message.toLowerCase();
+    const n = (groupName ?? '').toLowerCase();
+    const firstPerson = /\b(i|i'm|i’ve|we|we're|we've|my|our)\b/i.test(m) || /\b(my|our)\b/i.test(n);
 
-    if (/\b(founded|started|created|built|launched)\b/.test(m)) return 'founder';
-    if (/\b(lead|run|manage|organize|chair|head)\b/.test(m)) return 'leader';
-    if (/\b(used to|was in|former|ex-member|left|quit|moved on)\b/.test(m)) return 'former_member';
-    if (/\b(collaborate|work with|partner|guest|session)\b/.test(m)) return 'collaborator';
-    if (/\b(always there|hang around|adjacent|peripheral|associate)\b/.test(m)) return 'adjacent';
-    if (/\b(graduated|alumni|alumna|went to)\b/.test(m)) return 'alumnus';
+    if (firstPerson) {
+      if (/\b(founded|started|created|built|launched)\b/.test(m)) return 'founder';
+      if (/\b(lead|run|manage|organize|chair|head)\b/.test(m)) return 'leader';
+      if (/\b(used to|was in|former|ex-member|left|quit|moved on)\b/.test(m)) return 'former_member';
+      if (/\b(collaborate|work with|partner|guest|session)\b/.test(m)) return 'collaborator';
+      if (/\b(always there|hang around|adjacent|peripheral|associate)\b/.test(m)) return 'adjacent';
+      if (/\b(graduated|alumni|alumna|went to)\b/.test(m)) return 'alumnus';
+      return 'member';
+    }
 
-    return 'member';
+    if (
+      (groupType === 'family' || groupType === 'household') &&
+      /\b(mom|dad|mother|father|sister|brother|cousin|aunt|uncle|grandma|grandpa|abuela|abuelo|tía|tío|tia|tio)\b/i.test(n)
+    ) {
+      return 'member';
+    }
+
+    if (hasNamedMembers) return 'aware_of';
+    return 'referenced';
   }
 
   suggestPublicEntityRelationship(message: string): UserRelationship {

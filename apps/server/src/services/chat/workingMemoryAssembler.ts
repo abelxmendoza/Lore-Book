@@ -1,4 +1,5 @@
 import { normalizeNameKey } from '../../utils/nameNormalization';
+import { isReviewPending } from '../reviewableRecord';
 import { getCurrentCharacterRelationship } from '../characters/characterRelationshipAuthorityService';
 import type { TemporalWindow } from '../../utils/temporalAnchorResolver';
 import { stitchedTimelineService } from '../chronologyV2/stitchedTimelineService';
@@ -334,7 +335,8 @@ async function fetchProjectsForTextual(scope: WmaRequestScope, userId: string): 
     () =>
       supabaseAdmin
         .from('projects')
-        .select('id, name, title, description, status, updated_at, metadata')
+        // projects has no `title` column (only `name`) — selecting it errors the whole query.
+        .select('id, name, description, status, updated_at, metadata')
         .eq('user_id', userId)
         .limit(6)
   );
@@ -708,7 +710,7 @@ async function resolveTargetEntities(
       () =>
         supabaseAdmin
           .from('projects')
-          .select('id, name, title, status, metadata')
+          .select('id, name, status, metadata')
           .eq('user_id', userId)
           .ilike('name', target)
     ),
@@ -1084,6 +1086,7 @@ async function loadPersonCandidates(
     ((memories ?? []) as Array<{ journal_entry_id?: string }>).map((memory) => memory.journal_entry_id ?? ''),
   );
   for (const memory of (memories ?? []) as any[]) {
+    if (isReviewPending(memory.metadata)) continue;
     const memText = String(memory.summary ?? `Linked memory ${memory.journal_entry_id}`);
     const namesTarget = !memoryTargetKey || normalizeNameKey(memText).includes(memoryTargetKey);
     const clocks = memoryClocks.get(memory.journal_entry_id);
@@ -1102,6 +1105,7 @@ async function loadPersonCandidates(
       relationshipDistance: 1,
       reasons: [namesTarget ? 'names the target' : 'linked to target character'],
       metadata: {
+        ...(memory.metadata ?? {}),
         journal_entry_id: memory.journal_entry_id,
         occurredAt: clocks?.occurredAt ?? null,
         mentionedAt: clocks?.mentionedAt ?? null,
@@ -1139,6 +1143,7 @@ async function loadPersonCandidates(
   });
 
   for (const fact of (facts ?? []) as any[]) {
+    if (isReviewPending(fact.metadata)) continue;
     out.push({
       id: `fact:${fact.id}`,
       type: 'timeline',
@@ -1152,6 +1157,7 @@ async function loadPersonCandidates(
       significance: 0.6,
       relationshipDistance: 1,
       reasons: ['verified active fact for target'],
+      metadata: fact.metadata ?? {},
     });
   }
 
@@ -1186,20 +1192,23 @@ async function loadEntityTimelineCandidates(
         .limit(6)
   );
 
-  return ((events ?? []) as any[]).map((event) => ({
-    id: `entity_event:${event.id}`,
-    type: 'event',
-    title: event.event_title ?? event.event_type ?? `Event involving ${target}`,
-    content: String(event.event_summary ?? event.event_title ?? ''),
-    source: 'entity_timeline_events',
-    date: event.event_date,
-    confidence: Number(event.confidence ?? 0.7),
-    relevance: 0.9,
-    importance: 0.7,
-    significance: Number((event.metadata as Record<string, unknown>)?.significance_score ?? 60) / 100,
-    relationshipDistance: 1,
-    reasons: [`timeline event for target ${entityType}`],
-  }));
+  return ((events ?? []) as any[])
+    .filter((event) => !isReviewPending(event.metadata))
+    .map((event) => ({
+      id: `entity_event:${event.id}`,
+      type: 'event',
+      title: event.event_title ?? event.event_type ?? `Event involving ${target}`,
+      content: String(event.event_summary ?? event.event_title ?? ''),
+      source: 'entity_timeline_events',
+      date: event.event_date,
+      confidence: Number(event.confidence ?? 0.7),
+      relevance: 0.9,
+      importance: 0.7,
+      significance: Number((event.metadata as Record<string, unknown>)?.significance_score ?? 60) / 100,
+      relationshipDistance: 1,
+      reasons: [`timeline event for target ${entityType}`],
+      metadata: event.metadata ?? {},
+    }));
 }
 
 type PersistedEpisodeRow = {
@@ -1525,6 +1534,7 @@ async function loadTextualCandidates(
   const out: Candidate[] = [];
 
   for (const entry of (entries ?? []) as any[]) {
+    if (isReviewPending(entry.metadata)) continue;
     const summaryText = String(entry.summary ?? '');
     const bodyText = String(entry.content ?? '');
     // Match the target against the full entry (summary + body). Auto-generated
@@ -1711,6 +1721,7 @@ async function loadSkillCandidates(
   for (const row of (rows ?? []) as any[]) {
     const name = String(row.skill_name ?? '');
     if (!name) continue;
+    if (isReviewPending(row.metadata)) continue;
     const matches = targetKey ? normalizeNameKey(name).includes(targetKey) || targetKey.includes(normalizeNameKey(name)) : false;
     if (intent !== 'SKILL_QUERY' && intent !== 'CAREER_QUERY' && intent !== 'LIFE_REVIEW' && intent !== 'IDENTITY_QUERY' && !matches) continue;
     const level = Number(row.current_level ?? 1);
@@ -1733,7 +1744,14 @@ async function loadSkillCandidates(
       significance: clamp01(0.4 + practice / 40),
       relationshipDistance: 0.5,
       reasons: matches ? ['skill matches target'] : practice >= 5 ? ['frequently practiced skill'] : ['active skill'],
-      metadata: { level, total_xp: row.total_xp, practice_count: practice, category, is_professional: isProfessional },
+      metadata: {
+        ...(row.metadata ?? {}),
+        level,
+        total_xp: row.total_xp,
+        practice_count: practice,
+        category,
+        is_professional: isProfessional,
+      },
     });
   }
   return out;
@@ -1915,7 +1933,7 @@ async function loadCommunityCandidates(
 
     const out: Candidate[] = [];
     const org = organization as any;
-    if (org) {
+    if (org && !isReviewPending(org.metadata)) {
       const name = String(org.name ?? 'Organization');
       const orgKind = org.group_type ?? org.type;
       out.push({
@@ -1931,7 +1949,7 @@ async function loadCommunityCandidates(
         significance: 0.65,
         relationshipDistance: 0.4,
         reasons: ['focused organization'],
-        metadata: { entityId: org.id },
+        metadata: { ...(org.metadata ?? {}), entityId: org.id },
       });
     }
     const activeMembers = members.filter((m) => m.status === 'active');
@@ -1962,11 +1980,15 @@ async function loadCommunityCandidates(
       'social communities for user',
       `social_communities:${userId}`,
       () =>
+        // social_communities has no members/cohesion/size columns — those
+        // never made it past the community-detection write path (a separate,
+        // pre-existing bug in socialStorage.ts). Read what actually exists;
+        // fall back to metadata in case a caller ever stashed them there.
         supabaseAdmin
           .from('social_communities')
-          .select('id, theme, members, cohesion, size, metadata, updated_at')
+          .select('id, theme, metadata, updated_at')
           .eq('user_id', userId)
-          .order('size', { ascending: false })
+          .order('updated_at', { ascending: false })
           .limit(10)
     ),
     scope.traced(
@@ -1986,9 +2008,10 @@ async function loadCommunityCandidates(
   const out: Candidate[] = [];
   for (const row of (communities ?? []) as any[]) {
     const theme = String(row.theme ?? 'Community');
-    const members = Array.isArray(row.members) ? row.members.slice(0, 8).join(', ') : '';
-    const cohesion = Number(row.cohesion ?? 0.5);
-    const size = Number(row.size ?? 0);
+    const meta = (row.metadata ?? {}) as Record<string, unknown>;
+    const members = Array.isArray(meta.members) ? meta.members.slice(0, 8).join(', ') : '';
+    const cohesion = Number(meta.cohesion ?? 0.5);
+    const size = Number(meta.size ?? 0);
     const declining = cohesion < 0.35;
     const active = cohesion >= 0.5 && size >= 2;
     out.push({
@@ -2004,11 +2027,12 @@ async function loadCommunityCandidates(
       significance: cohesion,
       relationshipDistance: 0.6,
       reasons: [active ? 'active community' : declining ? 'declining community' : 'social cluster'],
-      metadata: { size, cohesion, members: row.members },
+      metadata: { size, cohesion, members: meta.members },
     });
   }
 
   for (const org of (organizations ?? []) as any[]) {
+    if (isReviewPending(org.metadata)) continue;
     const name = String(org.name ?? 'Organization');
     const orgKind = org.group_type ?? org.type;
     const isCommunity =
@@ -2027,6 +2051,7 @@ async function loadCommunityCandidates(
       significance: 0.6,
       relationshipDistance: 0.55,
       reasons: [isCommunity ? 'community organization' : 'organization / group membership'],
+      metadata: { ...(org.metadata ?? {}), entityId: org.id },
     });
   }
   return out;
@@ -2048,7 +2073,7 @@ async function loadProjectCandidates(
     () =>
       supabaseAdmin
         .from('projects')
-        .select('id, name, title, description, status, updated_at, metadata')
+        .select('id, name, description, status, updated_at, metadata')
         .eq('user_id', userId)
         .order('updated_at', { ascending: false })
         .limit(10)
@@ -2064,6 +2089,7 @@ async function loadProjectCandidates(
     const status = String(project.status ?? 'active').toLowerCase();
     const dormant = status === 'paused' || status === 'dormant' || status === 'on_hold';
     const meta = (project.metadata as Record<string, unknown>) ?? {};
+    if (isReviewPending(meta)) return;
     const blockers = meta.blockers ?? meta.blocker;
     const milestones = meta.milestones;
     out.push({
@@ -2086,7 +2112,12 @@ async function loadProjectCandidates(
       significance: 0.65,
       relationshipDistance: 0.5,
       reasons: matches ? ['project matches target'] : dormant ? ['dormant project'] : ['active project'],
-      metadata: { status, blockers, milestone_count: Array.isArray(milestones) ? milestones.length : 0 },
+      metadata: {
+        ...meta,
+        status,
+        blockers,
+        milestone_count: Array.isArray(milestones) ? milestones.length : 0,
+      },
     });
   };
 
@@ -2146,6 +2177,7 @@ async function loadProjectCandidates(
     }
 
     for (const entry of (journalHits ?? []) as any[]) {
+      if (isReviewPending(entry.metadata)) continue;
       const text = String(entry.summary ?? entry.content ?? '');
       if (!text.trim()) continue;
       out.push({

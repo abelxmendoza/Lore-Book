@@ -7,7 +7,7 @@ describe('ChatSourcesBar', () => {
     vi.clearAllMocks();
   });
 
-  it('separates supporting sources from consulted background and copies both', async () => {
+  it('shows a compact source disclosure and copies user-facing details', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
 
@@ -33,16 +33,20 @@ describe('ChatSourcesBar', () => {
       />,
     );
 
-    expect(screen.getByText('Sources for this answer')).toBeInTheDocument();
-    expect(screen.getByText('Sources supporting this answer')).toBeInTheDocument();
-    expect(screen.getByText('Consulted background: 1')).toBeInTheDocument();
+    expect(screen.getByText('Sources')).toBeInTheDocument();
+    expect(screen.queryByText('Sources supporting this answer')).not.toBeInTheDocument();
+    expect(screen.queryByText('Consulted background: 1')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('chat-sources-toggle'));
+    expect(screen.getByText('Recorded a demo after the show')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('chat-sources-copy-all'));
 
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     const payload = String(writeText.mock.calls[0]?.[0] ?? '');
     expect(payload).toContain('Marcus');
     expect(payload).toContain('Recorded a demo after the show');
-    expect(payload).toContain('Usage: supporting');
+    expect(payload).not.toContain('Usage:');
+    expect(payload).not.toContain('Relevance:');
+    expect(payload).not.toContain('Id:');
     expect(await screen.findByText('Copied')).toBeInTheDocument();
   });
 
@@ -56,15 +60,15 @@ describe('ChatSourcesBar', () => {
     );
 
     const toggle = screen.getByTestId('chat-sources-toggle');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Marcus')).not.toBeInTheDocument();
+
+    fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('Sources supporting this answer')).toBeInTheDocument();
+    expect(screen.getByText('Marcus')).toBeInTheDocument();
 
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByText('Sources supporting this answer')).not.toBeInTheDocument();
-
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('Sources supporting this answer')).toBeInTheDocument();
+    expect(screen.queryByText('Marcus')).not.toBeInTheDocument();
   });
 });

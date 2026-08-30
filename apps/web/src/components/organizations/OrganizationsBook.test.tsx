@@ -228,6 +228,9 @@ describe('OrganizationsBook', () => {
       expect(screen.getByText(/Abel Studio Circle/i)).toBeInTheDocument();
     }, { timeout: 3000 });
     expect(screen.getByText(/Showing 1-1 of 1 organizations/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText(/Abel Studio Circle/i));
+    expect(screen.queryByTestId('org-detail-modal')).not.toBeInTheDocument();
   });
 
   it('renders pending candidates when accepted organizations time out', async () => {

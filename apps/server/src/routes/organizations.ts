@@ -9,6 +9,7 @@ import { organizationQueryRequestSchema } from '@lorebook/api-contracts';
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { organizationService, type OrgRelationshipType } from '../services/organizationService';
+import { isReviewPending } from '../services/reviewableRecord';
 import { organizationMergeService } from '../services/organizationMergeService';
 import { organizationRelationshipInferenceService } from '../services/organizationRelationshipInferenceService';
 import { organizationNetworkService } from '../services/organizationNetworkService';
@@ -53,7 +54,8 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       });
       organizationService.invalidateOrganizations(userId);
     }
-    const organizations = await organizationService.listOrganizations(userId);
+    const organizations = (await organizationService.listOrganizations(userId))
+      .filter((organization) => !isReviewPending(organization.metadata));
     // Let the browser short-circuit a tight client refetch loop locally (this
     // endpoint was hit ~2.2M times in 45 days). Per-user data → private cache.
     res.set('Cache-Control', 'private, max-age=15');
@@ -137,7 +139,8 @@ router.get('/by-character', requireAuth, async (req: AuthenticatedRequest, res) 
     return;
   }
   try {
-    const organizations = await organizationService.getOrganizationsByCharacter(userId, characterId, characterName);
+    const organizations = (await organizationService.getOrganizationsByCharacter(userId, characterId, characterName))
+      .filter((organization) => !isReviewPending(organization.metadata));
     res.json({ success: true, organizations });
   } catch (error) {
     logger.error({ error, userId }, 'Failed to get organizations by character');

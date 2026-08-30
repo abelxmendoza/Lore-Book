@@ -27,8 +27,10 @@ const humanizeExpressionMode = (mode: string): string => {
 };
 
 export type ChatSource = {
-  type: 'entry' | 'event' | 'chapter' | 'character' | 'location' | 'task' | 'hqi' | 'fabric' | 'knowledge';
+  type: 'entry' | 'event' | 'chapter' | 'character' | 'location' | 'task' | 'document' | 'photo' | 'hqi' | 'fabric' | 'knowledge';
   id: string;
+  /** Optional library id used when a source points to a derived record. */
+  navigationId?: string;
   title: string;
   snippet?: string;
   date?: string;
@@ -46,7 +48,7 @@ export type ChatSuggestedAction = {
   prompt?: string;
   query?: string;
   targetId?: string;
-  surface?: 'characters' | 'family' | 'timeline';
+  surface?: 'characters' | 'family' | 'timeline' | 'documents' | 'photos';
   apiMethod?: 'POST' | 'PATCH';
   apiPath?: string;
   apiBody?: Record<string, unknown>;
@@ -64,6 +66,8 @@ export const SOURCE_TYPE_LABELS: Record<string, string> = {
   hqi: 'Smart search',
   fabric: 'Related',
   knowledge: 'Knowledge',
+  document: 'Document',
+  photo: 'Photo',
   era: 'Era',
   saga: 'Saga',
   arc: 'Arc',

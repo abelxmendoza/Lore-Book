@@ -8,6 +8,7 @@ import { classifyEntity, isCharacterEligible, isUnknownEntity, toOmegaType } fro
 import { hasKinshipTitle } from '../services/kinship/kinshipGlossary';
 
 import { normalizeNameKey } from './nameNormalization';
+import { isDiscourseOpener } from './discourseTokenGuard';
 
 export type MentionKind =
   | 'person'
@@ -141,6 +142,9 @@ const EVENT_NAME_PATTERN =
 export function classifyMentionKind(name: string, rawContext?: string): MentionClassification {
   const trimmed = (name ?? '').trim();
   if (!trimmed) return { kind: 'fragment', reason: 'empty' };
+  if (isDiscourseOpener(trimmed)) {
+    return { kind: 'fragment', reason: 'discourse_opener' };
+  }
 
   const key = normalizeNameKey(trimmed);
   const tokens = key.split(' ').filter(Boolean);

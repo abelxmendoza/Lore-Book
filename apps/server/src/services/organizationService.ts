@@ -777,6 +777,28 @@ export class OrganizationService {
       if (data.name) {
         const existing = await this.findByName(userId, data.name);
         if (existing) {
+          const incomingKey = normalizeNameKey(data.name);
+          const canonicalKey = normalizeNameKey(existing.name);
+          const aliases = (existing.aliases ?? []).filter(Boolean);
+          const alreadyKnown = [existing.name, ...aliases].some(
+            (label) => normalizeNameKey(String(label)) === incomingKey,
+          );
+          // Keep the strongest existing record as canonical, but remember the
+          // exact user-owned spelling that resolved to it. This prevents a
+          // later resume/chat extraction from creating a parallel organization.
+          if (!alreadyKnown && incomingKey !== canonicalKey) {
+            aliases.push(data.name.trim());
+            const { error: aliasError } = await supabaseAdmin
+              .from('organizations')
+              .update({ aliases })
+              .eq('id', existing.id)
+              .eq('user_id', userId);
+            if (aliasError) {
+              logger.warn({ aliasError, userId, orgId: existing.id }, 'Failed to preserve organization alias');
+            } else {
+              existing.aliases = aliases;
+            }
+          }
           logger.info({ userId, orgId: existing.id, name: data.name }, 'Dedup: returning existing organization');
           return existing;
         }
@@ -807,7 +829,11 @@ export class OrganizationService {
         .select()
         .single();
 
-      if (error) throw error;
+      // Supabase/Postgrest errors are plain {message, details, hint, code}
+      // objects, not real Error instances — throwing one raw means callers
+      // that check `error instanceof Error` (e.g. the reclassify route) can
+      // never see the real reason and fall back to a generic message.
+      if (error) throw new Error(error.message || 'Could not create organization');
 
       void import('./lorebook/suggestions/suggestionEntityTimeline')
         .then(({ hydrateEntityTimelineAfterSuggestionAccept }) =>

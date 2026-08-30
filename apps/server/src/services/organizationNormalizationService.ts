@@ -84,7 +84,10 @@ class OrganizationNormalizationService {
       report.processed += 1;
 
       const meta = { ...(row.metadata ?? {}) } as Record<string, unknown>;
-      const groupType = safeGroupType(classification.suggestedGroupType);
+      const userLockedType = meta.group_type_source === 'user_confirmed';
+      const groupType = userLockedType
+        ? safeGroupType(String(stored || 'other'))
+        : safeGroupType(classification.suggestedGroupType);
 
       meta.social_classification = {
         category: classification.category,

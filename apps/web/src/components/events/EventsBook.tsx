@@ -21,6 +21,7 @@ import {
   subDays,
   endOfDay,
 } from 'date-fns';
+import { StorySurfaceLinks } from '../story/StorySurfaceLinks';
 import { buildEventsBookClipboardText } from '../../lib/eventsBookClipboard';
 import {
   CATEGORY_SUB_TABS,
@@ -116,7 +117,7 @@ const CATEGORY_CHIPS: { value: EventCategory; label: string; icon: React.Element
 ];
 
 const IMPACT_CHIPS: { value: ImpactFilter; label: string; activeClass: string }[] = [
-  { value: 'all', label: 'All', activeClass: 'bg-primary/20 text-primary border-primary/40' },
+  { value: 'all', label: 'All', activeClass: 'bg-white/10 text-white border-white/25' },
   { value: 'direct_participant', label: 'I Was There', activeClass: 'bg-blue-500/20 text-blue-300 border-blue-500/40' },
   { value: 'indirect_affected', label: 'Affects Me', activeClass: 'bg-purple-500/20 text-purple-300 border-purple-500/40' },
   { value: 'related_person_affected', label: 'Affects Someone Close', activeClass: 'bg-orange-500/20 text-orange-300 border-orange-500/40' },
@@ -125,7 +126,7 @@ const IMPACT_CHIPS: { value: ImpactFilter; label: string; activeClass: string }[
 ];
 
 const SIGNIFICANCE_CHIPS: { value: SignificanceFilter; label: string; activeClass: string }[] = [
-  { value: 'all', label: 'All Scale', activeClass: 'bg-primary/20 text-primary border-primary/40' },
+  { value: 'all', label: 'All Scale', activeClass: 'bg-white/10 text-white border-white/25' },
   { value: 'major', label: '★ Major', activeClass: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40' },
   { value: 'moderate', label: 'Moderate', activeClass: 'bg-sky-500/20 text-sky-300 border-sky-500/40' },
   { value: 'minor', label: 'Minor', activeClass: 'bg-slate-500/20 text-slate-400 border-slate-500/40' },
@@ -898,64 +899,42 @@ export const EventsBook: React.FC = () => {
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-4">
-      <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-black/70 via-purple-950/25 to-black/60">
-        <CardContent className="p-4 sm:p-6">
-          <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-primary/70">
-              Life Log
-            </p>
-            <h2 className="mt-1 text-xl sm:text-2xl font-semibold text-white">
-              Moments
-            </h2>
-            <p className="mt-1 max-w-2xl text-sm text-white/55">
+    <div className="h-full min-h-0 overflow-y-auto bg-[radial-gradient(ellipse_at_top_left,rgba(34,211,238,0.07),transparent_35%),radial-gradient(ellipse_at_top_right,rgba(139,92,246,0.07),transparent_30%)]">
+    <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 space-y-4">
+      <header className="overflow-hidden rounded-3xl border border-white/[0.08] bg-black/25 p-5 sm:p-7">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl min-w-0">
+            <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200/70">
+              <Sparkles className="h-4 w-4" /> Life Log
+            </div>
+            <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">Moments</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/55 sm:text-base">
               Scenes from your conversations — and events you post with a date, place, and story.
             </p>
-            <p className="mt-2 text-xs text-white/40">
-              {events.length} {events.length === 1 ? 'moment' : 'moments'}
-              {recurringScenes.length > 0 && (
-                <>
-                  {' · '}
-                  {recurringScenes.length} {recurringScenes.length === 1 ? 'pattern' : 'patterns'}
-                </>
-              )}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                className="h-9 bg-amber-500/20 border border-amber-400/35 text-amber-50 hover:bg-amber-500/30"
-                onClick={() => setShowPostComposer(true)}
-                data-testid="events-book-post-event"
-              >
-                <Plus className="h-3.5 w-3.5 mr-1.5" />
-                Post event
-              </Button>
-            </div>
-            <nav
-              aria-label="Also see"
-              className="mt-3 flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-white/40"
-            >
-              <span className="mr-1 text-white/30">Also see</span>
-              <button
-                type="button"
-                onClick={() => navigate('/narrative-anchors')}
-                className="rounded-md px-1.5 py-0.5 text-white/55 transition-colors hover:bg-white/5 hover:text-white"
-              >
-                Narrative Anchors
-              </button>
-              <span className="text-white/15" aria-hidden>·</span>
-              <button
-                type="button"
-                onClick={() => navigate('/timeline?view=calendar')}
-                className="rounded-md px-1.5 py-0.5 text-white/55 transition-colors hover:bg-white/5 hover:text-white"
-              >
-                Calendar
-              </button>
-            </nav>
+            <StorySurfaceLinks current="moments" className="mt-3" />
           </div>
-        </CardContent>
-      </Card>
+          <Button
+            type="button"
+            className="w-full border border-amber-400/35 bg-amber-500/20 text-amber-50 hover:bg-amber-500/30 sm:w-auto"
+            onClick={() => setShowPostComposer(true)}
+            data-testid="events-book-post-event"
+          >
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Post event
+          </Button>
+        </div>
+
+        <div className="mt-6 grid gap-3 border-t border-white/[0.07] pt-5 sm:grid-cols-2">
+          <div className="rounded-xl bg-white/[0.025] p-3.5">
+            <p className="text-xl font-semibold text-white">{events.length}</p>
+            <p className="mt-0.5 text-xs text-white/40">{events.length === 1 ? 'moment' : 'moments'} captured</p>
+          </div>
+          <div className="rounded-xl bg-white/[0.025] p-3.5">
+            <p className="text-xl font-semibold text-white">{recurringScenes.length}</p>
+            <p className="mt-0.5 text-xs text-white/40">recurring {recurringScenes.length === 1 ? 'pattern' : 'patterns'}</p>
+          </div>
+        </div>
+      </header>
 
       {error && (
         <Card className="border-amber-500/50 bg-amber-500/10">
@@ -972,7 +951,7 @@ export const EventsBook: React.FC = () => {
       )}
 
       {/* ── Primary content switch: Moments | Patterns ── */}
-      <div className="flex items-center gap-1 p-1 bg-black/40 border border-border/50 rounded-lg w-full sm:w-auto sm:inline-flex">
+      <div className="flex w-full items-center gap-1 rounded-xl border border-white/[0.08] bg-white/[0.04] p-1 sm:w-auto sm:inline-flex">
         {VIEWS.map(({ value, label, icon: Icon }) => (
           <button
             key={value}
@@ -982,9 +961,9 @@ export const EventsBook: React.FC = () => {
               if (value === 'events') setMomentsLayout('grid');
             }}
             className={`
-              flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors flex-1 sm:flex-none justify-center
+              flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex-1 sm:flex-none justify-center
               ${viewMode === value
-                ? 'bg-primary/20 text-primary'
+                ? 'bg-white/10 text-white'
                 : 'text-white/50 hover:text-white/80 hover:bg-white/5'
               }
             `}
@@ -996,59 +975,63 @@ export const EventsBook: React.FC = () => {
       </div>
 
       {/* ── Moment search + filters (grid layout only) ── */}
-      {viewMode === 'events' && momentsLayout === 'grid' && <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
-          <Input
-            type="text"
-            placeholder="Search moments by title, person, place, or activity…"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="pl-10 bg-black/40 border-border/50 text-white placeholder:text-white/35 text-sm"
-          />
+      {viewMode === 'events' && momentsLayout === 'grid' && (
+        <div className="sticky top-0 z-10 -mx-4 border-y border-white/[0.06] bg-black/75 px-4 py-3 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+          <div className="mx-auto flex max-w-[1500px] flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/35" />
+              <Input
+                type="text"
+                placeholder="Search moments by title, person, place, or activity…"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="h-10 border-white/10 bg-white/[0.04] pl-10 text-sm text-white placeholder:text-white/30"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={sortBy}
+                title="Sort moments"
+                onChange={e => setSortBy(e.target.value as SortOption)}
+                className="h-9 flex-shrink-0 rounded-lg border border-white/10 bg-white/[0.04] px-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-400/40 sm:px-3 sm:text-sm"
+              >
+                <option value="date_desc">Newest First</option>
+                <option value="date_asc">Oldest First</option>
+                <option value="confidence_desc">High Confidence</option>
+                <option value="confidence_asc">Low Confidence</option>
+                <option value="title_asc">Title A–Z</option>
+                <option value="title_desc">Title Z–A</option>
+                <option value="people_desc">Most People</option>
+              </select>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowFilters(v => !v)}
+                className={`flex-shrink-0 border-white/10 ${showFilters ? 'border-white/25 bg-white/10 text-white' : ''}`}
+              >
+                <Filter className="h-4 w-4 mr-1.5" />
+                Filters
+                {activeFilterCount > 0 && (
+                  <Badge variant="outline" className="ml-1.5 border-white/25 bg-white/10 px-1 text-[10px] text-white">
+                    {activeFilterCount}
+                  </Badge>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void loadEvents({ assembleFromChats: true })}
+                disabled={loading}
+                className="flex-shrink-0 border-white/10"
+                title="Sync events from chats"
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={sortBy}
-            title="Sort moments"
-            onChange={e => setSortBy(e.target.value as SortOption)}
-            className="h-9 px-2 sm:px-3 bg-black/40 border border-border/50 rounded-lg text-white text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 flex-shrink-0"
-          >
-            <option value="date_desc">Newest First</option>
-            <option value="date_asc">Oldest First</option>
-            <option value="confidence_desc">High Confidence</option>
-            <option value="confidence_asc">Low Confidence</option>
-            <option value="title_asc">Title A–Z</option>
-            <option value="title_desc">Title Z–A</option>
-            <option value="people_desc">Most People</option>
-          </select>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setShowFilters(v => !v)}
-            className={`flex-shrink-0 ${showFilters ? 'border-primary/50 bg-primary/10' : ''}`}
-          >
-            <Filter className="h-4 w-4 mr-1.5" />
-            Filters
-            {activeFilterCount > 0 && (
-              <Badge variant="outline" className="ml-1.5 text-[10px] bg-primary/20 text-primary border-primary/30 px-1">
-                {activeFilterCount}
-              </Badge>
-            )}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void loadEvents({ assembleFromChats: true })}
-            disabled={loading}
-            className="flex-shrink-0"
-            title="Sync events from chats"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-        </div>
-      </div>}
+      )}
 
       {/* ── Category filter chips ── */}
       {viewMode === 'events' && momentsLayout === 'grid' && (
@@ -1071,8 +1054,8 @@ export const EventsBook: React.FC = () => {
                 className={`
                   inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors border
                   ${activeCategory === value
-                    ? 'bg-primary/20 text-primary border-primary/40'
-                    : 'bg-black/40 text-white/55 border-border/40 hover:border-primary/30 hover:text-white/80'
+                    ? 'bg-white/10 text-white border-white/25'
+                    : 'bg-black/40 text-white/55 border-white/[0.08] hover:border-white/20 hover:text-white/80'
                   }
                 `}
               >
@@ -1124,7 +1107,7 @@ export const EventsBook: React.FC = () => {
               inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors border
               ${impactFilter === value
                 ? activeClass
-                : 'bg-black/30 text-white/40 border-border/30 hover:border-border/50 hover:text-white/60'
+                : 'bg-black/30 text-white/40 border-white/[0.08] hover:border-white/20 hover:text-white/60'
               }
             `}
           >
@@ -1135,11 +1118,11 @@ export const EventsBook: React.FC = () => {
 
       {/* ── Advanced filters panel ── */}
       {viewMode === 'events' && momentsLayout === 'grid' && showFilters && (
-        <Card className="bg-black/80 border border-primary/25">
+        <Card className="bg-black/80 border border-cyan-400/20">
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <Filter className="h-4 w-4 text-primary" />
+                <Filter className="h-4 w-4 text-cyan-200" />
                 <span className="text-sm font-medium">Advanced Filters</span>
                 {activeFilterCount > 0 && (
                   <span className="text-xs text-white/40">{activeFilterCount} active</span>
@@ -1168,7 +1151,7 @@ export const EventsBook: React.FC = () => {
                     inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors border
                     ${significanceFilter === value
                       ? activeClass
-                      : 'bg-black/30 text-white/40 border-border/30 hover:border-border/50 hover:text-white/60'
+                      : 'bg-black/30 text-white/40 border-white/[0.08] hover:border-white/20 hover:text-white/60'
                     }
                   `}
                 >
@@ -1187,7 +1170,7 @@ export const EventsBook: React.FC = () => {
                   value={filters.dateRange}
                   title="Date range filter"
                   onChange={e => setFilters({ ...filters, dateRange: e.target.value as DateRange })}
-                  className="w-full h-9 px-3 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  className="w-full h-9 px-3 bg-black/60 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400/40"
                 >
                   <option value="all">All Time</option>
                   <option value="today">Today</option>
@@ -1199,9 +1182,9 @@ export const EventsBook: React.FC = () => {
                 {filters.dateRange === 'custom' && (
                   <div className="space-y-1.5 mt-1.5">
                     <input type="date" title="Start date" value={filters.customStartDate || ''} onChange={e => setFilters({ ...filters, customStartDate: e.target.value })}
-                      className="w-full h-9 px-3 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary/50" />
+                      className="w-full h-9 px-3 bg-black/60 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400/40" />
                     <input type="date" title="End date" value={filters.customEndDate || ''} onChange={e => setFilters({ ...filters, customEndDate: e.target.value })}
-                      className="w-full h-9 px-3 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary/50" />
+                      className="w-full h-9 px-3 bg-black/60 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400/40" />
                   </div>
                 )}
               </div>
@@ -1218,7 +1201,7 @@ export const EventsBook: React.FC = () => {
                     <label key={type} className="flex items-center gap-2 cursor-pointer p-1 rounded hover:bg-white/5">
                       <input type="checkbox" checked={filters.types.includes(type)}
                         onChange={e => setFilters({ ...filters, types: e.target.checked ? [...filters.types, type] : filters.types.filter(t => t !== type) })}
-                        className="w-3.5 h-3.5 rounded border-border/50 bg-black/40 text-primary accent-primary"
+                        className="w-3.5 h-3.5 rounded border-white/10 bg-black/40 text-cyan-200 accent-cyan-400"
                       />
                       <span className="text-sm text-white/75 capitalize">{type}</span>
                     </label>
@@ -1238,10 +1221,10 @@ export const EventsBook: React.FC = () => {
                   </div>
                   <input type="range" title="Minimum confidence" min="0" max="1" step="0.05" value={filters.confidenceMin}
                     onChange={e => setFilters({ ...filters, confidenceMin: parseFloat(e.target.value) })}
-                    className="w-full h-1.5 rounded-full accent-primary" />
+                    className="w-full h-1.5 rounded-full accent-cyan-400" />
                   <input type="range" title="Maximum confidence" min="0" max="1" step="0.05" value={filters.confidenceMax}
                     onChange={e => setFilters({ ...filters, confidenceMax: parseFloat(e.target.value) })}
-                    className="w-full h-1.5 rounded-full accent-primary" />
+                    className="w-full h-1.5 rounded-full accent-cyan-400" />
                 </div>
               </div>
 
@@ -1255,14 +1238,14 @@ export const EventsBook: React.FC = () => {
                     <span className="text-[10px] text-white/40">Min</span>
                     <input type="number" title="Minimum people count" min="0" max="10" value={filters.peopleCountMin}
                       onChange={e => setFilters({ ...filters, peopleCountMin: parseInt(e.target.value) || 0 })}
-                      className="w-full h-9 px-3 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 mt-0.5" />
+                      className="w-full h-9 px-3 bg-black/60 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400/40 mt-0.5" />
                   </div>
                   <span className="text-white/30 mt-4">–</span>
                   <div className="flex-1">
                     <span className="text-[10px] text-white/40">Max</span>
                     <input type="number" title="Maximum people count" min="0" max="10" value={filters.peopleCountMax}
                       onChange={e => setFilters({ ...filters, peopleCountMax: parseInt(e.target.value) || 10 })}
-                      className="w-full h-9 px-3 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 mt-0.5" />
+                      className="w-full h-9 px-3 bg-black/60 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400/40 mt-0.5" />
                   </div>
                 </div>
               </div>
@@ -1279,7 +1262,7 @@ export const EventsBook: React.FC = () => {
                     <label key={loc} className="flex items-center gap-2 cursor-pointer p-1 rounded hover:bg-white/5">
                       <input type="checkbox" checked={filters.locations.includes(loc)}
                         onChange={e => setFilters({ ...filters, locations: e.target.checked ? [...filters.locations, loc] : filters.locations.filter(l => l !== loc) })}
-                        className="w-3.5 h-3.5 rounded border-border/50 bg-black/40 text-primary accent-primary"
+                        className="w-3.5 h-3.5 rounded border-white/10 bg-black/40 text-cyan-200 accent-cyan-400"
                       />
                       <span className="text-sm text-white/75">{loc}</span>
                     </label>
@@ -1295,13 +1278,13 @@ export const EventsBook: React.FC = () => {
                   <label className="flex items-center gap-2.5 cursor-pointer">
                     <input type="checkbox" checked={filters.hasPeople === true}
                       onChange={e => setFilters({ ...filters, hasPeople: e.target.checked ? true : null })}
-                      className="w-3.5 h-3.5 rounded accent-primary" />
+                      className="w-3.5 h-3.5 rounded accent-cyan-400" />
                     <span className="text-sm text-white/70">Has people</span>
                   </label>
                   <label className="flex items-center gap-2.5 cursor-pointer">
                     <input type="checkbox" checked={filters.hasLocation === true}
                       onChange={e => setFilters({ ...filters, hasLocation: e.target.checked ? true : null })}
-                      className="w-3.5 h-3.5 rounded accent-primary" />
+                      className="w-3.5 h-3.5 rounded accent-cyan-400" />
                     <span className="text-sm text-white/70">Has location</span>
                   </label>
                 </div>
@@ -1320,7 +1303,7 @@ export const EventsBook: React.FC = () => {
                 ? 'No moments'
                 : `${startIndex + 1}–${Math.min(startIndex + ITEMS_PER_PAGE, filteredEvents.length)} of ${filteredEvents.length}`}
               {filteredEvents.length !== events.length && (
-                <span className="ml-1 text-primary/60">({events.length} total)</span>
+                <span className="ml-1 text-cyan-200/60">({events.length} total)</span>
               )}
             </span>
             {totalPages > 1 && <span>Page {currentPage} of {totalPages}</span>}
@@ -1443,7 +1426,7 @@ export const EventsBook: React.FC = () => {
                     else pageNum = currentPage - 3 + i;
                     return (
                       <button key={pageNum} onClick={() => setCurrentPage(pageNum)}
-                        className={`w-7 h-7 rounded text-xs transition ${currentPage === pageNum ? 'bg-primary/30 text-primary' : 'text-white/40 hover:text-white/70 hover:bg-white/5'}`}>
+                        className={`w-7 h-7 rounded text-xs transition ${currentPage === pageNum ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70 hover:bg-white/5'}`}>
                         {pageNum}
                       </button>
                     );
@@ -1471,9 +1454,9 @@ export const EventsBook: React.FC = () => {
               Back to moments
             </button>
           </div>
-          <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-black/50 via-violet-950/15 to-black/40 p-3 sm:p-4">
+          <div className="rounded-xl border border-cyan-400/20 bg-gradient-to-br from-black/50 via-violet-950/15 to-black/40 p-3 sm:p-4">
             <div className="mb-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary/70">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200/70">
                 Inside Moments
               </p>
               <p className="mt-1 text-sm font-semibold text-white sm:text-base">Search facts</p>
@@ -1558,7 +1541,7 @@ export const EventsBook: React.FC = () => {
                       }}
                       className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-white/5 sm:px-4"
                     >
-                      <Repeat2 className="mt-0.5 h-4 w-4 shrink-0 text-primary/60" />
+                      <Repeat2 className="mt-0.5 h-4 w-4 shrink-0 text-cyan-200/60" />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-2">
                           <p className="truncate text-sm font-medium text-white">{scene.canonical_title}</p>
@@ -1618,7 +1601,7 @@ export const EventsBook: React.FC = () => {
                   return (
                     <Card
                       key={scene.id}
-                      className="group bg-gradient-to-br from-slate-900/90 via-slate-800/60 to-slate-900/90 border-border/50 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10 transition-all duration-300 cursor-pointer"
+                      className="group bg-gradient-to-br from-slate-900/90 via-slate-800/60 to-slate-900/90 border-white/10 hover:border-cyan-400/30 hover:shadow-lg hover:shadow-cyan-400/10 transition-all duration-300 cursor-pointer"
                       onClick={() => {
                         setViewMode('events');
                         setSearchTerm(scene.canonical_title.split(' ')[0]);
@@ -1627,8 +1610,8 @@ export const EventsBook: React.FC = () => {
                       <CardContent className="p-5">
                         <div className="flex items-start justify-between gap-2 mb-3">
                           <div className="flex items-center gap-2 min-w-0">
-                            <Repeat2 className="h-4 w-4 text-primary/50 flex-shrink-0" />
-                            <h3 className="text-sm font-bold text-white group-hover:text-primary transition-colors truncate">
+                            <Repeat2 className="h-4 w-4 text-cyan-200/50 flex-shrink-0" />
+                            <h3 className="text-sm font-bold text-white group-hover:text-cyan-200 transition-colors truncate">
                               {scene.canonical_title}
                             </h3>
                           </div>
@@ -1681,7 +1664,7 @@ export const EventsBook: React.FC = () => {
                               <Badge
                                 key={a}
                                 variant="outline"
-                                className="text-[10px] bg-primary/8 text-primary/70 border-primary/20 capitalize"
+                                className="text-[10px] bg-cyan-400/10 text-cyan-200/70 border-cyan-400/20 capitalize"
                               >
                                 {a}
                               </Badge>
@@ -1700,7 +1683,7 @@ export const EventsBook: React.FC = () => {
                                 e.stopPropagation();
                                 navigate('/timeline?view=events');
                               }}
-                              className="inline-flex items-center gap-1 text-[10px] font-medium text-primary/70 transition-colors hover:text-primary"
+                              className="inline-flex items-center gap-1 text-[10px] font-medium text-cyan-200/70 transition-colors hover:text-cyan-200"
                             >
                               View in Chronology
                               <ArrowRight className="h-3 w-3" />
@@ -1743,6 +1726,7 @@ export const EventsBook: React.FC = () => {
         }}
       />
       )}
+    </div>
     </div>
   );
 };

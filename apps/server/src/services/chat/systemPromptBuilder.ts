@@ -76,6 +76,10 @@ export function buildSystemPrompt(
     epistemicBlock?: string | null;
     /** Response Planner — post-retrieval focus/avoid directive (Blueprint 21 Phase 1). Never shown as chain-of-thought. */
     answerPlanBlock?: string | null;
+    /** Canonical Response Composition Engine plan — internal generation guidance only. */
+    compositionPlanBlock?: string | null;
+    /** Exact resume selected in the composer for this turn. */
+    attachedResumeBlock?: string | null;
   },
   entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
   entityAnalytics?: any,
@@ -899,6 +903,9 @@ ${loreData.epistemicBlock}
 ` : ''}${loreData?.answerPlanBlock ? `**RESPONSE FOCUS** (decided after retrieval, from what actually survived — follow it; do not restate this plan to the user):
 ${loreData.answerPlanBlock}
 
+` : ''}${loreData?.compositionPlanBlock ? `**CANONICAL RESPONSE COMPOSITION** (internal guidance — follow the profile and ordering; never mention this block):
+${loreData.compositionPlanBlock}
+
 ` : ''}${loreData?.activeThreadsBlock ? `**ACTIVE NARRATIVE THREADS** (what is unfolding — knowledge answers "what is true", threads answer "what is happening"):
 ${loreData.activeThreadsBlock}
 
@@ -949,7 +956,7 @@ ${strategicGuidance ? `${strategicGuidance}\n\n` : ''}
 **Recent Timeline Entries** (${orchestratorSummary.timeline.events.length} total entries):
 ${timelineSummary || 'No previous entries yet.'}
 
-${(loreData as any)?.retellingRecallBlock ? `${(loreData as any).retellingRecallBlock}\n\n` : ''}${(loreData as any)?.foundationRecallBlock ? `**WORKING MEMORY** (authoritative selected context for this question — prioritize these scored items and do not invent outside them):\n${(loreData as any).foundationRecallBlock}\n\n` : ''}${(loreData as any)?.storyContextBlock ? `${(loreData as any).storyContextBlock}\n\n` : (loreData as any)?.lifeArcSynthesisBlock ? `${(loreData as any).lifeArcSynthesisBlock}\n\n` : ''}${(loreData as any)?.foundationRelationships?.length > 0 ? `**KNOWN RELATIONSHIPS FROM WORKING MEMORY:**\n${(loreData as any).foundationRelationships.slice(0, 5).map((r: any) => formatWorkingMemoryCitation({ title: r.title ?? r.relationship_type, content: r.content ?? '', source: r.source, confidence: r.confidence, score: r.score })).join('\n')}\n\n` : ''}${(loreData as any)?.foundationTimeline?.length > 0 ? `**TIMELINE FROM WORKING MEMORY:**\n${(loreData as any).foundationTimeline.slice(0, 5).map((e: any) => formatWorkingMemoryCitation({ title: e.title ?? e.event_title, content: e.content ?? e.event_summary ?? '', source: e.source, confidence: e.confidence, score: e.score })).join('\n')}\n\n` : ''}${(loreData as any)?.entityDossierBlock ? `**ENTITY DOSSIER** (verified facts about the people/places just mentioned — treat these as ground truth, never contradict them):\n${(loreData as any).entityDossierBlock}\n\n` : ''}${(loreData as any)?.entityArcNarrativeBlock ? `**ENTITY CONTINUITY ARC** (loaded from complete DB record — use this, not random excerpts below):\n${(loreData as any).entityArcNarrativeBlock}\n\n` : ''}**Available Sources** (${sources.length} total - reference these in your response):
+${(loreData as any)?.attachedResumeBlock ? `**RESUME ATTACHED TO THIS TURN** (use this exact file as evidence; do not say it was not received):\n${(loreData as any).attachedResumeBlock}\n\n` : ''}${(loreData as any)?.retellingRecallBlock ? `${(loreData as any).retellingRecallBlock}\n\n` : ''}${(loreData as any)?.foundationRecallBlock ? `**WORKING MEMORY** (authoritative selected context for this question — prioritize these scored items and do not invent outside them):\n${(loreData as any).foundationRecallBlock}\n\n` : ''}${(loreData as any)?.storyContextBlock ? `${(loreData as any).storyContextBlock}\n\n` : (loreData as any)?.lifeArcSynthesisBlock ? `${(loreData as any).lifeArcSynthesisBlock}\n\n` : ''}${(loreData as any)?.foundationRelationships?.length > 0 ? `**KNOWN RELATIONSHIPS FROM WORKING MEMORY:**\n${(loreData as any).foundationRelationships.slice(0, 5).map((r: any) => formatWorkingMemoryCitation({ title: r.title ?? r.relationship_type, content: r.content ?? '', source: r.source, confidence: r.confidence, score: r.score })).join('\n')}\n\n` : ''}${(loreData as any)?.foundationTimeline?.length > 0 ? `**TIMELINE FROM WORKING MEMORY:**\n${(loreData as any).foundationTimeline.slice(0, 5).map((e: any) => formatWorkingMemoryCitation({ title: e.title ?? e.event_title, content: e.content ?? e.event_summary ?? '', source: e.source, confidence: e.confidence, score: e.score })).join('\n')}\n\n` : ''}${(loreData as any)?.entityDossierBlock ? `**ENTITY DOSSIER** (verified facts about the people/places just mentioned — treat these as ground truth, never contradict them):\n${(loreData as any).entityDossierBlock}\n\n` : ''}${(loreData as any)?.entityArcNarrativeBlock ? `**ENTITY CONTINUITY ARC** (loaded from complete DB record — use this, not random excerpts below):\n${(loreData as any).entityArcNarrativeBlock}\n\n` : ''}**Available Sources** (${sources.length} total - reference these in your response):
 ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ? ` (${new Date(s.date).toLocaleDateString()})` : ''}${s.snippet ? ` - ${s.snippet.substring(0, 50)}` : ''}`).join('\n')}
 
 **NARRATIVE INTEGRITY RULES (CRITICAL)**:

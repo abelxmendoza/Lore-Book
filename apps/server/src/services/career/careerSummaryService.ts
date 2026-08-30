@@ -7,6 +7,7 @@ import { detectEmploymentGaps, normalizeResumeDate } from '../profileClaims/resu
 import type { ParsedResume, ResumeContact, ResumeEmployment } from '../profileClaims/resumeStructuredTypes';
 import { skillService } from '../skills/skillService';
 import { supabaseAdmin } from '../supabaseClient';
+import { isReviewPending } from '../reviewableRecord';
 
 export type CareerTimelineItem = {
   id: string;
@@ -127,7 +128,7 @@ class CareerSummaryService {
     const [resumes, claims, skills, orgsResult, eventsResult] = await Promise.all([
       resumeParsingService.getResumeDocuments(userId).catch(() => []),
       profileClaimsService.getClaims(userId, { source: 'resume' }).catch(() => []),
-      skillService.getSkills(userId, { active_only: true }).catch(() => []),
+      skillService.getSkills(userId, { active_only: true, displayable_only: true }).catch(() => []),
       supabaseAdmin
         .from('organizations')
         .select('id, name, status, metadata')
@@ -139,12 +140,12 @@ class CareerSummaryService {
         .catch(() => []),
       supabaseAdmin
         .from('resolved_events')
-        .select('id, title, start_time, end_time, tags')
+        .select('id, title, start_time, end_time, tags, metadata')
         .eq('user_id', userId)
         .contains('tags', ['resume'])
         .order('start_time', { ascending: false })
         .limit(30)
-        .then((r) => r.data ?? [])
+        .then((r) => (r.data ?? []).filter((event) => !isReviewPending(event.metadata)))
         .catch(() => []),
     ]);
 
@@ -167,7 +168,8 @@ class CareerSummaryService {
       (c) => !c.user_confirmed && c.verified_status === 'unverified'
     ).length;
 
-    const employersFromResume = (orgsResult ?? []).filter(
+    const visibleOrganizations = (orgsResult ?? []).filter((organization) => !isReviewPending(organization.metadata));
+    const employersFromResume = visibleOrganizations.filter(
       (o) => (o.metadata as Record<string, unknown>)?.source_file_id || (o.metadata as Record<string, unknown>)?.provenance === 'resume_lore_population'
     );
 
@@ -187,7 +189,7 @@ class CareerSummaryService {
           resumeSkillNames.has(s.skill_name.toLowerCase()) ||
           Boolean((s.metadata as Record<string, unknown>)?.provenance === 'resume_lore_population'),
       })),
-      employers: (employersFromResume.length ? employersFromResume : orgsResult ?? [])
+      employers: (employersFromResume.length ? employersFromResume : visibleOrganizations)
         .slice(0, 10)
         .map((o) => ({ id: o.id, name: o.name, status: o.status })),
       timeline: buildTimeline(structured, eventsResult ?? []),
@@ -195,7 +197,7 @@ class CareerSummaryService {
         jobCount: structured?.employment?.length ?? 0,
         schoolCount: structured?.education?.length ?? 0,
         skillCount: skills.length,
-        employerCount: orgsResult?.length ?? 0,
+        employerCount: visibleOrganizations.length,
         unverifiedClaims,
         resumeUploadCount: resumes.length,
         timelineEventCount: eventsResult?.length ?? 0,

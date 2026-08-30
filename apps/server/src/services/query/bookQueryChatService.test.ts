@@ -4,11 +4,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { runMock } = vi.hoisted(() => ({
   runMock: vi.fn(),
 }));
+const { bookQueryMock } = vi.hoisted(() => ({
+  bookQueryMock: vi.fn(),
+}));
 
 vi.mock('../../cognition/query/QueryEngine', () => ({
   queryEngine: {
     run: runMock,
   },
+}));
+vi.mock('./bookQueryRegistry', () => ({
+  queryBooksForUser: bookQueryMock,
 }));
 
 import { answerBookQueryForUser } from './bookQueryChatService';
@@ -145,6 +151,59 @@ describe('Book query chat service', () => {
     expect(empty.content).toContain('found no grounded records');
     expect(failed.response_mode).toBe('BOOK_QUERY_FAILED');
     expect(failed.content).toContain('No answer was invented');
+  });
+
+  it('renders resume facts with a filename, field path, and excerpt', async () => {
+    bookQueryMock.mockResolvedValue(response({
+      query: 'what jobs have I had?',
+      intent: 'find',
+      results: [{
+        id: 'resume_documents:resume-1:structured.employment[0]',
+        domain: 'document',
+        title: 'Software Engineer at Northwind Labs',
+        subtitle: 'career-profile.pdf · structured.employment[0]',
+        status: 'pending_review',
+        score: 100,
+        matchedReasons: ['Document employment'],
+        evidence: [{
+          sourceTable: 'resume_documents',
+          sourceId: 'resume-1',
+          navigationId: 'file-1',
+          label: 'career-profile.pdf · structured.employment[0]',
+          filename: 'career-profile.pdf',
+          fieldPath: 'structured.employment[0]',
+          excerpt: 'Northwind Labs Software Engineer',
+          reviewState: 'pending_review',
+        }],
+        relatedEntities: [],
+      }],
+      groups: [{ domain: 'document', count: 1, results: [] }],
+      total: 1,
+      diagnostics: {
+        queriedDomains: ['document'],
+        degradedDomains: [],
+        elapsedMs: 2,
+      },
+    }));
+
+    const result = await answerBookQueryForUser('synthetic-user', 'show my jobs from my resume');
+
+    expect(bookQueryMock).toHaveBeenCalledWith('synthetic-user', expect.objectContaining({
+      domains: ['document'],
+    }));
+    expect(result.content).toContain('career-profile.pdf');
+    expect(result.content).toContain('structured.employment[0]');
+    expect(result.content).toContain('Northwind Labs Software Engineer');
+    expect(result.metadata.sources).toEqual([
+      expect.objectContaining({ title: 'career-profile.pdf', fieldPath: 'structured.employment[0]' }),
+    ]);
+    expect(result.metadata.suggestedActions).toEqual([
+      expect.objectContaining({
+        kind: 'navigate',
+        surface: 'documents',
+        targetId: 'file-1',
+      }),
+    ]);
   });
 
   it('renders canonical graph paths with their evidence in chat', async () => {

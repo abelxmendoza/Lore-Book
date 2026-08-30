@@ -18,6 +18,18 @@ describe('chatSourcesClipboard', () => {
     const text = buildChatSourcesClipboardText(ranked);
     expect(text).toContain('Conversation evidence consulted (2 items)');
     expect(text).toContain('Marcus');
-    expect(text).toContain('Relevance: 80');
+    expect(text).not.toContain('Relevance');
+    expect(text).not.toContain('Id:');
+  });
+
+  it('omits rejected and internal self-generated sources', () => {
+    const text = buildChatSourcesClipboardText([
+      { type: 'entry', id: 'e1', title: 'Visible source' },
+      { type: 'entry', id: 'e2', title: 'Assistant', usage: 'supporting' },
+      { type: 'entry', id: 'e3', title: 'Rejected source', usage: 'rejected' },
+    ]);
+    expect(text).toContain('Visible source');
+    expect(text).not.toContain('Assistant');
+    expect(text).not.toContain('Rejected source');
   });
 });

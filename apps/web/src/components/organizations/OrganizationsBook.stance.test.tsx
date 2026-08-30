@@ -47,14 +47,6 @@ vi.mock('../chat/FocusedEntityChatLauncher', () => ({
   FocusedEntityChatLauncher: () => null,
 }));
 
-vi.mock('../ontology/OntologyCompliancePanel', () => ({
-  OntologyCompliancePanel: () => null,
-}));
-
-vi.mock('../family/FamilyTreePanel', () => ({
-  FamilyTreePanel: () => null,
-}));
-
 import { OrganizationsBook } from './OrganizationsBook';
 
 describe('OrganizationsBook stance switcher', () => {

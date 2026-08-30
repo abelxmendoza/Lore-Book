@@ -64,5 +64,7 @@ export interface StreamingChatResponse {
     sources?: ChatSource[];
     usedMemoryIds: string[];
     entryId?: string;
+    compositionPlan?: import('../responseComposition').CompositionPlan;
+    compositionQuality?: import('../responseComposition').CompositionQualityResult;
   };
 }

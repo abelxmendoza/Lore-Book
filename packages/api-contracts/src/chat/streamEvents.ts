@@ -19,6 +19,8 @@ export const chatStreamChunkEventSchema = z.object({
 
 export const chatStreamDoneEventSchema = z.object({
   type: z.literal('done'),
+  /** Canonical post-generation content when verification rewrites the draft. */
+  content: z.string().optional(),
   usage: z.unknown().optional(),
   cost: z.unknown().optional(),
   responseCompiler: z

@@ -375,17 +375,26 @@ export function isFamilyWriteRequest(message: string): boolean {
   );
 }
 
+// Canonical romantic_relationships.status values (plus common synonyms) —
+// must stay in sync with the DB check constraint and romanceWriteService.ts.
 const ROMANCE_STATUS_RE =
-  /\b(?:mark|set)\s+(.{1,60}?)\s+(?:as\s+)?(dating|ex|broke\s*up|no\s*contact|complicated|crush|partner|married)\b/i;
+  /\b(?:mark|set)\s+(.{1,60}?)\s+(?:as|to)\s+(ended|ending|broke\s*up|breakup|on\s*(?:a\s*)?break|complicated|paused|ghosted|blocked|unrequited|fading|faded|rekindled|active)\b/i;
 const ROMANCE_BREAKUP_RE =
   /\b(?:we\s+)?(?:broke\s*up|ended\s+(?:things|it)|are\s+no\s+longer\s+dating)\s+(?:with\s+)?(.{1,60})$/i;
+const ROMANCE_LIFECYCLE_RE =
+  /\b(.{1,60}?)\s+(?:and\s+i|and\s+me)?\s*(?:are|is|got|and\s+i\s+are)\s+(on\s*(?:a\s*)?break|complicated|paused|ghosted|blocked|unrequited|fading|faded|back\s*together|rekindled)\b/i;
 const ROMANCE_DELETE_RE =
   /\b(?:delete|remove)\s+(?:the\s+)?(?:romance|relationship|dating)\s+(?:record\s+)?(?:for|with)\s+(.{1,60})$/i;
 
 export function isRomanceWriteRequest(message: string): boolean {
   const text = message.trim();
   if (!text) return false;
-  return ROMANCE_STATUS_RE.test(text) || ROMANCE_BREAKUP_RE.test(text) || ROMANCE_DELETE_RE.test(text);
+  return (
+    ROMANCE_STATUS_RE.test(text) ||
+    ROMANCE_BREAKUP_RE.test(text) ||
+    ROMANCE_LIFECYCLE_RE.test(text) ||
+    ROMANCE_DELETE_RE.test(text)
+  );
 }
 
 const EVENT_POST_RE =

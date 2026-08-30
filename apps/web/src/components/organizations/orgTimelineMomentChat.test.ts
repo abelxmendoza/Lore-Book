@@ -40,7 +40,7 @@ describe('buildOrgTimelineMomentChatPrompt', () => {
     expect(prompt).toMatch(/knowledge base/i);
   });
 
-  it('auto-submits the selected moment so LoreBook answers before follow-ups', () => {
+  it('opens the moment with an empty composer, no forced prompt', () => {
     openOrgTimelineMomentChat({
       event: moment({}),
       organizationId: 'org-northwind',
@@ -52,11 +52,12 @@ describe('buildOrgTimelineMomentChatPrompt', () => {
         entityId: 'org-northwind',
         entityName: 'Northwind Collective',
         sourceSurface: 'organizations',
-        initialPrompt: expect.stringMatching(/full story of “House Show”/i),
-        autoSubmit: true,
         startNewThread: true,
       }),
     );
+    const call = vi.mocked(openChatWithFocus).mock.calls[0][0];
+    expect(call.initialPrompt).toBeUndefined();
+    expect(call.autoSubmit).toBeUndefined();
   });
 });
 

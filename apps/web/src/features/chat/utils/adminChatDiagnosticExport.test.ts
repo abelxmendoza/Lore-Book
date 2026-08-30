@@ -351,4 +351,34 @@ describe('buildChatConversationCopyText', () => {
     expect(text).toContain('"response_generation"');
     expect(text).toContain('"errorCategory": "quota"');
   });
+
+  it('exports composition decisions and cognitive trace for admin review', () => {
+    const input = message({
+      role: 'assistant',
+      metadata: {
+        compositionPlan: {
+          version: 'composition-plan-v1',
+          profile: 'recall',
+          selectedEvidenceIds: ['evidence-1'],
+          discardedEvidenceIds: ['evidence-2'],
+        },
+        compositionQuality: { score: 1, passed: true },
+      },
+    });
+    const text = buildChatConversationCopyText([input], {
+      byMessageId: {
+        [input.id]: {
+          cognitiveTrace: {
+            version: 'cognitive-observatory-v1',
+            stages: [{ stage: 'RESPONSE_PLANNING', status: 'PASS' }],
+          },
+        },
+      },
+    });
+
+    expect(text).toContain('"composition"');
+    expect(text).toContain('"composition-plan-v1"');
+    expect(text).toContain('"cognitiveTrace"');
+    expect(text).toContain('"RESPONSE_PLANNING"');
+  });
 });
