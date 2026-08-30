@@ -31,6 +31,8 @@ export type UniversalBookQueryRequest = z.infer<typeof universalBookQueryRequest
 export type BookQueryEvidence = {
   sourceTable: string;
   sourceId: string;
+  /** Owning user_files id used to open the record in Documents. */
+  navigationId?: string | null;
   label: string;
   confidence?: number | null;
   observedAt?: string | null;

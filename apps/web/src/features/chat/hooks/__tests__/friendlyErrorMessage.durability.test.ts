@@ -32,6 +32,6 @@ describe('useChat friendlyErrorMessage durability copy', () => {
     expect(src).toContain('Cloud save succeeded, but I couldn’t generate a reply');
     expect(src).toContain('Cloud save and reply both failed');
     // Branching must prefer userSaved for the safe path
-    expect(src).toMatch(/userSaved\s*\n?\s*\?\s*\n?\s*'Cloud save succeeded/);
+    expect(src).toMatch(/:\s*userSaved\s*\n?\s*\?\s*\n?\s*["']Cloud save succeeded/);
   });
 });

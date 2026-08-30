@@ -396,7 +396,9 @@ export async function buildLifeSaga(userId: string): Promise<LifeSagaOverview> {
         ...storylines
           .filter((storyline) =>
             lifeChapterProjection.aliases.get(storyline.life_chapter_id ?? '') === chapterRow.id,
-          ),
+          )
+          .map((storyline) => storylinesById.get(storyline.id))
+          .filter((storyline): storyline is LifeSagaStoryline => Boolean(storyline)),
       );
     }
     chapterStorylines.sort(
