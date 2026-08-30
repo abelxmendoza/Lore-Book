@@ -146,10 +146,10 @@ export const TimelineStitchedView = ({
   };
 
   const continueInChat = (prompt?: string) => {
+    const trimmed = prompt?.trim();
     openStitchedTimelineChat({
       ...chatInput,
-      ...(prompt?.trim() ? { initialPrompt: prompt.trim() } : {}),
-      autoSubmit: true,
+      ...(trimmed ? { initialPrompt: trimmed, autoSubmit: true } : {}),
     });
     onClose?.();
   };

@@ -1,11 +1,17 @@
+import { SOURCE_TYPE_LABELS, type ChatSource } from '../features/chat/message/ChatMessage';
+
 import { buildListClipboardText, type ListClipboardFilterOptions } from './listClipboard';
-import type { ChatSource } from '../features/chat/message/ChatMessage';
-import { SOURCE_TYPE_LABELS } from '../features/chat/message/ChatMessage';
 
 export function dedupeChatSources(sources: ChatSource[]): ChatSource[] {
   const seen = new Set<string>();
   const out: ChatSource[] = [];
   for (const source of sources) {
+    if (
+      source.usage === 'rejected'
+      || !source.id
+      || !source.title?.trim()
+      || /^(?:assistant|system|lorebook response|this answer)$/i.test(source.title.trim())
+    ) continue;
     const key = `${source.type}:${source.id}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -33,15 +39,7 @@ export function buildChatSourcesClipboardText(
       heading: source.title?.trim() || '(untitled)',
       fields: [
         { label: 'Type', value: SOURCE_TYPE_LABELS[source.type] ?? source.type },
-        { label: 'Id', value: source.id },
         { label: 'Date', value: source.date },
-        { label: 'Usage', value: source.usage ?? 'background' },
-        {
-          label: 'Relevance',
-          value: source.relevanceScore != null ? source.relevanceScore : null,
-        },
-        { label: 'Why', value: source.relevanceReasons },
-        { label: 'Rejection reason', value: source.rejectionReason },
       ],
       body: source.snippet,
     })),

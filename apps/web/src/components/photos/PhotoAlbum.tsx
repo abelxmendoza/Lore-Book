@@ -1,20 +1,29 @@
+import { Image as ImageIcon, Calendar, MapPin, Search, X, Loader2, Tag, FileText } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Image as ImageIcon, Calendar, MapPin, Search, X, Loader2, Tag } from 'lucide-react';
-import { Card } from '../ui/card';
-import { Button } from '../ui/button';
-import { LazyImage } from '../ui/LazyImage';
-import { Badge } from '../ui/badge';
-import { fetchJson } from '../../lib/api';
-import { useEntityModal } from '../../contexts/EntityModalContext';
-import { mockDataService, type PhotoEntry } from '../../services/mockDataService';
+import { useSearchParams } from 'react-router-dom';
+
+import { photosApi, type PhotoQueryResult } from '../../api/photos';
 import { useMockData } from '../../contexts/MockDataContext';
-import { buildPhotoAlbumClipboardText } from '../../lib/photoAlbumClipboard';
+import { fetchJson } from '../../lib/api';
+import {
+  DOCUMENT_CATEGORIES,
+  DOCUMENT_SUBTYPES,
+  documentSubtypeLabel,
+  type DocumentCategory,
+} from '../../lib/documentCategories';
 import { clipboardFilterLines } from '../../lib/listClipboard';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
+import { buildPhotoAlbumClipboardText } from '../../lib/photoAlbumClipboard';
+import { mockDataService, type PhotoEntry } from '../../services/mockDataService';
+import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
+import { Card } from '../ui/card';
 import {
   GridListViewToolbar,
   readStoredCardViewMode,
   type CardViewMode,
 } from '../ui/GridListViewToolbar';
+import { LazyImage } from '../ui/LazyImage';
 
 // Mock photo data
 const dummyPhotos: PhotoEntry[] = [
@@ -173,6 +182,7 @@ function PhotoCard({
   const categoryLabel = photo.metadata?.category
     ? categoryDisplayLabel(photo.metadata.category, photo.metadata.customCategoryLabel)
     : null;
+  const suggestedDocLabel = documentSubtypeLabel(photo.metadata?.suggestedDocumentSubtype);
 
   return (
     <div className="relative group cursor-pointer" onClick={onClick}>
@@ -189,6 +199,14 @@ function PhotoCard({
           className="absolute top-1.5 left-1.5 text-[9px] px-1.5 py-0 bg-black/70 text-white/80 border-white/20"
         >
           {categoryLabel}
+        </Badge>
+      )}
+      {suggestedDocLabel && (
+        <Badge
+          variant="outline"
+          className="absolute bottom-1.5 left-1.5 text-[9px] px-1.5 py-0 bg-amber-950/80 text-amber-200 border-amber-300/30 flex items-center gap-1"
+        >
+          <FileText className="w-2.5 h-2.5" /> {suggestedDocLabel}?
         </Badge>
       )}
       <button
@@ -279,6 +297,14 @@ function PhotoListRow({
               {categoryLabel}
             </Badge>
           )}
+          {documentSubtypeLabel(photo.metadata?.suggestedDocumentSubtype) && (
+            <Badge
+              variant="outline"
+              className="text-[9px] px-1.5 py-0 bg-amber-950/60 text-amber-200 border-amber-300/30 flex items-center gap-1"
+            >
+              <FileText className="w-2.5 h-2.5" /> {documentSubtypeLabel(photo.metadata?.suggestedDocumentSubtype)}?
+            </Badge>
+          )}
           {photo.metadata?.locationName && (
             <span className="inline-flex items-center gap-1">
               <MapPin className="w-3 h-3" />
@@ -297,20 +323,28 @@ function PhotoListRow({
 
 export const PhotoAlbum: React.FC = () => {
   const { useMockData: isMockDataEnabled } = useMockData();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [photoQuery, setPhotoQuery] = useState('');
+  const [photoQueryResults, setPhotoQueryResults] = useState<PhotoQueryResult | null>(null);
+  const [photoQuerying, setPhotoQuerying] = useState(false);
+  const [photoQueryError, setPhotoQueryError] = useState<string | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoEntry | null>(null);
   const [categoryDraft, setCategoryDraft] = useState<string>('other');
   const [customCategoryDraft, setCustomCategoryDraft] = useState('');
   const [categorySaving, setCategorySaving] = useState(false);
+  const [documentCategoryDraft, setDocumentCategoryDraft] =
+    useState<DocumentCategory>('photos_images');
+  const [documentSubtypeDraft, setDocumentSubtypeDraft] = useState<string>('');
+  const [sendingToDocuments, setSendingToDocuments] = useState(false);
+  const [sendToDocumentsError, setSendToDocumentsError] = useState<string | null>(null);
   const [filterBy, setFilterBy] = useState<'all' | 'recent' | 'by-location' | 'by-date'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<CardViewMode>(() =>
     readStoredCardViewMode(PHOTO_VIEW_STORAGE_KEY, 'grid'),
   );
-  const { openMemory } = useEntityModal();
-
   // Register mock data with service on mount
   useEffect(() => {
     mockDataService.register.photos(dummyPhotos);
@@ -357,12 +391,54 @@ export const PhotoAlbum: React.FC = () => {
   }, [fetchPhotos]);
 
   useEffect(() => {
+    const photoId = searchParams.get('photoId');
+    if (!photoId || !photos.length || selectedPhoto) return;
+    const photo = photos.find((candidate) => candidate.id === photoId);
+    if (!photo) return;
+    setSelectedPhoto(photo);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('photoId');
+    setSearchParams(nextParams, { replace: true });
+  }, [photos, searchParams, selectedPhoto, setSearchParams]);
+
+  useEffect(() => {
     if (!selectedPhoto) return;
     const cat = selectedPhoto.metadata?.category ?? 'other';
     const isPreset = cat === 'other' || (PRESET_PHOTO_CATEGORIES as readonly string[]).includes(cat);
     setCategoryDraft(isPreset ? cat : 'custom');
     setCustomCategoryDraft(isPreset ? '' : categoryDisplayLabel(cat, selectedPhoto.metadata?.customCategoryLabel));
+    const suggestedSubtype = selectedPhoto.metadata?.suggestedDocumentSubtype;
+    setDocumentCategoryDraft(suggestedSubtype ? 'personal_identity' : 'photos_images');
+    setDocumentSubtypeDraft(suggestedSubtype || DOCUMENT_SUBTYPES[0].id);
+    setSendToDocumentsError(null);
   }, [selectedPhoto]);
+
+  const sendSelectedPhotoToDocuments = useCallback(async () => {
+    if (
+      !selectedPhoto ||
+      (documentCategoryDraft === 'personal_identity' && !documentSubtypeDraft)
+    ) return;
+    setSendingToDocuments(true);
+    setSendToDocumentsError(null);
+    try {
+      await fetchJson(`/api/photos/${selectedPhoto.id}/send-to-documents`, {
+        method: 'POST',
+        body: JSON.stringify({
+          category: documentCategoryDraft,
+          ...(documentCategoryDraft === 'personal_identity'
+            ? { documentSubtype: documentSubtypeDraft }
+            : {}),
+        }),
+      });
+      setPhotos((prev) => prev.filter((p) => p.id !== selectedPhoto.id));
+      setSelectedPhoto(null);
+    } catch (error) {
+      console.error('Failed to send photo to Documents:', error);
+      setSendToDocumentsError('Could not send this photo to Documents. Try again.');
+    } finally {
+      setSendingToDocuments(false);
+    }
+  }, [selectedPhoto, documentCategoryDraft, documentSubtypeDraft]);
 
   const saveCategory = useCallback(async () => {
     if (!selectedPhoto) return;
@@ -472,14 +548,37 @@ export const PhotoAlbum: React.FC = () => {
   }, [filteredPhotos]);
 
   const handlePhotoClick = (photo: PhotoEntry) => {
-    // Open memory modal with photo entry
-    openMemory({
-      id: photo.id,
-      journal_entry_id: photo.id,
-      content: photo.content,
-      start_time: photo.date,
-      timeline_memberships: []
-    } as any);
+    setSelectedPhoto(photo);
+  };
+
+  const runPhotoQuery = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const query = photoQuery.trim();
+    if (!query || photoQuerying) return;
+    setPhotoQuerying(true);
+    setPhotoQueryError(null);
+    try {
+      setPhotoQueryResults(await photosApi.query({ query, limit: 20 }));
+    } catch (error) {
+      setPhotoQueryResults(null);
+      setPhotoQueryError(error instanceof Error ? error.message : 'Could not search your photos.');
+    } finally {
+      setPhotoQuerying(false);
+    }
+  };
+
+  const openPhotoChat = () => {
+    if (!selectedPhoto) return;
+    openChatWithFocus({
+      entityId: selectedPhoto.id,
+      entityName: selectedPhoto.summary || 'Photo',
+      entityType: 'memory',
+      sourceSurface: 'photos',
+      sourceLabel: 'Photo Album',
+      knowledgeScope: 'this photo’s description, date, location, tags, people, and related memories',
+      startNewThread: true,
+    });
+    setSelectedPhoto(null);
   };
 
   if (loading) {
@@ -540,6 +639,57 @@ export const PhotoAlbum: React.FC = () => {
             </button>
           )}
         </div>
+        <form
+          onSubmit={(event) => void runPhotoQuery(event)}
+          className="flex flex-col gap-2 sm:flex-row"
+        >
+          <input
+            type="text"
+            placeholder="Ask your photos: What photos include a beach or a trip?"
+            value={photoQuery}
+            onChange={(event) => setPhotoQuery(event.target.value)}
+            aria-label="Ask your photos"
+            className="min-w-0 flex-1 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-white placeholder:text-white/35 focus:border-primary/50 focus:outline-none"
+          />
+          <Button
+            type="submit"
+            size="sm"
+            variant="outline"
+            disabled={photoQuerying || !photoQuery.trim()}
+          >
+            {photoQuerying ? 'Searching…' : 'Ask photos'}
+          </Button>
+        </form>
+        {photoQueryError && (
+          <p role="alert" className="text-sm text-red-300">{photoQueryError}</p>
+        )}
+        {photoQueryResults && (
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+            <p className="mb-2 text-xs text-white/50">
+              {photoQueryResults.total} matching photo{photoQueryResults.total === 1 ? '' : 's'}
+            </p>
+            {photoQueryResults.photos.length === 0 ? (
+              <p className="text-sm text-white/50">No photos matched that question.</p>
+            ) : (
+              <ul className="space-y-1">
+                {photoQueryResults.photos.map((photo) => (
+                  <li key={photo.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPhoto(photo)}
+                      className="w-full rounded-md px-2 py-1.5 text-left text-sm text-white/80 hover:bg-white/10"
+                    >
+                      <span className="font-medium">{photo.summary || 'Photo'}</span>
+                      <span className="ml-2 text-xs text-white/45">
+                        {new Date(photo.date).toLocaleDateString()}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs text-white/50">Filter:</span>
@@ -792,14 +942,69 @@ export const PhotoAlbum: React.FC = () => {
                     </Button>
                   </div>
                 </div>
+                <div className="space-y-2 rounded-lg border border-amber-300/20 bg-amber-950/20 p-3">
+                  <label className="text-xs text-amber-200/80 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5" />
+                    {selectedPhoto.metadata?.suggestedDocumentSubtype
+                      ? `Looks like a ${documentSubtypeLabel(selectedPhoto.metadata.suggestedDocumentSubtype)}. Choose where to file it.`
+                      : 'File this photo in Documents'}
+                  </label>
+                  <div className="space-y-2">
+                    <label className="block text-xs text-white/50" htmlFor="photo-document-folder">
+                      Documents folder
+                    </label>
+                    <select
+                      id="photo-document-folder"
+                      value={documentCategoryDraft}
+                      onChange={(e) => setDocumentCategoryDraft(e.target.value as DocumentCategory)}
+                      className="w-full px-2 py-1.5 bg-black/40 border border-border/60 rounded text-xs text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    >
+                      {DOCUMENT_CATEGORIES.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.label}
+                        </option>
+                      ))}
+                    </select>
+                    {documentCategoryDraft === 'personal_identity' && (
+                      <>
+                        <label className="block text-xs text-white/50" htmlFor="photo-document-subtype">
+                          Identity record type
+                        </label>
+                        <select
+                          id="photo-document-subtype"
+                          value={documentSubtypeDraft}
+                          onChange={(e) => setDocumentSubtypeDraft(e.target.value)}
+                          className="w-full px-2 py-1.5 bg-black/40 border border-border/60 rounded text-xs text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+                        >
+                          {DOCUMENT_SUBTYPES.map((subtype) => (
+                            <option key={subtype.id} value={subtype.id}>
+                              {subtype.label}
+                            </option>
+                          ))}
+                        </select>
+                      </>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={sendSelectedPhotoToDocuments}
+                      disabled={
+                        sendingToDocuments ||
+                        (documentCategoryDraft === 'personal_identity' && !documentSubtypeDraft)
+                      }
+                    >
+                      {sendingToDocuments ? 'Moving…' : 'Move to Documents'}
+                    </Button>
+                  </div>
+                  {sendToDocumentsError && (
+                    <p className="text-xs text-red-400">{sendToDocumentsError}</p>
+                  )}
+                </div>
                 <Button
-                  onClick={() => {
-                    handlePhotoClick(selectedPhoto);
-                    setSelectedPhoto(null);
-                  }}
+                  onClick={openPhotoChat}
                   className="w-full"
                 >
-                  View Full Details
+                  Ask in focused chat
                 </Button>
               </div>
             </div>

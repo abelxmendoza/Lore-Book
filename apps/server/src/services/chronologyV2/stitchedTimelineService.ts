@@ -11,11 +11,7 @@ import {
 } from '../organizations/organizationEventAttribution';
 
 import { chronologyService } from './chronologyService';
-import {
-  clusterDuplicateEvents,
-  buildMergeLog,
-  type MergeLogEntry,
-} from './eventCanonicalization';
+import { clusterDuplicateEvents, buildMergeLog, type MergeLogEntry } from './eventCanonicalization';
 import {
   buildNarrativeAnchor,
   attachAnchorEntityNames,
@@ -37,10 +33,7 @@ export type ChronologyScopeType = 'global' | 'life_arc';
 
 export const GLOBAL_SCOPE_ID = '00000000-0000-0000-0000-000000000000';
 
-function resolvedEventBelongsToOrganization(
-  row: { metadata?: unknown },
-  organizationId: string,
-): boolean {
+function resolvedEventBelongsToOrganization(row: { metadata?: unknown }, organizationId: string): boolean {
   const metadata = (row.metadata ?? {}) as Record<string, unknown>;
   const attributions = readOrganizationAttributions(metadata);
   if (attributions.length > 0) {
@@ -67,6 +60,9 @@ export type StitchedTimelineItem = {
   sourceIds: string[];
   /** Ingestion provenance such as calendar, chat, manual, or resolved_event. */
   sourceType: string;
+  metadata?: Record<string, unknown> | null;
+  /** Product-facing related timeline such as career, education, or projects. */
+  timelineTrack?: string;
   tags?: string[];
   confidence?: number;
   userPresence?: 'attended' | 'heard_about' | 'unknown';
@@ -151,7 +147,10 @@ export type StitchedTimelineResult = {
    * empty/unresolved timeline) should check this before trusting an empty
    * result as authoritative.
    */
-  data_errors?: Array<{ source: 'resolved_events' | 'timeline_events'; message: string }>;
+  data_errors?: Array<{
+    source: 'resolved_events' | 'timeline_events';
+    message: string;
+  }>;
 };
 
 /** Columns that exist on every resolved_events catalog we have seen, including production. */
@@ -195,10 +194,7 @@ function metadataMarksOccurrenceUnresolved(meta: unknown): boolean {
  * Occurrence for a resolved_events row. start_time is sufficient unless metadata
  * explicitly marks the occurrence unanchored. created_at / sortTime never fill this.
  */
-export function resolvedOccurrenceStart(row: {
-  start_time?: unknown;
-  metadata?: unknown;
-}): string | null {
+export function resolvedOccurrenceStart(row: { start_time?: unknown; metadata?: unknown }): string | null {
   if (metadataMarksOccurrenceUnresolved(row.metadata)) return null;
   return canonicalStartTime(row.start_time);
 }
@@ -219,24 +215,36 @@ export function resolvedTemporalSource(row: {
 }
 
 async function fetchResolvedEvents(
-  apply: (query: any) => PromiseLike<{ data: unknown[] | null; error: { code?: string; message?: string } | null }>,
-  context: { userId: string; path: string },
+  apply: (query: any) => PromiseLike<{
+    data: unknown[] | null;
+    error: { code?: string; message?: string } | null;
+  }>,
+  context: { userId: string; path: string }
 ): Promise<{ rows: any[]; queryFailed: boolean; errorMessage?: string }> {
   const run = (select: string) => apply(supabaseAdmin.from('resolved_events').select(select));
   let { data, error } = await run(RESOLVED_EVENTS_SELECT);
   if (error && isMissingColumnError(error)) {
     logger.error(
-      { code: error.code, message: error.message, userId: context.userId, path: context.path },
-      'resolved_events schema drift: optional temporal columns missing from SELECT; retrying core occurrence fields',
+      {
+        code: error.code,
+        message: error.message,
+        userId: context.userId,
+        path: context.path,
+      },
+      'resolved_events schema drift: optional temporal columns missing from SELECT; retrying core occurrence fields'
     );
     ({ data, error } = await run(RESOLVED_EVENTS_CORE_SELECT));
   }
   if (error) {
     logger.error(
       { error, userId: context.userId, path: context.path },
-      'resolved_events query failed for stitch — not converting to unresolved occurrence',
+      'resolved_events query failed for stitch — not converting to unresolved occurrence'
     );
-    return { rows: [], queryFailed: true, errorMessage: error.message ?? String(error) };
+    return {
+      rows: [],
+      queryFailed: true,
+      errorMessage: error.message ?? String(error),
+    };
   }
   return { rows: data ?? [], queryFailed: false };
 }
@@ -244,7 +252,9 @@ async function fetchResolvedEvents(
 async function loadTemporalRelations(userId: string): Promise<ProjectedTemporalRelation[]> {
   const { data, error } = await supabaseAdmin
     .from('canonical_temporal_relations')
-    .select('id, source_ref_id, source_label, target_ref_id, target_label, relation_type, confidence, evidence_phrase, source_message_id, source_assertion_ids')
+    .select(
+      'id, source_ref_id, source_label, target_ref_id, target_label, relation_type, confidence, evidence_phrase, source_message_id, source_assertion_ids'
+    )
     .eq('user_id', userId)
     .order('created_at', { ascending: true })
     .limit(500);
@@ -272,8 +282,12 @@ async function loadNarrativeRelations(userId: string): Promise<ProjectedNarrativ
     .select('id, from_node_id, to_node_id, relation_kind, confidence, meta, valid_to')
     .eq('user_id', userId)
     .in('relation_kind', [
-      'CONSIDERED_BEGINNING_OF', 'TURNING_POINT_IN', 'END_OF_CHAPTER',
-      'DEFINING_PERIOD_OF', 'RETURN_TO', 'RESTART_OF',
+      'CONSIDERED_BEGINNING_OF',
+      'TURNING_POINT_IN',
+      'END_OF_CHAPTER',
+      'DEFINING_PERIOD_OF',
+      'RETURN_TO',
+      'RESTART_OF',
     ])
     .order('created_at', { ascending: true })
     .limit(500);
@@ -318,9 +332,7 @@ function momentTitle(content: string): string {
 function sortItems(items: StitchedTimelineItem[]): StitchedTimelineItem[] {
   const hasUserOrder = items.some((i) => i.userSortIndex != null);
   if (!hasUserOrder) {
-    return [...items].sort(
-      (a, b) => new Date(a.sortTime).getTime() - new Date(b.sortTime).getTime()
-    );
+    return [...items].sort((a, b) => new Date(a.sortTime).getTime() - new Date(b.sortTime).getTime());
   }
   return [...items].sort((a, b) => {
     const ai = a.userSortIndex ?? Number.MAX_SAFE_INTEGER;
@@ -392,7 +404,7 @@ function chapterFromMetadata(
   metadata: Record<string, unknown> | undefined,
   confidence = 0.5,
   startDate: string | null = null,
-  endDate: string | null = null,
+  endDate: string | null = null
 ): NarrativeChapterData | undefined {
   const thesis = metadata?.chapter_thesis as string | undefined;
   if (!thesis) return undefined;
@@ -417,11 +429,13 @@ function chapterFromMetadata(
 async function loadNarrativeChapter(
   userId: string,
   lifeArcId: string,
-  fallback: NarrativeChapterData | undefined,
+  fallback: NarrativeChapterData | undefined
 ): Promise<NarrativeChapterData | undefined> {
   const { data, error } = await supabaseAdmin
     .from('narrative_chapters')
-    .select('title, thesis, dominant_theme, start_date, end_date, participant_ids, location_ids, supporting_event_ids, background_event_ids, background_context, outcomes, contribution_scores, quality, confidence')
+    .select(
+      'title, thesis, dominant_theme, start_date, end_date, participant_ids, location_ids, supporting_event_ids, background_event_ids, background_context, outcomes, contribution_scores, quality, confidence'
+    )
     .eq('user_id', userId)
     .eq('life_arc_id', lifeArcId)
     .maybeSingle();
@@ -461,8 +475,12 @@ async function applyCohesionGate(
   userId: string,
   seed: { title: string; summary?: string | null; tags?: string[] },
   items: StitchedTimelineItem[],
-  candidatesByKey: Map<string, CohesionCandidate>,
-): Promise<{ scene: StitchedTimelineItem[]; background: StitchedTimelineItem[]; excludedCount: number } | null> {
+  candidatesByKey: Map<string, CohesionCandidate>
+): Promise<{
+  scene: StitchedTimelineItem[];
+  background: StitchedTimelineItem[];
+  excludedCount: number;
+} | null> {
   const anchor = buildNarrativeAnchor(seed, [...candidatesByKey.values()]);
   if (!anchor) return null;
 
@@ -473,15 +491,19 @@ async function applyCohesionGate(
   const [charsRes, locsRes] = await Promise.all([
     peopleIds.length
       ? supabaseAdmin.from('characters').select('id, name').eq('user_id', userId).in('id', peopleIds)
-      : Promise.resolve({ data: [] as Array<{ id: string; name: string | null }> }),
+      : Promise.resolve({
+          data: [] as Array<{ id: string; name: string | null }>,
+        }),
     locationIds.length
       ? supabaseAdmin.from('locations').select('id, name').eq('user_id', userId).in('id', locationIds)
-      : Promise.resolve({ data: [] as Array<{ id: string; name: string | null }> }),
+      : Promise.resolve({
+          data: [] as Array<{ id: string; name: string | null }>,
+        }),
   ]);
   attachAnchorEntityNames(
     anchor,
     (charsRes.data ?? []).map((c) => c.name ?? '').filter(Boolean),
-    (locsRes.data ?? []).map((l) => l.name ?? '').filter(Boolean),
+    (locsRes.data ?? []).map((l) => l.name ?? '').filter(Boolean)
   );
 
   const scene: StitchedTimelineItem[] = [];
@@ -550,6 +572,7 @@ function projectStitchedItems(items: StitchedTimelineItem[]): {
       sourceKind: item.sourceKind,
       sourceIds: item.sourceIds,
       sourceType: item.sourceType,
+      metadata: item.metadata,
       tags: item.tags,
       confidence: item.confidence,
       timePrecision: item.timePrecision,
@@ -562,7 +585,7 @@ function projectStitchedItems(items: StitchedTimelineItem[]): {
       knownFrom: item.knownFrom,
       validFrom: item.validFrom,
       validUntil: item.validUntil,
-    })),
+    }))
   );
   const byId = new Map(items.map((i) => [i.id, i]));
   const toStitched = (p: (typeof projected.canonical)[number]): StitchedTimelineItem => {
@@ -578,6 +601,8 @@ function projectStitchedItems(items: StitchedTimelineItem[]): {
       sourceKind: p.sourceKind,
       sourceIds: p.sourceIds,
       sourceType: p.sourceType,
+      metadata: p.metadata,
+      timelineTrack: original?.timelineTrack,
       tags: p.tags,
       confidence: p.timeConfidence,
       timePrecision: p.timePrecision,
@@ -612,7 +637,7 @@ function projectStitchedItems(items: StitchedTimelineItem[]): {
 async function loadNarrativeArcEventIds(
   userId: string,
   arcId: string,
-  metadata?: Record<string, unknown>,
+  metadata?: Record<string, unknown>
 ): Promise<string[]> {
   const fromMeta = (metadata?.source_event_ids as string[] | undefined) ?? [];
   if (fromMeta.length > 0) return fromMeta;
@@ -638,11 +663,7 @@ async function loadNarrativeArcEventIds(
   return [...ids];
 }
 
-function attachTemporalProjection(
-  items: StitchedTimelineItem[],
-  timezone: string,
-  now: Date,
-): StitchedTimelineItem[] {
+function attachTemporalProjection(items: StitchedTimelineItem[], timezone: string, now: Date): StitchedTimelineItem[] {
   return items.map((item) => ({
     ...item,
     temporalProjection: projectTemporalItem(item, timezone, now),
@@ -686,10 +707,8 @@ export class StitchedTimelineService {
       timezone?: string;
     } = {}
   ): Promise<StitchedTimelineResult> {
-    const scopeType: ChronologyScopeType =
-      opts.scope_type ?? (opts.life_arc_id ? 'life_arc' : 'global');
-    const scopeId =
-      scopeType === 'life_arc' && opts.life_arc_id ? opts.life_arc_id : GLOBAL_SCOPE_ID;
+    const scopeType: ChronologyScopeType = opts.scope_type ?? (opts.life_arc_id ? 'life_arc' : 'global');
+    const scopeId = scopeType === 'life_arc' && opts.life_arc_id ? opts.life_arc_id : GLOBAL_SCOPE_ID;
     const timezone = opts.timezone ?? 'UTC';
     const projectionNow = new Date();
 
@@ -724,7 +743,7 @@ export class StitchedTimelineService {
           window.metadata,
           window.confidence,
           window.start ?? null,
-          window.end ?? null,
+          window.end ?? null
         );
         chapter = await loadNarrativeChapter(userId, opts.life_arc_id, fallbackChapter);
       }
@@ -737,37 +756,49 @@ export class StitchedTimelineService {
       }
     }
 
-    const [moments, timelineEventsRes, resolvedEventsRes, orderMap, temporalRelations, narrativeRelations] = await Promise.all([
-      chronologyService.getChronologicalOrder(userId, startTime, endTime),
-      (async () => {
-        let query = supabaseAdmin
-          .from('timeline_events')
-          .select('id, title, description, event_date, occurred_at, confidence, source_type, created_at')
-          .eq('user_id', userId);
-        if (startTime) query = query.gte('event_date', startTime);
-        if (endTime) query = query.lte('event_date', endTime);
-        return query.order('event_date', { ascending: true });
-      })(),
-      fetchResolvedEvents((query) => {
-        query = query.eq('user_id', userId);
-        if (startTime) {
-          const lowerBound = `${startTime}T00:00:00.000Z`;
-          query = query.or(`start_time.gte.${lowerBound},end_time.gte.${lowerBound}`);
-        }
-        if (endTime) query = query.lte('start_time', `${endTime}T23:59:59.999Z`);
-        return query.order('start_time', { ascending: true, nullsFirst: false });
-      }, { userId, path: 'stitched.global' }),
-      loadUserOrder(userId, scopeType, scopeId),
-      loadTemporalRelations(userId),
-      loadNarrativeRelations(userId),
-    ]);
+    const [moments, timelineEventsRes, resolvedEventsRes, orderMap, temporalRelations, narrativeRelations] =
+      await Promise.all([
+        chronologyService.getChronologicalOrder(userId, startTime, endTime, undefined, {
+          includeReviewPending: true,
+        }),
+        (async () => {
+          let query = supabaseAdmin
+            .from('timeline_events')
+            .select('id, title, description, event_date, occurred_at, confidence, source_type, created_at, metadata')
+            .eq('user_id', userId);
+          if (startTime) query = query.gte('event_date', startTime);
+          if (endTime) query = query.lte('event_date', endTime);
+          return query.order('event_date', { ascending: true });
+        })(),
+        fetchResolvedEvents(
+          (query) => {
+            query = query.eq('user_id', userId);
+            if (startTime) {
+              const lowerBound = `${startTime}T00:00:00.000Z`;
+              query = query.or(`start_time.gte.${lowerBound},end_time.gte.${lowerBound}`);
+            }
+            if (endTime) query = query.lte('start_time', `${endTime}T23:59:59.999Z`);
+            return query.order('start_time', {
+              ascending: true,
+              nullsFirst: false,
+            });
+          },
+          { userId, path: 'stitched.global' }
+        ),
+        loadUserOrder(userId, scopeType, scopeId),
+        loadTemporalRelations(userId),
+        loadNarrativeRelations(userId),
+      ]);
 
     const { data: eventRows, error: eventsError } = timelineEventsRes;
     const resolvedRows = resolvedEventsRes.rows;
     const dataErrors: NonNullable<StitchedTimelineResult['data_errors']> = [];
     if (eventsError) {
       logger.error({ error: eventsError, userId }, 'Failed to load timeline events for stitch');
-      dataErrors.push({ source: 'timeline_events', message: eventsError.message ?? String(eventsError) });
+      dataErrors.push({
+        source: 'timeline_events',
+        message: eventsError.message ?? String(eventsError),
+      });
     }
     if (resolvedEventsRes.queryFailed) {
       dataErrors.push({
@@ -780,17 +811,20 @@ export class StitchedTimelineService {
     const seenEventIds = new Set<string>();
 
     if (isOccasionArc && occasionLinks.length > 0) {
-      const eventIds = occasionLinks.filter(l => l.resolved_event_id).map(l => l.resolved_event_id!);
-      const journalIds = occasionLinks.filter(l => l.journal_entry_id).map(l => l.journal_entry_id!);
+      const eventIds = occasionLinks.filter((l) => l.resolved_event_id).map((l) => l.resolved_event_id!);
+      const journalIds = occasionLinks.filter((l) => l.journal_entry_id).map((l) => l.journal_entry_id!);
 
       const [linkedEvents, linkedJournal] = await Promise.all([
         eventIds.length
-          ? fetchResolvedEvents((query) => query.in('id', eventIds), { userId, path: 'stitched.occasion' })
+          ? fetchResolvedEvents((query) => query.in('id', eventIds), {
+              userId,
+              path: 'stitched.occasion',
+            })
           : Promise.resolve({ rows: [] as any[], queryFailed: false }),
         journalIds.length
           ? supabaseAdmin
               .from('journal_entries')
-              .select('id, content, date, source, tags, time_precision, time_confidence, created_at')
+            .select('id, content, date, source, tags, time_precision, time_confidence, created_at, metadata')
               .in('id', journalIds)
           : Promise.resolve({ data: [] as any[] }),
       ]);
@@ -810,7 +844,7 @@ export class StitchedTimelineService {
       // own real evidence, never from the link.
       for (const link of occasionLinks) {
         if (link.resolved_event_id) {
-          const e = linkedEvents.rows.find(r => r.id === link.resolved_event_id);
+          const e = linkedEvents.rows.find((r) => r.id === link.resolved_event_id);
           if (!e) continue;
           const key = `event:${e.id}`;
           const meta = (e.metadata ?? {}) as Record<string, unknown>;
@@ -826,6 +860,8 @@ export class StitchedTimelineService {
             sourceKind: 'resolved_event',
             sourceIds: [e.id],
             sourceType: (meta.source_type as string | undefined) ?? 'resolved_event',
+            metadata: meta,
+            timelineTrack: meta.timeline_track as string | undefined,
             tags: (e.tags as string[]) ?? [],
             confidence: e.confidence ?? 1,
             timePrecision: (e.temporal_precision as string) ?? 'date',
@@ -844,7 +880,7 @@ export class StitchedTimelineService {
           seenEventIds.add(e.id);
         }
         if (link.journal_entry_id) {
-          const m = (linkedJournal.data ?? []).find(j => j.id === link.journal_entry_id);
+          const m = (linkedJournal.data ?? []).find((j) => j.id === link.journal_entry_id);
           if (!m) continue;
           const sourceId = m.id;
           const key = `moment:${sourceId}`;
@@ -860,13 +896,14 @@ export class StitchedTimelineService {
             sourceKind: 'journal_entry',
             sourceIds: [sourceId],
             sourceType: m.source ?? 'manual',
+            metadata: (m.metadata as Record<string, unknown> | null) ?? null,
             tags: (m.tags as string[]) ?? [],
             timePrecision: (m.time_precision as string) ?? 'exact',
             timeConfidence,
             // Same rule as the general sweep's moment handling: a low-confidence
             // (write-time-fallback) date carries no occurrence claim at all.
             temporalSource: timeConfidence < 0.3 ? 'recording_fallback' : 'user_stated',
-            occurredAt: timeConfidence < 0.3 ? null : m.date ?? null,
+            occurredAt: timeConfidence < 0.3 ? null : (m.date ?? null),
             recordedAt: (m.created_at as string | null) ?? null,
             knownFrom: (m.created_at as string | null) ?? null,
             userPresence: (link.user_presence as StitchedTimelineItem['userPresence']) ?? 'attended',
@@ -875,12 +912,15 @@ export class StitchedTimelineService {
         }
       }
     } else if (isNarrativeConsolidationArc && narrativeEventIds.length > 0) {
-      const linked = await fetchResolvedEvents(
-        (query) => query.eq('user_id', userId).in('id', narrativeEventIds),
-        { userId, path: 'stitched.narrative' },
-      );
+      const linked = await fetchResolvedEvents((query) => query.eq('user_id', userId).in('id', narrativeEventIds), {
+        userId,
+        path: 'stitched.narrative',
+      });
       if (linked.queryFailed) {
-        dataErrors.push({ source: 'resolved_events', message: linked.errorMessage ?? 'narrative resolved_events query failed' });
+        dataErrors.push({
+          source: 'resolved_events',
+          message: linked.errorMessage ?? 'narrative resolved_events query failed',
+        });
       }
 
       for (const e of linked.rows) {
@@ -900,6 +940,8 @@ export class StitchedTimelineService {
           sourceKind: 'resolved_event',
           sourceIds: [e.id],
           sourceType: 'resolved_event',
+          metadata: meta,
+          timelineTrack: meta.timeline_track as string | undefined,
           tags: (e.tags as string[]) ?? [],
           confidence: e.confidence ?? 1,
           timePrecision: (e.temporal_precision as string) ?? 'date',
@@ -933,6 +975,7 @@ export class StitchedTimelineService {
           sourceKind: 'resolved_event' as const,
           sourceIds: [event.id as string],
           sourceType: 'resolved_event',
+          metadata: (event.metadata as Record<string, unknown> | null) ?? null,
           confidence: Number(event.confidence ?? 1),
           contribution: chapter?.contributionScores[event.id as string],
         }));
@@ -958,6 +1001,7 @@ export class StitchedTimelineService {
           sourceKind: 'journal_entry',
           sourceIds: [sourceId],
           sourceType: m.source_type ?? 'manual',
+          metadata: m.metadata ?? null,
           tags: m.tags ?? [],
           confidence: m.time_confidence,
           timePrecision: m.time_precision,
@@ -999,12 +1043,19 @@ export class StitchedTimelineService {
         metadata: (e.metadata as Record<string, unknown> | null) ?? {},
       });
       const scopedResolvedRows = characterId
-        ? (resolvedRows ?? []).filter((e) =>
-            characterBelongsOnCanonicalEvent(associationView(e), { id: characterId, name: characterName }).associated,
+        ? (resolvedRows ?? []).filter(
+            (e) =>
+              characterBelongsOnCanonicalEvent(associationView(e), {
+                id: characterId,
+                name: characterName,
+              }).associated
           )
         : locationId
-          ? (resolvedRows ?? []).filter((e) =>
-              locationBelongsOnCanonicalEvent(associationView(e), { id: locationId }).associated,
+          ? (resolvedRows ?? []).filter(
+              (e) =>
+                locationBelongsOnCanonicalEvent(associationView(e), {
+                  id: locationId,
+                }).associated
             )
           : organizationId
             ? (resolvedRows ?? []).filter((e) => resolvedEventBelongsToOrganization(e, organizationId))
@@ -1027,6 +1078,7 @@ export class StitchedTimelineService {
           sourceKind: 'resolved_event',
           sourceIds: [e.id as string],
           sourceType: (meta.source_type as string | undefined) ?? 'resolved_event',
+          timelineTrack: meta.timeline_track as string | undefined,
           tags: (e.tags as string[]) ?? [],
           confidence: Number(e.temporal_confidence ?? e.confidence ?? 0.2),
           timePrecision: (e.temporal_precision as string) ?? 'unknown',
@@ -1052,7 +1104,7 @@ export class StitchedTimelineService {
           locationIds: (e.locations as string[]) ?? [],
           activityIds: (e.activities as string[]) ?? [],
           row: e,
-        })),
+        }))
       );
       mergeLog = buildMergeLog(clusters);
 
@@ -1073,9 +1125,12 @@ export class StitchedTimelineService {
         const temporalMeta = (meta.temporal ?? {}) as Record<string, unknown>;
         const confidence = Math.max(
           ...cluster.members.map((m) => {
-            const r = m.row as { temporal_confidence?: number; confidence?: number };
+            const r = m.row as {
+              temporal_confidence?: number;
+              confidence?: number;
+            };
             return r.temporal_confidence ?? r.confidence ?? 1;
-          }),
+          })
         );
         items.push({
           id: key,
@@ -1088,10 +1143,16 @@ export class StitchedTimelineService {
           sourceKind: 'resolved_event',
           sourceIds: cluster.members.map((member) => member.id),
           sourceType: (meta.source_type as string | undefined) ?? 'resolved_event',
-          tags: [...new Set(cluster.members.flatMap((member) => {
-            const memberRow = member.row as { tags?: string[] };
-            return memberRow.tags ?? [];
-          }))],
+          metadata: meta,
+          timelineTrack: meta.timeline_track as string | undefined,
+          tags: [
+            ...new Set(
+              cluster.members.flatMap((member) => {
+                const memberRow = member.row as { tags?: string[] };
+                return memberRow.tags ?? [];
+              })
+            ),
+          ],
           confidence,
           timePrecision: row.temporal_precision ?? 'date',
           timeConfidence: row.temporal_confidence ?? confidence,
@@ -1109,10 +1170,13 @@ export class StitchedTimelineService {
           validUntil: (temporalMeta.valid_until as string | undefined) ?? null,
           userPresence: (meta.user_presence as StitchedTimelineItem['userPresence']) ?? 'unknown',
           organizationAttributions: cluster.members.flatMap((member) =>
-            attributionsFromResolvedRow(member.row as { metadata?: unknown }),
+            attributionsFromResolvedRow(member.row as { metadata?: unknown })
           ),
           ...(cluster.members.length > 1
-            ? { mergedCount: cluster.members.length, mergedTitles: cluster.mergedTitles }
+            ? {
+                mergedCount: cluster.members.length,
+                mergedTitles: cluster.mergedTitles,
+              }
             : {}),
         });
         candidatesByKey.set(key, {
@@ -1126,7 +1190,7 @@ export class StitchedTimelineService {
         });
       }
 
-      for (const e of characterId ? [] : eventRows ?? []) {
+      for (const e of characterId ? [] : (eventRows ?? [])) {
         if (seenEventIds.has(e.id)) continue;
         const occurredAt = e.occurred_at ?? e.event_date ?? null;
         const sortTime = occurredAt ?? e.created_at ?? new Date(0).toISOString();
@@ -1142,13 +1206,14 @@ export class StitchedTimelineService {
           sourceKind: 'timeline_event',
           sourceIds: [e.id],
           sourceType: e.source_type ?? 'timeline_event',
+          metadata: e.metadata ?? null,
           confidence: e.confidence ?? 1,
           occurredAt,
           recordedAt: e.created_at ?? null,
           knownFrom: e.created_at ?? null,
           temporalSource: occurredAt ? 'user_stated' : 'recording_fallback',
           timePrecision: occurredAt ? 'date' : 'unknown',
-          timeConfidence: occurredAt ? e.confidence ?? 0.8 : 0,
+          timeConfidence: occurredAt ? (e.confidence ?? 0.8) : 0,
         });
         candidatesByKey.set(key, {
           key,
@@ -1172,7 +1237,7 @@ export class StitchedTimelineService {
           userId,
           { title: scopeLabel, summary: arcSummary, tags: arcTags },
           canonical,
-          candidatesByKey,
+          candidatesByKey
         );
         if (gated) {
           const sortedScene = sortItems(gated.scene);
@@ -1221,7 +1286,9 @@ export class StitchedTimelineService {
         temporal_relations: temporalRelations,
         narrative_relations: narrativeRelations,
         ...(chapterBackground.length
-          ? { background: attachTemporalProjection(sortItems(chapterBackground), timezone, projectionNow) }
+          ? {
+              background: attachTemporalProjection(sortItems(chapterBackground), timezone, projectionNow),
+            }
           : {}),
         ...(chapter ? { chapter } : {}),
         ...(mergeLog?.length ? { merge_log: mergeLog } : {}),
@@ -1238,10 +1305,7 @@ export class StitchedTimelineService {
       items: Array<{ kind: StitchedItemKind; id: string; sort_index: number }>;
     }
   ): Promise<{ saved: number }> {
-    const scopeId =
-      input.scope_type === 'life_arc' && input.scope_id
-        ? input.scope_id
-        : GLOBAL_SCOPE_ID;
+    const scopeId = input.scope_type === 'life_arc' && input.scope_id ? input.scope_id : GLOBAL_SCOPE_ID;
 
     const rows = input.items.map((item) => ({
       user_id: userId,
@@ -1253,9 +1317,9 @@ export class StitchedTimelineService {
       updated_at: new Date().toISOString(),
     }));
 
-    const { error: upsertError } = await supabaseAdmin
-      .from('user_chronology_order')
-      .upsert(rows, { onConflict: 'user_id,scope_type,scope_id,item_kind,item_id' });
+    const { error: upsertError } = await supabaseAdmin.from('user_chronology_order').upsert(rows, {
+      onConflict: 'user_id,scope_type,scope_id,item_kind,item_id',
+    });
 
     if (upsertError) throw upsertError;
 
@@ -1269,9 +1333,7 @@ export class StitchedTimelineService {
       new_sort_index: item.sort_index,
     }));
 
-    const { error: corrError } = await supabaseAdmin
-      .from('chronology_order_corrections')
-      .insert(corrections);
+    const { error: corrError } = await supabaseAdmin.from('chronology_order_corrections').insert(corrections);
     if (corrError) {
       logger.warn({ error: corrError, userId }, 'Failed to log chronology order corrections');
     }
@@ -1285,7 +1347,7 @@ export class StitchedTimelineService {
   async getStitchedTimelineForLocation(
     userId: string,
     locationId: string,
-    range?: { start_time?: string; end_time?: string; timezone?: string },
+    range?: { start_time?: string; end_time?: string; timezone?: string }
   ): Promise<StitchedTimelineResult> {
     return this.getStitchedTimeline(userId, {
       scope_type: 'global',
@@ -1301,7 +1363,7 @@ export class StitchedTimelineService {
   async getStitchedTimelineForOrganization(
     userId: string,
     organizationId: string,
-    range?: { start_time?: string; end_time?: string; timezone?: string },
+    range?: { start_time?: string; end_time?: string; timezone?: string }
   ): Promise<StitchedTimelineResult> {
     return this.getStitchedTimeline(userId, {
       scope_type: 'global',

@@ -67,7 +67,7 @@ type Props = {
   onClose: () => void;
   onPatch: (id: string, patch: Partial<ProjectCardData>) => Promise<void>;
   onDelete?: (id: string) => void | Promise<void>;
-  onAskInChat?: (prompt: string, project: ProjectCardData) => void;
+  onAskInChat?: (prompt: string | undefined, project: ProjectCardData) => void;
 };
 
 export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskInChat }: Props) {
@@ -226,7 +226,7 @@ export function ProjectDetailModal({ project, onClose, onPatch, onDelete, onAskI
     await save({ aliases: cleaned });
   };
 
-  const handleAsk = (prompt: string) => {
+  const handleAsk = (prompt?: string) => {
     onAskInChat?.(prompt, local);
     onClose();
   };

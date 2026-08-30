@@ -37,6 +37,8 @@ export type CognitiveStageTrace = {
   };
   decisions: string[];
   downstreamEffects: string[];
+  /** Structured, privacy-safe stage details; never raw prompts or message text. */
+  details?: Record<string, unknown>;
   error?: string;
 };
 

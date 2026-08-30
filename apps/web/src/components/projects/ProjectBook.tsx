@@ -439,7 +439,7 @@ export const ProjectBook = () => {
     }
   };
 
-  const askInChat = (prompt: string, project?: ProjectCardData) => {
+  const askInChat = (prompt: string | undefined, project?: ProjectCardData) => {
     const target = project ?? active;
     if (!target) {
       openChatWithFocus({

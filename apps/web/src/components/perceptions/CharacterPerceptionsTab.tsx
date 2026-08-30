@@ -265,7 +265,6 @@ export const CharacterPerceptionsTab = ({ personId, personName }: Props) => {
       sourceSurface: 'perceptions',
       sourceLabel: 'Character Intelligence',
       knowledgeScope: `what you've noticed, heard, or believe about ${firstName} — not what you know firsthand`,
-      initialPrompt: `I want to talk about ${firstName} — what I've noticed, heard, or believe about them. Please frame anything you save from this as what I heard/believe, not as established fact.`,
       arrivedAt: Date.now(),
     });
 

@@ -75,10 +75,6 @@ export function openGeneratedTimelineChat(input: GeneratedTimelineChatInput): vo
     sourceSurface: 'timeline',
     sourceLabel: CHAT_FOCUS_SOURCE_LABELS.timeline,
     knowledgeScope: buildGeneratedTimelineKnowledgeScope(input),
-    initialPrompt: buildGeneratedTimelineChatPrompt(input),
-    // Timeline handoffs should begin with LoreBook responding to the selected
-    // context, rather than leaving the user with a prefilled composer.
-    autoSubmit: true,
     startNewThread: true,
   });
 }

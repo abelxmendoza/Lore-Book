@@ -13,6 +13,7 @@ import {
 } from '../temporal/temporalSurfaceProjection';
 import {
   civilDateKey,
+  getUserLocalMonthBounds,
   resolveProjectionTimezone,
 } from '../temporal/userLocalTime';
 import { stitchedTimelineService, type StitchedTimelineItem } from './stitchedTimelineService';
@@ -34,6 +35,7 @@ export type CalendarDayItem = {
   sourceId?: string;
   sourceIds?: string[];
   sourceType?: string;
+  timelineTrack?: string;
   tags?: string[];
   canonicalEventType?: string;
   occurredStart?: string | null;
@@ -95,12 +97,6 @@ type ArcEventLink = {
   sort_time: string | null;
 };
 
-function monthBounds(year: number, month: number): { start: string; end: string } {
-  const start = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
-  const end = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
-  return { start: start.toISOString(), end: end.toISOString() };
-}
-
 function presenceFromMeta(meta: Record<string, unknown> | null | undefined): CalendarPresence {
   const p = (meta?.user_presence as string | undefined)?.toLowerCase();
   if (p === 'attended' || p === 'heard_about') return p;
@@ -140,6 +136,7 @@ function toCalendarItem(
     sourceId: item.sourceId,
     sourceIds: item.sourceIds,
     sourceType: item.sourceType,
+    timelineTrack: item.timelineTrack,
     tags: item.tags,
     canonicalEventType: item.canonicalEventType,
     occurredStart: projection.occurredStart,
@@ -279,10 +276,15 @@ export class CalendarAggregationService {
     month: number,
     timezone?: string,
   ): Promise<CalendarMonthResult> {
-    const { start, end } = monthBounds(year, month);
-    const startDay = start.slice(0, 10);
-    const endDay = end.slice(0, 10);
     const tz = resolveProjectionTimezone(timezone);
+    const {
+      startIso,
+      endIso,
+      startDay,
+      endDay,
+      queryStartDay,
+      queryEndDay,
+    } = getUserLocalMonthBounds(year, month, tz);
 
     // Calendar is a date projection of the same canonical feed used by the
     // Omni Events, Swimlanes, Story, and search views. This prevents each
@@ -298,16 +300,16 @@ export class CalendarAggregationService {
         .gte('confidence', 0.5),
       stitchedTimelineService.getStitchedTimeline(userId, {
         scope_type: 'global',
-        start_time: startDay,
-        end_time: endDay,
+        start_time: queryStartDay,
+        end_time: queryEndDay,
         timezone: tz,
       }),
       supabaseAdmin
         .from('arc_event_links')
         .select('arc_id, resolved_event_id, journal_entry_id, user_presence, temporal_role, sort_time')
         .eq('user_id', userId)
-        .gte('sort_time', start)
-        .lte('sort_time', end),
+        .gte('sort_time', startIso)
+        .lte('sort_time', endIso),
     ]);
 
     if (occasionsRes.error) {

@@ -8,11 +8,14 @@ import { buildLifeSagaClipboardText } from '../../lib/sagaClipboard';
 import { Button } from '../ui/button';
 import { ChapterDetailDrawer, type ChapterContext } from './ChapterDetailDrawer';
 import type { SagaOverview, SagaStoryline } from '../../api/saga';
+import { StorySurfaceLinks } from '../story/StorySurfaceLinks';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
 
 // ─── Mock data ───────────────────────────────────────────────────────────────
 
 const MOCK_SAGA: SagaOverview = {
   era: 'The Creative Renaissance',
+  projectionGeneration: null,
   currentStorylines: [
     { id: 'c3', label: 'The Studio Year', intensity: 87 },
     { id: 'c4', label: 'A Fork in the Road', intensity: 72 },
@@ -169,12 +172,13 @@ interface DrawerState {
 }
 
 export const SagaScreen = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void } = {}) => {
-  const { saga: realSaga, refresh, loading, isMock } = useSaga();
+  const { saga: realSaga, refresh, loading, error, isMock } = useSaga();
   const saga = isMock ? MOCK_SAGA : realSaga;
   const navigate = useNavigate();
   const isMobile = useIsMobile(1024);
 
   const [drawer, setDrawer] = useState<DrawerState | null>(null);
+  const [selectedStorylineId, setSelectedStorylineId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -207,11 +211,62 @@ export const SagaScreen = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void
   };
 
   const handleStorylineClick = (storylineId: string) => {
-    navigate(`/timeline?arc=${storylineId}`);
+    setSelectedStorylineId(storylineId);
   };
 
   // Most recent era first; number storylines within each chapter for drawer display
   const orderedEras = useMemo(() => [...(saga?.eras ?? [])].reverse(), [saga]);
+  const allStorylines = useMemo(
+    () => (saga?.eras ?? []).flatMap((era) => era.chapters.flatMap((chapter) => chapter.storylines)),
+    [saga],
+  );
+  const selectedStoryline = useMemo(
+    () =>
+      allStorylines.find((storyline) => storyline.id === selectedStorylineId) ??
+      allStorylines[0] ??
+      null,
+    [allStorylines, selectedStorylineId],
+  );
+  const handleOpenStorylineTimeline = (storyline: SagaStoryline) => {
+    navigate(`/timeline?view=search&q=${encodeURIComponent(storyline.title)}`, {
+      state: { from: '/saga', storylineId: storyline.id },
+    });
+  };
+  const handleChatStoryline = (storyline: SagaStoryline) => {
+    openChatWithFocus({
+      entityId: storyline.id,
+      entityName: storyline.title,
+      entityType: 'memory',
+      sourceSurface: 'saga',
+      sourceLabel: 'Life Saga',
+      knowledgeScope: 'the supporting moments, dates, people, places, and uncertainty behind this storyline',
+      startNewThread: true,
+    });
+  };
+  const handleCopyStoryline = async (storyline: SagaStoryline) => {
+    const dateRange = formatDateRange(storyline);
+    const text = [
+      storyline.title,
+      dateRange ? `Dates: ${dateRange}` : null,
+      `Status: ${storyline.status}`,
+      '',
+      storyline.summary,
+      storyline.participants?.length ? `People: ${storyline.participants.join(', ')}` : null,
+      `Grounded in ${storyline.sceneIds?.length ?? 0} moments and ${storyline.eventIds?.length ?? 0} timeline events.`,
+    ].filter((line): line is string => Boolean(line)).join('\n');
+    const ok = await copyTextToClipboard(text);
+    if (!ok) return;
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
+  };
+  const formatDateRange = (storyline: SagaStoryline): string | null => {
+    const start = storyline.timeStart ? new Date(storyline.timeStart).toLocaleDateString() : null;
+    const end = storyline.timeEnd ? new Date(storyline.timeEnd).toLocaleDateString() : null;
+    if (!start && !end) return null;
+    if (!end || start === end) return start;
+    return `${start ?? 'Unknown start'} – ${end}`;
+  };
   const storylineIndexById = useMemo(() => {
     const map = new Map<string, number>();
     for (const era of saga?.eras ?? []) {
@@ -307,6 +362,12 @@ export const SagaScreen = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void
               <p className="text-white/40 text-sm mt-1.5 max-w-xs">
                 The storylines, chapters, and turning points that make up your life narrative.
               </p>
+              <p className="mt-3 max-w-xl text-xs leading-relaxed text-white/35">
+                {isMock
+                  ? 'Demo story — synthetic examples only.'
+                  : 'Derived from your stored moments. Open the sources before treating an interpretation as fact.'}
+              </p>
+              <StorySurfaceLinks current="saga" className="mt-3" />
             </div>
 
             <div className="flex items-center gap-2 shrink-0 mt-1">
@@ -360,6 +421,20 @@ export const SagaScreen = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {[1, 2, 3, 4].map((i) => <div key={i} className="h-32 rounded-2xl bg-white/5" />)}
               </div>
+            </div>
+          )}
+
+          {error && !isMock && (
+            <div role="alert" className="mb-8 flex flex-col gap-3 rounded-2xl border border-rose-400/20 bg-rose-400/[0.07] p-4 text-sm text-rose-100 sm:flex-row sm:items-center sm:justify-between">
+              <span>{error}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void refresh()}
+                className="border-rose-300/20 text-rose-100 hover:bg-rose-300/10"
+              >
+                Try again
+              </Button>
             </div>
           )}
 
@@ -421,6 +496,77 @@ export const SagaScreen = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void
                         </button>
                       );
                     })}
+                  </div>
+                </section>
+              )}
+
+              {selectedStoryline && (
+                <section className="overflow-hidden rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/[0.12] via-white/[0.035] to-cyan-400/[0.05] shadow-[0_20px_80px_rgba(99,102,241,0.12)]">
+                  <div className="flex flex-col gap-5 p-5 sm:p-7 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0 max-w-2xl">
+                      <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-[0.18em] text-primary/80">
+                        <span>{selectedStoryline.status}</span>
+                        <span className="text-white/25">·</span>
+                        <span>{selectedStoryline.momentum} momentum</span>
+                        {selectedStoryline.confidence != null && (
+                          <>
+                            <span className="text-white/25">·</span>
+                            <span>{Math.round(selectedStoryline.confidence * 100)}% confidence</span>
+                          </>
+                        )}
+                      </div>
+                      <h2 className="mt-3 text-2xl font-semibold leading-tight text-white font-serif sm:text-3xl">
+                        {selectedStoryline.title}
+                      </h2>
+                      {formatDateRange(selectedStoryline) && (
+                        <p className="mt-2 text-xs text-white/45">{formatDateRange(selectedStoryline)}</p>
+                      )}
+                      <p className="mt-4 text-base leading-relaxed text-white/70">
+                        {selectedStoryline.summary}
+                      </p>
+                      {(selectedStoryline.participants?.length ?? 0) > 0 && (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {selectedStoryline.participants?.slice(0, 8).map((participant) => (
+                            <span key={participant} className="rounded-full border border-cyan-300/20 bg-cyan-300/[0.08] px-2.5 py-1 text-xs text-cyan-100/75">
+                              {participant}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-[210px] lg:justify-end">
+                      <Button
+                        size="sm"
+                        onClick={() => openStoryline(selectedStoryline, storylineIndexById.get(selectedStoryline.id) ?? 0)}
+                        className="bg-primary text-white hover:bg-primary/90"
+                      >
+                        Read details
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleChatStoryline(selectedStoryline)}
+                        className="border-white/15 text-white/70 hover:border-violet-300/30 hover:bg-violet-300/[0.08] hover:text-white"
+                      >
+                        Ask in Chat
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void handleCopyStoryline(selectedStoryline)}
+                        className="border-white/15 text-white/70 hover:bg-white/[0.08] hover:text-white"
+                      >
+                        {copied ? 'Copied' : 'Copy story'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleOpenStorylineTimeline(selectedStoryline)}
+                        className="border-white/15 text-white/70 hover:border-cyan-300/30 hover:bg-cyan-300/[0.08] hover:text-white"
+                      >
+                        View moments
+                      </Button>
+                    </div>
                   </div>
                 </section>
               )}

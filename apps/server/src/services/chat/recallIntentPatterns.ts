@@ -58,7 +58,14 @@ export const LOCATION_RE =
   /\b(where (do|did) i live|where.s my (home|house|place)|where am i from|my (address|location|city|neighborhood))\b/i;
 
 export const WORK_RE =
-  /\b(what am i working on|what.s my (job|work|project|career)|am i (employed|working)|what do i do (for work|for a living))\b/i;
+  /\b(?:what am i working on|what(?:'s| is) my (?:job|work|project|career)|am i (?:employed|working)|what do i do (?:for work|for a living)|what jobs? (?:have|did) i (?:had|have)|(?:list|show|tell me)(?: about)? (?:all )?(?:my )?(?:(?:full|complete|past|previous) )?(?:jobs?|work history|employment history)|(?:my )?(?:full|complete|past|previous) (?:work|job|employment) history|where have i worked|(?:my )?(?:past|previous|former) employers?|not my full work history)\b/i;
+
+export const EDUCATION_RE =
+  /\b(?:what schools? (?:have|did) i (?:been to|attend|attended|go to)|which schools? (?:have|did) i (?:attend|attended|go to)|(?:list|show|tell me)(?: about)? (?:all )?(?:my )?(?:schools?|colleges?|universities?|education history)|where did i go to school|what(?:'s| is) my education|my (?:school|education) history|(?:what\s+)?schools?\s+(?:i(?:['’]?ve| have)?\s+been to|i\s+attended|i\s+went to))\b/i;
+
+export function isWorkAndEducationRecall(message: string): boolean {
+  return WORK_RE.test(message) && EDUCATION_RE.test(message);
+}
 
 /** Queries that should bypass LLM and return structured foundation data directly. */
 export function matchesFoundationRecallQuery(message: string): boolean {
@@ -70,6 +77,7 @@ export function matchesFoundationRecallQuery(message: string): boolean {
   if (FAMILY_KIN_TERM_RE.test(text)) return true;
   if (LOCATION_RE.test(text)) return true;
   if (WORK_RE.test(text)) return true;
+  if (EDUCATION_RE.test(text)) return true;
   if (TEMPORAL_RE.test(text)) return true;
   if (CONVERSATION_RECALL_RE.test(text)) return true;
   if (THREAD_RE.test(text)) return true;
@@ -87,6 +95,8 @@ export type SyncRecallIntent =
   | 'entity'
   | 'location'
   | 'work'
+  | 'education'
+  | 'work_and_education'
   | 'temporal'
   | 'thread'
   | 'conversation'
@@ -99,7 +109,9 @@ export function detectSyncRecallIntent(message: string): SyncRecallIntent {
   if (FAMILY_RECALL_RE.test(message) || FAMILY_KIN_TERM_RE.test(message)) return 'family';
   if (BIOGRAPHY_RE.test(message)) return 'biography';
   if (LOCATION_RE.test(message)) return 'location';
+  if (isWorkAndEducationRecall(message)) return 'work_and_education';
   if (WORK_RE.test(message)) return 'work';
+  if (EDUCATION_RE.test(message)) return 'education';
   if (matchesEntityQuery(message)) return 'entity';
   if (TEMPORAL_RE.test(message)) return 'temporal';
   return null;
@@ -119,5 +131,7 @@ export function isFoundationPrimaryIntent(intent: string): boolean {
     'thread',
     'location',
     'work',
+    'education',
+    'work_and_education',
   ].includes(intent);
 }

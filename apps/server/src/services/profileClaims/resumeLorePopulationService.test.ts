@@ -11,22 +11,39 @@ import type { ParsedResume } from './resumeStructuredTypes';
 import { supabaseFromMock, makeSupabaseChain } from '../../../tests/setup';
 
 vi.mock('../memoryService', () => ({ memoryService: { saveEntry: vi.fn() } }));
-vi.mock('../organizationService', () => ({ organizationService: { createOrganization: vi.fn().mockResolvedValue(undefined) } }));
+vi.mock('../organizationService', () => ({
+  organizationService: {
+    createOrganization: vi.fn().mockResolvedValue(undefined),
+  },
+}));
 vi.mock('../skills/skillService', () => ({
-  skillService: { getSkills: vi.fn().mockResolvedValue([]), createSkill: vi.fn().mockResolvedValue(undefined) },
+  skillService: {
+    getSkills: vi.fn().mockResolvedValue([]),
+    createSkill: vi.fn().mockResolvedValue(undefined),
+  },
 }));
 vi.mock('../projects/projectSuggestionService', () => ({
-  projectSuggestionService: { upsertManyFromExtraction: vi.fn().mockResolvedValue(0) },
+  projectSuggestionService: {
+    upsertManyFromExtraction: vi.fn().mockResolvedValue(0),
+  },
 }));
 vi.mock('./resumeCharacterEnrichmentService', () => ({
-  resumeCharacterEnrichmentService: { enrichSelfFromResume: vi.fn().mockResolvedValue({ characterAttributes: 0 }) },
+  resumeCharacterEnrichmentService: {
+    enrichSelfFromResume: vi.fn().mockResolvedValue({ characterAttributes: 0 }),
+  },
 }));
 vi.mock('./resumeRoleConflictService', () => ({
   resumeRoleConflictService: { detectForUser: vi.fn().mockResolvedValue([]) },
   conflictedCompanyKeys: () => new Set<string>(),
 }));
 
-type FakeEvent = { id: string; type: string; start_time: string; metadata: any; confidence: number };
+type FakeEvent = {
+  id: string;
+  type: string;
+  start_time: string;
+  metadata: any;
+  confidence: number;
+};
 
 /** A tiny in-memory `resolved_events` table backing find/insert/reinforce across two populate() calls. */
 function installResolvedEventsStore() {
@@ -54,16 +71,17 @@ function installResolvedEventsStore() {
             return { data: row ?? null, error: null };
           },
           then: (resolve: (v: { data: FakeEvent[]; error: null }) => void) => {
-            const rows = events.filter((e) =>
-              Object.entries(filters).every(([k, v]) => (e as any)[k] === v)
-            );
+            const rows = events.filter((e) => Object.entries(filters).every(([k, v]) => (e as any)[k] === v));
             resolve({ data: rows, error: null });
           },
         };
         return chain;
       },
       insert: (row: Record<string, unknown>) => {
-        events.push({ ...row, confidence: (row.confidence as number) ?? 0.85 } as FakeEvent);
+        events.push({
+          ...row,
+          confidence: (row.confidence as number) ?? 0.85,
+        } as FakeEvent);
         nextId++;
         return Promise.resolve({ error: null });
       },
@@ -125,6 +143,71 @@ describe('resumeLorePopulationService — multi-resume reconciliation', () => {
     expect(events).toHaveLength(1);
   });
 
+  it('creates related canonical tracks for every dated resume section', async () => {
+    const events = installResolvedEventsStore();
+    const parsed: ParsedResume = {
+      ...resumeWithVanguardJob(),
+      projects: [{ name: 'Atlas Drive', startDate: '2023', endDate: '2024' }],
+      certifications: [
+        {
+          name: 'Synthetic Flight Certificate',
+          issuer: 'Test Authority',
+          date: '2022-06',
+        },
+      ],
+      employmentGaps: [
+        {
+          label: 'Between Meridian Test Labs and Vanguard Robotics',
+          startDate: '2024-01-01',
+          endDate: '2024-12-01',
+        },
+      ],
+    };
+
+    const result = await resumeLorePopulationService.populate('user-1', parsed, {
+      sourceFileId: 'file-tracks',
+      resumeDocumentId: 'doc-tracks',
+      fileName: 'resume-tracks.pdf',
+    });
+
+    expect(result.timelineEvents).toBe(4);
+    expect(events.map((event) => event.type)).toEqual(
+      expect.arrayContaining(['career', 'project', 'certification', 'career_gap'])
+    );
+    expect(events.find((event) => event.type === 'career')?.metadata).toMatchObject({
+      source_type: 'resume',
+      review_state: 'pending',
+      review_required: true,
+      timeline_track: 'career',
+    });
+    expect(events.find((event) => event.type === 'project')?.metadata.timeline_track).toBe('projects');
+    expect(events.find((event) => event.type === 'certification')?.metadata.timeline_track).toBe('education');
+    expect(events.find((event) => event.type === 'career_gap')?.metadata.timeline_track).toBe('career');
+  });
+
+  it('reconciles the same dated project instead of creating another event', async () => {
+    const events = installResolvedEventsStore();
+    const parsed: ParsedResume = {
+      ...resumeWithVanguardJob(),
+      employment: [],
+      projects: [{ name: 'Atlas Drive', startDate: '2023', endDate: '2024' }],
+    };
+    await resumeLorePopulationService.populate('user-1', parsed, {
+      sourceFileId: 'file-1',
+      resumeDocumentId: 'doc-1',
+      fileName: 'resume-a.pdf',
+    });
+    const result = await resumeLorePopulationService.populate('user-1', parsed, {
+      sourceFileId: 'file-2',
+      resumeDocumentId: 'doc-2',
+      fileName: 'resume-b.pdf',
+    });
+
+    expect(events).toHaveLength(1);
+    expect(result.timelineEvents).toBe(0);
+    expect(result.itemsReconciled).toBe(1);
+  });
+
   it('reconciles instead of duplicating when a second resume lists the same job', async () => {
     const events = installResolvedEventsStore();
 
@@ -152,7 +235,7 @@ describe('resumeLorePopulationService — multi-resume reconciliation', () => {
     expect(events[0].confidence).toBeGreaterThan(0.88);
   });
 
-  it('preserves a tailored resume\'s distinct framing of the same job as a supplementary entry', async () => {
+  it("preserves a tailored resume's distinct framing of the same job as a supplementary entry", async () => {
     const events = installResolvedEventsStore();
 
     await resumeLorePopulationService.populate(
@@ -161,7 +244,11 @@ describe('resumeLorePopulationService — multi-resume reconciliation', () => {
         title: 'Robotics Deployment Technician',
         description: 'Focused on field deployment and hardware bring-up.',
       }),
-      { sourceFileId: 'file-1', resumeDocumentId: 'doc-1', fileName: 'resume-a.pdf' }
+      {
+        sourceFileId: 'file-1',
+        resumeDocumentId: 'doc-1',
+        fileName: 'resume-a.pdf',
+      }
     );
     expect(events).toHaveLength(1);
 
@@ -175,7 +262,11 @@ describe('resumeLorePopulationService — multi-resume reconciliation', () => {
         title: 'Failure Analysis Technician',
         description: 'Focused on root-cause failure analysis and prototype validation.',
       }),
-      { sourceFileId: 'file-2', resumeDocumentId: 'doc-2', fileName: 'resume-b.pdf' }
+      {
+        sourceFileId: 'file-2',
+        resumeDocumentId: 'doc-2',
+        fileName: 'resume-b.pdf',
+      }
     );
 
     expect(events).toHaveLength(1); // still one timeline event
@@ -217,12 +308,19 @@ describe('resumeLorePopulationService — multi-resume reconciliation', () => {
     installResolvedEventsStore();
     await resumeLorePopulationService.populate(
       'user-1',
-      resumeWithVanguardJob('Vanguard Robotics', { startDate: '2024', endDate: '2025' }),
-      { sourceFileId: 'file-1', resumeDocumentId: 'doc-1', fileName: 'resume.pdf' },
+      resumeWithVanguardJob('Vanguard Robotics', {
+        startDate: '2024',
+        endDate: '2025',
+      }),
+      {
+        sourceFileId: 'file-1',
+        resumeDocumentId: 'doc-1',
+        fileName: 'resume.pdf',
+      }
     );
-    const jobCall = vi.mocked(memoryService.saveEntry).mock.calls.find((call) =>
-      String(call[0].content).includes('Vanguard Robotics'),
-    );
+    const jobCall = vi
+      .mocked(memoryService.saveEntry)
+      .mock.calls.find((call) => String(call[0].content).includes('Vanguard Robotics'));
     expect(jobCall?.[0].date).toBe('2024-01-01');
     expect(jobCall?.[0].occurrencePrecision).toBe('year');
     expect(jobCall?.[0].temporalSource).toBe('document_stated');
@@ -233,12 +331,19 @@ describe('resumeLorePopulationService — multi-resume reconciliation', () => {
     installResolvedEventsStore();
     await resumeLorePopulationService.populate(
       'user-1',
-      resumeWithVanguardJob('Vanguard Robotics', { startDate: undefined, endDate: undefined }),
-      { sourceFileId: 'file-1', resumeDocumentId: 'doc-1', fileName: 'resume.pdf' },
+      resumeWithVanguardJob('Vanguard Robotics', {
+        startDate: undefined,
+        endDate: undefined,
+      }),
+      {
+        sourceFileId: 'file-1',
+        resumeDocumentId: 'doc-1',
+        fileName: 'resume.pdf',
+      }
     );
-    const jobCall = vi.mocked(memoryService.saveEntry).mock.calls.find((call) =>
-      String(call[0].content).includes('Vanguard Robotics'),
-    );
+    const jobCall = vi
+      .mocked(memoryService.saveEntry)
+      .mock.calls.find((call) => String(call[0].content).includes('Vanguard Robotics'));
     expect(jobCall).toBeDefined();
     expect(jobCall?.[0].date).toBeUndefined();
   });

@@ -6,6 +6,7 @@ import type {
 } from '@lorebook/api-contracts';
 
 import { organizationService, type Organization } from '../organizationService';
+import { isReviewPending } from '../reviewableRecord';
 
 const MINE_RELATIONSHIPS = new Set(['founder', 'leader', 'member', 'alumnus', 'former_member']);
 const CLOSE_RELATIONSHIPS = new Set(['adjacent', 'collaborator']);
@@ -160,6 +161,11 @@ export function deriveOrganizationQueryHints(query: string): QueryHints {
 export function resolveOrganizationQueryStance(org: Organization): OrganizationQueryStance {
   if (MINE_RELATIONSHIPS.has(org.user_relationship)) return 'mine';
   if (CLOSE_RELATIONSHIPS.has(org.user_relationship)) return 'close_to';
+  const confirmed = org.metadata?.user_relationship_source === 'user_confirmed';
+  if (confirmed && org.user_relationship === 'aware_of') return 'their_world';
+  if (confirmed && (org.user_relationship === 'referenced' || org.user_relationship === 'fan')) {
+    return 'mentioned';
+  }
   const members = org.members ?? [];
   const linkedCount = members.filter((member) => Boolean(member.character_id)).length;
   const rosterCount = members.length || org.member_count || 0;
@@ -185,6 +191,7 @@ export function compileOrganizationQuery(
 ): OrganizationQueryResponse {
   const hints = deriveOrganizationQueryHints(request.query);
   const filters = request.filters ?? {};
+  const visibleOrganizations = organizations.filter((organization) => !isReviewPending(organization.metadata));
   const stances = unique([...(filters.stances ?? []), ...hints.stances]);
   const groupTypes = unique([...(filters.groupTypes ?? []), ...hints.groupTypes]);
   const statuses = unique(filters.statuses ?? []);
@@ -192,7 +199,7 @@ export function compileOrganizationQuery(
   const locationNames = unique([...(filters.locationNames ?? []), ...hints.locationNames]);
   const hasUnlinkedMembers = filters.hasUnlinkedMembers ?? hints.hasUnlinkedMembers;
 
-  let results = organizations.map<OrganizationQueryResult>((org) => {
+  let results = visibleOrganizations.map<OrganizationQueryResult>((org) => {
     const members = org.members ?? [];
     const locations = org.locations ?? [];
     const stories = org.stories ?? [];
@@ -276,13 +283,13 @@ export function compileOrganizationQuery(
   if (statuses.length) results = results.filter((result) => statuses.includes(result.status));
   if (memberNames.length) {
     results = results.filter((result) => {
-      const org = organizations.find((candidate) => candidate.id === result.organizationId);
+      const org = visibleOrganizations.find((candidate) => candidate.id === result.organizationId);
       return includesEvery((org?.members ?? []).map((member) => normalize(member.character_name)), memberNames);
     });
   }
   if (locationNames.length) {
     results = results.filter((result) => {
-      const org = organizations.find((candidate) => candidate.id === result.organizationId);
+      const org = visibleOrganizations.find((candidate) => candidate.id === result.organizationId);
       return includesEvery((org?.locations ?? []).map((location) => normalize(location.location_name)), locationNames);
     });
   }

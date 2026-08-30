@@ -18,6 +18,7 @@ import { projectService } from './projectService';
 import { projectSuggestionService } from './projects/projectSuggestionService';
 import { locationSuggestionService } from './locationSuggestionService';
 import { runCorpusParseAndApply } from './lorebook/parser/loreBookParseCorpusService';
+import { questTitlesSemanticallyMatch } from './quests/questCandidateBoundary';
 import type { TimelineStitchingRunSummary } from './timeline/timelineStitchingIntegrationService';
 import type { OrganizationInferenceRunSummary } from './organizations/inference/organizationInferenceIntegrationService';
 import type { QuestLogInferenceRunSummary } from './questLog/inference/questLogInferenceIntegrationService';
@@ -101,12 +102,15 @@ async function loadRecentCorpus(userId: string): Promise<Array<{ id: string; con
 
 async function rescanQuests(userId: string): Promise<{ scanned: boolean; upserted: number }> {
   const existing = await questStorage.getQuests(userId, { status: ['active', 'paused'] });
-  const haveTitles = new Set(existing.map((q) => q.title.trim().toLowerCase()));
   const combined = await loadRecentCorpus(userId);
   const extracted = await questExtractor.extractQuests(userId, combined);
   let upserted = 0;
   for (const q of extracted) {
-    if (!q.title?.trim() || haveTitles.has(q.title.trim().toLowerCase())) continue;
+    if (!q.title?.trim() || existing.some((item) => questTitlesSemanticallyMatch(item.title, q.title))) continue;
+    const sourceQuote = typeof q.metadata?.source_text === 'string' ? q.metadata.source_text : undefined;
+    const source = sourceQuote
+      ? combined.find((entry) => entry.content.replace(/\s+/g, ' ').toLocaleLowerCase().includes(sourceQuote.replace(/\s+/g, ' ').toLocaleLowerCase()))
+      : undefined;
     const saved = await questSuggestionService.upsertFromExtraction(
       userId,
       {
@@ -122,8 +126,9 @@ async function rescanQuests(userId: string): Promise<{ scanned: boolean; upserte
       },
       {
         source: 'llm_scan',
-        sourceText:
-          typeof q.metadata?.source_text === 'string' ? q.metadata.source_text : undefined,
+        sourceMessageId: source?.id,
+        sourceText: source?.content,
+        sourceQuote,
       }
     );
     if (saved) upserted += 1;

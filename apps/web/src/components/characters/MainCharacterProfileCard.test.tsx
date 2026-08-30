@@ -20,7 +20,6 @@ vi.mock('../../store/api/entitiesApi', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../store/api/entitiesApi')>()),
   useGetCharactersBookQuery: () => ({ dataUpdatedAt: 0 }),
 }));
-
 vi.mock('../../lib/api', () => ({
   fetchJson: mockFetchJson,
 }));
@@ -85,7 +84,7 @@ describe('MainCharacterProfileCard identity surface', () => {
 
 const baseCharacter: Character = {
   id: 'self-1',
-  name: 'Abel Mendoza',
+  name: 'Jamie Rivera',
   role: 'Protagonist',
   archetype: 'protagonist',
   summary: 'The main character.',

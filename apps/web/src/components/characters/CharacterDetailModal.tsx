@@ -23,6 +23,8 @@ import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { FamilyTreeView, createMockFamilyTreeForCharacter, createMockUserFamilyTree } from '../family/FamilyTreeView';
 import { FamilyTreePanel } from '../family/FamilyTreePanel';
 import { FamilyTreeCopyAllButton } from '../family/FamilyTreeCopyAllButton';
+import { FamilyTreeDepthToggle } from '../family/FamilyTreeDepthToggle';
+import { filterFamilyTreeByDepth, type FamilyTreeDepth } from '../../lib/familyTreeDepth';
 import { RelationshipEditor } from '../family/RelationshipEditor';
 import { useFamilyTreeEditing } from '../family/useFamilyTreeEditing';
 import { OrganizationDetailModal } from '../organizations/OrganizationDetailModal';
@@ -35,6 +37,10 @@ import { invalidateCache } from '../../lib/requestCache';
 import { invalidateOrganizationMembershipCaches } from '../../lib/invalidateOrganizationMembershipCaches';
 import { OrganizationMemberRoleSelect } from '../ui/OrganizationMemberRoleSelect';
 import { CreateGroupFromCharacterPanel } from './CreateGroupFromCharacterPanel';
+import { CharacterHouseholdsSection } from './CharacterHouseholdsSection';
+import { splitOrganizationsByHousehold } from '../../lib/characterHouseholds';
+import { isHouseholdGroup } from '../../lib/groupTaxonomy';
+import { demoHouseholdsForCharacter } from '../../mocks/characterHouseholds';
 import { fetchCharacterLoreProfile, type CharacterLoreProfile } from '../../api/characterLoreProfile';
 import { formatEpistemicPercent } from '../../lib/epistemicLabels';
 import { onStoryDataUpdated, dispatchStoryDataUpdated, RELATIONSHIP_STORY_SCOPES } from '../../lib/storyRefresh';
@@ -76,7 +82,7 @@ import {
 } from '../../lib/characterConnectionsClipboard';
 import { listCharacterPeripherals } from '../../api/characterPeripherals';
 import { getMockPeripheralsForCharacter } from '../../mocks/characterPeripherals';
-import type { FamilyTree } from '../../types/socialRoles';
+import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
 import { openDatingRomanceCharacterChat } from '../../lib/datingRomanceChatFocus';
 import { openDatingRomanceModal } from '../../lib/openDatingRomanceModal';
 import { openChatThreadAtMessage } from '../../lib/chatThreadJump';
@@ -368,6 +374,35 @@ const EntityTypeSwitcher = ({
     </div>
   );
 };
+
+function DemoCharacterFamilyTree({
+  tree,
+  characterName,
+  characterId,
+  onMemberClick,
+}: {
+  tree: FamilyTree;
+  characterName: string;
+  characterId: string;
+  onMemberClick: (member: FamilyMember) => void;
+}) {
+  const [depth, setDepth] = useState<FamilyTreeDepth>('close');
+  const visible = useMemo(() => filterFamilyTreeByDepth(tree, depth), [tree, depth]);
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <FamilyTreeCopyAllButton
+          tree={visible}
+          title={`Family tree — ${characterName}`}
+          filters={[`characterId=${characterId}`, 'mode=demo', `depth=${depth}`]}
+          data-testid="character-modal-family-copy-all"
+        />
+      </div>
+      <FamilyTreeDepthToggle value={depth} onChange={setDepth} tree={tree} />
+      <FamilyTreeView tree={visible} onMemberClick={onMemberClick} />
+    </div>
+  );
+}
 
 export const CharacterDetailModal = ({
   character,
@@ -1732,7 +1767,7 @@ export const CharacterDetailModal = ({
     const raw: RawMockOrg[] = SHARED[editedCharacter.name] ?? [
       { id: 'org-default-1', name: 'Creative Community', aliases: [], type: 'friend_group', description: 'Shared creative network', status: 'active', member_count: 8, usage_count: 6, confidence: 0.72, last_seen: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_is_member: true, character_role: 'Member', members: [{ id: '1', character_name: editedCharacter.name, role: 'Member', status: 'active' }] },
     ];
-    return raw.map(withG1);
+    return [...raw.map(withG1), ...demoHouseholdsForCharacter(editedCharacter.name)];
   };
 
   // Create mock shared memories for display
@@ -2624,6 +2659,11 @@ export const CharacterDetailModal = ({
   const [orgSaving, setOrgSaving] = useState(false);
   const [orgMemberError, setOrgMemberError] = useState<string | null>(null);
   const [roleSavingOrgId, setRoleSavingOrgId] = useState<string | null>(null);
+  const [hhAddOpen, setHhAddOpen] = useState(false);
+  const [hhTargetId, setHhTargetId] = useState('');
+  const [hhRole, setHhRole] = useState('lives here');
+  const [hhCreateName, setHhCreateName] = useState('');
+  const [hhCreating, setHhCreating] = useState(false);
 
   const changeConnection = async (
     rel: { id?: string; character_id?: string; character_name?: string },
@@ -2703,28 +2743,42 @@ export const CharacterDetailModal = ({
     }
   };
 
+  const loadOrgOptions = async () => {
+    if (orgOptions.length > 0 || orgOptionsLoading) return;
+    setOrgOptionsLoading(true);
+    try {
+      const res = await fetchJson<{ success: boolean; organizations: Organization[] }>('/api/organizations');
+      setOrgOptions(res.organizations ?? []);
+    } catch {
+      setOrgMemberError('Could not load your Groups & Organizations book.');
+    } finally {
+      setOrgOptionsLoading(false);
+    }
+  };
+
   const toggleOrgAdd = async () => {
     const next = !orgAddOpen;
     setOrgAddOpen(next);
     setOrgMemberError(null);
-    if (next && orgOptions.length === 0 && !orgOptionsLoading) {
-      setOrgOptionsLoading(true);
-      try {
-        const res = await fetchJson<{ success: boolean; organizations: Organization[] }>('/api/organizations');
-        setOrgOptions(res.organizations ?? []);
-      } catch {
-        setOrgMemberError('Could not load your Groups & Organizations book.');
-      } finally {
-        setOrgOptionsLoading(false);
-      }
-    }
+    if (next) await loadOrgOptions();
   };
 
-  const addOrgMembership = async () => {
-    if (!orgTargetId || orgSaving) return;
-    const targetId = orgTargetId;
-    const role = orgMemberRole.trim() || 'member';
-    const selectedOrg = orgOptions.find((o) => o.id === targetId);
+  const toggleHouseholdAdd = async () => {
+    const next = !hhAddOpen;
+    setHhAddOpen(next);
+    setOrgMemberError(null);
+    if (next) await loadOrgOptions();
+  };
+
+  const joinOrganization = async (
+    targetId: string,
+    role: string,
+    source: 'org' | 'household',
+    knownOrg?: Organization,
+  ) => {
+    if (!targetId || orgSaving) return;
+    const selectedOrg = knownOrg ?? orgOptions.find((o) => o.id === targetId);
+    const nextRole = role.trim() || (source === 'household' ? 'lives here' : 'member');
     setOrgSaving(true);
     setOrgMemberError(null);
     try {
@@ -2733,23 +2787,22 @@ export const CharacterDetailModal = ({
         body: JSON.stringify({
           character_name: editedCharacter.name,
           character_id: editedCharacter.id,
-          role: orgMemberRole.trim() || undefined,
+          role: nextRole,
         }),
       });
-      // Optimistic: show the group in Connections immediately (don't wait on refetch).
       if (selectedOrg) {
         const activeRels = new Set(['founder', 'leader', 'member', 'collaborator', 'adjacent', 'alumnus']);
         const optimistic = {
           ...selectedOrg,
           user_is_member: activeRels.has(selectedOrg.user_relationship),
-          character_role: role,
+          character_role: nextRole,
           members: [
             ...(selectedOrg.members ?? []),
             {
               id: `local-${Date.now()}`,
               character_id: editedCharacter.id,
               character_name: editedCharacter.name,
-              role,
+              role: nextRole,
               status: 'active' as const,
             },
           ],
@@ -2761,15 +2814,20 @@ export const CharacterDetailModal = ({
         setCharacterOrganizations((prev) => {
           if (prev.some((o) => o.id === selectedOrg.id)) {
             return prev.map((o) =>
-              o.id === selectedOrg.id ? { ...o, character_role: role } : o,
+              o.id === selectedOrg.id ? { ...o, character_role: nextRole } : o,
             );
           }
           return [...prev, optimistic];
         });
       }
-      setOrgTargetId('');
-      setOrgMemberRole('');
-      setOrgAddOpen(false);
+      if (source === 'org') {
+        setOrgTargetId('');
+        setOrgMemberRole('');
+        setOrgAddOpen(false);
+      } else {
+        setHhTargetId('');
+        setHhAddOpen(false);
+      }
       invalidateOrganizationMembershipCaches({
         characterIds: [character.id],
         organizationIds: [targetId],
@@ -2784,6 +2842,42 @@ export const CharacterDetailModal = ({
       setOrgMemberError(error instanceof Error ? error.message : 'Could not add to group.');
     } finally {
       setOrgSaving(false);
+    }
+  };
+
+  const addOrgMembership = async () => {
+    await joinOrganization(orgTargetId, orgMemberRole, 'org');
+  };
+
+  const addHouseholdMembership = async () => {
+    await joinOrganization(hhTargetId, hhRole, 'household');
+  };
+
+  const createHouseholdForCharacter = async () => {
+    const name = hhCreateName.trim();
+    if (!name || hhCreating) return;
+    setHhCreating(true);
+    setOrgMemberError(null);
+    try {
+      const created = await fetchJson<{ success: boolean; organization?: Organization }>('/api/organizations', {
+        method: 'POST',
+        body: JSON.stringify({
+          name,
+          type: 'other',
+          group_type: 'household',
+          user_relationship: 'aware_of',
+          description: `Household for ${editedCharacter.name}`,
+        }),
+      });
+      const org = created.organization;
+      if (!org?.id) throw new Error('Could not create household.');
+      setOrgOptions((prev) => [...prev, org]);
+      setHhCreateName('');
+      await joinOrganization(org.id, hhRole || 'lives here', 'household', org);
+    } catch (error) {
+      setOrgMemberError(error instanceof Error ? error.message : 'Could not create household.');
+    } finally {
+      setHhCreating(false);
     }
   };
 
@@ -3075,6 +3169,23 @@ export const CharacterDetailModal = ({
   const socialConnections = partitionedConnections.social;
   const familyDimensionConnections = partitionedConnections.family;
   const storyGroups = (isMockDataEnabled ? getMockOrganizations() : characterOrganizations);
+  const { households: characterHouseholds, groups: characterGroups } = splitOrganizationsByHousehold(
+    (() => {
+      const affiliation = editedCharacter.primary_organization;
+      if (storyGroups.length > 0 || !affiliation?.id) return storyGroups;
+      return [
+        {
+          id: affiliation.id,
+          name: affiliation.name,
+          group_type: affiliation.group_type,
+          type: affiliation.group_type,
+          character_role: affiliation.role,
+          user_relationship: 'aware_of' as const,
+          members: [],
+        },
+      ];
+    })(),
+  );
 
   const youRelationship = (editedCharacter.relationships ?? []).find(
     (rel) => rel.character_name === 'You' || !rel.character_name,
@@ -4263,30 +4374,19 @@ export const CharacterDetailModal = ({
                           createMockFamilyTreeForCharacter(editedCharacter.name) ??
                           createMockUserFamilyTree();
                         return (
-                          <div className="space-y-3">
-                            <div className="flex justify-end">
-                              <FamilyTreeCopyAllButton
-                                tree={mockTree}
-                                title={`Family tree — ${shortDisplayName(editedCharacter.name)}`}
-                                filters={[
-                                  `characterId=${editedCharacter.id}`,
-                                  'mode=demo',
-                                ]}
-                                data-testid="character-modal-family-copy-all"
-                              />
-                            </div>
-                            <FamilyTreeView
-                              tree={mockTree}
-                              onMemberClick={(member) => {
-                                if (!member.is_self) {
-                                  setSelectedCharacterForModal({
-                                    id: member.id,
-                                    name: member.name,
-                                  } as Character);
-                                }
-                              }}
-                            />
-                          </div>
+                          <DemoCharacterFamilyTree
+                            tree={mockTree}
+                            characterName={shortDisplayName(editedCharacter.name)}
+                            characterId={editedCharacter.id}
+                            onMemberClick={(member) => {
+                              if (!member.is_self) {
+                                setSelectedCharacterForModal({
+                                  id: member.id,
+                                  name: member.name,
+                                } as Character);
+                              }
+                            }}
+                          />
                         );
                       })() : (
                         <FamilyTreePanel
@@ -4400,24 +4500,37 @@ export const CharacterDetailModal = ({
                   </div>
                 )}
 
+                {/* Households — a person can belong to more than one home */}
+                <CharacterHouseholdsSection
+                  characterName={editedCharacter.name}
+                  characterId={editedCharacter.id}
+                  isSelf={isMainCharacter}
+                  organizations={characterHouseholds}
+                  householdCatalog={orgOptions}
+                  canEdit={!isMockDataEnabled}
+                  saving={orgSaving}
+                  creating={hhCreating}
+                  optionsLoading={orgOptionsLoading}
+                  error={orgMemberError}
+                  addOpen={hhAddOpen}
+                  addTargetId={hhTargetId}
+                  addRole={hhRole}
+                  createName={hhCreateName}
+                  roleSavingId={roleSavingOrgId}
+                  onToggleAdd={() => void toggleHouseholdAdd()}
+                  onAddTargetId={setHhTargetId}
+                  onAddRole={setHhRole}
+                  onCreateName={setHhCreateName}
+                  onAddExisting={() => void addHouseholdMembership()}
+                  onCreate={() => void createHouseholdForCharacter()}
+                  onOpenHousehold={(org) => setSelectedOrganization(org)}
+                  onRemove={(org) => void removeOrgMembership(org)}
+                  onRoleChange={(org, role) => void updateOrgMembershipRole(org, role)}
+                />
+
                 {/* Groups & Organizations */}
                 {(() => {
-                  const fetchedOrgs = isMockDataEnabled ? getMockOrganizations() : characterOrganizations;
-                  const affiliation = editedCharacter.primary_organization;
-                  const orgs =
-                    fetchedOrgs.length > 0 || !affiliation?.id
-                      ? fetchedOrgs
-                      : [
-                          {
-                            id: affiliation.id,
-                            name: affiliation.name,
-                            group_type: affiliation.group_type,
-                            type: affiliation.group_type,
-                            character_role: affiliation.role,
-                            user_relationship: 'aware_of',
-                            members: [],
-                          },
-                        ];
+                  const orgs = characterGroups;
                   const shared = orgs.filter((o: any) => o.user_is_member);
                   const theirs = orgs.filter((o: any) => !o.user_is_member);
                   const OrgCard = ({ org, isShared }: { org: any; isShared: boolean }) => (
@@ -4535,7 +4648,7 @@ export const CharacterDetailModal = ({
                                 {orgOptionsLoading ? 'Loading…' : 'Choose a group…'}
                               </option>
                               {orgOptions
-                                .filter((o) => !orgs.some((existing: any) => existing.id === o.id))
+                                .filter((o) => !isHouseholdGroup(o) && !orgs.some((existing: any) => existing.id === o.id))
                                 .map((o) => (
                                   <option key={o.id} value={o.id}>
                                     {o.name}

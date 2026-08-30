@@ -31,16 +31,19 @@ export type NarrativeLifeEraRow = {
 export class NarrativeLifeEraService {
   async listEras(
     userId: string,
-    opts: { limit?: number } = {},
+    opts: { limit?: number; projectionGeneration?: string | null } = {},
   ): Promise<NarrativeLifeEraRow[]> {
-    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 500);
     try {
-      const { data, error } = await supabaseAdmin
+      let query = supabaseAdmin
         .from('narrative_life_eras')
         .select('*')
         .eq('user_id', userId)
-        .order('time_start', { ascending: true })
-        .limit(limit);
+        .order('time_start', { ascending: true });
+      if (opts.projectionGeneration) {
+        query = query.eq('metadata->>projection_generation', opts.projectionGeneration);
+      }
+      const { data, error } = await query.limit(limit);
       if (error) {
         logger.warn({ error, userId }, 'narrative_life_eras list failed');
         return [];
@@ -62,6 +65,16 @@ export class NarrativeLifeEraService {
     const { era, userId, significanceScore, threadId } = input;
     if (!era.title.trim() && !era.summary.trim()) return null;
 
+    const normalize = (value: string | null | undefined) =>
+      (value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const projectionKey = [
+      era.timeStart?.slice(0, 7) ?? 'undated',
+      ...era.themes.map(normalize).filter(Boolean).sort().slice(0, 4),
+    ].join('|');
+    const projectionGeneration =
+      typeof input.metadata?.projection_generation === 'string'
+        ? input.metadata.projection_generation
+        : null;
     const fingerprint = [
       era.timeStart?.slice(0, 7) ?? 'undated',
       era.title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 80),
@@ -69,13 +82,26 @@ export class NarrativeLifeEraService {
     ].join('|');
 
     try {
-      const { data: existing } = await supabaseAdmin
+      let projectionKeyQuery = supabaseAdmin
         .from('narrative_life_eras')
         .select('*')
         .eq('user_id', userId)
-        .eq('metadata->>fingerprint', fingerprint)
-        .limit(1)
-        .maybeSingle();
+        .eq('metadata->>projection_key', projectionKey)
+        .order('updated_at', { ascending: false });
+      if (projectionGeneration) {
+        projectionKeyQuery = projectionKeyQuery.eq('metadata->>projection_generation', projectionGeneration);
+      }
+      const { data: existingByProjectionKey } = await projectionKeyQuery.limit(1).maybeSingle();
+      let fingerprintQuery = supabaseAdmin
+        .from('narrative_life_eras')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('metadata->>fingerprint', fingerprint);
+      if (projectionGeneration) {
+        fingerprintQuery = fingerprintQuery.eq('metadata->>projection_generation', projectionGeneration);
+      }
+      const { data: existingByFingerprint } = await fingerprintQuery.limit(1).maybeSingle();
+      const existing = existingByProjectionKey ?? existingByFingerprint;
 
       const payload = {
         title: era.title || 'Untitled era',
@@ -94,10 +120,12 @@ export class NarrativeLifeEraService {
         significance_score: significanceScore,
         confidence: era.confidence,
         thread_id: threadId ?? null,
+        projection_key: projectionKey,
         updated_at: new Date().toISOString(),
         metadata: {
           ...(input.metadata ?? {}),
           fingerprint,
+          projection_key: projectionKey,
         },
       };
 
@@ -114,22 +142,10 @@ export class NarrativeLifeEraService {
       }
 
       if (existing?.id) {
-        const mergedChapterIds = Array.from(
-          new Set([...(existing.chapter_ids ?? []), ...era.chapterIds]),
-        );
-        const mergedSceneIds = Array.from(
-          new Set([...(existing.scene_ids ?? []), ...era.sceneIds]),
-        );
-        const mergedEventIds = Array.from(
-          new Set([...(existing.event_ids ?? []), ...era.eventIds]),
-        );
         const { data, error } = await supabaseAdmin
           .from('narrative_life_eras')
           .update({
             ...payload,
-            chapter_ids: mergedChapterIds,
-            scene_ids: mergedSceneIds,
-            event_ids: mergedEventIds,
           })
           .eq('id', existing.id)
           .eq('user_id', userId)
@@ -139,7 +155,7 @@ export class NarrativeLifeEraService {
           logger.warn({ error, userId }, 'narrative_life_eras update failed');
           return existing as NarrativeLifeEraRow;
         }
-        await this.attachChapters(userId, data.id, mergedChapterIds);
+        await this.attachChapters(userId, data.id, era.chapterIds);
         return data as NarrativeLifeEraRow;
       }
 

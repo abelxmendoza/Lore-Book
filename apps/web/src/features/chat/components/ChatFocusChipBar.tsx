@@ -1,17 +1,28 @@
-import { useEffect, useRef, useState } from 'react';
-import { Heart, MapPin, Briefcase, Users, Sparkles, X, TrendingUp } from 'lucide-react';
+import { useEffect, useRef, useState } from "react";
+import {
+  Heart,
+  MapPin,
+  Briefcase,
+  Users,
+  Sparkles,
+  FileText,
+  X,
+  TrendingUp,
+} from "lucide-react";
 
-import type { ChatFocus } from '../../../types/chatFocus';
-import { chipColorForEntity } from '../../../lib/entityTypeColors';
-import { CompactEntityChip, CompactChipStrip } from './CompactEntityChip';
+import type { ChatFocus } from "../../../types/chatFocus";
+import { chipColorForEntity } from "../../../lib/entityTypeColors";
+import { CompactEntityChip, CompactChipStrip } from "./CompactEntityChip";
 
-const SURFACE_ICONS: Partial<Record<ChatFocus['sourceSurface'], typeof Heart>> = {
-  love: Heart,
-  characters: Sparkles,
-  locations: MapPin,
-  projects: Briefcase,
-  organizations: Users,
-};
+const SURFACE_ICONS: Partial<Record<ChatFocus["sourceSurface"], typeof Heart>> =
+  {
+    love: Heart,
+    characters: Sparkles,
+    locations: MapPin,
+    projects: Briefcase,
+    organizations: Users,
+    documents: FileText,
+  };
 
 const ARRIVAL_GLOW_MS = 2800;
 
@@ -23,7 +34,8 @@ type Props = {
 export function ChatFocusChipBar({ focus, onDismiss }: Props) {
   const Icon = SURFACE_ICONS[focus.sourceSurface] ?? Sparkles;
   const stats = focus.sessionStats;
-  const isLove = focus.sourceSurface === 'love';
+  const isLove = focus.sourceSurface === "love";
+  const isDocuments = focus.sourceSurface === "documents";
   const [isArriving, setIsArriving] = useState(false);
   const [statBump, setStatBump] = useState(false);
   const prevBumpKey = useRef(focus.statBumpKey ?? 0);
@@ -58,33 +70,37 @@ export function ChatFocusChipBar({ focus, onDismiss }: Props) {
       : null;
 
   const focusEntityType =
-    focus.entityType === 'organization'
-      ? 'organization'
-      : focus.entityType === 'location'
-        ? 'location'
-        : focus.entityType === 'project'
-          ? 'project'
-          : 'character';
-  const focusChipClass = isLove
-    ? `${chipColorForEntity({ type: 'character', characterVariant: 'romantic', status: 'confirmed' })} max-w-[160px] sm:max-w-[200px] ${isArriving ? 'animate-romantic-glow ring-1 ring-rose-500/30' : ''}`
-    : `${chipColorForEntity({ type: focusEntityType, status: 'confirmed' })} max-w-[160px] sm:max-w-[200px] ${
-        isArriving
-          ? focusEntityType === 'organization'
-            ? 'ring-1 ring-amber-500/30'
-            : 'ring-1 ring-blue-500/25'
-          : ''
-      }`;
+    focus.entityType === "organization"
+      ? "organization"
+      : focus.entityType === "location"
+        ? "location"
+        : focus.entityType === "project"
+          ? "project"
+          : "character";
+  const focusChipClass = isDocuments
+    ? `border-primary/25 bg-primary/5 text-primary-foreground ${isArriving ? "ring-1 ring-primary/30" : ""}`
+    : isLove
+      ? `${chipColorForEntity({ type: "character", characterVariant: "romantic", status: "confirmed" })} max-w-[160px] sm:max-w-[200px] ${isArriving ? "animate-romantic-glow ring-1 ring-rose-500/30" : ""}`
+      : `${chipColorForEntity({ type: focusEntityType, status: "confirmed" })} max-w-[160px] sm:max-w-[200px] ${
+          isArriving
+            ? focusEntityType === "organization"
+              ? "ring-1 ring-amber-500/30"
+              : "ring-1 ring-blue-500/25"
+            : ""
+        }`;
 
   return (
     <div
-      className={`mb-1 px-3 sm:px-4 lg:px-10 xl:px-12 ${isArriving && isLove ? 'animate-romantic-enter' : isArriving ? 'animate-chat-focus-enter' : ''}`}
+      className={`mb-1 px-3 sm:px-4 lg:px-10 xl:px-12 ${isArriving && isLove ? "animate-romantic-enter" : isArriving ? "animate-chat-focus-enter" : ""}`}
       data-testid="chat-focus-chip-bar"
     >
       <div className="mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem]">
         <CompactChipStrip label="Focus">
           <CompactEntityChip
             className={`${focusChipClass} max-w-[160px] sm:max-w-[200px]`}
-            title={[focus.entityName, focus.sourceLabel, focus.knowledgeScope].filter(Boolean).join(' · ')}
+            title={[focus.entityName, focus.sourceLabel, focus.knowledgeScope]
+              .filter(Boolean)
+              .join(" · ")}
           >
             <Icon className="h-2.5 w-2.5 flex-shrink-0" aria-hidden />
             <span className="truncate">{focus.entityName}</span>
@@ -95,26 +111,30 @@ export function ChatFocusChipBar({ focus, onDismiss }: Props) {
           {projectedAffection != null && (
             <CompactEntityChip
               className={`max-w-none tabular-nums ${
-                isLove ? 'border-pink-500/25 bg-pink-500/5 text-pink-200/80' : 'border-white/10 bg-white/[0.04] text-white/55'
+                isLove
+                  ? "border-pink-500/25 bg-pink-500/5 text-pink-200/80"
+                  : "border-white/10 bg-white/[0.04] text-white/55"
               }`}
             >
               ~{projectedAffection}%
               {stats.affectionDelta > 0 && (
-                <span className="text-emerald-300/80">+{stats.affectionDelta.toFixed(0)}</span>
+                <span className="text-emerald-300/80">
+                  +{stats.affectionDelta.toFixed(0)}
+                </span>
               )}
             </CompactEntityChip>
           )}
 
           {stats.messagesSent > 0 && stats.connectionDelta > 0 && (
             <CompactEntityChip
-              className={`max-w-none tabular-nums ${statBump ? 'animate-stat-bump' : ''} ${
+              className={`max-w-none tabular-nums ${statBump ? "animate-stat-bump" : ""} ${
                 isLove
-                  ? 'border-pink-500/25 bg-pink-500/10 text-pink-200'
-                  : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200'
+                  ? "border-pink-500/25 bg-pink-500/10 text-pink-200"
+                  : "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
               }`}
             >
-              <TrendingUp className="h-2.5 w-2.5" aria-hidden />
-              +{stats.connectionDelta}
+              <TrendingUp className="h-2.5 w-2.5" aria-hidden />+
+              {stats.connectionDelta}
             </CompactEntityChip>
           )}
 
@@ -127,12 +147,33 @@ export function ChatFocusChipBar({ focus, onDismiss }: Props) {
             <X className="h-3 w-3" />
           </button>
         </CompactChipStrip>
-        {focus.entityType === 'character' && (
-          <p className="mt-1 px-1 text-[11px] leading-snug text-white/45">
-            {isLove
-              ? 'Dating & Romance focus — talk about feelings, history, and this connection. Corrections still update their Character Book card.'
-              : 'Their chip is attached — chat corrections like renaming them or fixing their role update their profile and knowledge base.'}
-          </p>
+        {isDocuments ? (
+          <div
+            className="mt-1 flex flex-wrap gap-1 px-1"
+            data-testid="chat-focus-document-list"
+          >
+            {(focus.documentAttachments ?? []).map((document) => (
+              <span
+                key={document.fileId}
+                className="inline-flex max-w-[220px] items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] text-white/60"
+                title={document.fileName}
+              >
+                <FileText
+                  className="h-3 w-3 shrink-0 text-primary/80"
+                  aria-hidden
+                />
+                <span className="truncate">{document.fileName}</span>
+              </span>
+            ))}
+          </div>
+        ) : (
+          focus.entityType === "character" && (
+            <p className="mt-1 px-1 text-[11px] leading-snug text-white/45">
+              {isLove
+                ? "Dating & Romance focus — talk about feelings, history, and this connection. Corrections still update their Character Book card."
+                : "Their chip is attached — chat corrections like renaming them or fixing their role update their profile and knowledge base."}
+            </p>
+          )
         )}
       </div>
     </div>

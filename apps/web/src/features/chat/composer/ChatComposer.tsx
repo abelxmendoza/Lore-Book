@@ -1,23 +1,48 @@
-import { Send, Loader2, Paperclip, MessageSquare, ChevronDown, ChevronUp, ImagePlus, X } from 'lucide-react';
-import { useChatComposer } from '../hooks/useChatComposer';
-import { CommandSuggestions } from './CommandSuggestions';
-import { ComposerEntityChips } from './ComposerEntityChips';
-import { EntityHighlightedComposer } from './EntityHighlightedComposer';
-import { JournalComposerOverlay } from './JournalComposerOverlay';
-import { useEntityCorrectionState } from '../../../hooks/useEntityCorrectionState';
-import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react';
-import { useVisualViewportInset } from '../hooks/useVisualViewportInset';
-import { useVisualViewportSize, getComposerStats } from '../hooks/useVisualViewportSize';
-import { DocumentUpload, type UploadCompletePayload } from '../components/DocumentUpload';
-import { ChatGPTImport } from '../components/ChatGPTImport';
-import { LoreReadinessQuestChips } from '../components/LoreReadinessQuestChips';
-import { useIsMobile } from '../../../hooks/useIsMobile';
-import { cn } from '../../../lib/cn';
+import {
+  Send,
+  Loader2,
+  Paperclip,
+  MessageSquare,
+  ChevronDown,
+  ChevronUp,
+  ImagePlus,
+  X,
+} from "lucide-react";
+import { useChatComposer } from "../hooks/useChatComposer";
+import { CommandSuggestions } from "./CommandSuggestions";
+import { ComposerEntityChips } from "./ComposerEntityChips";
+import { EntityHighlightedComposer } from "./EntityHighlightedComposer";
+import { JournalComposerOverlay } from "./JournalComposerOverlay";
+import { useEntityCorrectionState } from "../../../hooks/useEntityCorrectionState";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  type CSSProperties,
+} from "react";
+import { useVisualViewportInset } from "../hooks/useVisualViewportInset";
+import {
+  useVisualViewportSize,
+  getComposerStats,
+} from "../hooks/useVisualViewportSize";
+import {
+  DocumentUpload,
+  type UploadCompletePayload,
+} from "../components/DocumentUpload";
+import { ChatGPTImport } from "../components/ChatGPTImport";
+import { LoreReadinessQuestChips } from "../components/LoreReadinessQuestChips";
+import { useIsMobile } from "../../../hooks/useIsMobile";
+import { cn } from "../../../lib/cn";
 
-import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
-import type { CorrectedPreviewSpan } from '../../../lib/entityCorrectionTypes';
-import { persistConfirmedPreviewSpan } from '../../../lib/persistConfirmedPreviewSpan';
-import type { ChatImageAttachment } from '../types/chatImageAttachment';
+import type { CertifiedEntityMatch } from "../../../lib/certifiedEntityMatch";
+import type { CorrectedPreviewSpan } from "../../../lib/entityCorrectionTypes";
+import { persistConfirmedPreviewSpan } from "../../../lib/persistConfirmedPreviewSpan";
+import type { ChatImageAttachment } from "../types/chatImageAttachment";
+import {
+  CHAT_DOCUMENT_DRAG_TYPE,
+  type ChatDocumentAttachment,
+} from "../../../types/chatFocus";
 
 export type ComposerChipDebugPayload = {
   certifiedEntities: CertifiedEntityMatch[];
@@ -42,6 +67,8 @@ type ChatComposerProps = {
     certifiedEntities?: CertifiedEntityMatch[],
     previewCorrections?: CorrectedPreviewSpan[],
     images?: ChatImageAttachment[],
+    resumeDocumentId?: string,
+    documentIds?: string[],
   ) => void;
   loading: boolean;
   disabled?: boolean;
@@ -56,22 +83,50 @@ type ChatComposerProps = {
   onAutoSubmitDone?: () => void;
   initialDate?: string | null;
   /** Tighter layout for character/org modals — hides upload chrome, reduces padding */
-  variant?: 'default' | 'embedded';
+  variant?: "default" | "embedded";
   placeholder?: string;
   threadId?: string;
   /** Mobile: start collapsed to leave room for messages (e.g. when thread has history). */
   defaultCollapsed?: boolean;
   focusCharacterId?: string;
   focusCharacterName?: string;
+  /** Documents handed off from the Documents book or dropped from its library. */
+  initialDocumentAttachments?: ChatDocumentAttachment[] | null;
   /** Latest composer chip strip snapshot for copy-conversation diagnostics. */
   onChipDebugChange?: (snapshot: ComposerChipDebugPayload) => void;
 };
 
-const DEFAULT_PLACEHOLDER = 'Tell your story… names, dates, feelings — dump it all here.';
-const EMBEDDED_PLACEHOLDER = 'Message Lore Book…';
+const DEFAULT_PLACEHOLDER = "Ask LoreBook anything or tell it what happened…";
+const EMBEDDED_PLACEHOLDER = "Message Lore Book…";
+
+function parseDocumentDrop(data: string | undefined): ChatDocumentAttachment[] {
+  if (!data) return [];
+  try {
+    const parsed: unknown = JSON.parse(data);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is ChatDocumentAttachment => {
+        if (!item || typeof item !== "object") return false;
+        const candidate = item as Partial<ChatDocumentAttachment>;
+        return (
+          typeof candidate.fileId === "string" &&
+          typeof candidate.fileName === "string"
+        );
+      })
+      .slice(0, 10)
+      .map((item) => ({
+        fileId: item.fileId,
+        fileName: item.fileName,
+        kind: item.kind ?? null,
+        resumeDocumentId: item.resumeDocumentId ?? null,
+      }));
+  } catch {
+    return [];
+  }
+}
 
 /** Mobile composer density — desktop always behaves as expanded. */
-export type ComposerMode = 'compact' | 'expanded' | 'keyboard';
+export type ComposerMode = "compact" | "expanded" | "keyboard";
 
 export const ChatComposer = ({
   onSubmit,
@@ -84,18 +139,82 @@ export const ChatComposer = ({
   autoSubmit = false,
   onAutoSubmitDone,
   initialDate,
-  variant = 'default',
+  variant = "default",
   placeholder,
   threadId,
   defaultCollapsed = false,
   focusCharacterId,
   focusCharacterName,
+  initialDocumentAttachments,
   onChipDebugChange,
 }: ChatComposerProps) => {
-  const embedded = variant === 'embedded';
+  const embedded = variant === "embedded";
   const isMobile = useIsMobile();
   const keyboardInset = useVisualViewportInset(true);
   const { height: viewportHeight } = useVisualViewportSize(isMobile);
+  const [uploadInProgress, setUploadInProgress] = useState(false);
+  const [pendingResume, setPendingResume] = useState<{
+    documentId: string;
+    fileName: string;
+  } | null>(null);
+  const [pendingDocuments, setPendingDocuments] = useState<
+    ChatDocumentAttachment[]
+  >([]);
+  const submitComposerMessage = useCallback(
+    (
+      message: string,
+      certifiedEntities?: CertifiedEntityMatch[],
+      previewCorrections?: CorrectedPreviewSpan[],
+      images?: ChatImageAttachment[],
+    ) => {
+      if (uploadInProgress) return;
+      const documentIds = Array.from(
+        new Set(pendingDocuments.map((document) => document.fileId)),
+      );
+      if (pendingResume?.documentId) {
+        if (documentIds.length > 0) {
+          onSubmit(
+            message,
+            certifiedEntities,
+            previewCorrections,
+            images,
+            pendingResume.documentId,
+            documentIds,
+          );
+        } else {
+          onSubmit(
+            message,
+            certifiedEntities,
+            previewCorrections,
+            images,
+            pendingResume.documentId,
+          );
+        }
+      } else if (documentIds.length > 0) {
+        onSubmit(
+          message,
+          certifiedEntities,
+          previewCorrections,
+          images,
+          undefined,
+          documentIds,
+        );
+      } else {
+        onSubmit(message, certifiedEntities, previewCorrections, images);
+      }
+      setPendingResume(null);
+      // A Documents-book focus is reusable evidence for the focused thread;
+      // a direct composer drop remains a one-turn attachment.
+      if (!initialDocumentAttachments?.length) setPendingDocuments([]);
+    },
+    [
+      initialDocumentAttachments,
+      onSubmit,
+      pendingDocuments,
+      pendingResume?.documentId,
+      uploadInProgress,
+    ],
+  );
 
   const {
     input,
@@ -124,7 +243,11 @@ export const ChatComposer = ({
     removePendingImage,
     seedPendingImages,
     maxImages,
-  } = useChatComposer(onSubmit, initialPrompt, { submitOnEnter: !isMobile, threadId });
+  } = useChatComposer(submitComposerMessage, initialPrompt, {
+    submitOnEnter: !isMobile,
+    threadId,
+    allowEmptySubmit: Boolean(pendingResume || pendingDocuments.length > 0),
+  });
 
   const correction = useEntityCorrectionState(input, threadId, visibleMatches);
 
@@ -157,19 +280,22 @@ export const ChatComposer = ({
   const [showUpload, setShowUpload] = useState(false);
   const [showChatGPTImport, setShowChatGPTImport] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const [documentDropActive, setDocumentDropActive] = useState(false);
   const [journalModeOpen, setJournalModeOpen] = useState(false);
   const [mobileCollapsed, setMobileCollapsed] = useState(
-    () => isMobile && !embedded && defaultCollapsed
+    () => isMobile && !embedded && defaultCollapsed,
   );
   const keyboardOpen = isMobile && !embedded && keyboardInset > 48;
-  const composerMode: ComposerMode = !isMobile || embedded
-    ? 'expanded'
-    : keyboardOpen
-      ? 'keyboard'
-      : mobileCollapsed
-        ? 'compact'
-        : 'expanded';
-  const hideNonessentialTools = composerMode === 'keyboard' || composerMode === 'compact';
+  const composerMode: ComposerMode =
+    !isMobile || embedded
+      ? "expanded"
+      : keyboardOpen
+        ? "keyboard"
+        : mobileCollapsed
+          ? "compact"
+          : "expanded";
+  const hideNonessentialTools =
+    composerMode === "keyboard" || composerMode === "compact";
 
   useEffect(() => {
     if (!isMobile || embedded) return;
@@ -199,7 +325,7 @@ export const ChatComposer = ({
         setIsFocused(false);
       }
     },
-    [handleSubmit, isMobile, embedded]
+    [handleSubmit, isMobile, embedded],
   );
 
   // One-shot prefill: inject a focus/prefill prompt only when it changes to a new
@@ -221,7 +347,14 @@ export const ChatComposer = ({
     const focusTimer = setTimeout(() => textareaRef.current?.focus(), 100);
     onInitialPromptApplied?.();
     return () => clearTimeout(focusTimer);
-  }, [initialPrompt, setInput, textareaRef, isMobile, embedded, onInitialPromptApplied]);
+  }, [
+    initialPrompt,
+    setInput,
+    textareaRef,
+    isMobile,
+    embedded,
+    onInitialPromptApplied,
+  ]);
 
   // One-shot image seed from Post Event (or similar) handoffs.
   const appliedInitialImagesRef = useRef<ChatImageAttachment[] | null>(null);
@@ -234,6 +367,30 @@ export const ChatComposer = ({
     appliedInitialImagesRef.current = initialImages;
     seedPendingImages(initialImages);
   }, [initialImages, seedPendingImages]);
+
+  // Carry the selected Documents-book rows into the fresh focused chat.
+  const appliedInitialDocumentsRef = useRef<string | null>(null);
+  useEffect(() => {
+    const signature =
+      initialDocumentAttachments
+        ?.map((document) => document.fileId)
+        .join("|") ?? "";
+    if (!signature) {
+      if (appliedInitialDocumentsRef.current) setPendingDocuments([]);
+      appliedInitialDocumentsRef.current = null;
+      return;
+    }
+    if (appliedInitialDocumentsRef.current === signature) return;
+    appliedInitialDocumentsRef.current = signature;
+    setPendingDocuments((previous) => {
+      const merged = new Map(
+        previous.map((document) => [document.fileId, document]),
+      );
+      for (const document of initialDocumentAttachments ?? [])
+        merged.set(document.fileId, document);
+      return [...merged.values()].slice(0, 10);
+    });
+  }, [initialDocumentAttachments]);
 
   // Auto-send once after prompt/images are seeded (Post Event → main chat).
   const autoSubmitFiredRef = useRef(false);
@@ -284,24 +441,27 @@ export const ChatComposer = ({
     onAutoSubmitDone,
   ]);
 
-  const resolvedPlaceholder = placeholder ?? (embedded ? EMBEDDED_PLACEHOLDER : DEFAULT_PLACEHOLDER);
+  const resolvedPlaceholder =
+    placeholder ?? (embedded ? EMBEDDED_PLACEHOLDER : DEFAULT_PLACEHOLDER);
   const stats = getComposerStats(input);
-  const showStats = input.length > 0 || isFocused;
-  const composerStyle: CSSProperties & { '--composer-visual-height'?: string } = {
-    // The composer sits at the bottom of the layout viewport. Mobile keyboards
-    // shrink the visual viewport without consistently moving that layout
-    // bottom, so padding only makes the composer taller while Send remains
-    // hidden. Translate the entire composer to the reachable visual bottom.
-    transform:
-      keyboardInset > 0 && !journalModeOpen
-        ? `translate3d(0, -${keyboardInset}px, 0)`
-        : undefined,
-    // `dvh` is still the layout viewport on some iOS versions while the
-    // software keyboard is open. Expose the actual visible height to CSS so
-    // a long draft scrolls inside the textarea instead of pushing Send below
-    // the keyboard.
-    '--composer-visual-height': viewportHeight > 0 ? `${viewportHeight}px` : '100dvh',
-  };
+  const showStats = input.length > 0;
+  const composerStyle: CSSProperties & { "--composer-visual-height"?: string } =
+    {
+      // The composer sits at the bottom of the layout viewport. Mobile keyboards
+      // shrink the visual viewport without consistently moving that layout
+      // bottom, so padding only makes the composer taller while Send remains
+      // hidden. Translate the entire composer to the reachable visual bottom.
+      transform:
+        keyboardInset > 0 && !journalModeOpen
+          ? `translate3d(0, -${keyboardInset}px, 0)`
+          : undefined,
+      // `dvh` is still the layout viewport on some iOS versions while the
+      // software keyboard is open. Expose the actual visible height to CSS so
+      // a long draft scrolls inside the textarea instead of pushing Send below
+      // the keyboard.
+      "--composer-visual-height":
+        viewportHeight > 0 ? `${viewportHeight}px` : "100dvh",
+    };
 
   const handleUploadClick = () => {
     setShowUpload(!showUpload);
@@ -311,6 +471,32 @@ export const ChatComposer = ({
   const handleChatGPTImportClick = () => {
     setShowChatGPTImport(!showChatGPTImport);
     if (showChatGPTImport) setShowUpload(false);
+  };
+
+  const handleDocumentDragOver = (event: React.DragEvent<HTMLFormElement>) => {
+    if (!event.dataTransfer.types.includes(CHAT_DOCUMENT_DRAG_TYPE)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setDocumentDropActive(true);
+  };
+
+  const handleDocumentDrop = (event: React.DragEvent<HTMLFormElement>) => {
+    const raw = event.dataTransfer.getData(CHAT_DOCUMENT_DRAG_TYPE);
+    if (!raw) return;
+    event.preventDefault();
+    const dropped = parseDocumentDrop(raw);
+    if (dropped.length > 0) {
+      setPendingDocuments((previous) => {
+        const merged = new Map(
+          previous.map((document) => [document.fileId, document]),
+        );
+        for (const document of dropped) merged.set(document.fileId, document);
+        return [...merged.values()].slice(0, 10);
+      });
+      setShowUpload(false);
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    }
+    setDocumentDropActive(false);
   };
 
   const submitAndCloseJournal = useCallback(() => {
@@ -327,17 +513,22 @@ export const ChatComposer = ({
       data-testid="chat-composer"
       data-composer-mode={composerMode}
       className={cn(
-        'flex-shrink-0 safe-area-bottom journal-composer-root',
+        "flex-shrink-0 safe-area-bottom journal-composer-root",
         embedded
-          ? 'bg-black/95 backdrop-blur-md'
-          : 'border-t border-white/10 bg-gradient-to-t from-black/80 via-black/50 to-black/30 backdrop-blur-md chat-composer',
-        composerMode === 'keyboard' && 'journal-composer-root--keyboard',
+          ? "bg-black/95 backdrop-blur-md"
+          : "border-t border-white/10 bg-gradient-to-t from-black/80 via-black/50 to-black/30 backdrop-blur-md chat-composer",
+        composerMode === "keyboard" && "journal-composer-root--keyboard",
       )}
       style={composerStyle}
     >
-      {showCommandSuggestions && commandSuggestions.length > 0 && !(isMobile && mobileCollapsed) && (
-        <CommandSuggestions suggestions={commandSuggestions} onSelect={insertSuggestion} />
-      )}
+      {showCommandSuggestions &&
+        commandSuggestions.length > 0 &&
+        !(isMobile && mobileCollapsed) && (
+          <CommandSuggestions
+            suggestions={commandSuggestions}
+            onSelect={insertSuggestion}
+          />
+        )}
 
       {initialDate && (
         <div className="px-3 sm:px-4 py-2 border-b border-yellow-500/30 bg-yellow-500/5">
@@ -363,7 +554,9 @@ export const ChatComposer = ({
           className="border-b border-amber-500/15 bg-amber-500/5 px-3 py-0.5 sm:px-4 lg:px-10 xl:px-12"
         >
           <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-2 text-[10px] lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem]">
-            <span className="truncate text-amber-200/75">{entityIndexer.indexError}</span>
+            <span className="truncate text-amber-200/75">
+              {entityIndexer.indexError}
+            </span>
             <button
               type="button"
               data-testid="composer-index-retry"
@@ -393,12 +586,21 @@ export const ChatComposer = ({
             compact
             focusCharacterId={focusCharacterId}
             focusCharacterName={focusCharacterName}
+            onUploadStateChange={setUploadInProgress}
             onUploadComplete={async (result) => {
               setShowUpload(false);
+              if (result?.kind === "resume" && result.documentId) {
+                setPendingResume({
+                  documentId: result.documentId,
+                  fileName: result.fileName,
+                });
+                textareaRef.current?.focus();
+                return;
+              }
               onUploadComplete?.(result);
             }}
             onUploadError={(error) => {
-              console.error('Document upload error:', error);
+              console.error("Document upload error:", error);
             }}
           />
         </div>
@@ -409,11 +611,11 @@ export const ChatComposer = ({
           <ChatGPTImport
             onImportComplete={async (importStats) => {
               setShowChatGPTImport(false);
-              console.log('ChatGPT import complete:', importStats);
+              console.log("ChatGPT import complete:", importStats);
               onUploadComplete?.(undefined);
             }}
             onImportError={(error) => {
-              console.error('ChatGPT import error:', error);
+              console.error("ChatGPT import error:", error);
             }}
           />
         </div>
@@ -429,23 +631,40 @@ export const ChatComposer = ({
               aria-label="Expand message composer"
               data-testid="journal-composer-expand-bar"
             >
-              <ChevronUp className="journal-composer-collapsed__chevron h-4 w-4 shrink-0" aria-hidden />
-              <span className={cn('journal-composer-collapsed__label truncate', input.trim() && 'text-white/85')}>
+              <ChevronUp
+                className="journal-composer-collapsed__chevron h-4 w-4 shrink-0"
+                aria-hidden
+              />
+              <span
+                className={cn(
+                  "journal-composer-collapsed__label truncate",
+                  input.trim() && "text-white/85",
+                )}
+              >
                 {input.trim() ? input : resolvedPlaceholder}
               </span>
             </button>
-            {(input.trim() || pendingImages.length > 0) && (
+            {(input.trim() ||
+              pendingImages.length > 0 ||
+              pendingDocuments.length > 0 ||
+              pendingResume) && (
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   submitAndMaybeCollapse();
                 }}
-                disabled={loading || disabled || imageCompressing}
+                disabled={
+                  loading || disabled || uploadInProgress || imageCompressing
+                }
                 className="journal-composer-collapsed__send"
                 aria-label="Send message"
               >
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
               </button>
             )}
           </div>
@@ -454,20 +673,24 @@ export const ChatComposer = ({
 
       <form
         onSubmit={submitAndMaybeCollapse}
+        onDragOver={handleDocumentDragOver}
+        onDragLeave={() => setDocumentDropActive(false)}
+        onDrop={handleDocumentDrop}
         className={cn(
           embedded
-            ? 'w-full px-2 sm:px-3 py-2'
-            : 'mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] px-3 sm:px-4 lg:px-10 xl:px-12 py-2.5 sm:py-3',
-          journalModeOpen && 'hidden',
-          isMobile && !embedded && mobileCollapsed && 'hidden',
+            ? "w-full px-2 sm:px-3 py-2"
+            : "mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] px-3 sm:px-4 lg:px-10 xl:px-12 py-2.5 sm:py-3",
+          journalModeOpen && "hidden",
+          isMobile && !embedded && mobileCollapsed && "hidden",
         )}
       >
         <div
           className={cn(
-            'journal-composer-shell',
-            embedded && 'journal-composer-shell--embedded',
-            isFocused && 'journal-composer-shell--focused',
-            isMobile && !embedded && 'journal-composer-shell--mobile',
+            "journal-composer-shell",
+            embedded && "journal-composer-shell--embedded",
+            isFocused && "journal-composer-shell--focused",
+            isMobile && !embedded && "journal-composer-shell--mobile",
+            documentDropActive && "ring-2 ring-primary/50",
           )}
         >
           <ComposerEntityChips
@@ -481,19 +704,78 @@ export const ChatComposer = ({
             onToggleIncluded={toggleIncluded}
             scanning={entityIndexer.loading}
             collapseByDefault={isMobile && !embedded}
-            forceCollapsed={composerMode === 'keyboard'}
+            forceCollapsed={composerMode === "keyboard"}
             onDismiss={dismissMatch}
             onConfirm={confirmMatch}
-            onSelectPreviewSpan={(span) => correction.openSpan(span, 'composer')}
+            onSelectPreviewSpan={(span) =>
+              correction.openSpan(span, "composer")
+            }
             onConfirmPreviewSpan={(span) => {
               correction.confirmPreviewSpan(span);
-              void persistConfirmedPreviewSpan(span, correction.getCorrectedSpan(span));
+              void persistConfirmedPreviewSpan(
+                span,
+                correction.getCorrectedSpan(span),
+              );
             }}
             onDismissPreviewSpan={(span) => correction.dismissPreviewSpan(span)}
           />
 
-          {(pendingImages.length > 0 || imageError || imageCompressing) && (
-            <div className="flex flex-wrap items-center gap-2 px-1 pb-1" data-testid="composer-image-preview">
+          {(pendingImages.length > 0 ||
+            pendingResume ||
+            pendingDocuments.length > 0 ||
+            imageError ||
+            imageCompressing) && (
+            <div
+              className="flex flex-wrap items-center gap-2 px-1 pb-1"
+              data-testid="composer-image-preview"
+            >
+              {pendingResume && (
+                <div
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2 py-1 text-[11px] text-primary-foreground"
+                  data-testid="composer-resume-preview"
+                >
+                  <Paperclip
+                    className="h-3.5 w-3.5 shrink-0 text-primary"
+                    aria-hidden
+                  />
+                  <span className="truncate">{pendingResume.fileName}</span>
+                  <button
+                    type="button"
+                    onClick={() => setPendingResume(null)}
+                    className="shrink-0 rounded-full p-0.5 text-white/60 hover:text-white"
+                    aria-label="Remove attached resume"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+              {pendingDocuments.map((document) => (
+                <div
+                  key={document.fileId}
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2 py-1 text-[11px] text-primary-foreground"
+                  data-testid="composer-document-preview"
+                >
+                  <Paperclip
+                    className="h-3.5 w-3.5 shrink-0 text-primary"
+                    aria-hidden
+                  />
+                  <span className="truncate">{document.fileName}</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPendingDocuments((previous) =>
+                        previous.filter(
+                          (item) => item.fileId !== document.fileId,
+                        ),
+                      )
+                    }
+                    className="shrink-0 rounded-full p-0.5 text-white/60 hover:text-white"
+                    aria-label={`Remove attached document ${document.fileName}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
               {imageCompressing && (
                 <span className="inline-flex items-center gap-1.5 text-[11px] text-white/50">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -507,7 +789,7 @@ export const ChatComposer = ({
                 >
                   <img
                     src={img.dataUrl}
-                    alt={img.fileName ?? 'Attached'}
+                    alt={img.fileName ?? "Attached"}
                     className="h-16 w-16 object-cover"
                   />
                   <button
@@ -526,7 +808,10 @@ export const ChatComposer = ({
                 </span>
               )}
               {imageError && (
-                <span className="text-[11px] text-red-300/90" data-testid="composer-image-error">
+                <span
+                  className="text-[11px] text-red-300/90"
+                  data-testid="composer-image-error"
+                >
                   {imageError}
                 </span>
               )}
@@ -544,7 +829,7 @@ export const ChatComposer = ({
               onPreviewCorrectionsChange={setPreviewCorrections}
               placeholder={
                 pendingImages.length > 0
-                  ? 'Ask about this photo… (optional caption)'
+                  ? "Ask about this photo… (optional caption)"
                   : resolvedPlaceholder
               }
               disabled={loading || disabled}
@@ -555,18 +840,23 @@ export const ChatComposer = ({
               }}
               onKeyDown={handleKeyDown}
               className={cn(
-                'journal-composer-field',
-                embedded && 'journal-composer-field--embedded',
+                "journal-composer-field",
+                embedded && "journal-composer-field--embedded",
               )}
             />
           </div>
 
           {showStats && (
             <div
-              className={cn('journal-composer-meta', hideNonessentialTools && 'hidden')}
+              className={cn(
+                "journal-composer-meta",
+                hideNonessentialTools && "hidden",
+              )}
               aria-live="polite"
             >
-              <span>{stats.words} {stats.words === 1 ? 'word' : 'words'}</span>
+              <span>
+                {stats.words} {stats.words === 1 ? "word" : "words"}
+              </span>
               <span aria-hidden>·</span>
               <span>{stats.chars} chars</span>
               {stats.paragraphs > 1 && (
@@ -576,7 +866,9 @@ export const ChatComposer = ({
                 </>
               )}
               <span className="journal-composer-meta__hint hidden sm:inline">
-                {isMobile ? 'Tap Send when ready' : 'Enter to send · Shift+Enter for new line'}
+                {isMobile
+                  ? "Tap Send when ready"
+                  : "Enter to send · Shift+Enter for new line"}
               </span>
             </div>
           )}
@@ -587,7 +879,7 @@ export const ChatComposer = ({
                 <button
                   type="button"
                   onClick={() => {
-                    setInput('');
+                    setInput("");
                     textareaRef.current?.focus();
                   }}
                   disabled={loading || disabled}
@@ -609,16 +901,21 @@ export const ChatComposer = ({
                 onChange={(e) => {
                   const files = e.target.files;
                   if (files?.length) void addPendingImages(files);
-                  e.target.value = '';
+                  e.target.value = "";
                 }}
               />
               <button
                 type="button"
                 onClick={() => imageInputRef.current?.click()}
-                disabled={loading || disabled || imageCompressing || pendingImages.length >= maxImages}
+                disabled={
+                  loading ||
+                  disabled ||
+                  imageCompressing ||
+                  pendingImages.length >= maxImages
+                }
                 className={cn(
-                  'journal-composer-tool',
-                  pendingImages.length > 0 && 'journal-composer-tool--active',
+                  "journal-composer-tool",
+                  pendingImages.length > 0 && "journal-composer-tool--active",
                 )}
                 aria-label="Attach photos or screenshots for vision chat"
                 title={`Attach photos or screenshots (up to ${maxImages}) — DMs, Stories, posts, and life photos. LoreBook will see and process them in this message.`}
@@ -630,55 +927,64 @@ export const ChatComposer = ({
                   <ImagePlus className="h-4 w-4" />
                 )}
               </button>
-            {!embedded && (
-              <>
-                {/* Heavy import tools stay desktop-first — mobile keeps attach + send. */}
-                <button
-                  type="button"
-                  onClick={handleUploadClick}
-                  disabled={loading || disabled}
-                  className={cn(
-                    'journal-composer-tool hidden sm:inline-flex',
-                    showUpload && 'journal-composer-tool--active',
-                  )}
-                  aria-label="Upload documents, photos, resumes"
-                >
-                  <Paperclip className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleChatGPTImportClick}
-                  disabled={loading || disabled}
-                  className={cn(
-                    'journal-composer-tool hidden sm:inline-flex',
-                    showChatGPTImport && 'journal-composer-tool--active',
-                  )}
-                  aria-label="Import ChatGPT conversation"
-                >
-                  <MessageSquare className="h-4 w-4" />
-                </button>
-                {isMobile && !hideNonessentialTools && (
+              {!embedded && (
+                <>
+                  {/* Heavy import tools stay desktop-first — mobile keeps attach + send. */}
                   <button
                     type="button"
-                    onClick={collapseComposer}
+                    onClick={handleUploadClick}
                     disabled={loading || disabled}
-                    className="journal-composer-tool sm:hidden"
-                    aria-label="Collapse composer"
-                    data-testid="journal-composer-collapse"
+                    className={cn(
+                      "journal-composer-tool hidden sm:inline-flex",
+                      showUpload && "journal-composer-tool--active",
+                    )}
+                    aria-label="Upload documents, photos, resumes"
                   >
-                    <ChevronDown className="h-4 w-4" />
+                    <Paperclip className="h-4 w-4" />
                   </button>
-                )}
-              </>
-            )}
+                  <button
+                    type="button"
+                    onClick={handleChatGPTImportClick}
+                    disabled={loading || disabled}
+                    className={cn(
+                      "journal-composer-tool hidden sm:inline-flex",
+                      showChatGPTImport && "journal-composer-tool--active",
+                    )}
+                    aria-label="Import ChatGPT conversation"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                  </button>
+                  {isMobile && !hideNonessentialTools && (
+                    <button
+                      type="button"
+                      onClick={collapseComposer}
+                      disabled={loading || disabled}
+                      className="journal-composer-tool sm:hidden"
+                      aria-label="Collapse composer"
+                      data-testid="journal-composer-collapse"
+                    >
+                      <ChevronDown className="h-4 w-4" />
+                    </button>
+                  )}
+                </>
+              )}
             </div>
 
             <button
               type="submit"
-              disabled={(!input.trim() && pendingImages.length === 0) || loading || disabled || imageCompressing}
+              disabled={
+                (!input.trim() &&
+                  pendingImages.length === 0 &&
+                  !pendingResume &&
+                  pendingDocuments.length === 0) ||
+                loading ||
+                disabled ||
+                uploadInProgress ||
+                imageCompressing
+              }
               className={cn(
-                'journal-composer-send',
-                isMobile && !embedded && 'journal-composer-send--mobile',
+                "journal-composer-send",
+                isMobile && !embedded && "journal-composer-send--mobile",
               )}
               aria-label="Send message"
             >

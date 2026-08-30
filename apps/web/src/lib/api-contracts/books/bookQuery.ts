@@ -22,6 +22,8 @@ export const universalBookQueryRequestSchema = z.object({
   limit: z.number().int().min(1).max(100).optional().default(50),
   perDomainLimit: z.number().int().min(1).max(50).optional().default(12),
   includeEvidence: z.boolean().optional().default(true),
+  documentId: z.string().uuid().optional(),
+  includePending: z.boolean().optional(),
 });
 
 export type UniversalBookQueryRequest = z.infer<typeof universalBookQueryRequestSchema>;
@@ -32,6 +34,10 @@ export type BookQueryEvidence = {
   label: string;
   confidence?: number | null;
   observedAt?: string | null;
+  fieldPath?: string | null;
+  excerpt?: string | null;
+  reviewState?: string | null;
+  filename?: string | null;
 };
 
 export type BookQueryRelatedEntity = {

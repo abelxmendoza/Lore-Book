@@ -5,13 +5,10 @@ import { z } from 'zod';
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { progressionTracker } from '../services/progression/progressionTracker';
-import { rescanQuestLogInference } from '../services/questLog/inference/questLogInferenceIntegrationService';
-import { questService, questStorage, questLinker, questExtractor, questSuggestionService } from '../services/quests';
+import { questService, questStorage, questLinker, questSuggestionService } from '../services/quests';
 import { buildBookIndexFromLabels, enrichNameWithBookMatch } from '../services/suggestionMatchEnricher';
-import { supabaseAdmin } from '../services/supabaseClient';
 import { queryQuestsForUser } from '../services/quests/questQueryService';
 import { clampQuestScore, normalizeQuestType, optionalQuestString } from '../utils/questNormalize';
-import { resolveBookNameMatch } from '../utils/suggestionBookFilter';
 
 const router = Router();
 
@@ -152,107 +149,21 @@ router.post('/query', requireAuth, async (req: AuthenticatedRequest, res) => {
 
 /**
  * GET /api/quests/suggestions
- * Pending quest suggestions from DB. Full story scan only when ?rescan=true or first visit.
+ * Pending quest suggestions from DB. Extraction runs through the explicit
+ * unified rescan action so this read remains side-effect free.
  */
 router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
-    const rescan = req.query.rescan === 'true';
-
-    const [existing, pending, everScanned] = await Promise.all([
+    const [existing, pending] = await Promise.all([
       questStorage.getQuests(userId, {}),
       questSuggestionService.getPendingSuggestions(userId),
-      questSuggestionService.hasAnySuggestions(userId),
     ]);
 
     const questBookIndex = buildBookIndexFromLabels(
       existing.map((q) => ({ id: q.id, label: q.title }))
     );
-    // Always run the cheap deterministic pass when the panel is empty. The
-    // LLM enrichment remains first-scan/explicit-rescan only, so polling
-    // cannot create an expensive extraction loop.
-    const shouldScan = rescan || pending.length === 0;
-    const shouldRunLlmScan = rescan || (!everScanned && pending.length === 0);
-    let deterministicScan = { candidatesAccepted: 0, suggestionsUpserted: 0, rejected: 0 };
-    let llmCandidates = 0;
-    let llmScanFailed = false;
-
-    if (shouldScan) {
-      const [entriesRes, messagesRes] = await Promise.all([
-        supabaseAdmin
-          .from('journal_entries')
-          .select('id, content, date')
-          .eq('user_id', userId)
-          .order('date', { ascending: false })
-          .limit(40),
-        supabaseAdmin
-          .from('chat_messages')
-          .select('id, content, created_at')
-          .eq('user_id', userId)
-          .eq('role', 'user')
-          .order('created_at', { ascending: false })
-          .limit(60),
-      ]);
-
-      const combined = [
-        ...((messagesRes.data as Array<{ id: string; content: string; created_at: string }> | null) ?? []).map((m) => ({
-          id: m.id,
-          content: m.content,
-          date: m.created_at,
-        })),
-        ...((entriesRes.data as Array<{ id: string; content: string; date: string }> | null) ?? []).map((e) => ({
-          id: e.id,
-          content: e.content,
-          date: e.date,
-        })),
-      ]
-        .filter((e) => e.content?.trim())
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-      deterministicScan = await rescanQuestLogInference(
-        userId,
-        combined.map((item) => ({ id: item.id, text: item.content })),
-      );
-
-      if (shouldRunLlmScan && combined.length > 0) {
-        try {
-          const extracted = await questExtractor.extractQuests(userId, combined);
-          llmCandidates = extracted.length;
-          for (const q of extracted) {
-            if (!q.title?.trim()) continue;
-            if (resolveBookNameMatch(q.title, questBookIndex.exactKeys, questBookIndex.entries).status === 'existing') {
-              continue;
-            }
-            await questSuggestionService.upsertFromExtraction(
-              userId,
-              {
-                title: q.title,
-                description: q.description,
-                quest_type: q.quest_type,
-                priority: q.priority,
-                importance: q.importance,
-                impact: q.impact,
-                category: q.category,
-                confidence: 0.72,
-                reasoning: 'Detected from your recent journals and chats',
-              },
-              {
-                source: 'llm_scan',
-                sourceText:
-                  typeof q.metadata?.source_text === 'string' ? q.metadata.source_text : undefined,
-              }
-            );
-          }
-        } catch (error) {
-          llmScanFailed = true;
-          logger.warn({ err: error, userId }, 'Quest LLM scan failed; deterministic suggestions remain available');
-        }
-      }
-    }
-
-    const freshPending = shouldScan
-      ? await questSuggestionService.getPendingSuggestions(userId)
-      : pending;
+    const freshPending = pending;
 
     const storedSuggestions = freshPending
       .map((row) => {
@@ -314,12 +225,12 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
     res.json({
       suggestions: enriched,
       count: enriched.length,
-      scanned: shouldScan,
+      scanned: false,
       diagnostics: {
-        deterministic_candidates: deterministicScan.candidatesAccepted,
-        deterministic_upserted: deterministicScan.suggestionsUpserted,
-        llm_candidates: llmCandidates,
-        llm_scan_failed: llmScanFailed,
+        deterministic_candidates: 0,
+        deterministic_upserted: 0,
+        llm_candidates: 0,
+        llm_scan_failed: false,
         structured_goal_suggestions: goalSuggestions.length,
       },
     });
@@ -403,6 +314,18 @@ router.post('/suggestions/:id/confirm', requireAuth, async (req: AuthenticatedRe
   } catch (error) {
     logger.error({ err: error }, 'Failed to confirm quest suggestion');
     res.status(400).json({ error: 'Failed to confirm quest suggestion' });
+  }
+});
+
+router.post('/suggestions/:id/merge', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = z.object({ quest_id: z.string().uuid() }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'quest_id is required' });
+    const quest = await questSuggestionService.mergeSuggestionIntoQuest(req.user!.id, req.params.id as string, parsed.data.quest_id);
+    res.status(200).json({ quest });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to merge quest suggestion');
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to merge quest suggestion' });
   }
 });
 

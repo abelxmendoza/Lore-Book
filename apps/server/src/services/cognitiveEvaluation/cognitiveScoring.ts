@@ -7,6 +7,7 @@ import type {
   CognitiveMetricResult,
   CognitiveScenarioResult,
 } from './cognitiveEvaluationTypes';
+import { evaluateComposition } from '../responseComposition';
 
 const DEFAULT_THRESHOLDS: Record<CognitiveMetricName, number> = {
   coverage: 85,
@@ -18,6 +19,7 @@ const DEFAULT_THRESHOLDS: Record<CognitiveMetricName, number> = {
   explainability: 80,
   compression_quality: 80,
   identity_preservation: 85,
+  composition_adherence: 80,
 };
 
 function normalize(value: string): string {
@@ -139,6 +141,13 @@ export function scoreCognitiveOutput(
   const compressionScore = maxWords == null
     ? null
     : Math.round((Number(wordCount <= maxWords) * 0.5 + recallCoverage / 100 * 0.5) * 100);
+  const composition = output.composition
+    ? evaluateComposition({
+        userMessage: manifest.prompt,
+        response: output.composition.response,
+        plan: output.composition.plan,
+      })
+    : null;
 
   return [
     metric('coverage', ratioScore(conceptHits, expected.requiredConcepts.length), manifest, `${conceptHits}/${expected.requiredConcepts.length} required concepts found.`),
@@ -154,6 +163,10 @@ export function scoreCognitiveOutput(
     metric('identity_preservation', requiredThreads.length || chapterCheck != null
       ? Math.max(0, Math.round(((threadHits + (chapterCheck ?? 0)) / (requiredThreads.length + (chapterCheck == null ? 0 : 1))) * 100 - badThreads * 25))
       : null, manifest, `${threadHits}/${requiredThreads.length} identity threads; ${badThreads} excluded threads; chapter ${chapterCheck == null ? 'not scored' : chapterCheck ? 'matched' : 'missed'}.`),
+    metric('composition_adherence', composition ? Math.round(composition.score * 100) : null, manifest,
+      composition
+        ? `${composition.score} composition score; ${composition.reasons.length} quality issue(s).`
+        : 'No composition output.'),
   ];
 }
 

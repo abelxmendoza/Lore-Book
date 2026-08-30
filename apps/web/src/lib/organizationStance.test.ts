@@ -58,6 +58,27 @@ describe('organizationStance', () => {
     ).toBe('their_world');
   });
 
+  it('honors a confirmed Their world / Mentioned correction over roster heuristics', () => {
+    expect(
+      resolveOrganizationStance(
+        org({
+          user_relationship: 'aware_of',
+          metadata: { user_relationship_source: 'user_confirmed' },
+          members: [],
+        }),
+      ),
+    ).toBe('their_world');
+    expect(
+      resolveOrganizationStance(
+        org({
+          user_relationship: 'referenced',
+          metadata: { user_relationship_source: 'user_confirmed' },
+          members: [{ id: 'm1', character_id: 'char-jamie', character_name: 'Jamie', status: 'active' }],
+        }),
+      ),
+    ).toBe('mentioned');
+  });
+
   it('buckets empty/public references as Mentioned', () => {
     expect(
       resolveOrganizationStance(

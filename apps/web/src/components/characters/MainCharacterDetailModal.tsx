@@ -43,6 +43,11 @@ import { OnboardingProfileSection, type OnboardingProfile } from './OnboardingPr
 import type { Organization } from '../organizations/OrganizationProfileCard';
 import { OrganizationMemberRoleSelect } from '../ui/OrganizationMemberRoleSelect';
 import { CreateGroupFromCharacterPanel } from './CreateGroupFromCharacterPanel';
+import { CharacterHouseholdsSection } from './CharacterHouseholdsSection';
+import { splitOrganizationsByHousehold } from '../../lib/characterHouseholds';
+import { isHouseholdGroup } from '../../lib/groupTaxonomy';
+import { demoHouseholdsForCharacter } from '../../mocks/characterHouseholds';
+import { OrganizationDetailModal } from '../organizations/OrganizationDetailModal';
 import { useMainCharacterProfile, type MainCharacterRelationship } from '../../hooks/useMainCharacterProfile';
 import { useCharacterQuery } from '../../hooks/useCharacterQuery';
 import type { CharacterChatMention } from '../../hooks/useCharacterProfileBundleTypes';
@@ -322,7 +327,13 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
   const [selfOrganizations, setSelfOrganizations] = useState<Organization[]>([]);
   const [orgsLoaded, setOrgsLoaded] = useState(false);
   const [orgsReloadToken, setOrgsReloadToken] = useState(0);
+  const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
   useEffect(() => {
+    if (profile.isMockDataEnabled) {
+      setSelfOrganizations(demoHouseholdsForCharacter('You'));
+      setOrgsLoaded(true);
+      return;
+    }
     if (!canEditWorld) return;
     let cancelled = false;
     void (async () => {
@@ -344,7 +355,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
     return () => {
       cancelled = true;
     };
-  }, [canEditWorld, selfId, orgsReloadToken, profile.character.name]);
+  }, [canEditWorld, selfId, orgsReloadToken, profile.character.name, profile.isMockDataEnabled]);
 
   useEffect(() => {
     return onStoryDataUpdated((detail) => {
@@ -367,29 +378,49 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
   const [orgMemberRole, setOrgMemberRole] = useState('');
   const [orgSaving, setOrgSaving] = useState(false);
   const [orgMemberError, setOrgMemberError] = useState<string | null>(null);
+  const [roleSavingOrgId, setRoleSavingOrgId] = useState<string | null>(null);
+  const [hhAddOpen, setHhAddOpen] = useState(false);
+  const [hhTargetId, setHhTargetId] = useState('');
+  const [hhRole, setHhRole] = useState('lives here');
+  const [hhCreateName, setHhCreateName] = useState('');
+  const [hhCreating, setHhCreating] = useState(false);
+
+  const loadOrgOptions = async () => {
+    if (orgOptions.length > 0 || orgOptionsLoading) return;
+    setOrgOptionsLoading(true);
+    try {
+      const res = await fetchJson<{ success: boolean; organizations: Organization[] }>('/api/organizations');
+      setOrgOptions(res.organizations ?? []);
+    } catch {
+      setOrgMemberError('Could not load your Groups & Organizations book.');
+    } finally {
+      setOrgOptionsLoading(false);
+    }
+  };
 
   const toggleOrgAdd = async () => {
     const next = !orgAddOpen;
     setOrgAddOpen(next);
     setOrgMemberError(null);
-    if (next && orgOptions.length === 0 && !orgOptionsLoading) {
-      setOrgOptionsLoading(true);
-      try {
-        const res = await fetchJson<{ success: boolean; organizations: Organization[] }>('/api/organizations');
-        setOrgOptions(res.organizations ?? []);
-      } catch {
-        setOrgMemberError('Could not load your Groups & Organizations book.');
-      } finally {
-        setOrgOptionsLoading(false);
-      }
-    }
+    if (next) await loadOrgOptions();
   };
 
-  const addOrgMembership = async () => {
-    if (!orgTargetId || orgSaving || !selfId) return;
-    const targetId = orgTargetId;
-    const role = orgMemberRole.trim() || 'member';
-    const selectedOrg = orgOptions.find((o) => o.id === targetId);
+  const toggleHouseholdAdd = async () => {
+    const next = !hhAddOpen;
+    setHhAddOpen(next);
+    setOrgMemberError(null);
+    if (next) await loadOrgOptions();
+  };
+
+  const joinSelfOrganization = async (
+    targetId: string,
+    role: string,
+    source: 'org' | 'household',
+    knownOrg?: Organization,
+  ) => {
+    if (!targetId || orgSaving || !selfId) return;
+    const selectedOrg = knownOrg ?? orgOptions.find((o) => o.id === targetId);
+    const nextRole = role.trim() || (source === 'household' ? 'lives here' : 'member');
     setOrgSaving(true);
     setOrgMemberError(null);
     try {
@@ -398,7 +429,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
         body: JSON.stringify({
           character_name: profile.character.name,
           character_id: selfId,
-          role: orgMemberRole.trim() || undefined,
+          role: nextRole,
         }),
       });
       if (selectedOrg) {
@@ -412,7 +443,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
               id: `local-${Date.now()}`,
               character_id: selfId,
               character_name: profile.character.name,
-              role,
+              role: nextRole,
               status: 'active' as const,
             },
           ],
@@ -424,9 +455,14 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
           return [...prev, withMember];
         });
       }
-      setOrgTargetId('');
-      setOrgMemberRole('');
-      setOrgAddOpen(false);
+      if (source === 'org') {
+        setOrgTargetId('');
+        setOrgMemberRole('');
+        setOrgAddOpen(false);
+      } else {
+        setHhTargetId('');
+        setHhAddOpen(false);
+      }
       invalidateOrganizationMembershipCaches({
         characterIds: [selfId],
         organizationIds: [targetId],
@@ -441,6 +477,81 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
       setOrgMemberError(error instanceof Error ? error.message : 'Could not join group.');
     } finally {
       setOrgSaving(false);
+    }
+  };
+
+  const addOrgMembership = async () => {
+    await joinSelfOrganization(orgTargetId, orgMemberRole, 'org');
+  };
+
+  const addHouseholdMembership = async () => {
+    await joinSelfOrganization(hhTargetId, hhRole, 'household');
+  };
+
+  const createHouseholdForSelf = async () => {
+    const name = hhCreateName.trim();
+    if (!name || hhCreating || !selfId) return;
+    setHhCreating(true);
+    setOrgMemberError(null);
+    try {
+      const created = await fetchJson<{ success: boolean; organization?: Organization }>('/api/organizations', {
+        method: 'POST',
+        body: JSON.stringify({
+          name,
+          type: 'other',
+          group_type: 'household',
+          user_relationship: 'member',
+          description: 'Your household',
+        }),
+      });
+      const org = created.organization;
+      if (!org?.id) throw new Error('Could not create household.');
+      setOrgOptions((prev) => [...prev, org]);
+      setHhCreateName('');
+      await joinSelfOrganization(org.id, hhRole || 'lives here', 'household', org);
+    } catch (error) {
+      setOrgMemberError(error instanceof Error ? error.message : 'Could not create household.');
+    } finally {
+      setHhCreating(false);
+    }
+  };
+
+  const updateSelfOrgRole = async (org: Organization, role: string) => {
+    const nextRole = role.trim();
+    if (!nextRole || roleSavingOrgId || !selfId) return;
+    setRoleSavingOrgId(org.id);
+    setOrgMemberError(null);
+    try {
+      await fetchJson(`/api/organizations/${org.id}/members`, {
+        method: 'POST',
+        body: JSON.stringify({
+          character_name: profile.character.name,
+          character_id: selfId,
+          role: nextRole,
+        }),
+      });
+      setSelfOrganizations((prev) =>
+        prev.map((item) => {
+          if (item.id !== org.id) return item;
+          return {
+            ...item,
+            members: (item.members ?? []).map((member) =>
+              member.character_id === selfId ||
+              member.character_name.toLowerCase() === (profile.character.name ?? '').toLowerCase()
+                ? { ...member, role: nextRole }
+                : member,
+            ),
+          };
+        }),
+      );
+      invalidateOrganizationMembershipCaches({
+        characterIds: [selfId],
+        organizationIds: [org.id],
+      });
+    } catch (error) {
+      setOrgMemberError(error instanceof Error ? error.message : 'Could not update household role.');
+    } finally {
+      setRoleSavingOrgId(null);
     }
   };
 
@@ -472,6 +583,11 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
       setOrgMemberError(error instanceof Error ? error.message : 'Could not remove membership.');
     }
   };
+
+  const { households: selfHouseholds, groups: selfGroups } = useMemo(
+    () => splitOrganizationsByHousehold(selfOrganizations),
+    [selfOrganizations],
+  );
 
   const allRelationships = useMemo(
     () =>
@@ -1088,17 +1204,46 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                     data-testid="self-modal-connections-copy-all"
                   />
                 </div>
+                {/* Households first — you can belong to more than one home */}
+                <CharacterHouseholdsSection
+                  characterName={profile.character.name}
+                  characterId={selfId}
+                  isSelf
+                  organizations={selfHouseholds}
+                  householdCatalog={orgOptions}
+                  canEdit={canEditWorld}
+                  saving={orgSaving}
+                  creating={hhCreating}
+                  optionsLoading={orgOptionsLoading}
+                  error={orgMemberError}
+                  addOpen={hhAddOpen}
+                  addTargetId={hhTargetId}
+                  addRole={hhRole}
+                  createName={hhCreateName}
+                  roleSavingId={roleSavingOrgId}
+                  onToggleAdd={() => void toggleHouseholdAdd()}
+                  onAddTargetId={setHhTargetId}
+                  onAddRole={setHhRole}
+                  onCreateName={setHhCreateName}
+                  onAddExisting={() => void addHouseholdMembership()}
+                  onCreate={() => void createHouseholdForSelf()}
+                  onOpenHousehold={(org) => setSelectedOrganization(org)}
+                  onRemove={(org) => void removeOrgMembership(org)}
+                  onRoleChange={(org, role) => void updateSelfOrgRole(org, role)}
+                />
+
                 {/* Groups & Organizations first — then individual people below */}
-                {canEditWorld && (
+                {(canEditWorld || selfGroups.length > 0) && (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 px-1">
                       <h3 className="flex-1 text-xs font-semibold uppercase tracking-wider text-amber-300/80 flex items-center gap-1.5">
                         <Building2 className="h-3.5 w-3.5" />
                         Your Groups &amp; Organizations
                         <span className="font-normal normal-case text-white/30">
-                          {selfOrganizations.length} total
+                          {selfGroups.length} total
                         </span>
                       </h3>
+                      {canEditWorld && (
                       <Button
                         type="button"
                         variant="ghost"
@@ -1110,8 +1255,9 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                         <Plus className="h-3.5 w-3.5" />
                         <span className="ml-1">{orgAddOpen ? 'Close' : 'Add'}</span>
                       </Button>
+                      )}
                     </div>
-                    {orgAddOpen && (
+                    {orgAddOpen && canEditWorld && (
                       <div className="rounded-xl border border-amber-500/20 bg-black/35 p-3">
                         <p className="text-[10px] text-white/35 mb-2">
                           Join a group that already exists in your Groups &amp; Organizations book.
@@ -1128,7 +1274,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                               {orgOptionsLoading ? 'Loading…' : 'Choose a group…'}
                             </option>
                             {orgOptions
-                              .filter((o) => !selfOrganizations.some((existing) => existing.id === o.id))
+                              .filter((o) => !isHouseholdGroup(o) && !selfGroups.some((existing) => existing.id === o.id))
                               .map((o) => (
                                 <option key={o.id} value={o.id}>
                                   {o.name}
@@ -1169,13 +1315,13 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                         />
                       </div>
                     )}
-                    {orgMemberError && <p className="text-xs text-red-400 px-1">{orgMemberError}</p>}
-                    {selfOrganizations.length === 0 && !orgAddOpen && (
+                    {orgMemberError && canEditWorld && !hhAddOpen && <p className="text-xs text-red-400 px-1">{orgMemberError}</p>}
+                    {selfGroups.length === 0 && !orgAddOpen && (
                       <p className="text-xs text-white/30 italic text-center py-3">
                         No group memberships yet — add an existing group, or create a new one in chat.
                       </p>
                     )}
-                    {selfOrganizations.map((org) => {
+                    {selfGroups.map((org) => {
                       const selfMember = (org.members ?? []).find(
                         (m) =>
                           m.character_id === selfId ||
@@ -1186,7 +1332,11 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                           key={org.id}
                           className="rounded-xl border border-amber-500/15 bg-black/35 p-3 flex items-start gap-3"
                         >
-                          <div className="flex-1 min-w-0">
+                          <button
+                            type="button"
+                            className="flex-1 min-w-0 text-left"
+                            onClick={() => setSelectedOrganization(org)}
+                          >
                             <div className="flex items-center gap-2 flex-wrap">
                               <p className="text-sm font-medium text-white/90 truncate">{org.name}</p>
                               <Badge variant="outline" className="text-[10px] py-0 border-white/15 text-white/45">
@@ -1200,7 +1350,8 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                               {selfMember?.role && <span className="text-white/50">{selfMember.role}</span>}
                               {(org.member_count ?? 0) > 0 && <span>{org.member_count} members</span>}
                             </div>
-                          </div>
+                          </button>
+                          {canEditWorld && (
                           <Button
                             type="button"
                             variant="ghost"
@@ -1211,6 +1362,7 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
                           >
                             <Trash2 className="h-3 w-3" />
                           </Button>
+                          )}
                         </div>
                       );
                     })}
@@ -1598,6 +1750,16 @@ export const MainCharacterDetailModal = ({ character, user, onClose, onUpdate }:
           onClose={() => setSelectedConnection(null)}
           onUpdate={() => {
             // Keep the nested character modal open after edits.
+            void profile.reload();
+            onUpdate?.();
+          }}
+        />
+      )}
+      {selectedOrganization && (
+        <OrganizationDetailModal
+          organization={selectedOrganization}
+          onClose={() => setSelectedOrganization(null)}
+          onUpdate={() => {
             void profile.reload();
             onUpdate?.();
           }}

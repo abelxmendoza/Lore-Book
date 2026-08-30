@@ -2,17 +2,18 @@
  * Canonical character event membership: resolved_events.people[].
  */
 import { supabaseAdmin } from '../supabaseClient';
+import { isReviewPending } from '../reviewableRecord';
 
 export async function countCanonicalEventsForCharacter(
   userId: string,
   characterId: string,
 ): Promise<number> {
-  const { count } = await supabaseAdmin
+  const { data } = await supabaseAdmin
     .from('resolved_events')
-    .select('id', { count: 'exact', head: true })
+    .select('id, metadata')
     .eq('user_id', userId)
     .contains('people', [characterId]);
-  return count ?? 0;
+  return (data ?? []).filter((row) => !isReviewPending(row.metadata)).length;
 }
 
 export async function countCanonicalEventsForCharacters(
@@ -25,11 +26,12 @@ export async function countCanonicalEventsForCharacters(
 
   const { data } = await supabaseAdmin
     .from('resolved_events')
-    .select('id, people')
+    .select('id, people, metadata')
     .eq('user_id', userId)
     .overlaps('people', characterIds);
 
   for (const row of data ?? []) {
+    if (isReviewPending(row.metadata)) continue;
     for (const personId of (row.people as string[] | null) ?? []) {
       if (!counts.has(personId)) continue;
       counts.set(personId, (counts.get(personId) ?? 0) + 1);

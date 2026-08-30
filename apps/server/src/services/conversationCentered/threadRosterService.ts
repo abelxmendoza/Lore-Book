@@ -557,9 +557,15 @@ class ThreadRosterService {
       const excludedIds = new Set(
         entries.filter((e) => e.status === 'excluded' && e.entityId).map((e) => e.entityId!),
       );
+      // The cached snapshot stores display names with any epithet already
+      // composed in ("Kiley Tafur the Young Love Enthusiast") for UI/roster
+      // cards. That composed form must never reach the model as someone's
+      // identity — strip it back to the real name before it feeds chat
+      // context, or the assistant can echo the epithet back as if it were
+      // part of their name.
       const cast = activeRoster(entries)
         .filter((e): e is RosterEntry & { entityId: string } => !!e.entityId)
-        .map((e) => ({ id: e.entityId, name: e.name, type: e.kind }));
+        .map((e) => ({ id: e.entityId, name: stripPersonNameEpithet(e.name), type: e.kind }));
       return { cast, excludedIds };
     } catch (err) {
       logger.warn({ err, sessionId }, 'threadRoster: chat context read failed');

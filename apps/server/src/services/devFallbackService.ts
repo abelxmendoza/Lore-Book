@@ -12,6 +12,7 @@ import type { Response } from 'express';
 import { formatSseDataLine } from '@lorebook/api-contracts';
 import { isDevelopmentRuntime } from '../config/runtimePolicy';
 import { isOpenAiCircuitOpenError } from '../lib/openaiCircuitBreaker';
+import { userPersistResult } from './chat/chatMessagePersistenceService';
 import { logger } from '../logger';
 
 export function isFallbackEnabled(): boolean {
@@ -123,14 +124,28 @@ export async function streamFallbackResponse(
 /**
  * Write a fallback chunk into an already-open SSE stream (inner-catch path).
  * Headers are already committed; we can only write events, not change the status.
+ *
+ * `persistedUserMessageId`: when the circuit breaker trips AFTER the user's
+ * message was already durably saved (the common case — persistence happens
+ * before the OpenAI call), the caller must pass that id through so the
+ * client learns the message was saved. Without it, the frontend never
+ * receives any persistence signal for this turn and reports a false-positive
+ * "cloud sync failed" — even though nothing was actually lost.
  */
 export function writeFallbackToOpenStream(
   res: Response,
   message: string,
-  reason: string
+  reason: string,
+  persistedUserMessageId?: string,
 ): void {
   logger.info(`[AI] DEV_AI_FALLBACK used (mid-stream) because: ${reason}`);
   const { content } = buildFallbackContent(message, reason);
+  res.write(
+    formatSseDataLine({
+      type: 'metadata',
+      data: { persistence: { user: userPersistResult(persistedUserMessageId) } },
+    }),
+  );
   res.write(formatSseDataLine({ type: 'chunk', content }));
   res.write(formatSseDataLine({ type: 'done' }));
   res.end();

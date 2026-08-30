@@ -505,18 +505,25 @@ export function isHouseholdWriteRequest(message: string): boolean {
 }
 
 const ROMANCE_STATUS_RE = new RegExp(
-  `\\b(?:mark|set)\\s+(${phraseTokens(7)})\\s+(?:as\\s+)?(dating|ex|broke\\s*up|no\\s*contact|complicated|crush|partner|married)\\b`,
+  `\\b(?:mark|set)\\s+(${phraseTokens(7)})\\s+(?:(?:as|to)\\s+)?(dating|ex|broke\\s*up|breakup|no\\s*contact|complicated|crush|partner|married|ended|ending|on\\s*(?:a\\s*)?break|paused|ghosted|blocked|unrequited|fading|faded|rekindled|active)\\b`,
   'i',
 );
 const ROMANCE_BREAKUP_RE =
   /\b(?:we\s+)?(?:broke\s*up|ended\s+(?:things|it)|are\s+no\s+longer\s+dating)\s+(?:with\s+)?(.{1,60})$/i;
+const ROMANCE_LIFECYCLE_RE =
+  /\b(.{1,60}?)\s+(?:and\s+i|and\s+me)?\s*(?:are|is|got|and\s+i\s+are)\s+(on\s*(?:a\s*)?break|complicated|paused|ghosted|blocked|unrequited|fading|faded|back\s*together|rekindled)\b/i;
 const ROMANCE_DELETE_RE =
   /\b(?:delete|remove)\s+(?:the\s+)?(?:romance|relationship|dating)\s+(?:record\s+)?(?:for|with)\s+(.{1,60})$/i;
 
 export function isRomanceWriteRequest(message: string): boolean {
   const text = message.trim();
   if (!text) return false;
-  return ROMANCE_STATUS_RE.test(text) || ROMANCE_BREAKUP_RE.test(text) || ROMANCE_DELETE_RE.test(text);
+  return (
+    ROMANCE_STATUS_RE.test(text) ||
+    ROMANCE_BREAKUP_RE.test(text) ||
+    ROMANCE_LIFECYCLE_RE.test(text) ||
+    ROMANCE_DELETE_RE.test(text)
+  );
 }
 
 const EVENT_POST_RE =

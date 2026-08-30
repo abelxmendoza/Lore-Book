@@ -5,6 +5,7 @@
 
 import { logger } from '../logger';
 
+import { getRecentUserMessages } from './chat/recentUserMessagesCache';
 import { entityConfidenceService } from './entityConfidenceService';
 import { supabaseAdmin } from './supabaseClient';
 
@@ -236,16 +237,7 @@ export class CharacterAnalyticsService {
     since: Date
   ): Promise<any[]> {
     try {
-      const { data, error } = await supabaseAdmin
-        .from('chat_messages')
-        .select('id, content, created_at, role')
-        .eq('user_id', userId)
-        .eq('role', 'user')
-        .gte('created_at', since.toISOString())
-        .order('created_at', { ascending: false })
-        .limit(1000);
-
-      if (error) throw error;
+      const data = await getRecentUserMessages(userId, since);
 
       const characterName = character.name.toLowerCase();
       const aliases = (character.alias || []).map((a: string) => a.toLowerCase());

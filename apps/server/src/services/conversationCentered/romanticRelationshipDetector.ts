@@ -14,8 +14,13 @@ import {
 } from '../romance/romanceReciprocity';
 import { supabaseAdmin } from '../supabaseClient';
 
+import { identityLedgerService } from '../identity/identityLedgerService';
+
 import { assessRomanticPartnerEligibility, hasNonRomanticWithCue } from './romanticEligibility';
 import { persistThirdPartyRomances } from './thirdPartyRelationshipService';
+
+/** Fields tracked in the romantic relationship status/type/exclusivity history. */
+const TRACKED_ROMANCE_FIELDS = ['relationship_type', 'status', 'exclusivity_status'] as const;
 
 export type RomanticRelationshipType =
   | 'boyfriend'
@@ -320,19 +325,33 @@ IMPORTANT: Only detect romantic relationships with INDIVIDUAL people. Never clas
           relationship.status,
           relationship.reciprocityEvidence || relationship.evidence,
         );
+        // A field the user has manually corrected (via the Dating & Romance
+        // detail modal) is never silently overwritten by the next detection
+        // pass — same "explicit assertion wins over auto-computation" rule
+        // used for family tree overrides. See metadata.<field>_source written
+        // by PATCH /romantic-relationships/:id.
+        const existingMeta = (existing.metadata || {}) as Record<string, unknown>;
+        const isUserConfirmed = (field: string) => existingMeta[`${field}_source`] === 'user_confirmed';
+        const nextRelationshipType = isUserConfirmed('relationship_type')
+          ? existing.relationship_type
+          : relationship.relationshipType;
+        const nextStatus = isUserConfirmed('status') ? existing.status : relationship.status;
+        const nextExclusivityStatus = isUserConfirmed('exclusivity_status')
+          ? existing.exclusivity_status
+          : relationship.exclusivityStatus;
         // Update existing — evolve type/status on the single canonical row.
         await supabaseAdmin
           .from('romantic_relationships')
           .update({
-            relationship_type: relationship.relationshipType,
-            status: relationship.status,
-            is_current: !['ended', 'ghosted', 'blocked'].includes(relationship.status),
+            relationship_type: nextRelationshipType,
+            status: nextStatus,
+            is_current: !['ended', 'ghosted', 'blocked'].includes(nextStatus),
             is_situationship: relationship.isSituationship || false,
-            exclusivity_status: relationship.exclusivityStatus,
+            exclusivity_status: nextExclusivityStatus,
             start_date: relationship.startDate || existing.start_date,
             updated_at: new Date().toISOString(),
             metadata: {
-              ...(existing.metadata || {}),
+              ...existingMeta,
               last_detected_at: new Date().toISOString(),
               evidence: relationship.evidence,
               source_message_id: sourceMessageId,
@@ -342,28 +361,86 @@ IMPORTANT: Only detect romantic relationships with INDIVIDUAL people. Never clas
             },
           })
           .eq('id', existing.id);
+
+        // Record every actual value change for the Status/Type/Exclusivity
+        // history — auto-detected transitions alongside user corrections, so
+        // "past status" and "when it changed" are complete regardless of
+        // which side changed them.
+        const nextByField: Record<string, unknown> = {
+          relationship_type: nextRelationshipType,
+          status: nextStatus,
+          exclusivity_status: nextExclusivityStatus,
+        };
+        const previousValue: Record<string, unknown> = {};
+        const newValue: Record<string, unknown> = {};
+        for (const field of TRACKED_ROMANCE_FIELDS) {
+          if (nextByField[field] !== existing[field]) {
+            previousValue[field] = existing[field];
+            newValue[field] = nextByField[field];
+          }
+        }
+        if (Object.keys(newValue).length > 0) {
+          identityLedgerService
+            .recordMutation({
+              userId,
+              entityId: existing.id,
+              entityType: 'romantic_relationship',
+              mutationType: 'ENTITY_UPDATED',
+              previousValue,
+              newValue,
+              reason: 'auto_detected_from_conversation',
+              confidence: relationship.confidence,
+              source: 'PIPELINE',
+              metadata: { evidence: relationship.evidence, source_message_id: sourceMessageId },
+            })
+            .catch((err) => logger.debug({ err, userId, entityId: existing.id }, 'Failed to record romance detection in identity ledger'));
+        }
       } else {
         // Insert new
-        await supabaseAdmin.from('romantic_relationships').insert({
-          user_id: userId,
-          person_id: relationship.personId,
-          person_type: relationship.personType,
-          relationship_type: relationship.relationshipType,
-          status: relationship.status,
-          is_current: !['ended', 'ghosted', 'blocked'].includes(relationship.status),
-          is_situationship: relationship.isSituationship || false,
-          exclusivity_status: relationship.exclusivityStatus,
-          start_date: relationship.startDate,
-          metadata: {
-            evidence: relationship.evidence,
-            detected_at: new Date().toISOString(),
-            source_message_id: sourceMessageId,
-            confidence: relationship.confidence,
-            reciprocity: inferredReciprocity,
-            reciprocity_evidence: relationship.reciprocityEvidence || relationship.evidence,
-            reciprocity_confidence: relationship.confidence,
-          },
-        });
+        const { data: inserted } = await supabaseAdmin
+          .from('romantic_relationships')
+          .insert({
+            user_id: userId,
+            person_id: relationship.personId,
+            person_type: relationship.personType,
+            relationship_type: relationship.relationshipType,
+            status: relationship.status,
+            is_current: !['ended', 'ghosted', 'blocked'].includes(relationship.status),
+            is_situationship: relationship.isSituationship || false,
+            exclusivity_status: relationship.exclusivityStatus,
+            start_date: relationship.startDate,
+            metadata: {
+              evidence: relationship.evidence,
+              detected_at: new Date().toISOString(),
+              source_message_id: sourceMessageId,
+              confidence: relationship.confidence,
+              reciprocity: inferredReciprocity,
+              reciprocity_evidence: relationship.reciprocityEvidence || relationship.evidence,
+              reciprocity_confidence: relationship.confidence,
+            },
+          })
+          .select('id')
+          .single();
+
+        if (inserted?.id) {
+          identityLedgerService
+            .recordMutation({
+              userId,
+              entityId: inserted.id,
+              entityType: 'romantic_relationship',
+              mutationType: 'ENTITY_CREATED',
+              newValue: {
+                relationship_type: relationship.relationshipType,
+                status: relationship.status,
+                exclusivity_status: relationship.exclusivityStatus,
+              },
+              reason: 'auto_detected_from_conversation',
+              confidence: relationship.confidence,
+              source: 'PIPELINE',
+              metadata: { evidence: relationship.evidence, source_message_id: sourceMessageId },
+            })
+            .catch((err) => logger.debug({ err, userId, entityId: inserted.id }, 'Failed to record romance detection in identity ledger'));
+        }
       }
     } catch (error) {
       if (error && typeof error === 'object' && 'message' in error) {

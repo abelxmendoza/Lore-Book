@@ -1,6 +1,7 @@
 /** LoreBook Response Compiler — types for provenance-aware assistant artifacts. */
 
 import type { SummaryDisciplineWarning } from '../chat/summaryDiscipline';
+import type { CompositionPlan, CompositionQualityResult } from '../responseComposition';
 
 export type AssistantClaimType =
   | 'identity_claim'
@@ -129,6 +130,14 @@ export type CompiledAssistantResponse = {
   verifiedResponse: string;
   /** Summary-discipline rewrite used for the visible/persisted reply. */
   discipline: ResponseDisciplineLayer;
+  /** Canonical composition identity and evidence usage for internal diagnostics. */
+  composition?: {
+    planVersion: CompositionPlan['version'];
+    profile: CompositionPlan['profile'];
+    selectedEvidenceIds: string[];
+    discardedEvidenceIds: string[];
+    quality?: Pick<CompositionQualityResult, 'version' | 'score' | 'passed' | 'reasons'>;
+  };
 };
 
 export type ResponseInspectorReport = {

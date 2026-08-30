@@ -1,4 +1,5 @@
 import { logger } from '../../logger';
+import { isReviewPending } from '../reviewableRecord';
 import { supabaseAdmin } from '../supabaseClient';
 import { BOOK_QUERY_SOURCE_ROW_CAP } from '../query/bookQuerySourceCaps';
 import { skillDetailsExtractionService, type SkillMetadata } from './skillDetailsExtractionService';
@@ -173,7 +174,12 @@ class SkillService {
   /**
    * Get all skills for a user
    */
-  async getSkills(userId: string, filters?: { active_only?: boolean; category?: SkillCategory; limit?: number }): Promise<Skill[]> {
+  async getSkills(userId: string, filters?: {
+    active_only?: boolean;
+    category?: SkillCategory;
+    limit?: number;
+    displayable_only?: boolean;
+  }): Promise<Skill[]> {
     try {
       const schema = await getSkillsDbSchema();
       let query = supabaseAdmin
@@ -207,6 +213,9 @@ class SkillService {
       if (schema === 'legacy') {
         if (filters?.active_only) skills = skills.filter((s) => s.is_active);
         if (filters?.category) skills = skills.filter((s) => s.skill_category === filters.category);
+      }
+      if (filters?.displayable_only) {
+        skills = skills.filter((skill) => !isReviewPending(skill.metadata));
       }
       return skills;
     } catch (error) {

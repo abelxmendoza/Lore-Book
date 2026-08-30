@@ -87,9 +87,18 @@ describe('isProjectWriteRequest / isSkillWriteRequest / isQuestWriteRequest', ()
 describe('isFamilyWriteRequest / isRomanceWriteRequest', () => {
   it('matches kinship and romance status writes', () => {
     expect(isFamilyWriteRequest('mark Marcus as my cousin')).toBe(true);
-    expect(isRomanceWriteRequest('mark Jamie as dating')).toBe(true);
+    expect(isRomanceWriteRequest('mark Jamie as ended')).toBe(true);
     expect(isRomanceWriteRequest('we broke up with Jamie')).toBe(true);
     expect(isRomanceWriteRequest('delete the romance record for Jamie')).toBe(true);
+  });
+
+  it('matches the full canonical romance status vocabulary and free-form lifecycle phrasing', () => {
+    expect(isRomanceWriteRequest('set Jamie as paused')).toBe(true);
+    expect(isRomanceWriteRequest('mark Jamie as ghosted')).toBe(true);
+    expect(isRomanceWriteRequest('mark Jamie as rekindled')).toBe(true);
+    expect(isRomanceWriteRequest('Jamie and I are on a break')).toBe(true);
+    expect(isRomanceWriteRequest('Jamie and I got back together')).toBe(true);
+    expect(isRomanceWriteRequest('things with Jamie are complicated')).toBe(true);
   });
 
   it('matches a side-only correction', () => {

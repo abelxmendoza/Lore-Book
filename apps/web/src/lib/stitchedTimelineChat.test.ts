@@ -129,8 +129,9 @@ describe('stitchedTimelineChat', () => {
     expect(event.detail.sourceSurface).toBe('timeline');
     expect(event.detail.entityName).toBe('Agency Years');
     expect(event.detail.knowledgeScope).toMatch(/Building with family/);
-    expect(event.detail.initialPrompt).toMatch(/stitched timeline/);
-    expect(event.detail.autoSubmit).toBe(true);
+    // Opening a focus chat must never pre-fill or auto-send a starter prompt.
+    expect(event.detail.initialPrompt).toBeUndefined();
+    expect(event.detail.autoSubmit).toBe(false);
     expect(event.detail.startNewThread).toBe(true);
   });
 });

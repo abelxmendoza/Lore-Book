@@ -21,6 +21,7 @@ import {
 import { getWhatChangedSinceLastVisit, formatWhatChangedLines } from '../services/chat/whatChangedService';
 import { confidenceTrackingService } from '../services/confidenceTrackingService';
 import { affectionCalculator } from '../services/conversationCentered/affectionCalculator';
+import { identityLedgerService } from '../services/identity/identityLedgerService';
 import { bumpThreadActivity } from '../services/conversationCentered/threadActivity';
 import { breakupDetector } from '../services/conversationCentered/breakupDetector';
 import { characterTimelineBuilder } from '../services/conversationCentered/characterTimelineBuilder';
@@ -3465,15 +3466,29 @@ router.patch(
             },
           }
         : {};
+    // This endpoint is the authenticated user's manual-correction surface —
+    // any of these three fields present in the request is a deliberate user
+    // edit, not an auto-detection write. Mark them "user_confirmed" so
+    // romanticRelationshipDetector's next re-scan leaves them alone instead
+    // of silently overwriting the correction.
+    const now = new Date().toISOString();
+    const confirmedFieldMeta: Record<string, unknown> = {};
+    for (const field of ['relationship_type', 'exclusivity_status', 'status'] as const) {
+      if (values[field] !== undefined) {
+        confirmedFieldMeta[`${field}_source`] = 'user_confirmed';
+        confirmedFieldMeta[`${field}_confirmed_at`] = now;
+      }
+    }
     const updatePayload: Record<string, unknown> = {
       ...values,
-      updated_at: new Date().toISOString(),
+      updated_at: now,
     };
-    if (metadata || reason || reason_note) {
+    if (metadata || reason || reason_note || Object.keys(confirmedFieldMeta).length > 0) {
       updatePayload.metadata = {
         ...existingMeta,
         ...(metadata ?? {}),
         ...correctionMeta,
+        ...confirmedFieldMeta,
       };
     }
 
@@ -3491,7 +3506,104 @@ router.patch(
 
     if (updateError) throw updateError;
 
+    if (Object.keys(confirmedFieldMeta).length > 0) {
+      const previousValue: Record<string, unknown> = {};
+      const newValue: Record<string, unknown> = {};
+      for (const field of ['relationship_type', 'exclusivity_status', 'status'] as const) {
+        if (values[field] !== undefined) {
+          previousValue[field] = existing[field];
+          newValue[field] = values[field];
+        }
+      }
+      identityLedgerService
+        .recordMutation({
+          userId,
+          entityId: id,
+          entityType: 'romantic_relationship',
+          mutationType: 'ENTITY_UPDATED',
+          previousValue,
+          newValue,
+          reason,
+          source: 'USER',
+          metadata: {
+            reason_note,
+            person_id: existing.person_id,
+            person_type: existing.person_type,
+          },
+        })
+        .catch((err) => logger.warn({ err, userId, id }, 'Failed to record romantic relationship correction in identity ledger'));
+    }
+
     res.json({ success: true, relationship: updated });
+  })
+);
+
+/** One recorded transition for a single tracked field. */
+type RomanceFieldChange = {
+  from: unknown;
+  to: unknown;
+  at: string;
+  reason: string | null;
+  source: string;
+};
+
+const ROMANCE_HISTORY_FIELDS = ['relationship_type', 'status', 'exclusivity_status'] as const;
+
+/**
+ * GET /api/conversation/romantic-relationships/:id/history
+ * Current value + full change history (auto-detected and user-corrected,
+ * oldest → newest) for relationship_type, status, and exclusivity_status —
+ * powers the "current / past / when it changed" view in the detail modal.
+ */
+router.get(
+  '/romantic-relationships/:id/history',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const id = req.params.id as string;
+
+    const { data: relationship, error: relError } = await supabaseAdmin
+      .from('romantic_relationships')
+      .select('id, relationship_type, status, exclusivity_status')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (relError || !relationship) {
+      return res.status(404).json({ success: false, error: 'Relationship not found' });
+    }
+
+    const rows = await identityLedgerService.getEntityHistory(userId, id, { ascending: true });
+
+    const history: Record<string, RomanceFieldChange[]> = {};
+    for (const field of ROMANCE_HISTORY_FIELDS) {
+      history[field] = rows
+        .filter((row) => {
+          const nv = row.new_value as Record<string, unknown> | null;
+          return nv && typeof nv === 'object' && field in nv;
+        })
+        .map((row) => {
+          const pv = (row.previous_value as Record<string, unknown> | null) ?? {};
+          const nv = row.new_value as Record<string, unknown>;
+          return {
+            from: pv[field] ?? null,
+            to: nv[field],
+            at: row.created_at,
+            reason: row.reason,
+            source: row.source,
+          };
+        });
+    }
+
+    res.json({
+      success: true,
+      current: {
+        relationship_type: relationship.relationship_type,
+        status: relationship.status,
+        exclusivity_status: relationship.exclusivity_status,
+      },
+      history,
+    });
   })
 );
 

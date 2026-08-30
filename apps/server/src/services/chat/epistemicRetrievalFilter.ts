@@ -7,6 +7,7 @@ import type { KnowledgeType } from '../knowledgeTypeEngineService';
 import type { ResolvedMemoryEntry } from '../../types';
 import { truthStateWeight, type TruthState } from '../provenance/epistemicWeights';
 import { getPersonaDefinition, type PersonaId } from '../personas/personaRegistry';
+import { isReviewPending } from '../reviewableRecord';
 import {
   buildWorkingMemoryPacket,
   type WorkingMemoryAssembly,
@@ -35,6 +36,7 @@ export function passesRetrievalContract(
   contract: SensemakingContract
 ): boolean {
   if (item.confidence < contract.min_confidence) return false;
+  if (isReviewPending(item.metadata)) return false;
 
   const knowledgeType = inferKnowledgeType(item);
   if (!contract.allowed_knowledge_types.includes(knowledgeType)) return false;
@@ -108,6 +110,7 @@ function filterRelatedEntries(
 ): ResolvedMemoryEntry[] {
   return entries.filter((entry) => {
     const meta = entry.metadata ?? {};
+    if (isReviewPending(meta)) return false;
     const confidence = typeof meta.confidence === 'number' ? meta.confidence : 0.65;
     if (confidence < contract.min_confidence) return false;
 

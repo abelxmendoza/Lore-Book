@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { shortDisplayName } from '../../lib/displayName';
-import { Building2, Music, Zap, Globe, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, Calendar, Hash, Sparkles, Plus, X, Heart, TreePine, Network, Tag, Truck, Code2 } from 'lucide-react';
+import { Building2, Music, Zap, Globe, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, Calendar, Hash, Sparkles, Plus, X, Heart, TreePine, Tag, Truck, Code2 } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -19,13 +19,12 @@ import {
 } from '../ui/GridListViewToolbar';
 import { OrganizationProfileCard, type Organization, type OrganizationMember, type OrganizationStory, type OrganizationEvent, type OrganizationLocation } from './OrganizationProfileCard';
 import { OrganizationDetailModal } from './OrganizationDetailModal';
-import { OrganizationGroupNetwork } from './OrganizationGroupNetwork';
 import { GroupSuggestions } from '../groups/GroupSuggestions';
+import { OPEN_GROUP_SUGGESTION_EVENT } from '../groups/GroupSuggestionDetailModal';
 import { GroupMergePanel } from '../groups/GroupMergePanel';
 import { FocusedEntityChatLauncher } from '../chat/FocusedEntityChatLauncher';
 import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
 import { openFocusedEntityChat } from '../../lib/openFocusedEntityChat';
-import { OntologyCompliancePanel } from '../ontology/OntologyCompliancePanel';
 import { isEventGroup, isTopLevelGroup } from '../../lib/groupTaxonomy';
 import { buildOrganizationBookClipboardText } from '../../lib/organizationBookClipboard';
 import { clipboardFilterLines } from '../../lib/listClipboard';
@@ -33,14 +32,11 @@ import { ErrorBoundary } from '../ErrorBoundary';
 import { fetchJson } from '../../lib/api';
 import { fetchOrganizationById } from '../../lib/hydrateBookEntity';
 import { consumeHighlightItemId, resolveBookHighlightItem } from '../../lib/resolveBookHighlight';
-import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import {
   useBookEntityIndexSearch,
   useOrganizationsBookData,
 } from '../../store/hooks/useEntityBooks';
-import { FamilyTreePanel } from '../family/FamilyTreePanel';
-import { Modal } from '../ui/modal';
 import { subDays } from 'date-fns';
 import { enrichOrganizationForDemo } from '../../mocks/modalDemoData';
 
@@ -1226,10 +1222,6 @@ export const OrganizationsBook: React.FC = () => {
     subcategory: '',
     description: '',
   });
-  const [showMyFamily, setShowMyFamily] = useState(false);
-  const [showGroupNetwork, setShowGroupNetwork] = useState(false);
-  const [myFamilyCount, setMyFamilyCount] = useState<number | null>(null);
-  const [myFamilyRefreshKey, setMyFamilyRefreshKey] = useState(0);
   const createdOrgsRef = useRef<Organization[]>([]);
   const [createdOrgsVersion, setCreatedOrgsVersion] = useState(0);
   const [highlightOrgId, setHighlightOrgId] = useState<string | null>(null);
@@ -1297,17 +1289,6 @@ export const OrganizationsBook: React.FC = () => {
 
   const loading = bookLoading || scanning || creating;
 
-  useEffect(() => {
-    if (isMockDataEnabled) return;
-    fetchJson<{ success: boolean; tree: { members: unknown[] } }>('/api/family-trees/mine')
-      .then(r => { if (r.success) setMyFamilyCount(r.tree.members?.length ?? 0); })
-      .catch(() => setMyFamilyCount(null));
-  }, [isMockDataEnabled, myFamilyRefreshKey]);
-
-  useEffect(() => {
-    return onStoryDataUpdated(() => setMyFamilyRefreshKey(k => k + 1), 'family');
-  }, []);
-
   const loadOrganizations = async () => {
     setError(null);
     if (isMockDataEnabled) return;
@@ -1317,6 +1298,23 @@ export const OrganizationsBook: React.FC = () => {
       console.error('Failed to load organizations:', err);
       setError(err instanceof Error ? err.message : 'Failed to load organizations');
     }
+  };
+
+  const openOrganizationCard = (org: Organization) => {
+    if (org.metadata?.preview_candidate) {
+      const candidateId = org.metadata.group_candidate_id
+        ? String(org.metadata.group_candidate_id)
+        : org.id.startsWith('candidate-')
+          ? org.id.replace(/^candidate-/, '')
+          : null;
+      if (candidateId) {
+        window.dispatchEvent(
+          new CustomEvent(OPEN_GROUP_SUGGESTION_EVENT, { detail: { candidateId } }),
+        );
+      }
+      return;
+    }
+    setSelectedOrganization(normalizeOrganization(org));
   };
 
   const handleScan = async () => {
@@ -1659,9 +1657,6 @@ export const OrganizationsBook: React.FC = () => {
         categoryFilter={activeCategory}
         searchTerm={searchTerm}
         demoMode={isMockDataEnabled}
-        onOpenCandidate={(preview) => {
-          setSelectedOrganization(normalizeOrganization(preview));
-        }}
         onGroupCreated={(created) => {
           if (created) {
             const normalizedCreated = normalizeOrganization(created);
@@ -1693,68 +1688,6 @@ export const OrganizationsBook: React.FC = () => {
         onToggleSelected={toggleSelectedForMerge}
         onClearSelection={() => setSelectedForMerge(new Set())}
       />
-
-      <OntologyCompliancePanel book="organizations" />
-
-      {!isMockDataEnabled && (
-        <>
-        <Card
-          className="bg-gradient-to-r from-emerald-950/50 via-black/40 to-black/40 border-emerald-500/35 cursor-pointer hover:border-emerald-400/55 transition-colors"
-          onClick={() => setShowMyFamily(true)}
-        >
-          <CardContent className="py-4 flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="p-2.5 rounded-xl bg-emerald-500/15 shrink-0">
-                <TreePine className="h-6 w-6 text-emerald-400" />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-base font-semibold text-white">My Family</h2>
-                <p className="text-xs text-white/45 mt-0.5">
-                  {myFamilyCount != null && myFamilyCount > 0
-                    ? `${myFamilyCount} relative${myFamilyCount !== 1 ? 's' : ''} inferred from your conversations`
-                    : 'Your personal family tree — grows as you share stories in chat'}
-                </p>
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-emerald-500/40 text-emerald-200 shrink-0"
-              onClick={e => { e.stopPropagation(); setShowMyFamily(true); }}
-            >
-              View tree
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card
-          className="bg-gradient-to-r from-indigo-950/50 via-black/40 to-black/40 border-indigo-500/35 cursor-pointer hover:border-indigo-400/55 transition-colors"
-          onClick={() => setShowGroupNetwork(true)}
-        >
-          <CardContent className="py-4 flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="p-2.5 rounded-xl bg-indigo-500/15 shrink-0">
-                <Network className="h-6 w-6 text-indigo-400" />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-base font-semibold text-white">Group Network</h2>
-                <p className="text-xs text-white/45 mt-0.5">
-                  Subgroups, inner circles, and affiliations — learned from your conversations
-                </p>
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-indigo-500/40 text-indigo-200 shrink-0"
-              onClick={e => { e.stopPropagation(); setShowGroupNetwork(true); }}
-            >
-              View network
-            </Button>
-          </CardContent>
-        </Card>
-        </>
-      )}
 
       {/* Search and Controls — two rows on mobile: row 1 = search, row 2 = sort + refresh */}
       <div className="space-y-4">
@@ -2220,7 +2153,7 @@ export const OrganizationsBook: React.FC = () => {
                           type="button"
                           onClick={() => {
                             if (selectionMode) toggleSelectedForMerge(org.id);
-                            else setSelectedOrganization(normalizeOrganization(org));
+                            else openOrganizationCard(org);
                           }}
                           className={`w-full flex items-start gap-3 px-3 py-2.5 hover:bg-white/5 transition-colors text-left ${
                             selectedForMerge.has(org.id) ? 'bg-primary/10' : ''
@@ -2276,7 +2209,7 @@ export const OrganizationsBook: React.FC = () => {
                         highlighted={highlightOrgId === org.id}
                         onClick={() => {
                           if (selectionMode) toggleSelectedForMerge(org.id);
-                          else setSelectedOrganization(normalizeOrganization(org));
+                          else openOrganizationCard(org);
                         }}
                       />
                     ))}
@@ -2352,7 +2285,7 @@ export const OrganizationsBook: React.FC = () => {
       )}
 
       {/* Organization Detail Modal */}
-      {selectedOrganization && (
+      {selectedOrganization && !selectedOrganization.metadata?.preview_candidate && (
         <OrganizationDetailModal
           organization={selectedOrganization}
           allOrganizations={organizations}
@@ -2363,41 +2296,6 @@ export const OrganizationsBook: React.FC = () => {
             void loadOrganizations();
           }}
         />
-      )}
-
-      {showMyFamily && (
-        <Modal isOpen onClose={() => setShowMyFamily(false)} title="My Family" size="3xl">
-          <div className="p-4 sm:p-6 overflow-y-auto max-h-[75vh]">
-            <p className="text-xs text-white/45 mb-4">
-              Positions inferred from kinship mentioned in your conversations. Updates automatically after you chat.
-            </p>
-            <FamilyTreePanel
-              scope="mine"
-              refreshKey={myFamilyRefreshKey}
-              title="No family tree yet"
-              hint="Tell LoreBook about your parents, siblings, partner, or kids — the tree builds from what you share."
-            />
-          </div>
-        </Modal>
-      )}
-
-      {showGroupNetwork && (
-        <Modal isOpen onClose={() => setShowGroupNetwork(false)} title="Group Network" size="3xl">
-          <div className="p-4 sm:p-6 overflow-y-auto max-h-[80vh]">
-            <OrganizationGroupNetwork
-              onOrgClick={(id) => {
-                void fetchJson<{ success: boolean; organization: Organization }>(`/api/organizations/${id}`)
-                  .then(r => {
-                    if (r.success && r.organization) {
-                      setShowGroupNetwork(false);
-                      setSelectedOrganization(r.organization);
-                    }
-                  })
-                  .catch(() => {});
-              }}
-            />
-          </div>
-        </Modal>
       )}
     </div>
   );

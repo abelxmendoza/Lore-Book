@@ -163,8 +163,9 @@ describe('LoveAndRelationshipsView', () => {
       sourceLabel: 'Dating & Romance',
     });
     expect(event.detail.entityId).not.toBe('');
-    expect(event.detail.initialPrompt).toMatch(/priyanka/i);
-    expect(event.detail.initialPrompt).toMatch(/aliases|nicknames/i);
+    // Opening a focus chat must never pre-fill or auto-send a starter prompt.
+    expect(event.detail.initialPrompt).toBeUndefined();
+    expect(event.detail.autoSubmit).toBeUndefined();
 
     const characterPostCalls = (fetchJson as any).mock.calls.filter(
       (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('/api/characters'),

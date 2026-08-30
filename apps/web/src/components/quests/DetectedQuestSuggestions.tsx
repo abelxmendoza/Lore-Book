@@ -14,13 +14,14 @@ import { filterVisibleSuggestions } from '../../lib/suggestionBookFilter';
 import { SuggestionMergeHint } from '../suggestions/SuggestionMergeHint';
 import { SuggestionCategoryRedirect } from '../suggestions/SuggestionCategoryRedirect';
 import { SuggestionDismissButton } from '../suggestions/SuggestionDismissButton';
-import { isSimilarSuggestion } from '../../lib/suggestionMatchTypes';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { RescanChatsButton } from '../suggestions/RescanChatsButton';
 import { SuggestionPanelEmptyState } from '../suggestions/SuggestionPanelEmptyState';
 import { useSuggestionPanelDismissal } from '../../hooks/useSuggestionPanelDismissal';
 import { buildQuestSuggestionsClipboardText } from '../../lib/questSuggestionsClipboard';
 import { copyTextToClipboard } from '../../lib/listClipboard';
+import { questsApi } from '../../api/quests';
+import { QuestSuggestionDetailModal } from './QuestSuggestionDetailModal';
 import type { QuestSuggestion } from '../../types/quest';
 import { cn } from '../../lib/cn';
 
@@ -87,6 +88,7 @@ export function DetectedQuestSuggestions({
   const [collapsed, setCollapsed] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState<string | null>(null);
+  const [reviewing, setReviewing] = useState<QuestSuggestion | null>(null);
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -126,20 +128,35 @@ export function DetectedQuestSuggestions({
     window.dispatchEvent(new CustomEvent('lk:quests-updated', { detail: {} }));
   };
 
-  const handleAdd = async (suggestion: QuestSuggestion) => {
+  const handleCreate = async (suggestion: QuestSuggestion) => {
     const key = suggestionKey(suggestion);
-    if (isSimilarSuggestion(suggestion)) {
-      setDismissed((prev) => new Set([...prev, key]));
-      return;
-    }
     setAdding(key);
     try {
       await materializeSuggestion.mutateAsync(suggestion);
       setDismissed((prev) => new Set([...prev, key]));
+      setReviewing(null);
       success(`"${suggestion.title}" is now in your quest log.`);
       onQuestAdded?.();
     } catch {
       error('Could not add quest. Please try again.');
+    } finally {
+      setAdding(null);
+    }
+  };
+
+  const handleMerge = async (suggestion: QuestSuggestion, questId: string) => {
+    if (showDemo || !suggestion.id) return;
+    const key = suggestionKey(suggestion);
+    setAdding(key);
+    try {
+      await questsApi.mergeSuggestion(suggestion.id, questId);
+      setDismissed((prev) => new Set([...prev, key]));
+      setReviewing(null);
+      success(`"${suggestion.title}" was merged into your quest.`);
+      onQuestAdded?.();
+      await refetch();
+    } catch {
+      error('Could not merge quest suggestion. Please try again.');
     } finally {
       setAdding(null);
     }
@@ -179,6 +196,17 @@ export function DetectedQuestSuggestions({
   return (
     <>
       <ToastContainer />
+      {reviewing && (
+        <QuestSuggestionDetailModal
+          suggestion={reviewing}
+          questEntries={bookEntries}
+          processing={adding === suggestionKey(reviewing)}
+          onClose={() => setReviewing(null)}
+          onCreate={(suggestion) => void handleCreate(suggestion)}
+          onMerge={(suggestion, questId) => void handleMerge(suggestion, questId)}
+          onDismiss={(suggestion) => { setReviewing(null); void handleDismiss(suggestion, 'not_entity'); }}
+        />
+      )}
       <div
         data-testid="quest-board-suggestions"
         className="rounded-lg border border-amber-500/25 bg-gradient-to-br from-amber-950/30 via-black/40 to-black/50 overflow-hidden"
@@ -347,18 +375,7 @@ export function DetectedQuestSuggestions({
                       </div>
 
                       <div className="flex shrink-0 items-center gap-0.5">
-                        {isSimilarSuggestion(suggestion) ? (
-                          <span className="text-[9px] text-amber-200/75 px-1">Already tracked</span>
-                        ) : (
-                          <Button
-                            size="sm"
-                            disabled={isAdding}
-                            onClick={() => void handleAdd(suggestion)}
-                            className="h-6 px-2 text-[10px] bg-amber-600/80 hover:bg-amber-500 text-white"
-                          >
-                            {isAdding ? '…' : <Plus className="h-3 w-3" />}
-                          </Button>
-                        )}
+                        <Button size="sm" disabled={isAdding} onClick={() => setReviewing(suggestion)} className="h-6 px-2 text-[10px] bg-amber-600/80 hover:bg-amber-500 text-white">{isAdding ? '…' : <Plus className="h-3 w-3" />}</Button>
                         <SuggestionDismissButton
                           onDismiss={(reason) => handleDismiss(suggestion, reason)}
                           buttonLabel="Not a goal"

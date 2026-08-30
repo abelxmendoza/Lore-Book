@@ -1,13 +1,16 @@
-import { Router } from 'express';
+import { Router, type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { unifiedFileIngestionService } from '../services/ingestion/unifiedFileIngestionService';
-import { resumeParsingService } from '../services/profileClaims/resumeParsingService';
-import { buildResumeChatFeedback } from '../services/profileClaims/resumeFeedbackService';
-import type { ParsedResume } from '../services/profileClaims/resumeStructuredTypes';
 import { createMemoryUpload } from '../middleware/multerConfig';
+import { DOCUMENT_CATEGORIES } from '../services/documents/documentCategories';
+import { classifyDocument } from '../services/documents/documentClassification';
+import { unifiedFileIngestionService } from '../services/ingestion/unifiedFileIngestionService';
+import { userFileRegistry } from '../services/ingestion/userFileRegistry';
+import { buildResumeChatFeedback } from '../services/profileClaims/resumeFeedbackService';
+import { resumeParsingService } from '../services/profileClaims/resumeParsingService';
+import type { ParsedResume } from '../services/profileClaims/resumeStructuredTypes';
 
 const router = Router();
 
@@ -19,23 +22,34 @@ const upload = createMemoryUpload({
     // Accept resume file types
     const allowedMimes = [
       'application/pdf',
-      'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'text/plain'
+      'text/plain',
     ];
-    
-    if (allowedMimes.includes(file.mimetype)) {
+
+    if (allowedMimes.includes(file.mimetype) || /\.(pdf|docx|txt)$/i.test(file.originalname)) {
       cb(null, true);
     } else {
-      cb(new Error('Only PDF, DOC, DOCX, or TXT files are allowed'));
+      cb(new Error('Only PDF, DOCX, or TXT files are allowed'));
     }
-  }
+  },
 });
+
+const uploadResume = (req: Request, res: Response, next: NextFunction) => {
+  upload.single('resume')(req, res, (error: unknown) => {
+    if (error) {
+      return res.status(400).json({
+        error: 'Unsupported resume upload',
+        message: error instanceof Error ? error.message : 'Only PDF, DOCX, or TXT files are allowed.',
+      });
+    }
+    next();
+  });
+};
 
 /**
  * Upload and process resume
  */
-router.post('/upload', requireAuth, upload.single('resume'), async (req: AuthenticatedRequest, res) => {
+router.post('/upload', requireAuth, uploadResume, async (req: AuthenticatedRequest, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No resume file provided' });
@@ -43,6 +57,12 @@ router.post('/upload', requireAuth, upload.single('resume'), async (req: Authent
 
     const userId = req.user!.id;
     const file = req.file;
+    const caption = typeof req.body?.caption === 'string' ? req.body.caption.trim() : '';
+    const parsedCategory = z.union([z.literal('auto'), z.enum(DOCUMENT_CATEGORIES)])
+      .safeParse(req.body?.category ?? 'auto');
+    if (!parsedCategory.success) {
+      return res.status(400).json({ error: 'Invalid document category' });
+    }
 
     const result = await unifiedFileIngestionService.ingest({
       userId,
@@ -50,22 +70,59 @@ router.post('/upload', requireAuth, upload.single('resume'), async (req: Authent
       filename: file.originalname || `resume-${Date.now()}.pdf`,
       mimeType: file.mimetype,
       kind: 'resume',
+      caption: caption || undefined,
+      documentCategory: parsedCategory.data === 'auto' ? 'resumes' : parsedCategory.data,
     });
+
+    if (result.processingStatus === 'processing') {
+      res.setHeader('Retry-After', '30');
+      return res.status(202).json({
+        success: true,
+        processing: true,
+        userFileId: result.userFileId,
+        message:
+          'This resume is already being processed. It is safe to check again with the same file; LoreBook will not create a second import.',
+      });
+    }
 
     if (result.processingStatus === 'failed') {
       return res.status(500).json({ error: result.error ?? 'Failed to process resume' });
     }
 
-    const documents = await resumeParsingService.getResumeDocuments(userId);
-    const document = documents.find(
-      (d) => (d.parsed_data as { source_file_id?: string })?.source_file_id === result.userFileId
-    ) ?? documents[0];
+    if (parsedCategory.data === 'auto') {
+      const classification = classifyDocument({
+        filename: file.originalname,
+        mimeType: file.mimetype,
+        ingestKind: 'resume',
+        linkedResume: true,
+      });
+      await userFileRegistry.setAutoDocumentCategoryForUser(
+        userId,
+        result.userFileId,
+        classification.category,
+        classification,
+      );
+    } else {
+      await userFileRegistry.setDocumentCategoryForUser(
+        userId,
+        result.userFileId,
+        parsedCategory.data,
+      );
+    }
 
-    logger.info({
-      userId,
-      userFileId: result.userFileId,
-      claimsCreated: result.claimsCreated,
-    }, 'Resume processed via unified ingestion');
+    const documents = await resumeParsingService.getResumeDocuments(userId);
+    const document =
+      documents.find((d) => (d.parsed_data as { source_file_id?: string })?.source_file_id === result.userFileId) ??
+      documents[0];
+
+    logger.info(
+      {
+        userId,
+        userFileId: result.userFileId,
+        claimsCreated: result.claimsCreated,
+      },
+      'Resume processed via unified ingestion'
+    );
 
     const structured = result.structured as ParsedResume | undefined;
     const feedback = structured
@@ -109,12 +166,19 @@ router.post('/upload', requireAuth, upload.single('resume'), async (req: Authent
       chatFeedback: feedback?.chatFeedback ?? null,
       careerTimeline: feedback?.careerTimeline ?? [],
       educationTimeline: feedback?.educationTimeline ?? [],
+      projectTimeline: feedback?.projectTimeline ?? [],
+      certificationTimeline: feedback?.certificationTimeline ?? [],
       savedToLibrary: true,
+      alreadyImported: result.alreadyImported ?? false,
+      duplicateOfUserFileId: result.duplicateOfUserFileId,
+      duplicateSimilarity: result.duplicateSimilarity,
       fileName: file.originalname,
       message: [
-        feedback?.chatFeedback
-          ? `Resume saved to your library and memory.`
-          : `Resume processed. ${result.claimsCreated ?? 0} claims, ${result.momentsCreated ?? 0} timeline entries, ${result.skillsCreated ?? 0} skills added to your lore.`,
+        result.alreadyImported
+          ? `This resume was already in your library. LoreBook reused the existing memory and timeline data without creating duplicates.`
+          : feedback?.chatFeedback
+            ? `Resume saved to your library and memory.`
+            : `Resume processed. ${result.claimsCreated ?? 0} claims, ${result.momentsCreated ?? 0} timeline entries, ${result.skillsCreated ?? 0} skills added to your lore.`,
         (result.itemsReconciled ?? 0) > 0
           ? `${result.itemsReconciled} job/education entr${result.itemsReconciled === 1 ? 'y' : 'ies'} already in your timeline from another resume — reinforced, not duplicated.`
           : null,
@@ -127,8 +191,8 @@ router.post('/upload', requireAuth, upload.single('resume'), async (req: Authent
     });
   } catch (error: any) {
     logger.error({ error }, 'Failed to process resume');
-    res.status(500).json({ 
-      error: error.message || 'Failed to process resume' 
+    res.status(500).json({
+      error: error.message || 'Failed to process resume',
     });
   }
 });
@@ -154,7 +218,9 @@ router.get('/documents', requireAuth, async (req: AuthenticatedRequest, res) => 
 router.get('/documents/:documentId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
-    const { documentId } = req.params;
+    const documentId = Array.isArray(req.params.documentId)
+      ? req.params.documentId[0]
+      : req.params.documentId;
 
     const document = await resumeParsingService.getResumeDocument(userId, documentId);
     if (!document) {

@@ -8,6 +8,7 @@
 import { config } from '../../config';
 import { openai } from '../openaiClient';
 import { logger } from '../../logger';
+import { isReviewPending } from '../reviewableRecord';
 import { supabaseAdmin } from '../supabaseClient';
 
 
@@ -50,6 +51,7 @@ export type DetectedAttribute = {
   endTime?: string;
   evidence: string;
   evidenceSourceIds: string[];
+  metadata?: Record<string, unknown>;
 };
 
 export class EntityAttributeDetector {
@@ -419,6 +421,7 @@ Only include attributes with confidence >= 0.6. Be conservative.`,
               ...(existing.metadata || {}),
               evidence: attribute.evidence,
               last_detected_at: new Date().toISOString(),
+            ...(attribute.metadata ?? {}),
             },
           })
           .eq('id', existing.id);
@@ -438,6 +441,7 @@ Only include attributes with confidence >= 0.6. Be conservative.`,
           metadata: {
             evidence: attribute.evidence,
             detected_at: new Date().toISOString(),
+            ...(attribute.metadata ?? {}),
           },
         });
       }
@@ -460,7 +464,8 @@ Only include attributes with confidence >= 0.6. Be conservative.`,
     userId: string,
     entityId: string,
     entityType: 'omega_entity' | 'character',
-    currentOnly: boolean = false
+    currentOnly: boolean = false,
+    options: { includeReviewPending?: boolean } = {},
   ): Promise<DetectedAttribute[]> {
     try {
       let query = supabaseAdmin
@@ -480,7 +485,9 @@ Only include attributes with confidence >= 0.6. Be conservative.`,
         return [];
       }
 
-      return attributes.map(attr => this.mapAttributeRow(attr));
+      return attributes
+        .filter((attr) => options.includeReviewPending || !isReviewPending(attr.metadata))
+        .map(attr => this.mapAttributeRow(attr));
     } catch (error) {
       logger.error({ error, userId, entityId }, 'Failed to get entity attributes');
       return [];
@@ -498,7 +505,8 @@ Only include attributes with confidence >= 0.6. Be conservative.`,
     userId: string,
     entityIds: string[],
     entityType: 'omega_entity' | 'character',
-    currentOnly: boolean = false
+    currentOnly: boolean = false,
+    options: { includeReviewPending?: boolean } = {},
   ): Promise<Record<string, DetectedAttribute[]>> {
     const result: Record<string, DetectedAttribute[]> = {};
     const uniqueIds = Array.from(new Set(entityIds.filter(Boolean)));
@@ -524,6 +532,7 @@ Only include attributes with confidence >= 0.6. Be conservative.`,
       const { data: attributes } = await query;
 
       for (const attr of attributes ?? []) {
+        if (!options.includeReviewPending && isReviewPending(attr.metadata)) continue;
         const mapped = this.mapAttributeRow(attr);
         (result[attr.entity_id] ??= []).push(mapped);
       }
@@ -548,6 +557,7 @@ Only include attributes with confidence >= 0.6. Be conservative.`,
       endTime: attr.end_time,
       evidence: attr.metadata?.evidence || '',
       evidenceSourceIds: attr.evidence_source_ids || [],
+      metadata: attr.metadata ?? {},
     };
   }
 }

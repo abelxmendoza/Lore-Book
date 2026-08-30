@@ -29,7 +29,11 @@ describe('groupIntelligence', () => {
     expect(classifyGroup('Tía Grace Household').category).toBe('HOUSEHOLD');
     expect(classifyGroup('Tía Grace Household').isHousehold).toBe(true);
     expect(classifyGroup('Anaheim Family Home').category).toBe('HOUSEHOLD');
-    expect(classifyGroup('Abuela Household').category).toBe('HOUSEHOLD');
+    expect(classifyGroup("Abuela's Family").category).toBe('FAMILY');
+    expect(classifyGroup("Abuela's Family").suggestedGroupType).toBe('family');
+    expect(classifyGroup("Mom's House").category).toBe('HOUSEHOLD');
+    expect(classifyGroup("Mom's House").suggestedGroupType).toBe('household');
+    expect(classifyGroup('The Whitmore-Chen Family').category).toBe('FAMILY');
   });
 
   it('does not classify family home as FAMILY', () => {

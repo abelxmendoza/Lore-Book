@@ -355,7 +355,7 @@ router.post('/activity', requireAuth, async (req: AuthenticatedRequest, res) => 
     const ipAddress = Array.isArray(rawIp) ? rawIp[0] : String(rawIp).split(',')[0].trim();
     const userAgent = req.headers['user-agent'] || 'unknown';
 
-    const { error } = await supabaseAdmin
+    const activityInsert = supabaseAdmin
       .from('user_activity_logs')
       .insert({
         user_id: userId,
@@ -367,10 +367,16 @@ router.post('/activity', requireAuth, async (req: AuthenticatedRequest, res) => 
         timestamp: new Date().toISOString(),
       });
 
-    if (error && error.code !== '42P01' && error.code !== 'PGRST205') {
-      throw error;
-    }
-
+    // Activity is telemetry, not part of the user action's critical path.
+    // Return immediately while the insert continues in the background so a
+    // slow/unavailable logging table cannot stall the Documents or Photos UI.
+    void activityInsert
+      .then(({ error }) => {
+        if (error && error.code !== '42P01' && error.code !== 'PGRST205') {
+          logger.warn({ error }, 'Best-effort activity insert failed');
+        }
+      })
+      .catch((error) => logger.warn({ error }, 'Best-effort activity insert failed'));
     res.json({ success: true });
   } catch (error) {
     logger.error({ error }, 'Failed to log activity');

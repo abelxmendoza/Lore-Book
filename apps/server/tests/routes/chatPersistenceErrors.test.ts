@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 
@@ -87,5 +87,58 @@ describe('POST /api/chat/stream — persistence error reporting', () => {
     expect(res.text).toContain('"saved":true');
     expect(res.text).toContain('"saved":false');
     expect(res.text).toContain('database unavailable');
+  });
+
+  describe('mid-stream dev-fallback (circuit breaker trips after the user message already saved)', () => {
+    const originalDevFallback = process.env.DEV_AI_FALLBACK;
+    const originalApiEnv = process.env.API_ENV;
+
+    beforeEach(() => {
+      process.env.DEV_AI_FALLBACK = 'true';
+      process.env.API_ENV = 'dev';
+    });
+
+    afterEach(() => {
+      if (originalDevFallback === undefined) delete process.env.DEV_AI_FALLBACK;
+      else process.env.DEV_AI_FALLBACK = originalDevFallback;
+      if (originalApiEnv === undefined) delete process.env.API_ENV;
+      else process.env.API_ENV = originalApiEnv;
+    });
+
+    it('reports the user message as saved, not "user_message_not_persisted", when the assistant reply fails mid-stream', async () => {
+      // The user's message already persisted before streaming began (real durability
+      // payload, exactly like the setup-catch path) — a quota/circuit-breaker error
+      // thrown while iterating the stream is an assistant-generation failure only.
+      async function* streamThatFailsMidway() {
+        yield { choices: [{ delta: { content: 'Partial ' } }] };
+        throw new Error('429 quota exceeded');
+      }
+
+      vi.mocked(omegaChatService.chatStream).mockResolvedValue({
+        stream: streamThatFailsMidway(),
+        content: '',
+        metadata: {
+          sessionId: SESSION_ID,
+          messageId: 'user-msg-mid-stream-1',
+          durability: {
+            userMessage: { id: 'user-msg-mid-stream-1', persisted: true },
+            assistantResponse: { status: 'pending' },
+            ingestion: { status: 'COMPLETED' },
+          },
+        },
+      } as never);
+
+      const res = await request(app)
+        .post('/api/chat/stream')
+        .send({ message: 'Kiley Tafur was my ex girlfriend...', threadId: SESSION_ID });
+
+      expect(res.status).toBe(200);
+      expect(res.text).toContain('"persistence"');
+      // This is the exact regression: the fallback frame must report the user
+      // message as saved (it was), never the hardcoded "not persisted" default.
+      expect(res.text).not.toContain('user_message_not_persisted');
+      expect(res.text).toContain('"role":"user"');
+      expect(res.text).toContain('"saved":true');
+    });
   });
 });

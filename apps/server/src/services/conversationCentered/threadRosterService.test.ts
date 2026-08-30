@@ -8,6 +8,7 @@ import {
   rosterKey,
   rosterRole,
 } from './threadRosterService';
+import { stripPersonNameEpithet } from '../../utils/personNameEpithet';
 import type { ThreadMessageRow } from './threadContentService';
 
 function msg(
@@ -202,6 +203,25 @@ describe('threadRosterService — pure helpers', () => {
         ]),
       );
       expect(decorated.map((e) => e.name)).toEqual(['Aunt Maribel the Hallway Guardian']);
+    });
+
+    it('stripPersonNameEpithet reverses the epithet-composed display name back to the real name', () => {
+      // getChatRosterContext() relies on this exact round-trip to keep the
+      // "Name the Epithet" display convention from leaking into the model's
+      // own identity context — the assistant must never learn someone's
+      // "name" as e.g. "Kiley Tafur the Young Love Enthusiast".
+      const entries = deriveRosterEntries(
+        [msg('m1', 1, 0, [{ id: 'a1', name: 'Kiley Tafur', type: 'character' }])],
+        1,
+      );
+      const decorated = applyCharacterEpithetsToRoster(
+        entries,
+        new Map([
+          ['a1', { name: 'Kiley Tafur', metadata: { epithet: 'Young Love Enthusiast' } }],
+        ]),
+      );
+      expect(decorated.map((e) => e.name)).toEqual(['Kiley Tafur the Young Love Enthusiast']);
+      expect(decorated.map((e) => stripPersonNameEpithet(e.name))).toEqual(['Kiley Tafur']);
     });
 
     it('omits groups and unresolved from Cast — only RESOLVED identities', () => {

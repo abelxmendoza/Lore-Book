@@ -184,16 +184,22 @@ Detection patterns to look for:
     languageStyle: string,
     sourceFileId?: string
   ): Promise<void> {
+    const now = new Date().toISOString();
+    const fileType = fileName.split('.').pop()?.toLowerCase() || null;
     const { error } = await supabaseAdmin
       .from('original_documents')
       .upsert({
-        id: uuid(),
         user_id: userId,
-        file_name: fileName,
+        title: fileName,
         content: text,
-        language_style: languageStyle,
-        uploaded_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        source: sourceFileId ? `user_file:${sourceFileId}` : 'upload',
+        file_type: fileType,
+        file_name: fileName,
+        metadata: {
+          language_style: languageStyle,
+          ...(sourceFileId ? { source_file_id: sourceFileId } : {}),
+        },
+        updated_at: now,
       }, {
         onConflict: 'user_id,file_name'
       });
@@ -381,9 +387,9 @@ Detection patterns to look for:
       // Fallback to original_documents table if it exists
       const { data, error } = await supabaseAdmin
         .from('original_documents')
-        .select('language_style')
+        .select('metadata, updated_at')
         .eq('user_id', userId)
-        .order('uploaded_at', { ascending: false })
+        .order('updated_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
@@ -391,7 +397,7 @@ Detection patterns to look for:
         logger.warn({ error }, 'Error fetching language style from original_documents');
       }
 
-      return data?.language_style || null;
+      return (data?.metadata as { language_style?: string } | null)?.language_style || null;
     } catch (error) {
       logger.warn({ error }, 'Failed to get language style');
       return null;

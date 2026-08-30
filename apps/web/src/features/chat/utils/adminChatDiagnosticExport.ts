@@ -7,6 +7,7 @@ import type { RuntimeEvent } from '../services/runtimeDiagnostics';
 export type ChatMessageDiagnosticSnapshot = {
   durability?: unknown;
   trace?: LoreAgentTrace;
+  cognitiveTrace?: unknown;
   errors?: string[];
 };
 
@@ -179,6 +180,10 @@ function messageRecord(message: Message) {
       recallSources: message.recall_sources ?? [],
       confidenceLabel: message.confidence_label ?? null,
       disclaimer: message.disclaimer ?? null,
+    },
+    composition: {
+      plan: metadata.compositionPlan ?? null,
+      quality: metadata.compositionQuality ?? null,
     },
   };
 }
@@ -466,6 +471,7 @@ export function buildChatConversationCopyText(
       ...messageRecord(message),
       durability: snapshot?.durability ?? null,
       agentTrace: projectTrace(snapshot?.trace),
+      cognitiveTrace: snapshot?.cognitiveTrace ?? null,
       diagnosticErrors: snapshot?.errors ?? [],
     };
   });

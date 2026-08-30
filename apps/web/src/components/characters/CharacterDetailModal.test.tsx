@@ -863,9 +863,66 @@ describe('CharacterDetailModal', () => {
       );
 
       expect(screen.getAllByText('Whittier Hometown Family Household').length).toBeGreaterThan(0);
-      expect(screen.getByTestId('character-groups-section')).toHaveTextContent(
+      expect(screen.getByTestId('character-households-section')).toHaveTextContent(
         'Whittier Hometown Family Household',
       );
+      expect(screen.getByTestId('character-groups-section')).not.toHaveTextContent(
+        'Whittier Hometown Family Household',
+      );
+    });
+
+    it('lists two homes on a character who splits time between households', async () => {
+      const { fetchJson } = await import('../../lib/api');
+      vi.mocked(fetchJson).mockImplementation(async (input: RequestInfo) => {
+        const url = typeof input === 'string' ? input : input.url;
+        if (url.startsWith('/api/organizations/by-character')) {
+          return {
+            success: true,
+            organizations: [
+              {
+                id: 'hh-dana',
+                name: "Dana's House",
+                group_type: 'household',
+                user_relationship: 'aware_of',
+                members: [
+                  { id: '1', character_name: 'Theo Whitfield', role: 'lives here', status: 'active' },
+                  { id: '2', character_name: 'Dana Whitfield', role: 'head of household', status: 'active' },
+                ],
+              },
+              {
+                id: 'hh-morgan',
+                name: 'Morgan Household',
+                group_type: 'household',
+                user_relationship: 'member',
+                members: [
+                  { id: '3', character_name: 'Theo Whitfield', role: 'weekends', status: 'active' },
+                  { id: '4', character_name: 'You', role: 'lives here', status: 'active' },
+                ],
+              },
+            ],
+          } as never;
+        }
+        throw new Error('Not found');
+      });
+
+      render(
+        <CharacterDetailModal
+          character={{ ...baseCharacter, name: 'Theo Whitfield' }}
+          onClose={mockOnClose}
+          onUpdate={mockOnUpdate}
+          initialTab="relationships"
+        />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('character-households-section')).toHaveTextContent("Dana's House");
+      });
+      const households = screen.getByTestId('character-households-section');
+      expect(households).toHaveTextContent('Morgan Household');
+      expect(households).toHaveTextContent(/More than one home/i);
+      expect(households).toHaveTextContent('Dana Whitfield');
+      expect(screen.getByTestId('character-groups-section')).not.toHaveTextContent("Dana's House");
+      expect(screen.getByTestId('character-groups-section')).not.toHaveTextContent('Morgan Household');
     });
 
     it('removes an inferred story association without a UUID validation error', async () => {

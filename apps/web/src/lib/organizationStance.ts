@@ -71,12 +71,23 @@ function rosterPeopleCount(org: Organization): number {
   return org.member_count ?? 0;
 }
 
+function isUserConfirmedRelationship(org: Pick<Organization, 'metadata'>): boolean {
+  return org.metadata?.user_relationship_source === 'user_confirmed';
+}
+
 /** Resolve which stance bucket an organization belongs in. */
 export function resolveOrganizationStance(org: Organization): OrganizationStance {
   const rel = org.user_relationship;
 
   if (rel && MINE_RELS.has(rel)) return 'mine';
   if (rel && CLOSE_RELS.has(rel)) return 'close_to';
+
+  // Manual corrections in the modal / chat must move the book tab even when
+  // roster signals would have guessed the other bucket.
+  if (isUserConfirmedRelationship(org)) {
+    if (rel === 'aware_of') return 'their_world';
+    if (rel === 'referenced' || rel === 'fan') return 'mentioned';
+  }
 
   const linked = linkedCharacterCount(org);
   const roster = rosterPeopleCount(org);

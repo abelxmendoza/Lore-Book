@@ -4,6 +4,11 @@ import type { CurrentContext } from '../../types/currentContext';
 import type { DiscourseResolution } from '../conversationReasoning/discourseReasonerTypes';
 import { auditWorkingMemoryAssembly, type AuditedItem } from '../conversationReasoning/retrievalAuditor';
 import { planAnswer, formatAnswerPlanBlock } from '../conversationReasoning/responsePlanner';
+import {
+  buildCompositionPlan,
+  formatCompositionPlanBlock,
+  type CompositionPlan,
+} from '../responseComposition';
 import type { ConversationGoalState } from '../conversationReasoning/goalTrackerTypes';
 import { formatSelfRomanticIdentityLines } from '../identity/selfRomanticIdentity';
 import { chapterService } from '../chapterService';
@@ -63,6 +68,63 @@ type RetryStateInput = { originalMessageText?: string } | null;
 
 // ─── Fitness keyword gate ────────────────────────────────────────────────────
 const FITNESS_RE = /\b(workout|exercise|gym|ran|run|lifted|bench|squat|deadlift|calories|weight|lbs|kg|miles|steps|cardio|biometric|body fat|muscle)\b/i;
+const MAX_ATTACHED_DOCUMENT_CHARS = 48_000;
+
+function formatAttachedResumeBlock(document: {
+  file_name: string;
+  processing_status: string;
+  parsed_data?: Record<string, unknown> | null;
+  raw_text?: string | null;
+}): string {
+  const parsed = document.parsed_data?.structured;
+  const structured = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : null;
+  const lines = [`File: ${document.file_name}`, `Processing status: ${document.processing_status}`];
+  const employment = Array.isArray(structured?.employment) ? structured.employment : [];
+  const education = Array.isArray(structured?.education) ? structured.education : [];
+  const skills = Array.isArray(structured?.skills) ? structured.skills.filter((item): item is string => typeof item === 'string') : [];
+
+  if (employment.length > 0) {
+    lines.push('Employment:');
+    for (const item of employment) {
+      if (!item || typeof item !== 'object') continue;
+      const role = item as Record<string, unknown>;
+      const title = typeof role.title === 'string' ? role.title : 'Untitled role';
+      const company = typeof role.company === 'string' ? role.company : 'Unspecified employer';
+      const dates = [role.startDate, role.endDate].filter((value): value is string => typeof value === 'string' && value.length > 0).join(' – ');
+      lines.push(`- ${title} — ${company}${dates ? ` · ${dates}` : ''}`);
+    }
+  }
+  if (education.length > 0) {
+    lines.push('Education:');
+    for (const item of education) {
+      if (!item || typeof item !== 'object') continue;
+      const school = item as Record<string, unknown>;
+      const institution = typeof school.institution === 'string' ? school.institution : 'Unspecified institution';
+      const degree = [school.degree, school.field]
+        .filter((value): value is string => typeof value === 'string' && value.length > 0)
+        .join(' ');
+      lines.push(`- ${institution}${degree ? ` · ${degree}` : ''}`);
+    }
+  }
+  if (skills.length > 0) lines.push(`Skills: ${skills.slice(0, 40).join(', ')}`);
+  if (employment.length === 0 && education.length === 0 && document.raw_text) {
+    lines.push('Resume text:', document.raw_text.slice(0, 12_000));
+  }
+  return lines.join('\n');
+}
+
+function formatAttachedDocumentBlock(document: {
+  file_name: string;
+  processing_status: string;
+  content: string;
+}): string {
+  return [
+    `File: ${document.file_name}`,
+    `Processing status: ${document.processing_status}`,
+    'Document text:',
+    document.content.slice(0, 12_000),
+  ].join('\n');
+}
 
 // ─── Public entry point ───────────────────────────────────────────────────────
 
@@ -84,6 +146,10 @@ export async function buildRAGPacket(
   resolvedTurnState?: RetryStateInput,
   /** Discourse Reasoner's resolution (Blueprint 21 Phase 2) — an 'exchange' referent augments the retrieval query below; an 'entity' referent has already rewritten `message` upstream. */
   discourseResolution?: DiscourseResolution | null,
+  /** Explicit resume attachment from the composer; bound to this turn only. */
+  resumeDocumentId?: string,
+  /** User-file IDs explicitly selected from the Documents book. */
+  documentIds?: string[],
 ) {
   // Full-packet cache hit — skip everything
   // Retellings deliberately bypass the message-text cache: an identical new
@@ -95,6 +161,8 @@ export async function buildRAGPacket(
     currentContext?.timelineNodeId ?? '',
     focus?.type ?? '',
     focus?.id ?? '',
+    resumeDocumentId ?? '',
+    [...new Set(documentIds ?? [])].sort().join(','),
   ].join(':');
   const cached = retellingRecall
     ? null
@@ -348,12 +416,19 @@ export async function buildRAGPacket(
       for (const item of selectedItems) {
         if (existingSourceIds.has(item.id)) continue;
         existingSourceIds.add(item.id);
+        const photoEntryId = item.id.startsWith('episode:')
+          ? item.id.slice('episode:'.length)
+          : typeof item.metadata?.journalEntryId === 'string'
+            ? item.metadata.journalEntryId
+            : undefined;
+        const isPhoto = Boolean(item.metadata?.photoUrl || item.metadata?.photoId);
         workingMemorySources.push({
-          type: 'knowledge',
-          id: item.id,
+          type: isPhoto ? 'photo' : 'knowledge',
+          id: photoEntryId ?? item.id,
           title: item.title,
           snippet: item.content.slice(0, 240),
           date: item.date ?? undefined,
+          ...(photoEntryId ? { navigationId: photoEntryId } : {}),
           relevanceScore: Math.round(item.score * 100),
           relevanceReasons: item.reasons,
         });
@@ -577,12 +652,166 @@ export async function buildRAGPacket(
     } catch (e) { logger.warn({ e }, 'RAGBuilder: date extraction failed'); }
   }
 
+  // An uploaded resume is a user-directed attachment, not merely another
+  // background retrieval candidate. Load it by user-scoped document ID so the
+  // exact file selected in the composer is available on this turn.
+  let attachedResumeBlock: string | null = null;
+  let attachedResumeSource: ChatSource | null = null;
+  if (resumeDocumentId) {
+    try {
+      const { resumeParsingService } = await import('../profileClaims/resumeParsingService');
+      const document = await resumeParsingService.getResumeDocument(userId, resumeDocumentId);
+      if (document) {
+        attachedResumeBlock = formatAttachedResumeBlock(document);
+        attachedResumeSource = {
+          type: 'knowledge',
+          id: document.id,
+          title: document.file_name,
+          snippet: 'Resume explicitly attached to this chat turn.',
+          relevanceScore: 100,
+          relevanceReasons: ['explicit_resume_attachment'],
+        };
+      }
+    } catch (e) {
+      logger.warn({ e, userId, resumeDocumentId }, 'RAGBuilder: attached resume lookup failed');
+    }
+  }
+
+  // Documents selected from the library are explicitly scoped to this turn.
+  // Resolve every ID through user_files first, then load the corresponding
+  // resume or original document by its provenance link. This prevents a
+  // forged document ID from crossing user boundaries and keeps prompt size
+  // bounded when several files are attached.
+  let attachedDocumentsBlock: string | null = null;
+  const attachedDocumentSources: ChatSource[] = [];
+  const requestedDocumentIds = [...new Set(documentIds ?? [])].slice(0, 10);
+  if (requestedDocumentIds.length > 0) {
+    try {
+      const { data: fileRows, error: fileError } = await supabaseAdmin
+        .from('user_files')
+        .select('id, filename, processing_status, ingest_kind')
+        .eq('user_id', userId)
+        .in('id', requestedDocumentIds);
+      if (fileError) throw fileError;
+
+      const files = (fileRows ?? []) as Array<{
+        id: string;
+        filename: string;
+        processing_status: string;
+        ingest_kind: string | null;
+      }>;
+      const validFileIds = files.map((file) => file.id);
+      const { resumeParsingService } = await import('../profileClaims/resumeParsingService');
+      const [resumeRows, originalResult] = await Promise.all([
+        resumeParsingService.getResumeDocumentsForSourceFiles(userId, validFileIds),
+        validFileIds.length > 0
+          ? supabaseAdmin
+            .from('original_documents')
+            .select('id, file_name, title, content, metadata, updated_at')
+            .eq('user_id', userId)
+            .in('metadata->>source_file_id', validFileIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (originalResult.error) throw originalResult.error;
+
+      const resumeByFileId = new Map(
+        resumeRows
+          .map((resume) => [
+            typeof resume.parsed_data?.source_file_id === 'string'
+              ? resume.parsed_data.source_file_id
+              : '',
+            resume,
+          ] as const)
+          .filter(([fileId]) => Boolean(fileId)),
+      );
+      const originalByFileId = new Map(
+        ((originalResult.data ?? []) as Array<{
+          id: string;
+          file_name?: string | null;
+          title?: string | null;
+          content: string;
+          metadata?: Record<string, unknown> | null;
+          updated_at?: string | null;
+        }>)
+          .map((document) => [
+            typeof document.metadata?.source_file_id === 'string'
+              ? document.metadata.source_file_id
+              : '',
+            document,
+          ] as const)
+          .filter(([fileId]) => Boolean(fileId)),
+      );
+      const blocks: string[] = [];
+      let attachedChars = 0;
+      const addBoundedBlock = (block: string): boolean => {
+        const remaining = MAX_ATTACHED_DOCUMENT_CHARS - attachedChars;
+        if (remaining <= 0) return false;
+        const bounded = block.slice(0, remaining);
+        blocks.push(bounded);
+        attachedChars += bounded.length;
+        return true;
+      };
+
+      for (const file of files) {
+        const resume = resumeByFileId.get(file.id);
+        if (resume) {
+          if (addBoundedBlock(formatAttachedResumeBlock(resume))) {
+            attachedDocumentSources.push({
+              type: 'document',
+              id: resume.id,
+              navigationId: file.id,
+              title: file.filename,
+              snippet: 'Document explicitly attached to this chat turn.',
+              relevanceScore: 100,
+              relevanceReasons: ['explicit_document_attachment'],
+            });
+          }
+          continue;
+        }
+        const original = originalByFileId.get(file.id);
+        if (original) {
+          if (addBoundedBlock(formatAttachedDocumentBlock({
+            file_name: original.file_name ?? original.title ?? file.filename,
+            processing_status: file.processing_status,
+            content: original.content,
+          }))) {
+            attachedDocumentSources.push({
+              type: 'document',
+              id: original.id,
+              navigationId: file.id,
+              title: original.file_name ?? original.title ?? file.filename,
+              snippet: 'Document explicitly attached to this chat turn.',
+              relevanceScore: 100,
+              relevanceReasons: ['explicit_document_attachment'],
+            });
+          }
+        }
+      }
+
+      if (blocks.length > 0) {
+        attachedDocumentsBlock = blocks.join('\n\n---\n\n');
+      }
+    } catch (e) {
+      logger.warn({ e, userId, documentIds: requestedDocumentIds }, 'RAGBuilder: attached documents lookup failed');
+    }
+  }
+  if (attachedDocumentsBlock) {
+    attachedResumeBlock = [
+      attachedResumeBlock,
+      attachedDocumentsBlock,
+    ].filter((block): block is string => Boolean(block)).join('\n\n---\n\n');
+  }
+
   // ── Sources array ────────────────────────────────────────────────────────
   let sources: ChatSource[] = [
     ...workingMemorySources,
     ...retellingSources,
     ...orchestratorSummary.timeline.events.slice(0, 15).map((e: any) => ({
-      type: 'entry' as const, id: e.id,
+      type: e.metadata?.photoUrl || e.metadata?.photoId ? 'photo' as const : 'entry' as const,
+      id: e.id,
+      ...(e.metadata?.photoUrl || e.metadata?.photoId
+        ? { navigationId: e.metadata?.journalEntryId ?? e.id }
+        : {}),
       title: e.summary || e.content?.substring(0, 50) || 'Untitled',
       snippet: e.summary || e.content?.substring(0, 150), date: e.date,
     })),
@@ -617,6 +846,8 @@ export async function buildRAGPacket(
     })),
     ...fabricNeighbors,
   ];
+  if (attachedResumeSource) sources.unshift(attachedResumeSource);
+  if (attachedDocumentSources.length > 0) sources.unshift(...attachedDocumentSources);
 
   // ── Social communities (Louvain clusters) ────────────────────────────────
   // Fetch persisted community output from the social network engine.
@@ -699,6 +930,9 @@ export async function buildRAGPacket(
   const cognitivePlanBlock = formatCognitivePlanBlock(cognitivePlan);
   let epistemicBlock: string | null = null;
   let answerPlanBlock: string | null = null;
+  let answerPlan: import('../conversationReasoning/responsePlanner').AnswerPlan | null = null;
+  let compositionPlan: CompositionPlan | null = null;
+  let compositionPlanBlock: string | null = null;
 
   // ── Active Narrative Threads (what is unfolding, not what happened) ──────
   // Derived fresh from life_arcs + recent moments/scenes; failure is non-fatal.
@@ -880,14 +1114,14 @@ export async function buildRAGPacket(
     // focus/avoid plan, built from signals already resolved above (cognitive
     // strategy, audited working memory, scope/correction state, goal).
     try {
-      const plan = planAnswer({
+      answerPlan = planAnswer({
         goal: goal ?? null,
         cognitivePlan,
         auditedAssembly: workingMemory,
         scopePlan,
         retryState: resolvedTurnState,
       });
-      answerPlanBlock = plan ? formatAnswerPlanBlock(plan) : null;
+      answerPlanBlock = answerPlan ? formatAnswerPlanBlock(answerPlan) : null;
     } catch (e) { logger.debug({ e }, 'RAGBuilder: response planner failed'); }
 
     if (scopePlan.intent === 'work' && scopePlan.responseMode !== 'audit' && scopePlan.responseMode !== 'debug_inspector') {
@@ -925,6 +1159,30 @@ export async function buildRAGPacket(
     }
   }
 
+  try {
+    compositionPlan = buildCompositionPlan({
+      answerPlan,
+      cognitivePlan,
+      goal: goal ?? null,
+      auditedAssembly: workingMemory,
+      scopePlan: scopePlan ?? null,
+      sources: sources.map((source) => ({
+        id: source.id,
+        relevanceScore: source.relevanceScore,
+        relevanceReasons: source.relevanceReasons,
+      })),
+      rejectedSources: rejectedEvidence.map((source) => ({
+        id: source.id ?? '',
+        relevanceScore: source.relevanceScore,
+        relevanceReasons: source.relevanceReasons,
+        usage: 'rejected' as const,
+      })),
+    });
+    compositionPlanBlock = formatCompositionPlanBlock(compositionPlan);
+  } catch (e) {
+    logger.debug({ e }, 'RAGBuilder: composition plan failed');
+  }
+
   const packet = {
     orchestratorSummary, hqiResults, relatedEntries, fabricNeighbors,
     extractedDates, sources,
@@ -945,12 +1203,15 @@ export async function buildRAGPacket(
     workoutEvents, recentBiometrics, topInterests,
     recentInterpretations, stableArcs, episodicEvents, socialCommunities,
     crystallizedKnowledge,
+    attachedResumeBlock,
     continuityAliveBlock,
     activeThreadsBlock,
     cognitivePlan,
     cognitivePlanBlock,
     epistemicBlock,
     answerPlanBlock,
+    compositionPlan,
+    compositionPlanBlock,
     continuityAliveTrace,
     // Entity dossier: verified facts + recurring moments for mentioned entities
     entityDossierBlock,
