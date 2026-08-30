@@ -3173,15 +3173,27 @@ export const CharacterDetailModal = ({
     (() => {
       const affiliation = editedCharacter.primary_organization;
       if (storyGroups.length > 0 || !affiliation?.id) return storyGroups;
+      const groupType = (affiliation.group_type ?? 'other') as Organization['group_type'];
       return [
         {
           id: affiliation.id,
           name: affiliation.name,
-          group_type: affiliation.group_type,
-          type: affiliation.group_type,
-          character_role: affiliation.role,
+          aliases: [],
+          group_type: groupType,
+          type: groupType === 'company' || groupType === 'family' ? groupType : 'other',
+          membership_model: 'none' as const,
+          character_role: affiliation.role ?? undefined,
           user_relationship: 'aware_of' as const,
+          user_is_member: false,
+          is_public_entity: false,
+          status: 'active' as const,
           members: [],
+          member_count: 0,
+          usage_count: 0,
+          confidence: 0.5,
+          last_seen: '',
+          created_at: '',
+          updated_at: '',
         },
       ];
     })(),

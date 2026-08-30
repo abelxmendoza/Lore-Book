@@ -9,7 +9,7 @@ import { isOrganizationGroupFollowUpRequest } from '@lorebook/api-contracts';
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { characterRegistry } from '../characterRegistry';
-import { organizationService } from '../organizationService';
+import { organizationService, type GroupType } from '../organizationService';
 import { classifyGroup } from '../ontology/groupIntelligence';
 import { groupDetectionService } from '../groupDetectionService';
 import { stripPersonNameEpithet } from '../../utils/personNameEpithet';
@@ -51,6 +51,17 @@ export type OrganizationSiteWriteIntent = {
   organizationName: string;
   locationName: string;
 };
+
+const GROUP_TYPES = new Set<GroupType>([
+  'friend_group', 'band', 'sports_team', 'company', 'club', 'nonprofit',
+  'family', 'household', 'martial_arts', 'scene', 'community', 'crew',
+  'collective', 'institution', 'public_entity', 'brand', 'vendor', 'team',
+  'project', 'event_group', 'care_team', 'support_network', 'software', 'other',
+]);
+
+function normalizeGroupType(value: string): GroupType {
+  return GROUP_TYPES.has(value as GroupType) ? (value as GroupType) : 'crew';
+}
 
 function cleanOrganizationName(value: string): string {
   return value
@@ -806,7 +817,9 @@ export async function writeOrganizationGroupFromChat(
       organizationName = existing.name;
     } else {
       const classification = classifyGroup(requestedOrganizationName, message);
-      const groupType = classification.suggestedGroupType !== 'other' ? classification.suggestedGroupType : 'crew';
+      const groupType = normalizeGroupType(
+        classification.suggestedGroupType !== 'other' ? classification.suggestedGroupType : 'crew',
+      );
       const userRelationship = groupDetectionService.suggestUserRelationship(
         message,
         false,

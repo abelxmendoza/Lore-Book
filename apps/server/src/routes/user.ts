@@ -370,7 +370,7 @@ router.post('/activity', requireAuth, async (req: AuthenticatedRequest, res) => 
     // Activity is telemetry, not part of the user action's critical path.
     // Return immediately while the insert continues in the background so a
     // slow/unavailable logging table cannot stall the Documents or Photos UI.
-    void activityInsert
+    void Promise.resolve(activityInsert)
       .then(({ error }) => {
         if (error && error.code !== '42P01' && error.code !== 'PGRST205') {
           logger.warn({ error }, 'Best-effort activity insert failed');
@@ -750,4 +750,3 @@ router.post('/accept-terms', requireAuth, async (req: AuthenticatedRequest, res)
 });
 
 export const userRouter = router;
-

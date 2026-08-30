@@ -825,6 +825,7 @@ describe('buildLifeSagaClipboardText', () => {
       era: 'Northwind years',
       currentStorylines: [{ id: 'arc-1', label: 'Creative Growth', intensity: 80 }],
       turningPoints: [],
+      projectionGeneration: null,
       eras: [
         {
           id: 'era-1',
