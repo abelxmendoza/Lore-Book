@@ -35,6 +35,7 @@ function isHouseholdOrg(
   groupType?: string | null,
   type?: string | null,
 ): boolean {
+  if (metadata.household_deleted) return false;
   if (groupType === 'household' || type === 'household') return true;
   return (
     metadata.inference_source === 'household_residence' ||

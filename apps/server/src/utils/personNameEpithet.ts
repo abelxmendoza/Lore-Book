@@ -61,6 +61,16 @@ export function normalizeEpithetText(raw: string | null | undefined): string | n
 }
 
 /**
+ * Identity themes / chapter titles ("Isolation And Resilience") are not
+ * personality nicknames. "Name the Isolation And Resilience" is not a card title.
+ */
+export function isThemeShapedEpithet(raw: string | null | undefined): boolean {
+  const e = normalizeEpithetText(raw);
+  if (!e) return false;
+  return /\s+(?:and|&)\s+/i.test(e);
+}
+
+/**
  * Read intentional epithet from character metadata.
  * Prefers `epithet` (plan field), then `contextual_title` (legacy/demo).
  */
@@ -71,10 +81,18 @@ export function resolveStoredEpithet(
   const fromEpithet = normalizeEpithetText(
     typeof metadata.epithet === 'string' ? metadata.epithet : null,
   );
-  if (fromEpithet) return fromEpithet;
-  return normalizeEpithetText(
+  if (fromEpithet) {
+    return isThemeShapedEpithet(fromEpithet) && metadata.epithet_pinned !== true
+      ? null
+      : fromEpithet;
+  }
+  const fromContextual = normalizeEpithetText(
     typeof metadata.contextual_title === 'string' ? metadata.contextual_title : null,
   );
+  if (fromContextual && isThemeShapedEpithet(fromContextual) && metadata.epithet_pinned !== true) {
+    return null;
+  }
+  return fromContextual;
 }
 
 /** Card / Actors display: "Aunt Maribel the Hallway Guardian". */

@@ -257,6 +257,60 @@ export function FamilyBook() {
       `Couldn't disconnect ${member.name}`,
     ), [runEdit]);
 
+  // ── Household edits ─────────────────────────────────────────────────────
+  const createHousehold = useCallback((name: string, locationName?: string) =>
+    runEdit(
+      () => fetchJson('/api/family/household', { method: 'POST', body: JSON.stringify({ name, locationName }) }),
+      `Created the ${name} household`,
+      `Couldn't create ${name}`,
+    ), [runEdit]);
+
+  const addHouseholdMember = useCallback((householdId: string, characterName: string, reason?: string) =>
+    runEdit(
+      () => fetchJson(`/api/family/household/${householdId}/members`, {
+        method: 'POST',
+        body: JSON.stringify({ characterName, reason }),
+      }),
+      `Added ${characterName} to the household`,
+      `Couldn't add ${characterName}`,
+    ), [runEdit]);
+
+  const removeHouseholdMember = useCallback((householdId: string, characterId: string, characterName: string, reason?: string) =>
+    runEdit(
+      () => fetchJson(`/api/family/household/${householdId}/members/${characterId}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ reason }),
+      }),
+      `Removed ${characterName} from the household`,
+      `Couldn't remove ${characterName}`,
+    ), [runEdit]);
+
+  const moveHousehold = useCallback((householdId: string, locationName: string, reason?: string) =>
+    runEdit(
+      () => fetchJson(`/api/family/household/${householdId}/location`, {
+        method: 'PATCH',
+        body: JSON.stringify({ locationName, reason }),
+      }),
+      `Moved the household to ${locationName}`,
+      `Couldn't move the household`,
+    ), [runEdit]);
+
+  const deleteHousehold = useCallback((householdId: string, householdName: string, reason: string) =>
+    runEdit(
+      () => fetchJson(`/api/family/household/${householdId}`, { method: 'DELETE', body: JSON.stringify({ reason }) }),
+      `Deleted the ${householdName} household`,
+      `Couldn't delete ${householdName}`,
+    ), [runEdit]);
+
+  const fetchHouseholdHistory = useCallback(async (householdId: string) => {
+    try {
+      const r = await fetchJson<{ history?: unknown[] }>(`/api/family/household/${householdId}/history`);
+      return (r.history ?? []) as import('./HouseholdDirectory').HouseholdHistoryEntry[];
+    } catch {
+      return [];
+    }
+  }, []);
+
   const confirmFamilyMatch = useCallback((match: PossibleFamilyMatch) =>
     runEdit(
       () => fetchJson(`/api/relationships/character-links/${match.id}`, {
@@ -577,6 +631,12 @@ export function FamilyBook() {
             <HouseholdDirectory
               households={summary?.households ?? []}
               onMemberClick={(id, name) => void openCharacter(id, name)}
+              onCreateHousehold={shouldUseMock ? undefined : (name, locationName) => void createHousehold(name, locationName)}
+              onAddMember={shouldUseMock ? undefined : (id, name, reason) => void addHouseholdMember(id, name, reason)}
+              onRemoveMember={shouldUseMock ? undefined : (hid, cid, name, reason) => void removeHouseholdMember(hid, cid, name, reason)}
+              onMoveHousehold={shouldUseMock ? undefined : (id, loc, reason) => void moveHousehold(id, loc, reason)}
+              onDeleteHousehold={shouldUseMock ? undefined : (id, name, reason) => void deleteHousehold(id, name, reason)}
+              onFetchHistory={shouldUseMock ? undefined : fetchHouseholdHistory}
             />
           )}
 

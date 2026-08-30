@@ -58,4 +58,21 @@ describe('placeSuggestionService', () => {
     const names = processPlaceSuggestionsForOutput(text).map((s) => s.text);
     expect(names.some((n) => n.includes('and Romi saw'))).toBe(false);
   });
+  it('titles same-chain gyms from street and landmark context', () => {
+    const text = [
+      'theres the EOS gym on Katella and Euclid',
+      'the other is off state college and not sure the other street',
+      'then theres one thats also on State College too but its off of I believe its Chapman',
+      'the other one is also in Fullerton and is next to Barnes and nobles.',
+    ].join('\n');
+
+    const names = processPlaceSuggestionsForOutput(text).map((s) => s.displayName ?? s.text);
+    expect(names).toEqual(expect.arrayContaining([
+      'EOS Gym — Katella & Euclid',
+      'EOS Gym — State College',
+      'EOS Gym — State College & Chapman',
+      'EOS Gym — Fullerton (Barnes & Noble)',
+    ]));
+    expect(names.filter((name) => /^EOS Gym$/i.test(name))).toEqual([]);
+  });
 });

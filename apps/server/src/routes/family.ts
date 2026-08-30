@@ -8,6 +8,7 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { logger } from '../logger';
 import { familyGraphService } from '../services/kinship/familyGraphService';
 import { householdService } from '../services/kinship/householdService';
+import { householdWriteService } from '../services/kinship/householdWriteService';
 import { familyTreeService } from '../services/familyTreeService';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { listPeripheralsForUser } from '../services/relationshipPeripheralService';
@@ -116,6 +117,98 @@ router.get(
     const userId = req.user!.id;
     const audit = await familyGraphService.generateAuditReport(userId);
     res.json({ success: true, audit });
+  })
+);
+
+// POST /api/family/household — create a household
+router.post(
+  '/household',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+    const locationName = typeof req.body?.locationName === 'string' ? req.body.locationName.trim() || undefined : undefined;
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() || undefined : undefined;
+    if (!name) return res.status(400).json({ success: false, error: 'name is required' });
+    const household = await householdWriteService.createHousehold(userId, name, { locationName, reason });
+    res.json({ success: true, household });
+  })
+);
+
+// DELETE /api/family/household/:id — soft-delete a household (history is kept)
+router.delete(
+  '/household/:id',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const householdId = String(req.params.id);
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+    if (!reason) return res.status(400).json({ success: false, error: 'reason is required' });
+    const ok = await householdWriteService.deleteHousehold(userId, householdId, reason);
+    if (!ok) return res.status(404).json({ success: false, error: 'Household not found' });
+    res.json({ success: true });
+  })
+);
+
+// POST /api/family/household/:id/members — add a member to a household
+router.post(
+  '/household/:id/members',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const householdId = String(req.params.id);
+    const characterName = typeof req.body?.characterName === 'string' ? req.body.characterName.trim() : '';
+    const characterId = typeof req.body?.characterId === 'string' ? req.body.characterId.trim() || undefined : undefined;
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() || undefined : undefined;
+    if (!characterName) return res.status(400).json({ success: false, error: 'characterName is required' });
+    const member = await householdWriteService.addHouseholdMember(userId, householdId, characterName, {
+      characterId,
+      reason,
+    });
+    res.json({ success: true, member });
+  })
+);
+
+// DELETE /api/family/household/:id/members/:characterId — remove a member (soft, keeps history)
+router.delete(
+  '/household/:id/members/:characterId',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const householdId = String(req.params.id);
+    const characterId = String(req.params.characterId);
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() || undefined : undefined;
+    const ok = await householdWriteService.removeHouseholdMember(userId, householdId, characterId, reason);
+    if (!ok) return res.status(404).json({ success: false, error: 'Household member not found' });
+    res.json({ success: true });
+  })
+);
+
+// PATCH /api/family/household/:id/location — move a household to a new location
+router.patch(
+  '/household/:id/location',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const householdId = String(req.params.id);
+    const locationName = typeof req.body?.locationName === 'string' ? req.body.locationName.trim() : '';
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() || undefined : undefined;
+    if (!locationName) return res.status(400).json({ success: false, error: 'locationName is required' });
+    const ok = await householdWriteService.moveHousehold(userId, householdId, locationName, reason);
+    if (!ok) return res.status(404).json({ success: false, error: 'Household not found' });
+    res.json({ success: true });
+  })
+);
+
+// GET /api/family/household/:id/history — merged roster + location history
+router.get(
+  '/household/:id/history',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const householdId = String(req.params.id);
+    const history = await householdWriteService.getHouseholdHistory(userId, householdId);
+    res.json({ success: true, history });
   })
 );
 

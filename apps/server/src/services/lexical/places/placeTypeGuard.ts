@@ -14,6 +14,7 @@ import {
 } from './placeSuggestionTypes';
 import { analyzePrivateResidence, isOrphanPossessiveResidence } from './privateResidenceGuard';
 import { classifySpatialReference } from '../../lorebook/quality/spatialContextResolver';
+import { resolvePlaceCanonical } from '../../place/placeCanonicalResolver';
 import { arbitrateCandidateDomain } from '../domainArbitrationLayer';
 
 const norm = (s: string) =>
@@ -53,6 +54,40 @@ const AGENT_BY_PATTERN = /\b(?:run|written|hosted|owned|created|made|built|desig
 const ORG_ONLY = /^(amazon|google|meta|apple|microsoft|netflix)$/i;
 const EMPLOYER_CONTEXT =
   /\b(?:employed|hired|onboarding|interview(?:ed)?|job|position|role|employer|company)\b[^.!?\n]{0,80}\b(?:at|for|with|from)\b|\b(?:at|for|with|from)\b[^.!?\n]{0,80}\b(?:employed|hired|onboarding|interview(?:ed)?|job|position|role|employer|company)\b/i;
+
+const NUMBER_WORD_TOKEN =
+  /^(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)$/i;
+
+const VENUE_HEAD_TOKEN =
+  /^(?:club|bar|lounge|cafe|café|gym|studio|hall|theater|theatre|warehouse|compound|arena|stadium)$/i;
+
+/**
+ * Canonical nightclubs and campuses already in the place registry (Catch One,
+ * Club Metro) must not be treated as "First Last" person names just because
+ * reclassify has no "at … the club" evidence line.
+ */
+function isRegisteredPlaceName(text: string): boolean {
+  const canonical = resolvePlaceCanonical(text);
+  if (canonical.entityKind !== 'PLACE') return false;
+  return canonical.rulesFired.some(
+    (rule) => rule === 'canonical_registry' || rule === 'known_venue_lexicon',
+  );
+}
+
+function isPersonShapedFullName(text: string): boolean {
+  if (!/^[A-Z][a-z]+\s+[A-Z][a-z]+$/.test(text)) return false;
+  const [first, last] = text.split(/\s+/);
+  if (NUMBER_WORD_TOKEN.test(last)) return false;
+  if (VENUE_HEAD_TOKEN.test(first)) return false;
+  if (
+    /\b(compound|warehouse|university|college|store|office|park|gym|house|home|center|centre|club|lounge|bar)\b/i.test(
+      text,
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
 
 /**
  * The evidence line explicitly marks the name as a venue: "at Catch One the
@@ -212,7 +247,7 @@ export function guardPlaceCandidate(
     return { allowed: true, confidenceBoost: 0.1, rulesFired: ['private_residence'], needsReview: true };
   }
 
-  if (/^(?:club nova|bad dogg compound)$/i.test(n)) {
+  if (/^(?:club nova|bad dogg compound)$/i.test(n) || isRegisteredPlaceName(text)) {
     rulesFired.push('known_named_place');
     return { allowed: true, confidenceBoost: 0.14, rulesFired };
   }
@@ -227,10 +262,8 @@ export function guardPlaceCandidate(
     return { allowed: false, rejectedAs: 'PERSON', confidenceBoost: 0, rulesFired: ['single_given_name'] };
   }
 
-  if (/^[A-Z][a-z]+\s+[A-Z][a-z]+$/.test(text) && !PLACE_PREPOSITIONS.test(contextLine)) {
-    if (!/\b(compound|warehouse|university|college|store|office|park|gym|house|home|center|centre)\b/i.test(text)) {
-      return { allowed: false, rejectedAs: 'PERSON', confidenceBoost: 0, rulesFired: ['person_full_name'] };
-    }
+  if (isPersonShapedFullName(text) && !PLACE_PREPOSITIONS.test(contextLine)) {
+    return { allowed: false, rejectedAs: 'PERSON', confidenceBoost: 0, rulesFired: ['person_full_name'] };
   }
 
   if (isAmbiguousVenueName(text)) {

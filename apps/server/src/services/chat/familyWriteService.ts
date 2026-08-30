@@ -81,7 +81,7 @@ export async function findFamilyMemberByName(
   return { status: 'found', id: only.id, name: only.name, relation: only.relation };
 }
 
-async function findOrCreateCharacter(userId: string, name: string): Promise<{ id: string; name: string; created: boolean }> {
+export async function findOrCreateCharacter(userId: string, name: string): Promise<{ id: string; name: string; created: boolean }> {
   const key = normalizeNameKey(name);
   const { data } = await supabaseAdmin
     .from('characters')

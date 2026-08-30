@@ -9,6 +9,9 @@ import {
   getCharacterContextHooks,
   getCharacterRealName,
   getCharacterWittyTagline,
+  resolveProfileContextHooks,
+  resolveProfileTagline,
+  sanitizeProtagonistTagline,
 } from '../lib/characterDisplay';
 
 export type MainCharacterAttribute = {
@@ -58,7 +61,9 @@ export function useMainCharacterProfile(character: Character) {
   const [wittyTagline, setWittyTagline] = useState<string | null>(getCharacterWittyTagline(character));
   const [roleTagline, setRoleTagline] = useState<string | null>(character.role ?? null);
   const [contextHooks, setContextHooks] = useState<string[]>(getCharacterContextHooks(character));
-  const [profileSummary, setProfileSummary] = useState<string | null>(character.summary ?? null);
+  const [profileSummary, setProfileSummary] = useState<string | null>(
+    sanitizeProtagonistTagline(character.summary),
+  );
   const [realName, setRealName] = useState<string | null>(getCharacterRealName(character));
 
   const applyProfile = useCallback((profile: SelfProfileResponse) => {
@@ -71,10 +76,13 @@ export function useMainCharacterProfile(character: Character) {
     setFacts(profile.facts ?? []);
     setKnowledgeClaims(profile.knowledgeClaims ?? []);
     setStats(profile.stats ?? null);
-    setWittyTagline(profile.wittyTagline ?? getCharacterWittyTagline(profile.character));
+    setWittyTagline(resolveProfileTagline(profile.character, profile.wittyTagline));
     setRoleTagline(profile.roleTagline ?? profile.character.role ?? null);
-    setContextHooks(profile.contextHooks ?? getCharacterContextHooks(profile.character));
-    setProfileSummary(profile.profileSummary ?? profile.character.summary ?? null);
+    setContextHooks(resolveProfileContextHooks(profile.character, profile.contextHooks));
+    setProfileSummary(
+      sanitizeProtagonistTagline(profile.profileSummary) ??
+        sanitizeProtagonistTagline(profile.character.summary),
+    );
     setRealName(profile.realName ?? getCharacterRealName(profile.character));
     setRelationships((profile.character.relationships ?? []) as MainCharacterRelationship[]);
     setMemories((profile.recentMemories ?? []).map((m) => selfMemoryToCard(m, name)));

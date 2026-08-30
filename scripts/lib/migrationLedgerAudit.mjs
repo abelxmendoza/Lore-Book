@@ -14,6 +14,21 @@ export const PRODUCTION_LEDGER_CANON = {
   harden_export_views_and_epiphany_insert: '20260820015515',
 };
 
+/**
+ * Extra production `schema_migrations.version` values that GitHub Preview
+ * compares against filenames. These are deployment-time aliases of the
+ * canonical files above; they are not a second SQL payload.
+ *
+ * GitHub's Supabase App check fails with "Remote migration versions not found
+ * in local migrations directory" unless a local `supabase/migrations/<version>_*.sql`
+ * file exists for every remote version. Do not replay the canonical SQL under
+ * these timestamps. Do not `migration repair` or `db push` to silence the check.
+ */
+export const PRODUCTION_LEDGER_VERSION_ALIASES = {
+  revoke_anon_security_definer_rpcs: '20260822184817',
+  harden_export_views_and_epiphany_insert: '20260822184825',
+};
+
 export function parseLocalMigrationFilename(filename) {
   const match = filename.match(/^(\d+)_?(.*)\.sql$/i);
   if (!match) return null;

@@ -15,6 +15,7 @@ import {
 import {
   categoryForMetadata,
   DOCUMENT_CATEGORIES,
+  type DocumentCategory,
 } from '../services/documents/documentCategories';
 import {
   classifyDocument,
@@ -345,7 +346,9 @@ router.post('/upload', requireAuth, uploadDocument, async (req: AuthenticatedReq
       });
     }
 
-    const automatic = parsedCategory.data === 'auto';
+    const selectedCategory: DocumentCategory | null =
+      parsedCategory.data === 'auto' ? null : parsedCategory.data;
+    const automatic = selectedCategory === null;
 
     if (isImage) {
       let classification = classifyDocument({
@@ -375,7 +378,7 @@ router.post('/upload', requireAuth, uploadDocument, async (req: AuthenticatedReq
           logger.warn({ error, userId }, 'Image document auto-classification fell back to filename');
         }
       }
-      const category = automatic ? classification.category : parsedCategory.data;
+      const category = automatic ? classification.category : selectedCategory;
       const source = await userFileRegistry.registerOrReuse(userId, req.file.buffer, {
         filename: req.file.originalname,
         mimeType: imageMimeType(req.file),
@@ -429,7 +432,7 @@ router.post('/upload', requireAuth, uploadDocument, async (req: AuthenticatedReq
             mimeType: req.file.mimetype,
             ingestKind: 'document',
           }).category
-        : parsedCategory.data,
+        : selectedCategory,
     });
 
     if (result.processingStatus === 'failed') {
@@ -461,7 +464,7 @@ router.post('/upload', requireAuth, uploadDocument, async (req: AuthenticatedReq
         classification,
       );
     } else {
-      await userFileRegistry.setDocumentCategoryForUser(userId, result.userFileId, parsedCategory.data);
+      await userFileRegistry.setDocumentCategoryForUser(userId, result.userFileId, selectedCategory);
     }
     const feedback = structured
       ? buildResumeChatFeedback({

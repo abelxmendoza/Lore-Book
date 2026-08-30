@@ -14,7 +14,9 @@ export type DismissSuggestionReason =
   | 'not_entity'
   | 'wrong_book'
   | 'duplicate'
-  | 'noise';
+  | 'noise'
+  | 'not_a_person'
+  | 'error';
 
 export type DismissSuggestionResult = {
   success: boolean;

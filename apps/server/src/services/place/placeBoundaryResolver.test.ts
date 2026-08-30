@@ -6,7 +6,7 @@ describe('resolveCognitionPlaceBoundary', () => {
   it('rejects multi-word narrative fragments containing a bare pronoun or narration verb', () => {
     // Real production suggestions: extraction over-captured plain narration
     // as a place-name span. Neither of these is a place.
-    expect(resolveCognitionPlaceBoundary('V and Romi saw').clearBoundary).toBe(false);
+    expect(resolveCognitionPlaceBoundary('Marcus and Jamie saw').clearBoundary).toBe(false);
     expect(resolveCognitionPlaceBoundary('Marcus she freaked out').clearBoundary).toBe(false);
   });
 

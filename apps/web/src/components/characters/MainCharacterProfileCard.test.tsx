@@ -4,40 +4,87 @@ import { MainCharacterProfileCard } from './MainCharacterProfileCard';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import type { Character } from './CharacterProfileCard';
 
-const { mockFetchJson } = vi.hoisted(() => ({
+const { mockCanCallAuthenticatedApi, mockFetchJson } = vi.hoisted(() => ({
+  // Identity-surface tests below don't need arcs/attributes to load, so the
+  // gate defaults closed; the "Currently In" tests open it explicitly.
+  mockCanCallAuthenticatedApi: vi.fn(() => false),
   mockFetchJson: vi.fn(),
 }));
 
-vi.mock('../../lib/api', () => ({
-  fetchJson: mockFetchJson,
+vi.mock('../../lib/runtimeIdentity', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/runtimeIdentity')>()),
+  canCallAuthenticatedApi: mockCanCallAuthenticatedApi,
 }));
 
-vi.mock('../../lib/runtimeIdentity', async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  canCallAuthenticatedApi: () => true,
+vi.mock('../../store/api/entitiesApi', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../store/api/entitiesApi')>()),
+  useGetCharactersBookQuery: () => ({ dataUpdatedAt: 0 }),
+}));
+vi.mock('../../lib/api', () => ({
+  fetchJson: mockFetchJson,
 }));
 
 vi.mock('../../api/selfCharacter', () => ({
   selfCharacterApi: {
     // Reject so the component falls through to its fetchJson-based
-    // attribute fallback — mirrors the pattern CharacterBook.test.tsx uses.
+    // attribute fallback, matching how CharacterBook.test.tsx mocks this.
     getProfile: vi.fn().mockRejectedValue(new Error('no profile in test')),
     ensureSelf: vi.fn().mockResolvedValue({ success: true, character: null }),
   },
 }));
 
-vi.mock('../../store/api/entitiesApi', async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  useGetCharactersBookQuery: () => ({ dataUpdatedAt: 0 }),
+vi.mock('../../hooks/useLoreKeeper', () => ({
+  useLoreKeeper: vi.fn(() => ({ entries: [] })),
 }));
 
-vi.mock('../../hooks/useLoreKeeper', () => ({
-  useLoreKeeper: vi.fn(),
-}));
+const pollutedSelf: Character = {
+  id: 'self-1',
+  name: 'Jamie Rivera',
+  first_name: 'Jamie',
+  last_name: 'Rivera',
+  role: 'Quality Assurance Technician — Failure Analysis & Prototypes, Vanguard Robotics',
+  archetype: 'protagonist',
+  importance_level: 'protagonist',
+  status: 'active',
+  memory_count: 12,
+  alias: ['Isolation And Resilience', 'Jamie Rivera the Isolation And Resilience'],
+  tags: ["DJ · mentioned in relation to the user's outing · auto-generated"],
+  summary: 'Main character energy: builder of timelines and trouble — the one the assistant is legally required to remember.',
+  metadata: {
+    is_self: true,
+    is_user: true,
+    middle_name: 'Alex',
+    epithet: 'Isolation And Resilience',
+    witty_tagline:
+      'Main character energy: builder of timelines and trouble — the one the assistant is legally required to remember.',
+    context_hooks: [
+      'has an interview on the horizon',
+      'speaks fluent warehouse diagnostics',
+      'between-arc transition era',
+    ],
+  },
+};
+
+describe('MainCharacterProfileCard identity surface', () => {
+  it('shows the legal name instead of a chapter-title epithet', () => {
+    mockCanCallAuthenticatedApi.mockReturnValue(false);
+    render(<MainCharacterProfileCard character={pollutedSelf} interactive={false} />);
+
+    const card = screen.getByTestId('main-character-card');
+    expect(card).toHaveTextContent('Jamie Rivera');
+    expect(card).toHaveTextContent('Quality Assurance Technician');
+    expect(card).not.toHaveTextContent('the Isolation And Resilience');
+    expect(card).not.toHaveTextContent('builder of timelines and trouble');
+    expect(card).not.toHaveTextContent('warehouse diagnostics');
+    expect(card).not.toHaveTextContent('interview on the horizon');
+    expect(card).not.toHaveTextContent('Upload a resume');
+    expect(card).not.toHaveTextContent('auto-generated');
+  });
+});
 
 const baseCharacter: Character = {
   id: 'self-1',
-  name: 'Abel Mendoza',
+  name: 'Jamie Rivera',
   role: 'Protagonist',
   archetype: 'protagonist',
   summary: 'The main character.',
@@ -54,6 +101,7 @@ const baseCharacter: Character = {
 
 describe('MainCharacterProfileCard — "Currently In" arc content', () => {
   it('shows the active arc, "+N more", active-arc count, and since-date — content that used to live on a separate UserProfile card', async () => {
+    mockCanCallAuthenticatedApi.mockReturnValue(true);
     vi.mocked(useLoreKeeper).mockReturnValue({
       entries: [
         { id: 'e1', date: '2026-07-05T00:00:00.000Z' } as never,
@@ -78,16 +126,19 @@ describe('MainCharacterProfileCard — "Currently In" arc content', () => {
 
     render(<MainCharacterProfileCard character={baseCharacter} />);
 
+    // "A Costco Shopping Trip" is filtered out by selectProfileLifeArcs
+    // (an "occasion" title, not a durable arc) — "Second Arc" becomes primary.
     await waitFor(() => {
-      expect(screen.getByText('A Costco Shopping Trip With Abuela')).toBeInTheDocument();
+      expect(screen.getByText('Second Arc')).toBeInTheDocument();
     });
     expect(screen.getByText(/Currently In/i)).toBeInTheDocument();
-    expect(screen.getByText('+1 more')).toBeInTheDocument();
-    expect(screen.getByText(/2 active arcs/i)).toBeInTheDocument();
+    expect(screen.queryByText('A Costco Shopping Trip With Abuela')).not.toBeInTheDocument();
+    expect(screen.getByText(/1 active arc/i)).toBeInTheDocument();
     expect(screen.getByText(/since Jul 2026/i)).toBeInTheDocument();
   });
 
   it('renders no "Currently In" block when there are no active arcs', async () => {
+    mockCanCallAuthenticatedApi.mockReturnValue(true);
     vi.mocked(useLoreKeeper).mockReturnValue({ entries: [] } as never);
     mockFetchJson.mockImplementation(async (url: string) => {
       if (url.startsWith('/api/life-arcs')) return { arcs: [] };

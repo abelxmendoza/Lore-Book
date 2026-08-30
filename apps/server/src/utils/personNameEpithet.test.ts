@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   composeDisplayNameWithEpithet,
   hasPersonNameEpithet,
+  isThemeShapedEpithet,
   resolveStoredEpithet,
   splitPersonNameEpithet,
   stripPersonNameEpithet,
@@ -38,6 +39,15 @@ describe('personNameEpithet', () => {
     expect(composeDisplayNameWithEpithet('Aunt Maribel the Hallway Guardian', 'Hallway Guardian')).toBe(
       'Aunt Maribel the Hallway Guardian',
     );
+  });
+
+  it('ignores unpinned theme-shaped chapter titles', () => {
+    expect(isThemeShapedEpithet('Isolation And Resilience')).toBe(true);
+    expect(isThemeShapedEpithet('Hallway Guardian')).toBe(false);
+    expect(resolveStoredEpithet({ epithet: 'Isolation And Resilience' })).toBeNull();
+    expect(
+      resolveStoredEpithet({ epithet: 'Isolation And Resilience', epithet_pinned: true }),
+    ).toBe('Isolation And Resilience');
   });
 
   it('reads epithet from metadata with disable flag', () => {

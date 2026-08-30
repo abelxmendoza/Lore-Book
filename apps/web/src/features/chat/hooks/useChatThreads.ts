@@ -416,6 +416,11 @@ export const useChatThreads = () => {
     } else {
       loadFromLocalStorage();
     }
+    return () => {
+      // Invalidate in-flight backend work before the component unmounts so its
+      // finally block cannot dispatch state updates after the test/page is gone.
+      loadGenerationRef.current += 1;
+    };
   }, [applyCurrentThreadId, authLoading, dispatch, isAuthenticated, loadFromBackend, loadFromLocalStorage, userId]);
 
   // Re-fetch the server list when returning to the tab / sibling tab activity so

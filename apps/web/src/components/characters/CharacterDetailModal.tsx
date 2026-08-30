@@ -110,6 +110,8 @@ import {
   getCharacterContextHooks,
   getCharacterRealName,
   getCharacterWittyTagline,
+  resolveProfileContextHooks,
+  resolveProfileTagline,
 } from '../../lib/characterDisplay';
 import { getCharacterDisplayTitle } from '../../lib/characterDisplayTitle';
 import { CharacterTitleSection } from './CharacterTitleSection';
@@ -1948,10 +1950,8 @@ export const CharacterDetailModal = ({
       primary_organization:
         (detail as Character).primary_organization ?? prev.primary_organization ?? character.primary_organization,
     }));
-    setProfileWittyTagline(detail.witty_tagline ?? getCharacterWittyTagline(detail));
-    setProfileContextHooks(
-      Array.isArray(detail.context_hooks) ? detail.context_hooks : getCharacterContextHooks(detail),
-    );
+    setProfileWittyTagline(resolveProfileTagline(detail, detail.witty_tagline));
+    setProfileContextHooks(resolveProfileContextHooks(detail, detail.context_hooks));
     setProfileRealName(detail.real_name ?? getCharacterRealName(detail));
 
     // Prefer batch-hydrated memories from Character Query when present.
@@ -2087,8 +2087,8 @@ export const CharacterDetailModal = ({
       setKnowledgeClaims(profile.knowledgeClaims ?? []);
       setKnowledgeLoaded(true);
       setSharedMemoryCards(selfMemories);
-      setProfileWittyTagline(profile.wittyTagline ?? getCharacterWittyTagline(profile.character));
-      setProfileContextHooks(profile.contextHooks ?? getCharacterContextHooks(profile.character));
+      setProfileWittyTagline(resolveProfileTagline(profile.character, profile.wittyTagline));
+      setProfileContextHooks(resolveProfileContextHooks(profile.character, profile.contextHooks));
       setProfileRealName(profile.realName ?? getCharacterRealName(profile.character));
     };
 
@@ -2114,8 +2114,8 @@ export const CharacterDetailModal = ({
           primary_organization:
             response.primary_organization ?? prev.primary_organization ?? character.primary_organization,
         }));
-        setProfileWittyTagline(response.witty_tagline ?? getCharacterWittyTagline(response));
-        setProfileContextHooks(response.context_hooks ?? getCharacterContextHooks(response));
+        setProfileWittyTagline(resolveProfileTagline(response, response.witty_tagline));
+        setProfileContextHooks(resolveProfileContextHooks(response, response.context_hooks));
         setProfileRealName(response.real_name ?? getCharacterRealName(response));
 
         if (response.shared_memories && response.shared_memories.length > 0) {
@@ -3073,10 +3073,7 @@ export const CharacterDetailModal = ({
   const displayName = isMainCharacter && profileRealName
     ? profileRealName
     : getCharacterDisplayTitle(editedCharacter);
-  const wittyTagline =
-    profileWittyTagline ||
-    getCharacterWittyTagline(editedCharacter) ||
-    (isMainCharacter ? null : null);
+  const wittyTagline = resolveProfileTagline(editedCharacter, profileWittyTagline);
   const isRomanticRelationshipType = (type = '') => /\b(romantic|dating|date|boyfriend|girlfriend|partner|spouse|wife|husband|fianc|lover|crush|situationship|ex)\b/i.test(type);
   const romanticConnections = dedupeRelationshipsByPerson(
     (editedCharacter.relationships ?? []).filter(
@@ -3176,15 +3173,27 @@ export const CharacterDetailModal = ({
     (() => {
       const affiliation = editedCharacter.primary_organization;
       if (storyGroups.length > 0 || !affiliation?.id) return storyGroups;
+      const groupType = (affiliation.group_type ?? 'other') as Organization['group_type'];
       return [
         {
           id: affiliation.id,
           name: affiliation.name,
-          group_type: affiliation.group_type,
-          type: affiliation.group_type,
-          character_role: affiliation.role,
+          aliases: [],
+          group_type: groupType,
+          type: groupType === 'company' || groupType === 'family' ? groupType : 'other',
+          membership_model: 'none' as const,
+          character_role: affiliation.role ?? undefined,
           user_relationship: 'aware_of' as const,
+          user_is_member: false,
+          is_public_entity: false,
+          status: 'active' as const,
           members: [],
+          member_count: 0,
+          usage_count: 0,
+          confidence: 0.5,
+          last_seen: '',
+          created_at: '',
+          updated_at: '',
         },
       ];
     })(),

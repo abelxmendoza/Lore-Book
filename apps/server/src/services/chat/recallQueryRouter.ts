@@ -869,6 +869,7 @@ export type RecallIntent =
   | 'temporal'
   | 'location'
   | 'work'
+  | 'education'
   | 'work_and_education'
   | 'thread'
   | 'conversation'

@@ -23,6 +23,7 @@ import {
   isSkillWriteRequest,
   isQuestWriteRequest,
   isFamilyWriteRequest,
+  isHouseholdWriteRequest,
   isRomanceWriteRequest,
   isEventWriteRequest,
 } from '@lorebook/api-contracts';
@@ -58,6 +59,7 @@ export type ChatMode =
   | 'SKILL_WRITE'            // Explicit Skills create/update/delete
   | 'QUEST_WRITE'            // Explicit Quest Log create/update/delete/status
   | 'FAMILY_WRITE'           // Explicit Family Tree kinship writes
+  | 'HOUSEHOLD_WRITE'        // Explicit household create/delete/member/location writes
   | 'ROMANCE_WRITE'          // Explicit Dating & Romance status writes
   | 'EVENT_WRITE'            // Explicit Life Log user-posted Event create
   | 'SUGGESTION_DISMISS_WRITE' // Explicit "that suggestion is wrong" correction
@@ -250,6 +252,14 @@ class ModeRouterService {
         mode: 'FAMILY_WRITE',
         confidence: 0.95,
         reasoning: 'Explicit Family Tree write request detected',
+      };
+    }
+
+    if (isHouseholdWriteRequest(message)) {
+      return {
+        mode: 'HOUSEHOLD_WRITE',
+        confidence: 0.95,
+        reasoning: 'Explicit household write request detected',
       };
     }
 
@@ -772,6 +782,7 @@ Modes:
 10e. SKILL_WRITE - Explicit Skills create/rename/delete/merge: "add Welding as a skill", "merge Prototyping into Hardware Prototyping".
 10f. QUEST_WRITE - Explicit Quest Log create/rename/delete/status: "add Ship MemoVault as a quest", "mark the quest X as done".
 10g. FAMILY_WRITE - Explicit Family Tree kinship write: "mark Marcus as my cousin".
+10g2. HOUSEHOLD_WRITE - Explicit household create/delete/member/location write: "add Ralph to the Mom and Dad's House household", "move the Mom and Dad's House household to 456 Oak Ave".
 10h. ROMANCE_WRITE - Explicit Dating & Romance status write: "mark Jamie as dating", "we broke up with Jamie".
 10i. EVENT_WRITE - Explicit Life Log Event post: "we played a backyard show at Northwind Depot", "post an event: House Show at Ritual Coffee".
 11. ORGANIZATION_QUERY - Read-only query over the Groups & Organizations Book: "which groups am I in?", "what organizations is Marcus connected to?", "show unlinked bands".
@@ -818,7 +829,7 @@ Respond with JSON:
       const result = JSON.parse(response.choices[0].message.content || '{}');
       
       // Validate mode
-      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'CURRENT_STORY_CAST', 'CHARACTER_BOOK_WRITE', 'ORGANIZATION_GROUP_WRITE', 'ENTITY_RECLASSIFY_WRITE', 'LOCATION_WRITE', 'PROJECT_WRITE', 'SKILL_WRITE', 'QUEST_WRITE', 'FAMILY_WRITE', 'ROMANCE_WRITE', 'EVENT_WRITE', 'SUGGESTION_DISMISS_WRITE', 'ORGANIZATION_QUERY', 'CHARACTER_QUERY', 'FAMILY_QUERY', 'LOCATION_QUERY', 'ROMANCE_QUERY', 'PROJECT_QUERY', 'SKILL_QUERY', 'QUEST_QUERY', 'BOOK_QUERY', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
+      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'CURRENT_STORY_CAST', 'CHARACTER_BOOK_WRITE', 'ORGANIZATION_GROUP_WRITE', 'ENTITY_RECLASSIFY_WRITE', 'LOCATION_WRITE', 'PROJECT_WRITE', 'SKILL_WRITE', 'QUEST_WRITE', 'FAMILY_WRITE', 'HOUSEHOLD_WRITE', 'ROMANCE_WRITE', 'EVENT_WRITE', 'SUGGESTION_DISMISS_WRITE', 'ORGANIZATION_QUERY', 'CHARACTER_QUERY', 'FAMILY_QUERY', 'LOCATION_QUERY', 'ROMANCE_QUERY', 'PROJECT_QUERY', 'SKILL_QUERY', 'QUEST_QUERY', 'BOOK_QUERY', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
       const mode = validModes.includes(result.mode) ? result.mode : 'UNKNOWN';
       
       return {

@@ -60,4 +60,9 @@ describe('entityMentionClassifier', () => {
     expect(classifyMentionKind('Luna', 'our cat Luna knocked over the plant').kind).toBe('pet');
     expect(classifyMentionKind('Max', 'my dog Max is the best').kind).not.toBe('person');
   });
+
+  it('classifies robot companion mentions as pet, not person', () => {
+    expect(classifyMentionKind('Omega1', 'my robot Omega1 needs a charge').kind).toBe('pet');
+    expect(classifyMentionKind('Omega1', "our robot's name is Omega1").kind).toBe('pet');
+  });
 });

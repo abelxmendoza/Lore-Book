@@ -7,7 +7,7 @@ import { isSimilarSuggestion, suggestionMatchedId, suggestionMatchedName } from 
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { SuggestionCategoryRedirect } from '../suggestions/SuggestionCategoryRedirect';
-import { SuggestionDismissButton } from '../suggestions/SuggestionDismissButton';
+import { PERSON_DISMISS_REASONS, SuggestionDismissButton } from '../suggestions/SuggestionDismissButton';
 import { SuggestionMergeHint, suggestionPrimaryActionLabel } from '../suggestions/SuggestionMergeHint';
 import type { DismissSuggestionReason } from '../../api/suggestionDismiss';
 
@@ -302,7 +302,10 @@ export function CharacterSuggestionDetailModal({
               </>
             )}
           </button>
-          <SuggestionDismissButton onDismiss={(reason) => onDismiss(suggestion, reason)} />
+          <SuggestionDismissButton
+            onDismiss={(reason) => onDismiss(suggestion, reason)}
+            reasons={PERSON_DISMISS_REASONS}
+          />
         </div>
       </DialogContent>
     </Dialog>

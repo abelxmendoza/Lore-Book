@@ -16,8 +16,51 @@ export type ClosedScopeReason =
   | 'skill_write_request'
   | 'quest_write_request'
   | 'family_write_request'
+  | 'household_write_request'
   | 'romance_write_request'
   | 'event_write_request';
+
+// General-purpose ReDoS-safe "short filler phrase" token pattern, replacing
+// every `.{0,N}` / `.{1,N}` construct below that sat directly against a
+// `\s+`/`\b` boundary — `.` also matches whitespace, so a dot-group
+// immediately followed by `\s+`/`\b` has to try every possible split point
+// across a run of whitespace, which CodeQL flags as a polynomial-time ReDoS
+// risk on uncontrolled chat-message input (same class of bug as NAME_TOKENS
+// and HOUSEHOLD_PHRASE_TOKENS further down, generalized here for the many
+// other write-detectors in this file that predate that fix). A token class
+// that never matches whitespace itself removes the ambiguity entirely,
+// regardless of how many words it's bounded to.
+function phraseTokens(maxExtraWords: number): string {
+  return `[a-zA-Z0-9][a-zA-Z0-9'’./&+-]*?(?:\\s+[a-zA-Z0-9][a-zA-Z0-9'’./&+-]*?){0,${maxExtraWords}}?`;
+}
+const PHRASE_TINY = phraseTokens(2); // ~replaces .{0,20}/.{1,20}
+const PHRASE_SHORT = phraseTokens(4); // ~replaces .{0,40}/.{1,40}
+const PHRASE_MED = phraseTokens(7); // ~replaces .{1,60}
+const PHRASE_LONG = phraseTokens(12); // ~replaces .{1,80}/.{0,80}
+
+/**
+ * Same shape, but for a `.{0,N}` used as an optional inter-clause FILLER gap
+ * (e.g. `word\b.{0,40}\bword`) rather than a captured name/entity phrase.
+ * `.` also matches whitespace, so the original naturally absorbed both the
+ * words AND the separating spaces up to the next literal; a word-token class
+ * can't do that in one step, so this puts a MANDATORY trailing `\s+` after
+ * 0-N optional "space + word" repetitions — that's what actually reaches the
+ * next required literal, since word tokens alone stop right at the end of
+ * the last word, one space short of it.
+ */
+function fillerGap(maxExtraWords: number): string {
+  return `(?:\\s+[a-zA-Z0-9][a-zA-Z0-9'’./&+-]*?){0,${maxExtraWords}}\\s+`;
+}
+
+/**
+ * A captured phrase where the ORIGINAL had an explicit `\s+` before it but
+ * only a `\b` (no explicit `\s+`) after — e.g. `\s+(.{1,80})\b(from|to)`.
+ * Word tokens alone stop right at the end of the last word, one space short
+ * of the next literal, so this bakes the same mandatory trailing `\s+` in.
+ */
+function phraseThenGap(maxExtraWords: number): string {
+  return `${phraseTokens(maxExtraWords)}\\s+`;
+}
 
 /**
  * Deliberately narrow: a window/thread-scoped noun ("in this story/thread/
@@ -25,13 +68,22 @@ export type ClosedScopeReason =
  * Distinct in shape from CHARACTER_LIST_RE (apps/server's whole-life roster
  * pattern, "who's in my story") — that pattern does not match this shape.
  */
-const CAST_ROSTER_RE =
-  /\b(who(?:'s| is| are)?\s+(?:new|returning|recurring)\b.{0,40}\b(this (story|thread|chat|conversation)|so far)\b)/i;
-const CAST_ROSTER_NEW_VS_RETURNING_RE = /\bnew\s+(?:vs\.?|versus|or)\s+returning\b.{0,40}\b(people|characters|cast)\b/i;
-const CAST_ROSTER_MENTIONED_RE =
-  /\bwho(?:'s| have i)\b.{0,20}\b(mentioned|introduced|talked about)\b.{0,20}\bin this (story|thread|chat)\b/i;
-const CAST_ROSTER_RECOGNIZE_RE =
-  /\b(who(?:'s| do i)?\s+(?:recognize|seen before|know already))\b.{0,40}\b(this (story|thread|chat|conversation))\b/i;
+const CAST_ROSTER_RE = new RegExp(
+  `\\b(who(?:'s| is| are)?\\s+(?:new|returning|recurring)\\b${fillerGap(4)}\\b(this (story|thread|chat|conversation)|so far)\\b)`,
+  'i',
+);
+const CAST_ROSTER_NEW_VS_RETURNING_RE = new RegExp(
+  `\\bnew\\s+(?:vs\\.?|versus|or)\\s+returning\\b${fillerGap(4)}\\b(people|characters|cast)\\b`,
+  'i',
+);
+const CAST_ROSTER_MENTIONED_RE = new RegExp(
+  `\\bwho(?:'s| have i)\\b${fillerGap(2)}\\b(mentioned|introduced|talked about)\\b${fillerGap(2)}\\bin this (story|thread|chat)\\b`,
+  'i',
+);
+const CAST_ROSTER_RECOGNIZE_RE = new RegExp(
+  `\\b(who(?:'s| do i)?\\s+(?:recognize|seen before|know already))\\b${fillerGap(4)}\\b(this (story|thread|chat|conversation))\\b`,
+  'i',
+);
 
 export function isCastRosterQuery(message: string): boolean {
   const text = message.trim();
@@ -46,16 +98,24 @@ export function isCastRosterQuery(message: string): boolean {
   );
 }
 
-const CHARACTER_BOOK_WRITE_RE =
-  /\b(make sure|please make sure|be sure|can you) .{0,60}\b(in|added to|saved (?:in|to)|goes into|is in) my (character book|characters book|lorebook of characters)\b/i;
+const CHARACTER_BOOK_WRITE_RE = new RegExp(
+  `\\b(make sure|please make sure|be sure|can you)${fillerGap(9)}\\b(in|added to|saved (?:in|to)|goes into|is in) my (character book|characters book|lorebook of characters)\\b`,
+  'i',
+);
 const CHARACTER_BOOK_WRITE_SHORT_RE =
   /\b(add|save|put) (them|these|him|her|it|everyone) (all )?(to|in|into) my (character book|characters book)\b/i;
-const CHARACTER_BOOK_ADD_NAMED_RE =
-  /\b(add|save|put)\s+.{1,80}\b(to|in|into)\s+my\s+(character book|characters book)\b/i;
-const CHARACTER_BOOK_DELETE_RE =
-  /\b(delete|remove)\s+.{1,80}\b(from\s+)?my\s+(character book|characters book|characters)\b|\b(delete|remove)\s+(?:the\s+)?(?:person|character)\s+.{1,60}$/i;
-const CHARACTER_BOOK_RENAME_RE =
-  /\b(rename)\s+(?:the\s+)?(?:person|character)\s+.{1,60}\bto\b\s+.{1,60}$/i;
+const CHARACTER_BOOK_ADD_NAMED_RE = new RegExp(
+  `\\b(add|save|put)\\s+${phraseThenGap(11)}\\b(to|in|into)\\s+my\\s+(character book|characters book)\\b`,
+  'i',
+);
+const CHARACTER_BOOK_DELETE_RE = new RegExp(
+  `\\b(delete|remove)\\s+${phraseThenGap(11)}\\b(from\\s+)?my\\s+(character book|characters book|characters)\\b|\\b(delete|remove)\\s+(?:the\\s+)?(?:person|character)\\s+.{1,60}$`,
+  'i',
+);
+const CHARACTER_BOOK_RENAME_RE = new RegExp(
+  `\\b(rename)\\s+(?:the\\s+)?(?:person|character)\\s+${phraseThenGap(7)}\\bto\\b\\s+.{1,60}$`,
+  'i',
+);
 
 export function isCharacterBookWriteRequest(message: string): boolean {
   const text = message.trim();
@@ -74,23 +134,27 @@ const GROUP_CREATE_RE =
   /\b(?:make|create|start|set\s*up|spin\s*up)\s+(?:a\s+|an\s+|the\s+)?(?:new\s+)?(group|crew|squad|collective|clique|org(?:anization)?)\b/i;
 const GROUP_FOR_RE =
   /\b(group|crew|squad|collective)\s+for\s+(?:that|this|them|her|him|those|these)\b/i;
-const GROUP_ADD_MEMBERS_RE =
-  /\badd\s+.{0,80}\bto\s+(?:the|that|this|my)\s+(?:group|crew|squad|org(?:anization)?)\b/i;
+const GROUP_ADD_MEMBERS_RE = new RegExp(
+  `\\badd\\s+(?:${phraseThenGap(12)})?\\bto\\s+(?:the|that|this|my)\\s+(?:group|crew|squad|org(?:anization)?)\\b`,
+  'i',
+);
 const GROUP_ROSTER_CUE_RE =
   /\b(?:so far we have|here(?:'s| is) the roster|roster(?:\s+is|:)|members?(?:\s+are|\s+include|:)|the members)\b/i;
-const GROUP_DELETE_RE =
-  /\b(delete|remove)\s+(?:the\s+)?(?:group|crew|squad|org(?:anization)?)\s+.{1,80}$|\b(delete|remove)\s+.{1,80}\bfrom\s+my\s+(groups?|organizations?)\s+book\b/i;
+const GROUP_DELETE_RE = new RegExp(
+  `\\b(delete|remove)\\s+(?:the\\s+)?(?:group|crew|squad|org(?:anization)?)\\s+.{1,80}$|\\b(delete|remove)\\s+${phraseThenGap(12)}\\bfrom\\s+my\\s+(groups?|organizations?)\\s+book\\b`,
+  'i',
+);
 const GROUP_HIERARCHY_NOUN = 'subgroup|department|division|branch|team|child group|job|role|position';
 const GROUP_SITE_NOUN = 'location|site|office|lab|warehouse|depot';
 const GROUP_RELATIONSHIP_WRITE_RE = new RegExp(
   `^(?:please\\s+)?(?:` +
-    `(?:make|mark|set)\\s+.{1,80}?\\s+(?:as\\s+|a\\s+|the\\s+)?(?:${GROUP_HIERARCHY_NOUN})\\s+(?:of|under|inside|within|at|with)\\s+.{1,80}` +
-    `|.{1,80}?\\s+(?:is|should be)\\s+(?:a\\s+|the\\s+)?(?:${GROUP_HIERARCHY_NOUN})\\s+(?:of|under|inside|within|at|with|for)\\s+.{1,80}` +
-    `|.{1,80}?\\s+(?:belongs|sits|rolls up)\\s+(?:to|under|inside|within)\\s+.{1,80}` +
-    `|(?:connect|link)\\s+.{1,80}?\\s+(?:to|with|and)\\s+.{1,80}` +
-    `|(?:disconnect|unlink)\\s+.{1,80}?\\s+from\\s+.{1,80}` +
-    `|(?:add|make)\\s+.{1,80}?\\s+(?:as\\s+)?(?:a\\s+)?(?:${GROUP_SITE_NOUN})\\s+(?:of|for|under)\\s+.{1,80}` +
-    `|.{1,80}?\\s+has\\s+(?:a\\s+|an\\s+)?(?:${GROUP_SITE_NOUN})\\s+(?:in|at|called)\\s+.{1,80}` +
+    `(?:make|mark|set)\\s+${phraseTokens(12)}\\s+(?:as\\s+|a\\s+|the\\s+)?(?:${GROUP_HIERARCHY_NOUN})\\s+(?:of|under|inside|within|at|with)\\s+.{1,80}` +
+    `|${phraseTokens(12)}\\s+(?:is|should be)\\s+(?:a\\s+|the\\s+)?(?:${GROUP_HIERARCHY_NOUN})\\s+(?:of|under|inside|within|at|with|for)\\s+.{1,80}` +
+    `|${phraseTokens(12)}\\s+(?:belongs|sits|rolls up)\\s+(?:to|under|inside|within)\\s+.{1,80}` +
+    `|(?:connect|link)\\s+${phraseTokens(12)}\\s+(?:to|with|and)\\s+.{1,80}` +
+    `|(?:disconnect|unlink)\\s+${phraseTokens(12)}\\s+from\\s+.{1,80}` +
+    `|(?:add|make)\\s+${phraseTokens(12)}\\s+(?:as\\s+)?(?:a\\s+)?(?:${GROUP_SITE_NOUN})\\s+(?:of|for|under)\\s+.{1,80}` +
+    `|${phraseTokens(12)}\\s+has\\s+(?:a\\s+|an\\s+)?(?:${GROUP_SITE_NOUN})\\s+(?:in|at|called)\\s+.{1,80}` +
   `)[.!?]*$`,
   'i',
 );
@@ -98,15 +162,17 @@ const GROUP_RELATIONSHIP_WRITE_RE = new RegExp(
 const GROUP_CLASSIFY_TYPE_NOUN =
   'family|household|company|employer|workplace|crew|band|club|community|scene|nonprofit|institution|school|brand|vendor|software|collective|martial\\s+arts|public\\s+entity|friend\\s+group|sports\\s+team|team';
 const GROUP_CLASSIFY_IS_RE = new RegExp(
-  `\\b(.{1,80}?)\\s+(?:is|should be)\\s+(?:a\\s+|an\\s+|the\\s+)?(${GROUP_CLASSIFY_TYPE_NOUN})\\b(?!\\s+(?:of|under|inside|within|at|with|for)\\b)`,
+  `\\b(${phraseTokens(12)})\\s+(?:is|should be)\\s+(?:a\\s+|an\\s+|the\\s+)?(${GROUP_CLASSIFY_TYPE_NOUN})\\b(?!\\s+(?:of|under|inside|within|at|with|for)\\b)`,
   'i',
 );
 const GROUP_CLASSIFY_MARK_RE = new RegExp(
-  `\\b(?:mark|set|make|classify)\\s+(.{1,80}?)\\s+(?:as\\s+)?(?:a\\s+|an\\s+|the\\s+)?(${GROUP_CLASSIFY_TYPE_NOUN})\\b(?!\\s+(?:of|under|inside|within|at|with|for)\\b)`,
+  `\\b(?:mark|set|make|classify)\\s+(${phraseTokens(12)})\\s+(?:as\\s+)?(?:a\\s+|an\\s+|the\\s+)?(${GROUP_CLASSIFY_TYPE_NOUN})\\b(?!\\s+(?:of|under|inside|within|at|with|for)\\b)`,
   'i',
 );
-const GROUP_STANCE_RE =
-  /\b(?:put|move|mark|set)\s+(.{1,80}?)\s+(?:in(?:to)?|as|under)\s+(?:the\s+)?(mine|close to|their world|mentioned)\b/i;
+const GROUP_STANCE_RE = new RegExp(
+  `\\b(?:put|move|mark|set)\\s+(${phraseTokens(12)})\\s+(?:in(?:to)?|as|under)\\s+(?:the\\s+)?(mine|close to|their world|mentioned)\\b`,
+  'i',
+);
 const GROUP_MEMBERSHIP_RE =
   /\b(?:i(?:'m|\s+am)?|we(?:'re|\s+are)?)\s+(?:a\s+)?(member|founder|leader|alumnus|fan|collaborator)\s+(?:of|at|with)\s+.{1,80}$/i;
 const GROUP_I_BELONG_RE = /\bi\s+belong\s+to\s+.{1,80}$/i;
@@ -194,24 +260,24 @@ const RECLASSIFY_SOURCE =
 
 /** "X is a group, not a place" / "X is a group not a place" */
 const RECLASSIFY_IS_NOT_RE = new RegExp(
-  `\\b(.{1,80}?)\\s+is\\s+(?:a\\s+|an\\s+)?(${RECLASSIFY_TARGET})\\b\\s*[,.]?\\s*(?:not|n't)\\s+(?:a\\s+|an\\s+)?(${RECLASSIFY_SOURCE})\\b`,
+  `\\b(${phraseTokens(12)})\\s+is\\s+(?:a\\s+|an\\s+)?(${RECLASSIFY_TARGET})\\b\\s*[,.]?\\s*(?:not|n't)\\s+(?:a\\s+|an\\s+)?(${RECLASSIFY_SOURCE})\\b`,
   'i',
 );
 /** "X is not a place" / "X isn't a location" */
 const RECLASSIFY_NOT_A_RE = new RegExp(
-  `\\b(.{1,80}?)\\s+is(?:n't|\\s+not)\\s+(?:a\\s+|an\\s+)?(${RECLASSIFY_SOURCE})\\b`,
+  `\\b(${phraseTokens(12)})\\s+is(?:n't|\\s+not)\\s+(?:a\\s+|an\\s+)?(${RECLASSIFY_SOURCE})\\b`,
   'i',
 );
 const RECLASSIFY_SHOULD_BE_RE = new RegExp(
-  `\\b(.{1,80}?)\\s+should\\s+be\\s+(?:a\\s+|an\\s+)?(${RECLASSIFY_TARGET})\\b`,
+  `\\b(${phraseTokens(12)})\\s+should\\s+be\\s+(?:a\\s+|an\\s+)?(${RECLASSIFY_TARGET})\\b`,
   'i',
 );
 const RECLASSIFY_MOVE_TO_RE = new RegExp(
-  `\\b(?:move|reclassify|change)\\s+(.{1,80}?)\\s+(?:to|into|as)\\s+(?:a\\s+|an\\s+|my\\s+|the\\s+)?(${RECLASSIFY_TARGET})(?:\\s+book)?\\b`,
+  `\\b(?:move|reclassify|change)\\s+(${phraseTokens(12)})\\s+(?:to|into|as)\\s+(?:a\\s+|an\\s+|my\\s+|the\\s+)?(${RECLASSIFY_TARGET})(?:\\s+book)?\\b`,
   'i',
 );
 const RECLASSIFY_WRONG_BOOK_RE = new RegExp(
-  `\\b(.{1,80}?)\\s+(?:belongs\\s+in|goes\\s+(?:in|into))\\s+(?:the\\s+|my\\s+)?(${RECLASSIFY_TARGET})(?:\\s+book)?\\b`,
+  `\\b(${phraseTokens(12)})\\s+(?:belongs\\s+in|goes\\s+(?:in|into))\\s+(?:the\\s+|my\\s+)?(${RECLASSIFY_TARGET})(?:\\s+book)?\\b`,
   'i',
 );
 
@@ -235,14 +301,22 @@ export function isEntityReclassifyWriteRequest(message: string): boolean {
   );
 }
 
-const LOCATION_CREATE_RE =
-  /\b(?:add|save|put|create)\s+(.{1,80}?)\s+(?:as|to|into)\s+(?:a\s+|an\s+|my\s+)?(?:place|location)(?:\s+book)?\b/i;
-const LOCATION_DELETE_RE =
-  /\b(?:delete|remove)\s+(?:the\s+)?(?:place|location)\s+(.{1,80})$|\b(?:delete|remove)\s+(.{1,80}?)\s+from\s+(?:my\s+)?(?:places?|locations?)(?:\s+book)?\b/i;
-const LOCATION_RENAME_RE =
-  /\b(?:rename)\s+(?:the\s+)?(?:place|location)\s+(.{1,60}?)\s+to\s+(.{1,60})$/i;
-const LOCATION_UPDATE_ALIASES_RE =
-  /\b(?:also\s+called|alias(?:es)?\s+(?:for|of)|add\s+alias(?:es)?\s+(?:for|to))\s+(.{1,60})\b/i;
+const LOCATION_CREATE_RE = new RegExp(
+  `\\b(?:add|save|put|create)\\s+(${phraseTokens(12)})\\s+(?:as|to|into)\\s+(?:a\\s+|an\\s+|my\\s+)?(?:place|location)(?:\\s+book)?\\b`,
+  'i',
+);
+const LOCATION_DELETE_RE = new RegExp(
+  `\\b(?:delete|remove)\\s+(?:the\\s+)?(?:place|location)\\s+(.{1,80})$|\\b(?:delete|remove)\\s+(${phraseTokens(12)})\\s+from\\s+(?:my\\s+)?(?:places?|locations?)(?:\\s+book)?\\b`,
+  'i',
+);
+const LOCATION_RENAME_RE = new RegExp(
+  `\\b(?:rename)\\s+(?:the\\s+)?(?:place|location)\\s+(${phraseTokens(7)})\\s+to\\s+(.{1,60})$`,
+  'i',
+);
+const LOCATION_UPDATE_ALIASES_RE = new RegExp(
+  `\\b(?:also\\s+called|alias(?:es)?\\s+(?:for|of)|add\\s+alias(?:es)?\\s+(?:for|to))\\s+(${phraseTokens(7)})\\b`,
+  'i',
+);
 
 export function isLocationWriteRequest(message: string): boolean {
   const text = message.trim();
@@ -256,12 +330,18 @@ export function isLocationWriteRequest(message: string): boolean {
   );
 }
 
-const PROJECT_CREATE_RE =
-  /\b(?:add|save|put|create)\s+(.{1,80}?)\s+(?:as|to|into)\s+(?:a\s+|an\s+|my\s+)?project(?:\s+book)?\b/i;
-const PROJECT_DELETE_RE =
-  /\b(?:delete|remove)\s+(?:the\s+)?project\s+(.{1,80})$|\b(?:delete|remove)\s+(.{1,80}?)\s+from\s+(?:my\s+)?projects?(?:\s+book)?\b/i;
-const PROJECT_RENAME_RE =
-  /\b(?:rename)\s+(?:the\s+)?project\s+(.{1,60}?)\s+to\s+(.{1,60})$/i;
+const PROJECT_CREATE_RE = new RegExp(
+  `\\b(?:add|save|put|create)\\s+(${phraseTokens(12)})\\s+(?:as|to|into)\\s+(?:a\\s+|an\\s+|my\\s+)?project(?:\\s+book)?\\b`,
+  'i',
+);
+const PROJECT_DELETE_RE = new RegExp(
+  `\\b(?:delete|remove)\\s+(?:the\\s+)?project\\s+(.{1,80})$|\\b(?:delete|remove)\\s+(${phraseTokens(12)})\\s+from\\s+(?:my\\s+)?projects?(?:\\s+book)?\\b`,
+  'i',
+);
+const PROJECT_RENAME_RE = new RegExp(
+  `\\b(?:rename)\\s+(?:the\\s+)?project\\s+(${phraseTokens(7)})\\s+to\\s+(.{1,60})$`,
+  'i',
+);
 
 export function isProjectWriteRequest(message: string): boolean {
   const text = message.trim();
@@ -270,12 +350,18 @@ export function isProjectWriteRequest(message: string): boolean {
   return PROJECT_CREATE_RE.test(text) || PROJECT_DELETE_RE.test(text) || PROJECT_RENAME_RE.test(text);
 }
 
-const SKILL_CREATE_RE =
-  /\b(?:add|save|put|create)\s+(.{1,80}?)\s+(?:as|to|into)\s+(?:a\s+|an\s+|my\s+)?skill(?:\s+book)?\b/i;
-const SKILL_DELETE_RE =
-  /\b(?:delete|remove)\s+(?:the\s+)?skill\s+(.{1,80})$|\b(?:delete|remove)\s+(.{1,80}?)\s+from\s+(?:my\s+)?skills?(?:\s+book)?\b/i;
-const SKILL_RENAME_RE =
-  /\b(?:rename)\s+(?:the\s+)?skill\s+(.{1,60}?)\s+to\s+(.{1,60})$/i;
+const SKILL_CREATE_RE = new RegExp(
+  `\\b(?:add|save|put|create)\\s+(${phraseTokens(12)})\\s+(?:as|to|into)\\s+(?:a\\s+|an\\s+|my\\s+)?skill(?:\\s+book)?\\b`,
+  'i',
+);
+const SKILL_DELETE_RE = new RegExp(
+  `\\b(?:delete|remove)\\s+(?:the\\s+)?skill\\s+(.{1,80})$|\\b(?:delete|remove)\\s+(${phraseTokens(12)})\\s+from\\s+(?:my\\s+)?skills?(?:\\s+book)?\\b`,
+  'i',
+);
+const SKILL_RENAME_RE = new RegExp(
+  `\\b(?:rename)\\s+(?:the\\s+)?skill\\s+(${phraseTokens(7)})\\s+to\\s+(.{1,60})$`,
+  'i',
+);
 const SKILL_MERGE_RE =
   /\b(?:merge|fold)\s+(?:the\s+)?(?:skill\s+)?([a-zA-Z][a-zA-Z0-9'’./&+-]*(?:\s+[a-zA-Z][a-zA-Z0-9'’./&+-]*){0,5})\s+into\s+(?:the\s+)?(?:skill\s+)?([a-zA-Z][a-zA-Z0-9'’./&+-]*(?:\s+[a-zA-Z][a-zA-Z0-9'’./&+-]*){0,5})\b/i;
 
@@ -291,14 +377,22 @@ export function isSkillWriteRequest(message: string): boolean {
   );
 }
 
-const QUEST_CREATE_RE =
-  /\b(?:add|save|put|create)\s+(.{1,80}?)\s+(?:as|to|into)\s+(?:a\s+|an\s+|my\s+)?quest(?:\s+log)?\b/i;
-const QUEST_DELETE_RE =
-  /\b(?:delete|remove)\s+(?:the\s+)?quest\s+(.{1,80})$|\b(?:delete|remove)\s+(.{1,80}?)\s+from\s+(?:my\s+)?quests?(?:\s+log)?\b/i;
-const QUEST_RENAME_RE =
-  /\b(?:rename)\s+(?:the\s+)?quest\s+(.{1,60}?)\s+to\s+(.{1,60})$/i;
-const QUEST_STATUS_RE =
-  /\b(?:mark|set)\s+(?:the\s+)?quest\s+(.{1,60}?)\s+(?:as\s+)?(active|blocked|done|completed|cancelled|paused)\b/i;
+const QUEST_CREATE_RE = new RegExp(
+  `\\b(?:add|save|put|create)\\s+(${phraseTokens(12)})\\s+(?:as|to|into)\\s+(?:a\\s+|an\\s+|my\\s+)?quest(?:\\s+log)?\\b`,
+  'i',
+);
+const QUEST_DELETE_RE = new RegExp(
+  `\\b(?:delete|remove)\\s+(?:the\\s+)?quest\\s+(.{1,80})$|\\b(?:delete|remove)\\s+(${phraseTokens(12)})\\s+from\\s+(?:my\\s+)?quests?(?:\\s+log)?\\b`,
+  'i',
+);
+const QUEST_RENAME_RE = new RegExp(
+  `\\b(?:rename)\\s+(?:the\\s+)?quest\\s+(${phraseTokens(7)})\\s+to\\s+(.{1,60})$`,
+  'i',
+);
+const QUEST_STATUS_RE = new RegExp(
+  `\\b(?:mark|set)\\s+(?:the\\s+)?quest\\s+(${phraseTokens(7)})\\s+(?:as\\s+)?(active|blocked|done|completed|cancelled|paused)\\b`,
+  'i',
+);
 
 export function isQuestWriteRequest(message: string): boolean {
   const text = message.trim();
@@ -375,10 +469,45 @@ export function isFamilyWriteRequest(message: string): boolean {
   );
 }
 
-// Canonical romantic_relationships.status values (plus common synonyms) —
-// must stay in sync with the DB check constraint and romanceWriteService.ts.
-const ROMANCE_STATUS_RE =
-  /\b(?:mark|set)\s+(.{1,60}?)\s+(?:as|to)\s+(ended|ending|broke\s*up|breakup|on\s*(?:a\s*)?break|complicated|paused|ghosted|blocked|unrequited|fading|faded|rekindled|active)\b/i;
+// Household names/addresses run longer than person names (e.g. "Mom and
+// Dad's House", "456 Oak Ave"), so this token class allows 1-6 words and
+// digits, but keeps the same ReDoS-safe shape as NAME_TOKENS above: no lazy
+// `.{1,80}?` next to a `\s+` boundary.
+const HOUSEHOLD_PHRASE_TOKENS = `[a-zA-Z0-9][a-zA-Z0-9'’.-]*?(?:\\s+[a-zA-Z0-9][a-zA-Z0-9'’.-]*?){0,5}?`;
+const HOUSEHOLD_CREATE_RE = new RegExp(
+  `\\bcreate\\s+(?:a\\s+)?household\\s+(?:called|named)\\s+(${HOUSEHOLD_PHRASE_TOKENS})\\b`,
+  'i',
+);
+const HOUSEHOLD_ADD_MEMBER_RE = new RegExp(
+  `\\badd\\s+(${HOUSEHOLD_PHRASE_TOKENS})\\s+to\\s+(?:the\\s+)?(${HOUSEHOLD_PHRASE_TOKENS})\\s+household\\b`,
+  'i',
+);
+const HOUSEHOLD_REMOVE_MEMBER_RE = new RegExp(
+  `\\b(?:remove\\s+(${HOUSEHOLD_PHRASE_TOKENS})\\s+from|(${HOUSEHOLD_PHRASE_TOKENS})\\s+moved\\s+out\\s+of)\\s+(?:the\\s+)?(${HOUSEHOLD_PHRASE_TOKENS})\\s+household\\b`,
+  'i',
+);
+const HOUSEHOLD_MOVE_RE = new RegExp(
+  `\\bmove\\s+(?:the\\s+)?(${HOUSEHOLD_PHRASE_TOKENS})\\s+household\\s+to\\s+(${HOUSEHOLD_PHRASE_TOKENS})\\b`,
+  'i',
+);
+const HOUSEHOLD_DELETE_RE = new RegExp(`\\bdelete\\s+(?:the\\s+)?(${HOUSEHOLD_PHRASE_TOKENS})\\s+household\\b`, 'i');
+
+export function isHouseholdWriteRequest(message: string): boolean {
+  const text = message.trim();
+  if (!text) return false;
+  return (
+    HOUSEHOLD_CREATE_RE.test(text) ||
+    HOUSEHOLD_ADD_MEMBER_RE.test(text) ||
+    HOUSEHOLD_REMOVE_MEMBER_RE.test(text) ||
+    HOUSEHOLD_MOVE_RE.test(text) ||
+    HOUSEHOLD_DELETE_RE.test(text)
+  );
+}
+
+const ROMANCE_STATUS_RE = new RegExp(
+  `\\b(?:mark|set)\\s+(${phraseTokens(7)})\\s+(?:(?:as|to)\\s+)?(dating|ex|broke\\s*up|breakup|no\\s*contact|complicated|crush|partner|married|ended|ending|on\\s*(?:a\\s*)?break|paused|ghosted|blocked|unrequited|fading|faded|rekindled|active)\\b`,
+  'i',
+);
 const ROMANCE_BREAKUP_RE =
   /\b(?:we\s+)?(?:broke\s*up|ended\s+(?:things|it)|are\s+no\s+longer\s+dating)\s+(?:with\s+)?(.{1,60})$/i;
 const ROMANCE_LIFECYCLE_RE =
@@ -399,12 +528,16 @@ export function isRomanceWriteRequest(message: string): boolean {
 
 const EVENT_POST_RE =
   /\b(?:post|add|save|create)\s+(?:an?\s+)?(?:life\s*log\s+)?event\b/i;
-const EVENT_PLAYED_AT_RE =
-  /\b(?:we|i)\s+(?:played|hosted|threw)\s+(?:a\s+|an\s+|the\s+)?.{1,80}?\s+(?:at|@)\s+.{1,60}$/i;
+const EVENT_PLAYED_AT_RE = new RegExp(
+  `\\b(?:we|i)\\s+(?:played|hosted|threw)\\s+(?:a\\s+|an\\s+|the\\s+)?(${phraseTokens(12)})\\s+(?:at|@)\\s+.{1,60}$`,
+  'i',
+);
 const EVENT_NAMED_HAPPENING_RE =
   /\b(?:we|i)\s+(?:went\s+to|had)\s+(?:a\s+|an\s+|the\s+)?(?:show|gig|concert|party|festival|event|birthday|wedding|meetup|open\s*mic)\s+(?:at|@)\s+.{1,60}$/i;
-const EVENT_SAVE_AT_RE =
-  /\b(?:save|add|post)\s+(?:an?\s+)?event\s+(?:called\s+|named\s+)?.{1,80}?\s+(?:at|@)\s+.{1,60}$/i;
+const EVENT_SAVE_AT_RE = new RegExp(
+  `\\b(?:save|add|post)\\s+(?:an?\\s+)?event\\s+(?:called\\s+|named\\s+)?(${phraseTokens(12)})\\s+(?:at|@)\\s+.{1,60}$`,
+  'i',
+);
 
 export function isEventWriteRequest(message: string): boolean {
   const text = message.trim();
@@ -441,6 +574,9 @@ export function isClosedScopeQuery(message: string): { closedScope: boolean; rea
   }
   if (isFamilyWriteRequest(message)) {
     return { closedScope: true, reason: 'family_write_request' };
+  }
+  if (isHouseholdWriteRequest(message)) {
+    return { closedScope: true, reason: 'household_write_request' };
   }
   if (isRomanceWriteRequest(message)) {
     return { closedScope: true, reason: 'romance_write_request' };

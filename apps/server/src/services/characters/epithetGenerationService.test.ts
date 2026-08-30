@@ -27,5 +27,7 @@ describe('epithetGenerationService', () => {
     expect(shouldAttemptEpithetGeneration({ epithet_disabled: true })).toBe(false);
     expect(shouldAttemptEpithetGeneration({ epithet: 'Hallway Guardian' })).toBe(false);
     expect(shouldAttemptEpithetGeneration({})).toBe(true);
+    expect(shouldAttemptEpithetGeneration({ is_self: true })).toBe(false);
+    expect(shouldAttemptEpithetGeneration({ is_user: true })).toBe(false);
   });
 });

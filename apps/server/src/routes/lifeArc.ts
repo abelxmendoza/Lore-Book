@@ -30,12 +30,16 @@ router.get(
   '/',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { arc_type, min_confidence, include_children, active_only } = req.query;
+    const { arc_type, min_confidence, include_children, active_only, is_active, limit } = req.query;
     const userId = req.user!.id;
 
-    if (active_only === 'true') {
+    const activeOnly = active_only === 'true' || is_active === 'true';
+    const cap = limit ? Math.min(Math.max(parseInt(String(limit), 10) || 0, 0), 100) : undefined;
+
+    if (activeOnly) {
       const arcs = await arcService.getActiveArcs(userId);
-      return res.json({ success: true, arcs });
+      const durable = arcs.filter((arc) => arc.arc_type !== 'occasion');
+      return res.json({ success: true, arcs: cap ? durable.slice(0, cap) : durable });
     }
 
     const arcs = await arcService.listForUser(userId, {
@@ -54,7 +58,7 @@ router.get(
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const arcs = await arcService.getActiveArcs(req.user!.id);
-    res.json({ success: true, arcs });
+    res.json({ success: true, arcs: arcs.filter((arc) => arc.arc_type !== 'occasion') });
   })
 );
 

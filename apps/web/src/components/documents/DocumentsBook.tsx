@@ -714,7 +714,7 @@ export function DocumentsBook() {
             <p className="text-xs text-white/45">
               {factResults.total} grounded result
               {factResults.total === 1 ? "" : "s"} ·{" "}
-              {factResults.intent.replaceAll("_", " ")}
+              {factResults.intent.replace(/_/g, " ")}
             </p>
             {factResults.facts.length === 0 ? (
               <p className="text-sm text-white/50">
@@ -811,7 +811,7 @@ export function DocumentsBook() {
                   <span className="min-w-0 flex-1 truncate">
                     {category.label}
                   </span>
-                  {category.sensitive && (
+                  {"sensitive" in category && category.sensitive && (
                     <ShieldAlert className="h-3.5 w-3.5 shrink-0 text-amber-300/70" />
                   )}
                   <span className="text-xs text-white/35">
