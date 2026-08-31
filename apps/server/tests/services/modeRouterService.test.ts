@@ -125,6 +125,8 @@ describe("ModeRouterService", () => {
       for (const query of [
         "Who am I currently dating?",
         "Show my past romantic relationships",
+        "Show my inactive relationships",
+        "What changed with my relationship with Marcus?",
         "Which romantic records need review?",
         "Rank my romantic relationships by compatibility",
       ]) {
@@ -325,6 +327,10 @@ describe("ModeRouterService", () => {
         "What do you know about me?",
         "Tell me about my family",
         "Tell me about Sam Chen",
+        "What jobs have I had?",
+        "Not my full work history",
+        "What schools have I been to?",
+        "What jobs have I had and schools I've been to?",
       ];
 
       for (const query of queries) {
@@ -616,7 +622,7 @@ describe("ModeRouterService", () => {
         modeRouterService.routeMessage("user-1", "mark Marcus as my cousin"),
       ).resolves.toMatchObject({ mode: "FAMILY_WRITE" });
       await expect(
-        modeRouterService.routeMessage("user-1", "mark Jamie as dating"),
+        modeRouterService.routeMessage("user-1", "mark Jamie as ended"),
       ).resolves.toMatchObject({ mode: "ROMANCE_WRITE" });
       await expect(
         modeRouterService.routeMessage(

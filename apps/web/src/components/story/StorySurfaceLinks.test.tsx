@@ -11,11 +11,18 @@ describe('StorySurfaceLinks', () => {
     expect(screen.getByText('Moments')).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('button', { name: /Timeline/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Anchors/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Saga/i })).toBeInTheDocument();
   });
 
   it('navigates to timeline from anchors', () => {
     render(<StorySurfaceLinks current="anchors" />);
     fireEvent.click(screen.getByRole('button', { name: /Timeline/i }));
     expect(window.location.pathname + window.location.search).toBe('/timeline?view=events');
+  });
+
+  it('marks Saga as the single story-reading destination', () => {
+    render(<StorySurfaceLinks current="saga" />);
+    expect(screen.getByText('Saga')).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: /Anchors/i })).toBeInTheDocument();
   });
 });

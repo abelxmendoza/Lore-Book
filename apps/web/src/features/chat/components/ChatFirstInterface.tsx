@@ -1,128 +1,166 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 function useIsMobile(breakpoint = 640): boolean {
   const [isMobile, setIsMobile] = useState(() =>
-    typeof window !== 'undefined' ? window.innerWidth < breakpoint : false
+    typeof window !== "undefined" ? window.innerWidth < breakpoint : false,
   );
   useEffect(() => {
     const mql = window.matchMedia(`(max-width: ${breakpoint - 1}px)`);
     const handler = () => setIsMobile(mql.matches);
     handler();
-    mql.addEventListener('change', handler);
-    return () => mql.removeEventListener('change', handler);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
   }, [breakpoint]);
   return isMobile;
 }
 
-import { useChat } from '../hooks/useChat';
-import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
-import { useConversationRuntime } from '../hooks/useConversationRuntime';
-import { Search as SearchIcon, MessageSquareText, Brain, Menu, SquarePen, UserCircle, BookOpen, Check as CheckIcon, Clipboard as ClipboardIcon } from 'lucide-react';
-import { useLocalStorage } from '../../../hooks/useLocalStorage';
-import { ChatEmptyState } from './ChatEmptyState';
-import { ChatMessageList } from '../message/ChatMessageList';
-import { MessageCorrectionModal } from '../message/MessageCorrectionModal';
-import { useMessageCorrection } from '../hooks/useMessageCorrection';
-import { ChatLoadingPulse } from './ChatLoadingPulse';
-import { ChatComposer } from '../composer/ChatComposer';
-import { ReturnPointBanner, type ContinueContext } from './ReturnPointBanner';
-import { ThreadEntityChips } from './ThreadEntityChips';
-import { ChatFocusChipBar } from './ChatFocusChipBar';
-import { ChatFocusArrivalToast } from './ChatFocusArrivalToast';
-import { LoreBookNoticeHost } from '../../../components/chat/LoreBookNoticeHost';
+import { useChat } from "../hooks/useChat";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { useConversationRuntime } from "../hooks/useConversationRuntime";
+import {
+  Search as SearchIcon,
+  MessageSquareText,
+  Brain,
+  Menu,
+  SquarePen,
+  UserCircle,
+  BookOpen,
+  Check as CheckIcon,
+  Clipboard as ClipboardIcon,
+} from "lucide-react";
+import { useLocalStorage } from "../../../hooks/useLocalStorage";
+import { ChatEmptyState } from "./ChatEmptyState";
+import { ChatMessageList } from "../message/ChatMessageList";
+import { MessageCorrectionModal } from "../message/MessageCorrectionModal";
+import { useMessageCorrection } from "../hooks/useMessageCorrection";
+import { ChatLoadingPulse } from "./ChatLoadingPulse";
+import {
+  ChatComposer,
+  type ComposerChipDebugPayload,
+} from "../composer/ChatComposer";
+import { ReturnPointBanner, type ContinueContext } from "./ReturnPointBanner";
+import { ThreadEntityChips } from "./ThreadEntityChips";
+import { ChatFocusChipBar } from "./ChatFocusChipBar";
+import { ChatFocusArrivalToast } from "./ChatFocusArrivalToast";
+import { LoreBookNoticeHost } from "../../../components/chat/LoreBookNoticeHost";
 import {
   CHAT_JUMP_MESSAGE_KEY,
   clearChatThreadJump,
   peekChatJumpHighlightTerms,
   peekChatJumpMessageId,
   peekChatJumpSessionId,
-} from '../../../lib/chatThreadJump';
-import { ThreadSummaryBar } from './ThreadSummaryBar';
-import { ComposerChromeTray } from './ComposerChromeTray';
-import { ThreadRosterBar } from './ThreadRosterBar';
-import { CastTrendsNudge } from './CastTrendsNudge';
-import { fetchCastThreads, fetchThreadRoster } from '../../../api/threadRoster';
-import { fetchThreadSummary } from '../../../api/threadSummary';
+} from "../../../lib/chatThreadJump";
+import { ThreadSummaryBar } from "./ThreadSummaryBar";
+import { ComposerChromeTray } from "./ComposerChromeTray";
+import { ThreadRosterBar } from "./ThreadRosterBar";
+import { CastTrendsNudge } from "./CastTrendsNudge";
+import { fetchCastThreads, fetchThreadRoster } from "../../../api/threadRoster";
+import { fetchThreadSummary } from "../../../api/threadSummary";
 import {
   collectRecentThreadMentions,
   collectThreadEntities,
   toEntityContext,
-} from '../utils/collectThreadEntities';
+} from "../utils/collectThreadEntities";
 import {
   isCastDisplayWorthy,
   scrubPeopleLabels,
   scrubPlacesLabels,
   scrubSummaryDisplayLine,
-} from '../utils/threadSurfaceScrub';
-import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
-import { isClosedScopeQuery, isFocusEntityRelevant, messageConflictsWithPinnedFocus, parseNamedChatSubject, subjectNamesMatch } from '@lorebook/api-contracts';
-import { ChatSourcesBar } from '../sources/ChatSourcesBar';
-import { ChatSourceNavigator } from '../sources/ChatSourceNavigator';
-import { ChatSearchModal } from '../search/ChatSearchModal';
-import { ChatThreadList } from './ChatThreadList';
-import { ChatSimulationPanel } from './ChatSimulationPanel';
-import { useChatLifecycleSimulation } from '../hooks/useChatLifecycleSimulation';
-import { GuestSignUpPrompt } from '../../../components/guest/GuestSignUpPrompt';
-import { AiBudgetBanner } from '../../../components/chat/AiBudgetBanner';
-import { useSubscription } from '../../../hooks/useSubscription';
-import { GuestExperienceCard } from '../../../components/guest/GuestExperienceCard';
-import { CurrentContextBreadcrumbs } from '../../../components/CurrentContextBreadcrumbs';
-import { useGuest } from '../../../contexts/GuestContext';
-import { WorkSummaryImporter } from '../../../components/work/WorkSummaryImporter';
-import { useMockData } from '../../../contexts/MockDataContext';
-import { diagnoseEndpoints, logDiagnostics } from '../../../utils/errorDiagnostics';
-import { analytics } from '../../../lib/monitoring';
-import { fetchJson } from '../../../lib/api';
-import { invalidateEntityTags } from '../../../store/invalidateEntityCache';
-import { useLoreKeeper } from '../../../hooks/useLoreKeeper';
-import { dispatchStoryDataUpdated } from '../../../lib/storyRefresh';
-import type { UploadCompletePayload } from './DocumentUpload';
-import { ThreadSaveChip } from './ThreadSaveChip';
-import { WhatLoreBookKnows } from './WhatLoreBookKnows';
-import { WhatChangedSinceLastTime } from './WhatChangedSinceLastTime';
-import { ActiveContextPanel } from './ActiveContextPanel';
-import { ChronologyNarrativeModal } from './ChronologyNarrativeModal';
-import { Logo } from '../../../components/Logo';
-import { useAuth } from '../../../lib/supabase';
-import { demoThreadStorageUserId, isDemoRuntimeActive } from '../../../lib/demoRuntime';
-import { useAccountAuthority } from '../../../hooks/useAccountAuthority';
-import { useAppDispatch, useAppSelector, useAppStore } from '../../../store/hooks';
-import { clearChatFocus } from '../../../store/slices/selectionSlice';
-import { selectChatFocus } from '../../../store/selectors';
+} from "../utils/threadSurfaceScrub";
+import type { CertifiedEntityMatch } from "../../../lib/certifiedEntityMatch";
+import {
+  isClosedScopeQuery,
+  isFocusEntityRelevant,
+  messageConflictsWithPinnedFocus,
+  parseNamedChatSubject,
+  subjectNamesMatch,
+} from "@lorebook/api-contracts";
+import { ChatSourcesBar } from "../sources/ChatSourcesBar";
+import { ChatSourceNavigator } from "../sources/ChatSourceNavigator";
+import { rankChatSourcesForDisplay } from "../../../lib/chatSourcesClipboard";
+import { ChatSearchModal } from "../search/ChatSearchModal";
+import { ChatThreadList } from "./ChatThreadList";
+import { ChatSimulationPanel } from "./ChatSimulationPanel";
+import { useChatLifecycleSimulation } from "../hooks/useChatLifecycleSimulation";
+import { GuestSignUpPrompt } from "../../../components/guest/GuestSignUpPrompt";
+import { AiBudgetBanner } from "../../../components/chat/AiBudgetBanner";
+import { useSubscription } from "../../../hooks/useSubscription";
+import { GuestExperienceCard } from "../../../components/guest/GuestExperienceCard";
+import { CurrentContextBreadcrumbs } from "../../../components/CurrentContextBreadcrumbs";
+import { useGuest } from "../../../contexts/GuestContext";
+import { WorkSummaryImporter } from "../../../components/work/WorkSummaryImporter";
+import { useMockData } from "../../../contexts/MockDataContext";
+import {
+  diagnoseEndpoints,
+  logDiagnostics,
+} from "../../../utils/errorDiagnostics";
+import { analytics } from "../../../lib/monitoring";
+import { fetchJson } from "../../../lib/api";
+import { invalidateEntityTags } from "../../../store/invalidateEntityCache";
+import { useLoreKeeper } from "../../../hooks/useLoreKeeper";
+import { dispatchStoryDataUpdated } from "../../../lib/storyRefresh";
+import type { UploadCompletePayload } from "./DocumentUpload";
+import { ThreadSaveChip } from "./ThreadSaveChip";
+import { WhatLoreBookKnows } from "./WhatLoreBookKnows";
+import { WhatChangedSinceLastTime } from "./WhatChangedSinceLastTime";
+import { ActiveContextPanel } from "./ActiveContextPanel";
+import { ChronologyNarrativeModal } from "./ChronologyNarrativeModal";
+import { Logo } from "../../../components/Logo";
+import { useAuth } from "../../../lib/supabase";
+import {
+  demoThreadStorageUserId,
+  isDemoRuntimeActive,
+} from "../../../lib/demoRuntime";
+import { useAccountAuthority } from "../../../hooks/useAccountAuthority";
+import {
+  useAppDispatch,
+  useAppSelector,
+  useAppStore,
+} from "../../../store/hooks";
+import { clearChatFocus } from "../../../store/slices/selectionSlice";
+import { selectChatFocus } from "../../../store/selectors";
 import {
   selectComposerHasDraft,
   selectVisibleComposerMatches,
-} from '../../../store/selectors/composerSelectors';
-import { getLatestRawComposerDraft } from '../../../lib/composerIntelligence';
-import { focusToComposerEntities, focusToEntityContext } from '../../../lib/chatFocusUtils';
-import { takePostEventChatHandoff } from '../../../lib/postEventChatHandoff';
-import { scrubLegacyComposerPrefill } from '../../../lib/scrubLegacyComposerPrefill';
-import { clearComposerDraft } from '../services/storySafetyVault';
-import { runtimeDiagnostics } from '../services/runtimeDiagnostics';
-import { setComposerDraft } from '../../../store/slices/composerSlice';
-import type { ChatSource, ChatSuggestedAction, Message } from '../message/ChatMessage';
-import { getLoreAgentTrace } from '../../../api/loreAgents';
-import type { ComposerChipDebugPayload } from '../composer/ChatComposer';
+} from "../../../store/selectors/composerSelectors";
+import { getLatestRawComposerDraft } from "../../../lib/composerIntelligence";
+import {
+  focusToComposerEntities,
+  focusToEntityContext,
+} from "../../../lib/chatFocusUtils";
+import { takePostEventChatHandoff } from "../../../lib/postEventChatHandoff";
+import { scrubLegacyComposerPrefill } from "../../../lib/scrubLegacyComposerPrefill";
+import { clearComposerDraft } from "../services/storySafetyVault";
+import { runtimeDiagnostics } from "../services/runtimeDiagnostics";
+import { setComposerDraft } from "../../../store/slices/composerSlice";
+import type {
+  ChatSource,
+  ChatSuggestedAction,
+  Message,
+} from "../message/ChatMessage";
+import { getLoreAgentTrace } from "../../../api/loreAgents";
 import {
   buildChatConversationCopyText,
   buildComposerAndContextDebugSnapshot,
   type ChatMessageDiagnosticSnapshot,
   type ThreadSurfaceDebugSnapshot,
-} from '../utils/adminChatDiagnosticExport';
-import '../styles/chat-theme.css';
-import '../styles/message-animations.css';
+} from "../utils/adminChatDiagnosticExport";
+import "../styles/chat-theme.css";
+import "../styles/message-animations.css";
 
 // A persisted message carries its real chat_messages UUID; synthetic live ids
 // look like "user-1719…", "error-…", etc. Only persisted messages can be
 // corrected (the server row + its derived knowledge must exist to re-derive).
-const PERSISTED_MESSAGE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PERSISTED_MESSAGE_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function loadAdminMessageDiagnostics(
   messages: Message[],
 ): Promise<Record<string, ChatMessageDiagnosticSnapshot>> {
   const persistedUserMessages = messages.filter(
-    (message) => message.role === 'user' && PERSISTED_MESSAGE_ID.test(message.id),
+    (message) =>
+      message.role === "user" && PERSISTED_MESSAGE_ID.test(message.id),
   );
   const snapshots: Record<string, ChatMessageDiagnosticSnapshot> = {};
 
@@ -132,18 +170,27 @@ async function loadAdminMessageDiagnostics(
     const batch = persistedUserMessages.slice(index, index + 4);
     const results = await Promise.all(
       batch.map(async (message) => {
-        const [durability, trace] = await Promise.allSettled([
+        const [durability, trace, cognitiveTrace] = await Promise.allSettled([
           fetchJson<unknown>(`/api/chat/messages/${message.id}/durability`),
           getLoreAgentTrace(message.id),
+          fetchJson<unknown>(`/api/conversation/trace/cognitive/${message.id}`),
         ]);
         const errors: string[] = [];
-        if (durability.status === 'rejected') errors.push('durability_unavailable');
-        if (trace.status === 'rejected') errors.push('agent_trace_unavailable');
+        if (durability.status === "rejected")
+          errors.push("durability_unavailable");
+        if (trace.status === "rejected") errors.push("agent_trace_unavailable");
+        if (cognitiveTrace.status === "rejected")
+          errors.push("cognitive_trace_unavailable");
         return {
           messageId: message.id,
           snapshot: {
-            ...(durability.status === 'fulfilled' ? { durability: durability.value } : {}),
-            ...(trace.status === 'fulfilled' ? { trace: trace.value } : {}),
+            ...(durability.status === "fulfilled"
+              ? { durability: durability.value }
+              : {}),
+            ...(trace.status === "fulfilled" ? { trace: trace.value } : {}),
+            ...(cognitiveTrace.status === "fulfilled"
+              ? { cognitiveTrace: cognitiveTrace.value }
+              : {}),
             ...(errors.length > 0 ? { errors } : {}),
           },
         };
@@ -155,7 +202,9 @@ async function loadAdminMessageDiagnostics(
   return snapshots;
 }
 
-export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void } = {}) => {
+export const ChatFirstInterface = ({
+  onOpenAppSidebar,
+}: { onOpenAppSidebar?: () => void } = {}) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
@@ -172,9 +221,12 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   // handleCopyConversation instead, since that's a manual, infrequent action.
   const composerHasDraft = useAppSelector(selectComposerHasDraft);
   const composerChipDebugRef = useRef<ComposerChipDebugPayload | null>(null);
-  const handleComposerChipDebugChange = useCallback((snapshot: ComposerChipDebugPayload) => {
-    composerChipDebugRef.current = snapshot;
-  }, []);
+  const handleComposerChipDebugChange = useCallback(
+    (snapshot: ComposerChipDebugPayload) => {
+      composerChipDebugRef.current = snapshot;
+    },
+    [],
+  );
 
   // ── Message state (owned by useChat / useConversationStore) ──────────────────
   const { refreshEntries, refreshTimeline, refreshChapters } = useLoreKeeper();
@@ -200,14 +252,14 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   } = useChat();
 
   const visibleSources = useMemo(
-    () => (sources ?? []).filter((source) => source.usage !== 'rejected'),
+    () => rankChatSourcesForDisplay(sources ?? []),
     [sources],
   );
   const composerSourceMeta =
     visibleSources.length > 0 ? `${visibleSources.length} sources` : undefined;
   const composerSourceSignal = visibleSources
     .map((source) => `${source.type}:${source.id}`)
-    .join('|');
+    .join("|");
 
   // ── Thread lifecycle (owned by useConversationRuntime) ────────────────────────
   const {
@@ -241,10 +293,10 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       greetingMessage
         ? {
             id: `greeting-${activeThreadId}`,
-            role: 'assistant' as const,
+            role: "assistant" as const,
             content: greetingMessage,
             timestamp: new Date(),
-            metadata: { intent: 'return_greeting' },
+            metadata: { intent: "return_greeting" },
           }
         : null,
     [greetingMessage, activeThreadId],
@@ -258,9 +310,13 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   // Prefer explicit hydration state — the old messageCount heuristic could spin
   // forever after a failed/empty hydrate while list metadata still said > 0.
   const showThreadHydrating =
-    isHydratingMessages || (threadsLoading && !!activeThreadId && messages.length === 0);
+    isHydratingMessages ||
+    (threadsLoading && !!activeThreadId && messages.length === 0);
 
-  const threadEntities = useMemo(() => collectThreadEntities(messages), [messages]);
+  const threadEntities = useMemo(
+    () => collectThreadEntities(messages),
+    [messages],
+  );
   const [focusedEntityId, setFocusedEntityId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -275,8 +331,12 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     const focused = focusedEntityId
       ? threadEntities.find((e) => e.id === focusedEntityId)
       : undefined;
-    const focusEntityContext = chatFocus ? focusToEntityContext(chatFocus) : undefined;
-    const focusComposer = chatFocus ? focusToComposerEntities(chatFocus) : undefined;
+    const focusEntityContext = chatFocus
+      ? focusToEntityContext(chatFocus)
+      : undefined;
+    const focusComposer = chatFocus
+      ? focusToComposerEntities(chatFocus)
+      : undefined;
     return {
       entityContext: focused ? toEntityContext(focused) : focusEntityContext,
       threadEntities,
@@ -301,13 +361,16 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
 
       const { closedScope } = isClosedScopeQuery(msg);
       const namedConflict = Boolean(
-        chatFocus && messageConflictsWithPinnedFocus(msg, chatFocus.entityName ?? ''),
+        chatFocus &&
+        messageConflictsWithPinnedFocus(msg, chatFocus.entityName ?? ""),
       );
       if (namedConflict && chatFocus) {
         const named = parseNamedChatSubject(msg);
         const match = named
           ? threadEntities.find(
-              (entity) => entity.type === 'character' && subjectNamesMatch(entity.name, named),
+              (entity) =>
+                entity.type === "character" &&
+                subjectNamesMatch(entity.name, named),
             )
           : undefined;
         if (match) {
@@ -318,8 +381,8 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
               {
                 id: match.id,
                 name: match.name,
-                type: 'character',
-                status: 'confirmed',
+                type: "character",
+                status: "confirmed",
                 aliases: [],
                 mentionKeys: [match.name.toLowerCase()],
                 matchedLabel: match.name,
@@ -329,29 +392,43 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
               ...chatFocus,
               entityId: match.id,
               entityName: match.name,
-              entityType: 'character' as const,
+              entityType: "character" as const,
             },
           };
         }
-        return { ...chatSendOptions, entityContext: undefined, composerEntities: undefined, chatFocus: undefined };
+        return {
+          ...chatSendOptions,
+          entityContext: undefined,
+          composerEntities: undefined,
+          chatFocus: undefined,
+        };
       }
-      const focusRelevant = !chatFocus || !closedScope || isFocusEntityRelevant(msg, chatFocus.entityName ?? '');
+      const focusRelevant =
+        !chatFocus ||
+        !closedScope ||
+        isFocusEntityRelevant(msg, chatFocus.entityName ?? "");
       if (focusRelevant) return chatSendOptions;
 
-      return { ...chatSendOptions, entityContext: undefined, composerEntities: undefined };
+      return {
+        ...chatSendOptions,
+        entityContext: undefined,
+        composerEntities: undefined,
+      };
     },
-    [chatSendOptions, chatFocus, focusedEntityId, threadEntities]
+    [chatSendOptions, chatFocus, focusedEntityId, threadEntities],
   );
 
   // Wrap sendMessage: clear the greeting and track analytics before sending.
   const handleSubmit = (
     msg: string,
     certifiedEntities?: CertifiedEntityMatch[],
-    previewCorrections?: import('../../../lib/entityCorrectionTypes').CorrectedPreviewSpan[],
-    images?: import('../types/chatImageAttachment').ChatImageAttachment[],
+    previewCorrections?: import("../../../lib/entityCorrectionTypes").CorrectedPreviewSpan[],
+    images?: import("../types/chatImageAttachment").ChatImageAttachment[],
+    resumeDocumentId?: string,
+    documentIds?: string[],
   ) => {
     if (greetingMessage) {
-      analytics.track('greeting_responded', {
+      analytics.track("greeting_responded", {
         threadId: activeThreadId,
         greetingLength: greetingMessage.length,
       });
@@ -360,9 +437,13 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     const options = buildChatSendOptions(msg);
     sendMessage(msg, {
       ...options,
-      composerEntities: certifiedEntities?.length ? certifiedEntities : options.composerEntities,
+      composerEntities: certifiedEntities?.length
+        ? certifiedEntities
+        : options.composerEntities,
       previewCorrections,
       ...(images?.length ? { images } : {}),
+      ...(resumeDocumentId ? { resumeDocumentId } : {}),
+      ...(documentIds?.length ? { documentIds } : {}),
     });
   };
 
@@ -370,7 +451,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     (prompt: string) => {
       sendMessage(prompt, buildChatSendOptions(prompt));
     },
-    [sendMessage, buildChatSendOptions]
+    [sendMessage, buildChatSendOptions],
   );
 
   const chatSimulation = useChatLifecycleSimulation({
@@ -378,14 +459,14 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       async (text: string) => {
         sendMessage(text, buildChatSendOptions(text));
       },
-      [sendMessage, buildChatSendOptions]
+      [sendMessage, buildChatSendOptions],
     ),
   });
 
   const autoSimRanRef = useRef(false);
   useEffect(() => {
     if (!chatSimulation.enabled || autoSimRanRef.current) return;
-    const scenarioId = searchParams.get('chatSim');
+    const scenarioId = searchParams.get("chatSim");
     if (!scenarioId) return;
     autoSimRanRef.current = true;
     void chatSimulation.runScenario(scenarioId);
@@ -395,7 +476,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   // greeting_responded is tracked inside handleSubmit above.
   useEffect(() => {
     if (!greetingMessage || !activeThreadId) return;
-    analytics.track('greeting_shown', { threadId: activeThreadId });
+    analytics.track("greeting_shown", { threadId: activeThreadId });
   }, [greetingMessage, activeThreadId]);
 
   const { isGuest, canSendChatMessage } = useGuest();
@@ -406,8 +487,12 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     ? undefined
     : user?.user_metadata?.avatar_url;
   const avatarInitial: string | null = (() => {
-    if (demoRuntime) return 'D';
-    const name: string = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || '';
+    if (demoRuntime) return "D";
+    const name: string =
+      user?.user_metadata?.full_name ||
+      user?.user_metadata?.name ||
+      user?.email ||
+      "";
     return name ? name.charAt(0).toUpperCase() : null;
   })();
 
@@ -435,7 +520,8 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       setJumpHighlightTerms(peekChatJumpHighlightTerms());
       clearChatThreadJump();
       // Long sticky sessions feel "merged" when a mention opens them — offer escape.
-      const metaCount = threads.find((t) => t.id === activeThreadId)?.messageCount ?? 0;
+      const metaCount =
+        threads.find((t) => t.id === activeThreadId)?.messageCount ?? 0;
       if (Math.max(messages.length, metaCount) >= 25) {
         setLongThreadJumpOffer(true);
       }
@@ -446,9 +532,9 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       return;
     }
 
-    const jumpIndexRaw = sessionStorage.getItem('lk:chat-jump-index');
+    const jumpIndexRaw = sessionStorage.getItem("lk:chat-jump-index");
     if (jumpIndexRaw != null) {
-      sessionStorage.removeItem('lk:chat-jump-index');
+      sessionStorage.removeItem("lk:chat-jump-index");
       const idx = Number(jumpIndexRaw);
       const target = messages[idx];
       if (target?.id) {
@@ -471,12 +557,22 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     return () => window.clearTimeout(t);
   }, [searchMessageId]);
   const [showWorkSummary, setShowWorkSummary] = useState(false);
-  const [correcting, setCorrecting] = useState<{ id: string; content: string } | null>(null);
-  const { correctMessage, saving: correctionSaving, error: correctionError } = useMessageCorrection();
-  const [showCognitiveTrace] = useLocalStorage<boolean>('lorekeeper_cognitive_trace', false);
+  const [correcting, setCorrecting] = useState<{
+    id: string;
+    content: string;
+  } | null>(null);
+  const {
+    correctMessage,
+    saving: correctionSaving,
+    error: correctionError,
+  } = useMessageCorrection();
+  const [showCognitiveTrace] = useLocalStorage<boolean>(
+    "lorekeeper_cognitive_trace",
+    false,
+  );
   const [initialPrompt, setInitialPrompt] = useState<string | null>(null);
   const [initialImages, setInitialImages] = useState<
-    import('../types/chatImageAttachment').ChatImageAttachment[] | null
+    import("../types/chatImageAttachment").ChatImageAttachment[] | null
   >(null);
   const [autoSubmitHandoff, setAutoSubmitHandoff] = useState(false);
   const [initialDate, setInitialDate] = useState<string | null>(null);
@@ -484,17 +580,24 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   const lastFocusArrivalRef = useRef<number | null>(null);
   const [threadListCollapsed, setThreadListCollapsed] = useState(false);
   const [threadListMobileOpen, setThreadListMobileOpen] = useState(false);
-  const [contextPanelOpen, setContextPanelOpen] = useLocalStorage<boolean>('lorekeeper_context_panel', false);
+  const [contextPanelOpen, setContextPanelOpen] = useLocalStorage<boolean>(
+    "lorekeeper_context_panel",
+    false,
+  );
   const [showNarrative, setShowNarrative] = useState(false);
   const swipeStartX = useRef<number | null>(null);
-  const [backendStatus, setBackendStatus] = useState<'ok' | 'degraded' | 'unreachable' | null>(null);
+  const [backendStatus, setBackendStatus] = useState<
+    "ok" | "degraded" | "unreachable" | null
+  >(null);
   const [statusDismissed, setStatusDismissed] = useState(false);
   const isMobile = useIsMobile(640);
 
   useEffect(() => {
     if (!isMobile) return;
-    document.body.style.overflow = threadListMobileOpen ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
+    document.body.style.overflow = threadListMobileOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, [isMobile, threadListMobileOpen]);
 
   // Apply modal → chat prefill once per focus arrival.
@@ -516,16 +619,16 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       handleNewChatBase();
     }
 
-    const scrubbed = scrubLegacyComposerPrefill(chatFocus.initialPrompt ?? '');
+    const scrubbed = scrubLegacyComposerPrefill(chatFocus.initialPrompt ?? "");
     if (scrubbed) {
       setInitialPrompt(scrubbed);
     } else {
       const ownerId = isDemoRuntimeActive()
         ? demoThreadStorageUserId()
-        : (user?.id ?? 'guest-or-anonymous');
+        : (user?.id ?? "guest-or-anonymous");
       clearComposerDraft(ownerId, activeThreadId);
-      dispatch(setComposerDraft(''));
-      setInitialPrompt('');
+      dispatch(setComposerDraft(""));
+      setInitialPrompt("");
     }
 
     const postEventHandoff = takePostEventChatHandoff();
@@ -534,7 +637,9 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     } else {
       setInitialImages(null);
     }
-    setAutoSubmitHandoff(Boolean(chatFocus.autoSubmit || postEventHandoff?.autoSubmit));
+    setAutoSubmitHandoff(
+      Boolean(chatFocus.autoSubmit || postEventHandoff?.autoSubmit),
+    );
 
     setFocusComposerPulse(true);
     const timer = window.setTimeout(() => setFocusComposerPulse(false), 2600);
@@ -554,14 +659,14 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
 
   // ── URL search param pre-fill (date / prompt) ─────────────────────────────────
   useEffect(() => {
-    const dateParam = searchParams.get('date');
-    const promptParam = searchParams.get('prompt');
+    const dateParam = searchParams.get("date");
+    const promptParam = searchParams.get("prompt");
     if (dateParam) setInitialDate(dateParam);
     if (promptParam) {
       setInitialPrompt(decodeURIComponent(promptParam));
       const next = new URLSearchParams(searchParams);
-      next.delete('date');
-      next.delete('prompt');
+      next.delete("date");
+      next.delete("prompt");
       navigate({ search: next.toString() }, { replace: true });
     }
   }, [searchParams, navigate]);
@@ -572,23 +677,26 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     if (backendUnavailable) return;
     const checkHealth = async () => {
       try {
-        const apiBase = import.meta.env.VITE_API_URL || '';
+        const apiBase = import.meta.env.VITE_API_URL || "";
         const response = await fetch(`${apiBase}/api/health`);
         if (!response.ok && !healthWarnedRef.current) {
           healthWarnedRef.current = true;
           if (response.status === 503) {
             const body = await response.json().catch(() => ({}));
-            if (body.error === 'Database schema incomplete' || Array.isArray(body.missingTables)) {
-              setBackendStatus('degraded');
+            if (
+              body.error === "Database schema incomplete" ||
+              Array.isArray(body.missingTables)
+            ) {
+              setBackendStatus("degraded");
               return;
             }
           }
-          setBackendStatus('degraded');
+          setBackendStatus("degraded");
         }
       } catch {
         if (!healthWarnedRef.current) {
           healthWarnedRef.current = true;
-          setBackendStatus('unreachable');
+          setBackendStatus("unreachable");
         }
       }
     };
@@ -599,14 +707,18 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   useKeyboardShortcuts({
     onSearch: () => setShowSearch((s) => !s),
     onCommands: () => {
-      const textarea = document.querySelector('textarea[placeholder*="Message Lore Book"]') as HTMLTextAreaElement;
+      const textarea = document.querySelector(
+        'textarea[placeholder*="Message Lore Book"]',
+      ) as HTMLTextAreaElement;
       if (textarea) {
         textarea.focus();
-        textarea.value = '/';
-        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        textarea.value = "/";
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
       }
     },
-    onDiagnostics: () => { diagnoseEndpoints('/api').then(logDiagnostics); },
+    onDiagnostics: () => {
+      diagnoseEndpoints("/api").then(logDiagnostics);
+    },
     onEscape: () => {
       if (showSearch) setShowSearch(false);
       if (selectedSource) setSelectedSource(null);
@@ -636,18 +748,42 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   // ── Source handling ───────────────────────────────────────────────────────────
   const handleSourceClick = (source: ChatSource) => {
     setSelectedSource(source);
-    analytics.track('chat_source_clicked', { sourceType: source.type, sourceId: source.id });
+    analytics.track("chat_source_clicked", {
+      sourceType: source.type,
+      sourceId: source.id,
+    });
   };
 
-  const handleNavigateToSource = (surface: 'timeline' | 'characters' | 'memoir' | 'lorebook', id?: string) => {
+  const handleNavigateToSource = (
+    surface:
+      | "timeline"
+      | "characters"
+      | "memoir"
+      | "lorebook"
+      | "documents"
+      | "photos",
+    id?: string,
+  ) => {
     setSelectedSource(null);
     const routeMap: Record<string, string> = {
-      entry: '/timeline', chapter: '/timeline', character: '/characters',
-      location: '/locations', task: '/timeline', hqi: '/timeline?view=search', fabric: '/discovery',
+      entry: "/timeline",
+      chapter: "/timeline",
+      character: "/characters",
+      location: "/locations",
+      task: "/timeline",
+      hqi: "/timeline?view=search",
+      fabric: "/discovery",
+      documents: "/documents",
+      photos: "/photos",
     };
-    navigate(routeMap[surface] || '/timeline');
-    analytics.track('chat_source_navigated', { surface, id });
-    if (id) sessionStorage.setItem('highlightItem', id);
+    const route = routeMap[surface] || "/timeline";
+    navigate(
+      id && (surface === "documents" || surface === "photos")
+        ? `${route}?${surface === "documents" ? "documentId" : "photoId"}=${encodeURIComponent(id)}`
+        : route,
+    );
+    analytics.track("chat_source_navigated", { surface, id });
+    if (id) sessionStorage.setItem("highlightItem", id);
   };
 
   // ── Message actions ───────────────────────────────────────────────────────────
@@ -655,36 +791,48 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     const message = messages.find((m) => m.id === messageId);
     if (message) {
       navigator.clipboard.writeText(message.content);
-      analytics.track('chat_message_copied', { messageId, role: message.role });
+      analytics.track("chat_message_copied", { messageId, role: message.role });
     }
   };
 
-  const handleForkMessage = useCallback((messageId: string) => {
-    forkThread(messageId);
-  }, [forkThread]);
+  const handleForkMessage = useCallback(
+    (messageId: string) => {
+      forkThread(messageId);
+    },
+    [forkThread],
+  );
 
-  const handleRetryCloudSync = useCallback((id: string) => {
-    void retryCloudSync(id);
-  }, [retryCloudSync]);
+  const handleRetryCloudSync = useCallback(
+    (id: string) => {
+      void retryCloudSync(id);
+    },
+    [retryCloudSync],
+  );
 
-  const handleRetryAssistantResponse = useCallback((id: string) => {
-    void retryAssistantResponse(id);
-  }, [retryAssistantResponse]);
+  const handleRetryAssistantResponse = useCallback(
+    (id: string) => {
+      void retryAssistantResponse(id);
+    },
+    [retryAssistantResponse],
+  );
 
-  const handleCopyOriginalMessage = useCallback((id: string) => {
-    void copyOriginalMessage(id);
-  }, [copyOriginalMessage]);
+  const handleCopyOriginalMessage = useCallback(
+    (id: string) => {
+      void copyOriginalMessage(id);
+    },
+    [copyOriginalMessage],
+  );
 
   const handleRegenerate = async (messageId: string) => {
-    analytics.track('chat_message_regenerated', { messageId });
+    analytics.track("chat_message_regenerated", { messageId });
     // Reuse the same clientIdempotencyKey — never append another user message.
     await retryAssistantResponse(messageId);
   };
 
   const handleEdit = (messageId: string) => {
     const message = messages.find((m) => m.id === messageId);
-    if (!message || message.role !== 'user') return;
-    analytics.track('chat_message_edited', { messageId });
+    if (!message || message.role !== "user") return;
+    analytics.track("chat_message_edited", { messageId });
 
     // Persisted messages (real chat_messages UUID) are *corrected* — the edit
     // re-derives what Lore Book knows. Unsaved live messages (synthetic ids like
@@ -697,11 +845,13 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     const messageIndex = messages.findIndex((m) => m.id === messageId);
     if (messageIndex >= 0) {
       setMessages(messages.slice(0, messageIndex));
-      const textarea = document.querySelector('textarea[placeholder*="Message Lore Book"]') as HTMLTextAreaElement;
+      const textarea = document.querySelector(
+        'textarea[placeholder*="Message Lore Book"]',
+      ) as HTMLTextAreaElement;
       if (textarea) {
         textarea.focus();
         textarea.value = message.content;
-        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
       }
     }
   };
@@ -711,32 +861,44 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     const result = await correctMessage(correcting.id, newContent, reason);
     if (result) {
       // Reflect the corrected text in the bubble and refresh derived lore.
-      setMessages(messages.map((m) => (m.id === correcting.id ? { ...m, content: newContent } : m)));
+      setMessages(
+        messages.map((m) =>
+          m.id === correcting.id ? { ...m, content: newContent } : m,
+        ),
+      );
       setCorrecting(null);
       void Promise.all([refreshEntries(), refreshTimeline()]);
     }
   };
 
   const handleDelete = (messageId: string) => {
-    analytics.track('chat_message_deleted', { messageId });
+    analytics.track("chat_message_deleted", { messageId });
     setMessages(messages.filter((m) => m.id !== messageId));
   };
 
-  const handleFeedback = async (messageId: string, feedback: 'positive' | 'negative') => {
+  const handleFeedback = async (
+    messageId: string,
+    feedback: "positive" | "negative",
+  ) => {
     const message = messages.find((m) => m.id === messageId);
     if (message) {
-      analytics.track('chat_message_feedback', { messageId, feedback });
+      analytics.track("chat_message_feedback", { messageId, feedback });
       try {
         const context = messages
           .slice(Math.max(0, messages.findIndex((m) => m.id === messageId) - 3))
           .slice(0, 6)
           .map((msg) => ({ role: msg.role, content: msg.content }));
-        await fetchJson('/api/chat/feedback', {
-          method: 'POST',
-          body: JSON.stringify({ messageId, feedback, message: message.content, conversationContext: context }),
+        await fetchJson("/api/chat/feedback", {
+          method: "POST",
+          body: JSON.stringify({
+            messageId,
+            feedback,
+            message: message.content,
+            conversationContext: context,
+          }),
         });
       } catch (error) {
-        console.error('Failed to send feedback:', error);
+        console.error("Failed to send feedback:", error);
       }
     }
   };
@@ -751,27 +913,39 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     name: string;
     threadIds: Set<string>;
   } | null>(null);
-  const handleFilterByEntity = useCallback(async (entityId: string, name: string) => {
-    try {
-      const result = await fetchCastThreads(entityId);
-      setCastFilter({ entityId, name, threadIds: new Set(result.threads.map((t) => t.id)) });
-    } catch {
-      setCastFilter(null);
-    }
-  }, []);
+  const handleFilterByEntity = useCallback(
+    async (entityId: string, name: string) => {
+      try {
+        const result = await fetchCastThreads(entityId);
+        setCastFilter({
+          entityId,
+          name,
+          threadIds: new Set(result.threads.map((t) => t.id)),
+        });
+      } catch {
+        setCastFilter(null);
+      }
+    },
+    [],
+  );
 
   const prefillComposer = (prompt: string) => {
     setInitialPrompt(prompt);
-    const textarea = document.querySelector('textarea[placeholder*="Message Lore Book"]') as HTMLTextAreaElement | null;
+    const textarea = document.querySelector(
+      'textarea[placeholder*="Message Lore Book"]',
+    ) as HTMLTextAreaElement | null;
     if (textarea) {
       textarea.focus();
       textarea.value = prompt;
-      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
     }
   };
 
-  const handleSuggestedAction = (action: ChatSuggestedAction, message: Message) => {
-    analytics.track('chat_suggested_action_clicked', {
+  const handleSuggestedAction = (
+    action: ChatSuggestedAction,
+    message: Message,
+  ) => {
+    analytics.track("chat_suggested_action_clicked", {
       actionId: action.id,
       actionKind: action.kind,
       messageId: message.id,
@@ -782,7 +956,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
         ...prev,
         {
           id: `system-${Date.now()}`,
-          role: 'assistant' as const,
+          role: "assistant" as const,
           content,
           timestamp: new Date(),
           isSystemMessage: true,
@@ -790,37 +964,55 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       ]);
     };
 
-    if (action.kind === 'crud_confirm' && action.apiPath) {
+    if (action.kind === "crud_confirm" && action.apiPath) {
       void (async () => {
         try {
           await fetchJson(action.apiPath!, {
-            method: action.apiMethod ?? 'POST',
+            method: action.apiMethod ?? "POST",
             ...(action.apiBody ? { body: JSON.stringify(action.apiBody) } : {}),
           });
-          invalidateEntityTags(['Character']);
-          appendSystemNote(action.successMessage ?? 'Updated your lore.');
+          invalidateEntityTags(["Character"]);
+          appendSystemNote(action.successMessage ?? "Updated your lore.");
         } catch (error) {
           appendSystemNote(
-            error instanceof Error ? error.message : 'Could not complete that action.',
+            error instanceof Error
+              ? error.message
+              : "Could not complete that action.",
           );
         }
       })();
       return;
     }
 
-    if (action.kind === 'navigate') {
-      if (action.surface === 'family') {
-        navigate('/family');
+    if (action.kind === "navigate") {
+      if (action.surface === "family") {
+        navigate("/family");
+        return;
+      }
+      if (action.surface === "documents") {
+        navigate(
+          action.targetId
+            ? `/documents?documentId=${encodeURIComponent(action.targetId)}`
+            : "/documents",
+        );
+        return;
+      }
+      if (action.surface === "photos") {
+        navigate(
+          action.targetId
+            ? `/photos?photoId=${encodeURIComponent(action.targetId)}`
+            : "/photos",
+        );
         return;
       }
       if (action.targetId) {
-        sessionStorage.setItem('highlightItem', action.targetId);
+        sessionStorage.setItem("highlightItem", action.targetId);
       }
-      navigate('/characters');
+      navigate("/characters");
       return;
     }
 
-    if (action.kind === 'open_sources') {
+    if (action.kind === "open_sources") {
       const source = action.targetId
         ? message.sources?.find((s) => s.id === action.targetId)
         : message.sources?.[0];
@@ -828,13 +1020,13 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       return;
     }
 
-    if (action.kind === 'search') {
+    if (action.kind === "search") {
       const query = action.query || message.content.slice(0, 160);
       navigate(`/timeline?view=search&q=${encodeURIComponent(query)}`);
       return;
     }
 
-    if (action.kind === 'fork') {
+    if (action.kind === "fork") {
       forkThread(message.id);
       return;
     }
@@ -865,8 +1057,11 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     const composerAndContext = buildComposerAndContextDebugSnapshot({
       chatFocus,
       composerDraft: getLatestRawComposerDraft() || composerState.draftText,
-      composerEntityChips: liveChips?.certifiedEntities ?? selectVisibleComposerMatches(store.getState()),
-      confirmingSlots: liveChips?.confirmingSlots ?? composerState.confirmingSlots,
+      composerEntityChips:
+        liveChips?.certifiedEntities ??
+        selectVisibleComposerMatches(store.getState()),
+      confirmingSlots:
+        liveChips?.confirmingSlots ?? composerState.confirmingSlots,
       includedSlots: liveChips?.includedSlots ?? composerState.includedSlots,
       lexicalPreviewChips: liveChips?.previewSpans ?? [],
       threadChips: buildingOn,
@@ -895,15 +1090,19 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
         fetchThreadSummary(activeThreadId),
         fetchThreadRoster(activeThreadId),
       ]);
-      if (summaryResult.status === 'fulfilled') {
+      if (summaryResult.status === "fulfilled") {
         const summary = summaryResult.value.summary;
         const people = scrubPeopleLabels([
           ...(summary.people ?? []),
-          ...threadEntities.filter((entity) => entity.type === 'character').map((entity) => entity.name),
+          ...threadEntities
+            .filter((entity) => entity.type === "character")
+            .map((entity) => entity.name),
         ]);
         const places = scrubPlacesLabels([
           ...(summary.places ?? []),
-          ...threadEntities.filter((entity) => entity.type === 'location').map((entity) => entity.name),
+          ...threadEntities
+            .filter((entity) => entity.type === "location")
+            .map((entity) => entity.name),
         ]);
         threadSurface = {
           ...threadSurface,
@@ -911,11 +1110,14 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           places,
           themes: (summary.themes ?? []).map((t) => t.trim()).filter(Boolean),
           summaryLine:
-            scrubSummaryDisplayLine(summary.medium || summary.short || summary.long, people, places) ??
-            null,
+            scrubSummaryDisplayLine(
+              summary.medium || summary.short || summary.long,
+              people,
+              places,
+            ) ?? null,
         };
       }
-      if (rosterResult.status === 'fulfilled') {
+      if (rosterResult.status === "fulfilled") {
         threadSurface = {
           ...threadSurface,
           actors: (rosterResult.value.entries ?? [])
@@ -940,7 +1142,12 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             byMessageId: await loadAdminMessageDiagnostics(messages),
             runtimeEvents: runtimeDiagnostics
               .tail(100)
-              .filter((event) => !activeThreadId || !event.threadId || event.threadId === activeThreadId),
+              .filter(
+                (event) =>
+                  !activeThreadId ||
+                  !event.threadId ||
+                  event.threadId === activeThreadId,
+              ),
             composerAndContext,
             threadSurface,
           }
@@ -982,7 +1189,10 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           if (options?.messageId) {
             sessionStorage.setItem(CHAT_JUMP_MESSAGE_KEY, options.messageId);
           } else if (options?.messageIndex != null) {
-            sessionStorage.setItem('lk:chat-jump-index', String(options.messageIndex));
+            sessionStorage.setItem(
+              "lk:chat-jump-index",
+              String(options.messageIndex),
+            );
           }
           setThreadListMobileOpen(false);
           void handleSelectThreadWrapped(id);
@@ -1008,23 +1218,40 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
 
       <div
         className="flex flex-col flex-1 min-w-0 relative chat-container overflow-hidden"
-        onTouchStart={isMobile ? (e) => {
-          const touch = e.touches[0];
-          if (touch.clientX < 24 && !threadListMobileOpen) {
-            swipeStartX.current = touch.clientX;
-          }
-        } : undefined}
-        onTouchMove={isMobile ? (e) => {
-          if (swipeStartX.current === null) return;
-          if (e.touches[0].clientX - swipeStartX.current > 60) {
-            setThreadListMobileOpen(true);
-            swipeStartX.current = null;
-          }
-        } : undefined}
-        onTouchEnd={isMobile ? () => { swipeStartX.current = null; } : undefined}
+        onTouchStart={
+          isMobile
+            ? (e) => {
+                const touch = e.touches[0];
+                if (touch.clientX < 24 && !threadListMobileOpen) {
+                  swipeStartX.current = touch.clientX;
+                }
+              }
+            : undefined
+        }
+        onTouchMove={
+          isMobile
+            ? (e) => {
+                if (swipeStartX.current === null) return;
+                if (e.touches[0].clientX - swipeStartX.current > 60) {
+                  setThreadListMobileOpen(true);
+                  swipeStartX.current = null;
+                }
+              }
+            : undefined
+        }
+        onTouchEnd={
+          isMobile
+            ? () => {
+                swipeStartX.current = null;
+              }
+            : undefined
+        }
       >
         {/* Header */}
-        <div className="border-b border-white/10 bg-black/40 backdrop-blur-sm px-3 sm:px-4 py-3 sm:py-2 flex items-center justify-between flex-shrink-0 gap-2" style={{ paddingTop: 'env(safe-area-inset-top, 0.75rem)' }}>
+        <div
+          className="border-b border-white/10 bg-black/40 backdrop-blur-sm px-3 sm:px-4 py-3 sm:py-2 flex items-center justify-between flex-shrink-0 gap-2"
+          style={{ paddingTop: "env(safe-area-inset-top, 0.75rem)" }}
+        >
           <div className="flex items-center gap-2 min-w-0 flex-1">
             {isMobile && (
               <button
@@ -1043,12 +1270,18 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 <Logo size="xs" showText={false} />
                 <div className="flex items-baseline gap-0.5 leading-none">
-                  <span className="text-sm font-bold tracking-widest text-primary drop-shadow-[0_0_6px_rgba(124,58,237,0.7)]">LORE</span>
-                  <span className="text-sm font-bold tracking-widest text-gray-300">BOOK</span>
+                  <span className="text-sm font-bold tracking-widest text-primary drop-shadow-[0_0_6px_rgba(124,58,237,0.7)]">
+                    LORE
+                  </span>
+                  <span className="text-sm font-bold tracking-widest text-gray-300">
+                    BOOK
+                  </span>
                 </div>
               </div>
             ) : (
-              <h2 className="text-xs sm:text-sm font-semibold text-white/90 flex-shrink-0">Lore Book</h2>
+              <h2 className="text-xs sm:text-sm font-semibold text-white/90 flex-shrink-0">
+                Lore Book
+              </h2>
             )}
             {!isMobile && <CurrentContextBreadcrumbs />}
             <ThreadSaveChip threadId={activeThreadId} />
@@ -1057,8 +1290,12 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             <button
               type="button"
               onClick={() => setContextPanelOpen(!contextPanelOpen)}
-              className={`h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors touch-manipulation ${contextPanelOpen ? 'text-indigo-400' : 'text-white/40 hover:text-white/60'}`}
-              title={contextPanelOpen ? 'Hide active context' : 'Show active context — why is LoreBook talking about this?'}
+              className={`h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors touch-manipulation ${contextPanelOpen ? "text-indigo-400" : "text-white/40 hover:text-white/60"}`}
+              title={
+                contextPanelOpen
+                  ? "Hide active context"
+                  : "Show active context — why is LoreBook talking about this?"
+              }
             >
               <Brain className="h-4 w-4" />
             </button>
@@ -1077,24 +1314,26 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
                 type="button"
                 onClick={() => void handleCopyConversation()}
                 disabled={conversationCopying}
-                className={`h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors touch-manipulation disabled:cursor-wait ${conversationCopied ? 'text-green-400' : 'text-white/40 hover:text-white/70'} ${conversationCopying ? 'animate-pulse' : ''}`}
+                className={`h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors touch-manipulation disabled:cursor-wait ${conversationCopied ? "text-green-400" : "text-white/40 hover:text-white/70"} ${conversationCopying ? "animate-pulse" : ""}`}
                 title={
                   conversationCopied
-                    ? 'Copied!'
+                    ? "Copied!"
                     : canCopyAdminDiagnostics
-                      ? 'Copy conversation + thread surface + admin diagnostic receipt'
-                      : 'Copy conversation + people, places, actors, and chips'
+                      ? "Copy conversation + thread surface + admin diagnostic receipt"
+                      : "Copy conversation + people, places, actors, and chips"
                 }
                 aria-label={
                   canCopyAdminDiagnostics
-                    ? 'Copy conversation, thread surface, and admin diagnostics'
-                    : 'Copy conversation and thread surface'
+                    ? "Copy conversation, thread surface, and admin diagnostics"
+                    : "Copy conversation and thread surface"
                 }
                 data-testid="copy-conversation"
               >
-                {conversationCopied
-                  ? <CheckIcon className="h-4 w-4" />
-                  : <ClipboardIcon className="h-4 w-4" />}
+                {conversationCopied ? (
+                  <CheckIcon className="h-4 w-4" />
+                ) : (
+                  <ClipboardIcon className="h-4 w-4" />
+                )}
               </button>
             )}
             {!isMobile && (
@@ -1131,9 +1370,15 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             {isMobile && (
               <div className="h-8 w-8 rounded-full flex-shrink-0 overflow-hidden flex items-center justify-center border border-white/20 bg-white/8 ml-0.5">
                 {avatarUrl ? (
-                  <img src={avatarUrl} alt="Profile" className="h-full w-full object-cover" />
+                  <img
+                    src={avatarUrl}
+                    alt="Profile"
+                    className="h-full w-full object-cover"
+                  />
                 ) : avatarInitial ? (
-                  <span className="text-xs font-semibold text-primary">{avatarInitial}</span>
+                  <span className="text-xs font-semibold text-primary">
+                    {avatarInitial}
+                  </span>
                 ) : (
                   <UserCircle className="h-5 w-5 text-white/30" />
                 )}
@@ -1142,7 +1387,10 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           </div>
         </div>
 
-        <AiBudgetBanner budget={subscription?.openAiBudget} usage={subscription?.usage} />
+        <AiBudgetBanner
+          budget={subscription?.openAiBudget}
+          usage={subscription?.usage}
+        />
 
         {isGuest && messages.length === 0 && (
           <GuestExperienceCard variant="compact" showEndSession={false} />
@@ -1150,17 +1398,23 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
 
         {/* Runtime status banner — hidden when global offline bar is already shown */}
         {backendStatus && !statusDismissed && !backendUnavailable && (
-          <div className={`flex items-center justify-between px-3 flex-shrink-0 ${
-            isMobile ? 'py-1 text-[10px]' : 'py-2 text-xs'
-          } ${
-            backendStatus === 'unreachable'
-              ? 'bg-red-900/30 border-b border-red-500/20 text-red-300/90'
-              : 'bg-yellow-900/25 border-b border-yellow-500/15 text-yellow-300/90'
-          }`}>
+          <div
+            className={`flex items-center justify-between px-3 flex-shrink-0 ${
+              isMobile ? "py-1 text-[10px]" : "py-2 text-xs"
+            } ${
+              backendStatus === "unreachable"
+                ? "bg-red-900/30 border-b border-red-500/20 text-red-300/90"
+                : "bg-yellow-900/25 border-b border-yellow-500/15 text-yellow-300/90"
+            }`}
+          >
             <span className="truncate">
-              {backendStatus === 'unreachable'
-                ? (isMobile ? 'Offline mode' : 'Cannot reach server — offline mode')
-                : (isMobile ? 'Limited mode' : 'Server degraded — some features limited')}
+              {backendStatus === "unreachable"
+                ? isMobile
+                  ? "Offline mode"
+                  : "Cannot reach server — offline mode"
+                : isMobile
+                  ? "Limited mode"
+                  : "Server degraded — some features limited"}
             </span>
             <button
               type="button"
@@ -1207,7 +1461,11 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           <WorkSummaryImporter
             onClose={() => setShowWorkSummary(false)}
             onSuccess={async () => {
-              await Promise.all([refreshEntries(), refreshTimeline(), refreshChapters()]);
+              await Promise.all([
+                refreshEntries(),
+                refreshTimeline(),
+                refreshChapters(),
+              ]);
             }}
           />
         )}
@@ -1222,7 +1480,9 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
         )}
 
         {/* What Changed Since Last Time — proves continuity before the user types anything */}
-        <WhatChangedSinceLastTime thread={threads.find(t => t.id === activeThreadId)} />
+        <WhatChangedSinceLastTime
+          thread={threads.find((t) => t.id === activeThreadId)}
+        />
 
         {longThreadJumpOffer && (
           <div
@@ -1231,7 +1491,8 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             role="status"
           >
             <p className="text-xs sm:text-sm text-amber-50/90 flex-1 min-w-0">
-              This thread has piled up many older conversations. Stay to read the source line, or start a fresh chat so new messages stay clean.
+              This thread has piled up many older conversations. Stay to read
+              the source line, or start a fresh chat so new messages stay clean.
             </p>
             <div className="flex items-center gap-2 flex-shrink-0">
               <button
@@ -1284,8 +1545,12 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
                 </div>
               ) : hydrationError ? (
                 <div className="flex flex-1 flex-col items-center justify-center gap-3 min-h-[12rem] p-6 text-center">
-                  <p className="text-sm text-white/70">Couldn&apos;t load this conversation.</p>
-                  <p className="text-xs text-white/40 max-w-sm">{hydrationError}</p>
+                  <p className="text-sm text-white/70">
+                    Couldn&apos;t load this conversation.
+                  </p>
+                  <p className="text-xs text-white/40 max-w-sm">
+                    {hydrationError}
+                  </p>
                   <button
                     type="button"
                     onClick={() => retryHydrateActiveThread()}
@@ -1297,7 +1562,9 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
               ) : (
                 <>
                   <ChatEmptyState />
-                  {user && <CastTrendsNudge onPrefillComposer={prefillComposer} />}
+                  {user && (
+                    <CastTrendsNudge onPrefillComposer={prefillComposer} />
+                  )}
                 </>
               )}
             </div>
@@ -1307,7 +1574,9 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
               streamingMessageId={streamingMessageId}
               searchMessageId={searchMessageId}
               highlightTerms={
-                searchMessageId && jumpHighlightTerms.length > 0 ? jumpHighlightTerms : undefined
+                searchMessageId && jumpHighlightTerms.length > 0
+                  ? jumpHighlightTerms
+                  : undefined
               }
               messageRefs={messageRefs.current}
               showCognitiveTrace={showCognitiveTrace}
@@ -1331,7 +1600,10 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
 
           {isLoading && !streamingMessageId && (
             <div className="flex-shrink-0">
-              <ChatLoadingPulse stage={loadingStage} progress={loadingProgress} />
+              <ChatLoadingPulse
+                stage={loadingStage}
+                progress={loadingProgress}
+              />
             </div>
           )}
 
@@ -1347,18 +1619,24 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
 
         {/* Sources, focus chips, and thread entities — one collapse over the composer */}
         <ComposerChromeTray
-          key={activeThreadId ?? 'new-thread'}
+          key={activeThreadId ?? "new-thread"}
           defaultCollapsed={isMobile}
           label="On this chat"
           meta={composerSourceMeta}
           expandSignal={composerSourceSignal}
         >
           {messages.length > 0 && (
-            <ChatSourcesBar sources={sources} onSourceClick={handleSourceClick} />
+            <ChatSourcesBar
+              sources={sources}
+              onSourceClick={handleSourceClick}
+            />
           )}
 
           {chatFocus && (
-            <ChatFocusChipBar focus={chatFocus} onDismiss={() => dispatch(clearChatFocus())} />
+            <ChatFocusChipBar
+              focus={chatFocus}
+              onDismiss={() => dispatch(clearChatFocus())}
+            />
           )}
 
           {!composerHasDraft && (
@@ -1366,7 +1644,9 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
               messages={messages}
               variant="composer"
               selectedEntityId={focusedEntityId}
-              onSelectEntity={(entity) => setFocusedEntityId(entity?.id ?? null)}
+              onSelectEntity={(entity) =>
+                setFocusedEntityId(entity?.id ?? null)
+              }
             />
           )}
 
@@ -1384,10 +1664,10 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
         <div
           className={`flex-shrink-0 rounded-t-xl transition-shadow ${
             focusComposerPulse
-              ? chatFocus?.sourceSurface === 'love'
-                ? 'animate-focus-composer-pulse ring-2 ring-pink-500/35'
-                : 'animate-focus-composer-pulse ring-2 ring-primary/30'
-              : ''
+              ? chatFocus?.sourceSurface === "love"
+                ? "animate-focus-composer-pulse ring-2 ring-pink-500/35"
+                : "animate-focus-composer-pulse ring-2 ring-primary/30"
+              : ""
           }`}
         >
           <ChatComposer
@@ -1405,45 +1685,75 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             initialDate={initialDate}
             threadId={activeThreadId ?? undefined}
             defaultCollapsed={isMobile && messages.length > 0}
-            focusCharacterId={chatFocus?.entityType === 'character' ? chatFocus.entityId : undefined}
-            focusCharacterName={chatFocus?.entityType === 'character' ? chatFocus.entityName : undefined}
+            focusCharacterId={
+              chatFocus?.entityType === "character"
+                ? chatFocus.entityId
+                : undefined
+            }
+            focusCharacterName={
+              chatFocus?.entityType === "character"
+                ? chatFocus.entityName
+                : undefined
+            }
+            initialDocumentAttachments={chatFocus?.documentAttachments}
+            placeholder={
+              chatFocus?.sourceSurface === "documents"
+                ? "Ask about these documents or say what to grow into your lore…"
+                : undefined
+            }
             onChipDebugChange={handleComposerChipDebugChange}
             onUploadComplete={async (result?: UploadCompletePayload) => {
               const now = new Date();
-              if (result?.kind === 'resume') {
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    id: `upload-user-${now.getTime()}`,
-                    role: 'user',
-                    content: `📎 Uploaded resume: **${result.fileName}**`,
-                    timestamp: now,
-                  },
-                  {
-                    id: `upload-assistant-${now.getTime()}`,
-                    role: 'assistant',
-                    content: result.chatFeedback ?? 'Resume processed.',
-                    timestamp: now,
-                    isSystemMessage: true,
-                  },
-                ]);
-                dispatchStoryDataUpdated({ scopes: ['all'], delayMs: 1500 });
-              } else if (result?.kind === 'photo') {
+              if (result?.kind === "resume") {
+                if (result.documentId) {
+                  // The upload endpoint stores/parses the file, then the
+                  // resulting chat turn explicitly carries that document ID.
+                  // This prevents the composer caption from becoming a
+                  // text-only turn that cannot see the newly uploaded resume.
+                  const prompt = [
+                    result.caption ||
+                      `I just attached "${result.fileName}" to this chat.`,
+                    `Please use that attached resume as evidence and summarize what you found, including work history, education, and anything that still needs review.`,
+                  ].join("\n\n");
+                  sendMessage(prompt, {
+                    ...buildChatSendOptions(prompt),
+                    resumeDocumentId: result.documentId,
+                  });
+                } else {
+                  // Demo uploads do not have a server document to bind to.
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: `upload-user-${now.getTime()}`,
+                      role: "user",
+                      content: `📎 Uploaded resume: **${result.fileName}**`,
+                      timestamp: now,
+                    },
+                    {
+                      id: `upload-assistant-${now.getTime()}`,
+                      role: "assistant",
+                      content: result.chatFeedback ?? "Resume processed.",
+                      timestamp: now,
+                      isSystemMessage: true,
+                    },
+                  ]);
+                }
+                dispatchStoryDataUpdated({ scopes: ["all"], delayMs: 1500 });
+              } else if (result?.kind === "photo") {
                 const img = result.chatImage;
 
                 // Discuss: real multimodal chat turn so the model sees the image.
                 if (result.discussOnly && img?.dataUrl) {
-                  const prompt =
-                    result.analysis?.summary
-                      ? `I just shared this photo (${result.fileName}). Analysis: "${result.analysis.summary}". Talk with me about it — what should we remember?`
-                      : `I just shared this photo (${result.fileName}). What do you notice? Help me remember what matters.`;
+                  const prompt = result.analysis?.summary
+                    ? `I just shared this photo (${result.fileName}). Analysis: "${result.analysis.summary}". Talk with me about it — what should we remember?`
+                    : `I just shared this photo (${result.fileName}). What do you notice? Help me remember what matters.`;
                   void sendMessage(prompt, {
                     ...buildChatSendOptions(prompt),
                     images: [
                       {
                         dataUrl: img.dataUrl,
                         mimeType: img.mimeType,
-                        detail: 'high',
+                        detail: "high",
                         url: img.url,
                       },
                     ],
@@ -1452,18 +1762,18 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
                   // Saved to lore: show confirmation bubbles with thumbnail.
                   const userBubble: Message = {
                     id: `upload-photo-user-${now.getTime()}`,
-                    role: 'user',
+                    role: "user",
                     content: `📷 Saved photo: ${result.fileName}`,
                     timestamp: now,
-                    persistStatus: 'saved',
+                    persistStatus: "saved",
                     ...(img || result.processResult?.photoUrl
                       ? {
                           attachments: [
                             {
-                              kind: 'image' as const,
+                              kind: "image" as const,
                               dataUrl: img?.dataUrl,
                               url: img?.url ?? result.processResult?.photoUrl,
-                              mimeType: img?.mimeType ?? 'image/jpeg',
+                              mimeType: img?.mimeType ?? "image/jpeg",
                             },
                           ],
                         }
@@ -1472,32 +1782,37 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
                   const assistantLines = [
                     result.chatFeedback,
                     result.addedToLoreBook
-                      ? 'It’s in your photo album and memories.'
-                      : '',
-                    result.processResult?.selfMediaId || result.analysis?.isSelfie
-                      ? 'Also on your main character Photos tab (selfies / photos of you).'
-                      : '',
-                    'You can keep typing below — ask follow-ups anytime.',
+                      ? "It’s in your photo album and memories."
+                      : "",
+                    result.processResult?.selfMediaId ||
+                    result.analysis?.isSelfie
+                      ? "Also on your main character Photos tab (selfies / photos of you)."
+                      : "",
+                    "You can keep typing below — ask follow-ups anytime.",
                   ]
                     .filter(Boolean)
-                    .join('\n\n');
+                    .join("\n\n");
 
                   setMessages([
                     ...messages,
                     userBubble,
                     {
                       id: `upload-photo-assistant-${now.getTime()}`,
-                      role: 'assistant',
-                      content: assistantLines || 'Photo processed.',
+                      role: "assistant",
+                      content: assistantLines || "Photo processed.",
                       timestamp: now,
                       isSystemMessage: true,
                     },
                   ]);
                 }
 
-                dispatchStoryDataUpdated({ scopes: ['all'], delayMs: 1500 });
+                dispatchStoryDataUpdated({ scopes: ["all"], delayMs: 1500 });
               }
-              await Promise.all([refreshEntries(), refreshTimeline(), refreshChapters()]);
+              await Promise.all([
+                refreshEntries(),
+                refreshTimeline(),
+                refreshChapters(),
+              ]);
             }}
           />
         </div>

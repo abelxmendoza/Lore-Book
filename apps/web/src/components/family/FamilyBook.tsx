@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { TreePine, Home, Users, BarChart3, Loader2, GitBranch, Check, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { TreePine, Home, Users, BarChart3, Loader2, GitBranch, Check, X, MessageSquare } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
 import { booksApi, type PossibleFamilyMatch } from '../../api/books';
 import { onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
@@ -9,16 +9,22 @@ import { FamilyTreePanel } from './FamilyTreePanel';
 import { FamilyTreeCopyAllButton } from './FamilyTreeCopyAllButton';
 import { HierarchicalFamilyTree } from './HierarchicalFamilyTree';
 import { FamilyTreeView } from './FamilyTreeView';
+import { FamilyTreeDepthToggle } from './FamilyTreeDepthToggle';
+import { filterFamilyTreeByDepth, type FamilyTreeDepth } from '../../lib/familyTreeDepth';
 import { HouseholdDirectory, type HouseholdDTO } from './HouseholdDirectory';
 import { FamilyAnalyticsPanel, type RelationshipAnalyticDTO } from './FamilyAnalyticsPanel';
 import { FamilyExtendedNetworkPanel } from './FamilyExtendedNetworkPanel';
+import { FamilyFocusChatPanel } from './FamilyFocusChatPanel';
 import { CharacterDetailModal } from '../characters/CharacterDetailModal';
 import { useToast } from '../ui/toast';
 import { RelationshipEditor, type RelationshipEdit } from './RelationshipEditor';
 import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
 import type { Character } from '../characters/CharacterProfileCard';
+import { FocusedEntityChatLauncher, type FocusedEntityOption } from '../chat/FocusedEntityChatLauncher';
+import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
+import { openFocusedEntityChat } from '../../lib/openFocusedEntityChat';
 
-type Tab = 'tree' | 'households' | 'groups' | 'analytics' | 'extended';
+type Tab = 'tree' | 'households' | 'groups' | 'analytics' | 'extended' | 'focus-chat';
 
 type SummaryResponse = {
   success: boolean;
@@ -37,7 +43,10 @@ export function FamilyBook() {
   const [demoTree, setDemoTree] = useState<FamilyTree | null>(null);
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [viewMode, setViewMode] = useState<'hierarchical' | 'visual'>('visual');
+  const [treeDepth, setTreeDepth] = useState<FamilyTreeDepth>('close');
   const [editorMember, setEditorMember] = useState<FamilyMember | null>(null);
+  const [focusedChatBusy, setFocusedChatBusy] = useState(false);
+  const [focusedChatError, setFocusedChatError] = useState<string | null>(null);
   const { success, error: toastError, ToastContainer } = useToast();
 
   const load = useCallback(async () => {
@@ -67,6 +76,44 @@ export function FamilyBook() {
   useEffect(() => onStoryDataUpdated(() => { void load(); }, 'family'), [load]);
 
   const activeTree = demoTree || summary?.tree || null;
+  const visibleTree = useMemo(
+    () => (activeTree ? filterFamilyTreeByDepth(activeTree, treeDepth) : null),
+    [activeTree, treeDepth],
+  );
+
+  // Known relatives to search against before falling back to "introduce a new
+  // person" — synthetic tree nodes (head-/group-/__ ids), the account owner,
+  // and unresolved placeholders aren't real Character Book entries yet.
+  const familyChatOptions: FocusedEntityOption[] = useMemo(
+    () =>
+      (activeTree?.members ?? [])
+        .filter(
+          (m) =>
+            !m.is_self &&
+            !m.is_account_self &&
+            !m.is_placeholder &&
+            !m.id.startsWith('head-') &&
+            !m.id.startsWith('group-') &&
+            !m.id.startsWith('__'),
+        )
+        .map((m) => ({ id: m.id, name: m.name })),
+    [activeTree],
+  );
+
+  const openFamilyFocusedChat = useCallback(
+    async (selection: { name: string; entity?: FocusedEntityOption }) => {
+      setFocusedChatBusy(true);
+      setFocusedChatError(null);
+      try {
+        openFocusedEntityChat(FOCUSED_ENTITY_CHAT_PRESETS.family, selection);
+      } catch (err) {
+        setFocusedChatError(err instanceof Error ? err.message : 'Could not open chat');
+      } finally {
+        setFocusedChatBusy(false);
+      }
+    },
+    [],
+  );
 
   const openCharacter = async (characterId: string, name: string) => {
     if (characterId.startsWith('head-') || characterId.startsWith('group-') || characterId.startsWith('__')) return;
@@ -209,6 +256,60 @@ export function FamilyBook() {
       `Disconnected ${member.name}`,
       `Couldn't disconnect ${member.name}`,
     ), [runEdit]);
+
+  // ── Household edits ─────────────────────────────────────────────────────
+  const createHousehold = useCallback((name: string, locationName?: string) =>
+    runEdit(
+      () => fetchJson('/api/family/household', { method: 'POST', body: JSON.stringify({ name, locationName }) }),
+      `Created the ${name} household`,
+      `Couldn't create ${name}`,
+    ), [runEdit]);
+
+  const addHouseholdMember = useCallback((householdId: string, characterName: string, reason?: string) =>
+    runEdit(
+      () => fetchJson(`/api/family/household/${householdId}/members`, {
+        method: 'POST',
+        body: JSON.stringify({ characterName, reason }),
+      }),
+      `Added ${characterName} to the household`,
+      `Couldn't add ${characterName}`,
+    ), [runEdit]);
+
+  const removeHouseholdMember = useCallback((householdId: string, characterId: string, characterName: string, reason?: string) =>
+    runEdit(
+      () => fetchJson(`/api/family/household/${householdId}/members/${characterId}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ reason }),
+      }),
+      `Removed ${characterName} from the household`,
+      `Couldn't remove ${characterName}`,
+    ), [runEdit]);
+
+  const moveHousehold = useCallback((householdId: string, locationName: string, reason?: string) =>
+    runEdit(
+      () => fetchJson(`/api/family/household/${householdId}/location`, {
+        method: 'PATCH',
+        body: JSON.stringify({ locationName, reason }),
+      }),
+      `Moved the household to ${locationName}`,
+      `Couldn't move the household`,
+    ), [runEdit]);
+
+  const deleteHousehold = useCallback((householdId: string, householdName: string, reason: string) =>
+    runEdit(
+      () => fetchJson(`/api/family/household/${householdId}`, { method: 'DELETE', body: JSON.stringify({ reason }) }),
+      `Deleted the ${householdName} household`,
+      `Couldn't delete ${householdName}`,
+    ), [runEdit]);
+
+  const fetchHouseholdHistory = useCallback(async (householdId: string) => {
+    try {
+      const r = await fetchJson<{ history?: unknown[] }>(`/api/family/household/${householdId}/history`);
+      return (r.history ?? []) as import('./HouseholdDirectory').HouseholdHistoryEntry[];
+    } catch {
+      return [];
+    }
+  }, []);
 
   const confirmFamilyMatch = useCallback((match: PossibleFamilyMatch) =>
     runEdit(
@@ -369,6 +470,7 @@ export function FamilyBook() {
     { key: 'groups', label: 'Family Groups', icon: Users },
     { key: 'analytics', label: 'Analytics', icon: BarChart3 },
     { key: 'extended', label: 'Extended family', icon: GitBranch },
+    { key: 'focus-chat', label: 'Focus Chat', icon: MessageSquare },
   ];
 
   return (
@@ -387,6 +489,16 @@ export function FamilyBook() {
           Living family graphs inferred from your conversations — trees, households, groups, and relationship strength.
         </p>
       </header>
+
+      <FocusedEntityChatLauncher
+        options={familyChatOptions}
+        copy={FOCUSED_ENTITY_CHAT_PRESETS.family.copy}
+        theme={FOCUSED_ENTITY_CHAT_PRESETS.family.theme}
+        icon={FOCUSED_ENTITY_CHAT_PRESETS.family.icon}
+        busy={focusedChatBusy}
+        error={focusedChatError}
+        onContinue={openFamilyFocusedChat}
+      />
 
       {!!summary?.possibleFamilyMatches?.length && (
         <div className="space-y-2">
@@ -476,23 +588,26 @@ export function FamilyBook() {
                 </button>
                 <div className="ml-auto">
                   <FamilyTreeCopyAllButton
-                    tree={activeTree}
+                    tree={visibleTree}
                     title="Your family tree"
-                    filters={[`view=${viewMode}`, shouldUseMock ? 'mode=demo' : 'mode=live']}
+                    filters={[`view=${viewMode}`, `depth=${treeDepth}`, shouldUseMock ? 'mode=demo' : 'mode=live']}
                     size="md"
                     data-testid="family-book-copy-all"
                   />
                 </div>
               </div>
-              {viewMode === 'hierarchical' && activeTree?.members?.length ? (
+              {activeTree && (
+                <FamilyTreeDepthToggle value={treeDepth} onChange={setTreeDepth} tree={activeTree} />
+              )}
+              {viewMode === 'hierarchical' && visibleTree?.members?.length ? (
                 <HierarchicalFamilyTree
-                  tree={activeTree}
+                  tree={visibleTree}
                   onMemberClick={(m) => void openCharacter(m.id, m.name)}
                 />
-              ) : viewMode === 'visual' && shouldUseMock && activeTree?.members?.length ? (
+              ) : viewMode === 'visual' && shouldUseMock && visibleTree?.members?.length ? (
                 <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
                   <FamilyTreeView
-                    tree={activeTree}
+                    tree={visibleTree}
                     onMemberClick={(m) => void openCharacter(m.id, m.name)}
                     {...editHandlers}
                   />
@@ -502,6 +617,9 @@ export function FamilyBook() {
                   scope="mine"
                   title="Your family tree"
                   hint="Mention relatives in chat — LoreBook builds your tree automatically."
+                  depth={treeDepth}
+                  onDepthChange={setTreeDepth}
+                  showDepthToggle={false}
                   onMemberClick={(id, name) => void openCharacter(id, name)}
                   {...editHandlers}
                 />
@@ -513,6 +631,12 @@ export function FamilyBook() {
             <HouseholdDirectory
               households={summary?.households ?? []}
               onMemberClick={(id, name) => void openCharacter(id, name)}
+              onCreateHousehold={shouldUseMock ? undefined : (name, locationName) => void createHousehold(name, locationName)}
+              onAddMember={shouldUseMock ? undefined : (id, name, reason) => void addHouseholdMember(id, name, reason)}
+              onRemoveMember={shouldUseMock ? undefined : (hid, cid, name, reason) => void removeHouseholdMember(hid, cid, name, reason)}
+              onMoveHousehold={shouldUseMock ? undefined : (id, loc, reason) => void moveHousehold(id, loc, reason)}
+              onDeleteHousehold={shouldUseMock ? undefined : (id, name, reason) => void deleteHousehold(id, name, reason)}
+              onFetchHistory={shouldUseMock ? undefined : fetchHouseholdHistory}
             />
           )}
 
@@ -561,6 +685,14 @@ export function FamilyBook() {
           {tab === 'extended' && (
             <FamilyExtendedNetworkPanel
               onMemberClick={(id, name) => void openCharacter(id, name)}
+            />
+          )}
+
+          {tab === 'focus-chat' && (
+            <FamilyFocusChatPanel
+              memberCount={activeTree?.members?.length ?? 0}
+              householdCount={summary?.households?.length ?? 0}
+              groupCount={summary?.familyGroups?.length ?? 0}
             />
           )}
         </>

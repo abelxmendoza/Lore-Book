@@ -23,6 +23,7 @@ import {
   isSkillWriteRequest,
   isQuestWriteRequest,
   isFamilyWriteRequest,
+  isHouseholdWriteRequest,
   isRomanceWriteRequest,
   isEventWriteRequest,
 } from '@lorebook/api-contracts';
@@ -30,7 +31,11 @@ import {
 import { logger } from '../../logger';
 import { isReplyToGroupNamingPrompt } from '../chat/groupWriteService';
 import { classifyQuestionIntent } from '../chat/questionIntentClassifier';
-import { matchesFoundationRecallQuery } from '../chat/recallIntentPatterns';
+import {
+  EDUCATION_RE,
+  matchesFoundationRecallQuery,
+  WORK_RE,
+} from '../chat/recallIntentPatterns';
 import {
   shouldSuppressTherapist,
   shouldPreferBiographyWriter,
@@ -54,6 +59,7 @@ export type ChatMode =
   | 'SKILL_WRITE'            // Explicit Skills create/update/delete
   | 'QUEST_WRITE'            // Explicit Quest Log create/update/delete/status
   | 'FAMILY_WRITE'           // Explicit Family Tree kinship writes
+  | 'HOUSEHOLD_WRITE'        // Explicit household create/delete/member/location writes
   | 'ROMANCE_WRITE'          // Explicit Dating & Romance status writes
   | 'EVENT_WRITE'            // Explicit Life Log user-posted Event create
   | 'SUGGESTION_DISMISS_WRITE' // Explicit "that suggestion is wrong" correction
@@ -249,6 +255,14 @@ class ModeRouterService {
       };
     }
 
+    if (isHouseholdWriteRequest(message)) {
+      return {
+        mode: 'HOUSEHOLD_WRITE',
+        confidence: 0.95,
+        reasoning: 'Explicit household write request detected',
+      };
+    }
+
     if (isRomanceWriteRequest(message)) {
       return {
         mode: 'ROMANCE_WRITE',
@@ -295,9 +309,19 @@ class ModeRouterService {
       };
     }
 
-    // Cross-Book questions and Books without dedicated mature handlers use
-    // the normalized registry. This must run before the single-Book checks so
-    // "What skills support my active quests?" is not reduced to Quest-only.
+    // Work and education recall have a deterministic handler. These terms can
+    // also look like document or organization domains, so resolve them before
+    // the generic Book registry.
+    if (WORK_RE.test(message) || EDUCATION_RE.test(message)) {
+      return {
+        mode: 'FOUNDATION_RECALL',
+        confidence: 0.95,
+        reasoning: 'Foundation work or education recall query detected',
+      };
+    }
+
+    // Cross-Book questions must be recognized before a single Book handler
+    // captures one of their domains.
     if (isUniversalBookQueryRequest(message)) {
       return {
         mode: 'BOOK_QUERY',
@@ -372,6 +396,16 @@ class ModeRouterService {
       };
     }
 
+    // Remaining foundation queries are checked after dedicated domain modes
+    // so questions such as "who am I dating?" stay in the romance compiler.
+    if (matchesFoundationRecallQuery(message)) {
+      return {
+        mode: 'FOUNDATION_RECALL',
+        confidence: 0.95,
+        reasoning: 'Foundation recall query detected (biography, roster, family, or entity)',
+      };
+    }
+
     // NEEDS_CLARIFICATION: Milestone/achievement-ish but ambiguous (app vs life, or vague).
     // Ask what they mean before ingesting. Run before greeting/meta so
     // "I got the chat working. Does it work?" gets clarify, not plain UNKNOWN.
@@ -389,15 +423,6 @@ class ModeRouterService {
         mode: 'UNKNOWN',
         confidence: 0.9,
         reasoning: 'Greeting, meta-question, or small talk; use normal chat',
-      };
-    }
-
-    // Foundation recall queries — structured lore, not LLM + journal fallback
-    if (matchesFoundationRecallQuery(message)) {
-      return {
-        mode: 'FOUNDATION_RECALL',
-        confidence: 0.95,
-        reasoning: 'Foundation recall query detected (biography, roster, family, or entity)',
       };
     }
 
@@ -757,6 +782,7 @@ Modes:
 10e. SKILL_WRITE - Explicit Skills create/rename/delete/merge: "add Welding as a skill", "merge Prototyping into Hardware Prototyping".
 10f. QUEST_WRITE - Explicit Quest Log create/rename/delete/status: "add Ship MemoVault as a quest", "mark the quest X as done".
 10g. FAMILY_WRITE - Explicit Family Tree kinship write: "mark Marcus as my cousin".
+10g2. HOUSEHOLD_WRITE - Explicit household create/delete/member/location write: "add Ralph to the Mom and Dad's House household", "move the Mom and Dad's House household to 456 Oak Ave".
 10h. ROMANCE_WRITE - Explicit Dating & Romance status write: "mark Jamie as dating", "we broke up with Jamie".
 10i. EVENT_WRITE - Explicit Life Log Event post: "we played a backyard show at Northwind Depot", "post an event: House Show at Ritual Coffee".
 11. ORGANIZATION_QUERY - Read-only query over the Groups & Organizations Book: "which groups am I in?", "what organizations is Marcus connected to?", "show unlinked bands".
@@ -803,7 +829,7 @@ Respond with JSON:
       const result = JSON.parse(response.choices[0].message.content || '{}');
       
       // Validate mode
-      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'CURRENT_STORY_CAST', 'CHARACTER_BOOK_WRITE', 'ORGANIZATION_GROUP_WRITE', 'ENTITY_RECLASSIFY_WRITE', 'LOCATION_WRITE', 'PROJECT_WRITE', 'SKILL_WRITE', 'QUEST_WRITE', 'FAMILY_WRITE', 'ROMANCE_WRITE', 'EVENT_WRITE', 'SUGGESTION_DISMISS_WRITE', 'ORGANIZATION_QUERY', 'CHARACTER_QUERY', 'FAMILY_QUERY', 'LOCATION_QUERY', 'ROMANCE_QUERY', 'PROJECT_QUERY', 'SKILL_QUERY', 'QUEST_QUERY', 'BOOK_QUERY', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
+      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'CURRENT_STORY_CAST', 'CHARACTER_BOOK_WRITE', 'ORGANIZATION_GROUP_WRITE', 'ENTITY_RECLASSIFY_WRITE', 'LOCATION_WRITE', 'PROJECT_WRITE', 'SKILL_WRITE', 'QUEST_WRITE', 'FAMILY_WRITE', 'HOUSEHOLD_WRITE', 'ROMANCE_WRITE', 'EVENT_WRITE', 'SUGGESTION_DISMISS_WRITE', 'ORGANIZATION_QUERY', 'CHARACTER_QUERY', 'FAMILY_QUERY', 'LOCATION_QUERY', 'ROMANCE_QUERY', 'PROJECT_QUERY', 'SKILL_QUERY', 'QUEST_QUERY', 'BOOK_QUERY', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
       const mode = validModes.includes(result.mode) ? result.mode : 'UNKNOWN';
       
       return {
@@ -960,12 +986,12 @@ export function isLocationQueryRequest(message: string): boolean {
 export function isRomanceQueryRequest(message: string): boolean {
   const text = message.trim();
   if (!text || !looksLikeQueryPhrasing(text)) return false;
-  if (!/\b(?:dating|romance|romantic|relationships?|exes?|crushes?|situationships?|boyfriends?|girlfriends?|partners?|lovers?|no contact|ghosted|blocked)\b/i.test(text)) {
+  if (!/\b(?:dating|romance|romantic|relationships?|relationship\s+(?:status|history|changes?)|exes?|crushes?|situationships?|boyfriends?|girlfriends?|partners?|lovers?|no contact|ghosted|blocked|inactive)\b/i.test(text)) {
     return false;
   }
   return (
     /\b(?:which|who|what|show|find|list|how many|rank|compare)\b/i.test(text) &&
-    /\b(?:my|i|current|active|past|former|dated|dating|romantic|relationship|crush|situationship|no contact|ghosted|blocked|risk|flag|review|linked|compatibility|health|affection|intensity|attachment|evidence)\b/i.test(text)
+    /\b(?:my|i|current|active|inactive|past|former|dated|dating|romantic|relationship|history|changed|changes|reason|crush|situationship|no contact|ghosted|blocked|risk|flag|review|linked|compatibility|health|affection|intensity|attachment|evidence)\b/i.test(text)
   );
 }
 

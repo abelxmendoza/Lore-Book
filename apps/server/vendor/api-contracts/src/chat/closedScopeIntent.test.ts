@@ -13,7 +13,9 @@ import {
   isSkillWriteRequest,
   isQuestWriteRequest,
   isFamilyWriteRequest,
+  isHouseholdWriteRequest,
   isRomanceWriteRequest,
+  isEventWriteRequest,
   isClosedScopeQuery,
   isFocusEntityRelevant,
   isPronounPersonQuery,
@@ -31,6 +33,12 @@ describe('isCastRosterQuery', () => {
     expect(
       isCastRosterQuery('So far we have NeonPulse, VelvetFox, LumaJade, Star Bats, and Neon Pixie'),
     ).toBe(false);
+  });
+
+  it('matches the new-vs-returning, mentioned, and recognize variants', () => {
+    expect(isCastRosterQuery('new vs returning people in this story')).toBe(true);
+    expect(isCastRosterQuery("who have i mentioned so far in this story")).toBe(true);
+    expect(isCastRosterQuery('who do i recognize from this thread')).toBe(true);
   });
 });
 
@@ -60,6 +68,12 @@ describe('isLocationWriteRequest', () => {
   });
 });
 
+describe('isLocationWriteRequest — aliases', () => {
+  it('matches an alias addition', () => {
+    expect(isLocationWriteRequest('also called The Depot')).toBe(true);
+  });
+});
+
 describe('isProjectWriteRequest / isSkillWriteRequest / isQuestWriteRequest', () => {
   it('matches create phrasing', () => {
     expect(isProjectWriteRequest('add MemoVault as a project')).toBe(true);
@@ -73,8 +87,32 @@ describe('isProjectWriteRequest / isSkillWriteRequest / isQuestWriteRequest', ()
 describe('isFamilyWriteRequest / isRomanceWriteRequest', () => {
   it('matches kinship and romance status writes', () => {
     expect(isFamilyWriteRequest('mark Marcus as my cousin')).toBe(true);
-    expect(isRomanceWriteRequest('mark Jamie as dating')).toBe(true);
+    expect(isRomanceWriteRequest('mark Jamie as ended')).toBe(true);
     expect(isRomanceWriteRequest('we broke up with Jamie')).toBe(true);
+    expect(isRomanceWriteRequest('delete the romance record for Jamie')).toBe(true);
+  });
+
+  it('matches the full canonical romance status vocabulary and free-form lifecycle phrasing', () => {
+    expect(isRomanceWriteRequest('set Jamie as paused')).toBe(true);
+    expect(isRomanceWriteRequest('mark Jamie as ghosted')).toBe(true);
+    expect(isRomanceWriteRequest('mark Jamie as rekindled')).toBe(true);
+    expect(isRomanceWriteRequest('Jamie and I are on a break')).toBe(true);
+    expect(isRomanceWriteRequest('Jamie and I got back together')).toBe(true);
+    expect(isRomanceWriteRequest('things with Jamie are complicated')).toBe(true);
+  });
+
+  it('matches active/inactive changes with a reason', () => {
+    expect(isRomanceWriteRequest('mark Marcus as inactive because we drifted apart')).toBe(true);
+    expect(isRomanceWriteRequest('make Marcus active since we are together again')).toBe(true);
+  });
+
+  it('matches the full canonical romance status vocabulary and free-form lifecycle phrasing', () => {
+    expect(isRomanceWriteRequest('set Jamie as paused')).toBe(true);
+    expect(isRomanceWriteRequest('mark Jamie as ghosted')).toBe(true);
+    expect(isRomanceWriteRequest('mark Jamie as rekindled')).toBe(true);
+    expect(isRomanceWriteRequest('Jamie and I are on a break')).toBe(true);
+    expect(isRomanceWriteRequest('Jamie and I got back together')).toBe(true);
+    expect(isRomanceWriteRequest('things with Jamie are complicated')).toBe(true);
   });
 
   it('matches a side-only correction', () => {
@@ -96,6 +134,36 @@ describe('isFamilyWriteRequest / isRomanceWriteRequest', () => {
 
   it('does not confuse a hard delete with a character-book delete', () => {
     expect(isFamilyWriteRequest('delete Marcus from my character book')).toBe(false);
+  });
+});
+
+describe('isEventWriteRequest', () => {
+  it('matches an explicit event post', () => {
+    expect(isEventWriteRequest('post an event')).toBe(true);
+  });
+
+  it('matches "we played/hosted ... at ..." and "save event ... at ..."', () => {
+    expect(isEventWriteRequest('we played a backyard show at Northwind Depot')).toBe(true);
+    expect(isEventWriteRequest('save event called House Show at Ritual Coffee')).toBe(true);
+  });
+
+  it('matches a named happening at a place', () => {
+    expect(isEventWriteRequest('we went to a show at Ritual Coffee')).toBe(true);
+  });
+});
+
+describe('isHouseholdWriteRequest', () => {
+  it('matches create/add/remove/move/delete household commands', () => {
+    expect(isHouseholdWriteRequest("create a household called Grandma's House")).toBe(true);
+    expect(isHouseholdWriteRequest("add Ralph to the Mom and Dad's House household")).toBe(true);
+    expect(isHouseholdWriteRequest("remove Ralph from the Mom and Dad's House household")).toBe(true);
+    expect(isHouseholdWriteRequest("Ralph moved out of the Mom and Dad's House household")).toBe(true);
+    expect(isHouseholdWriteRequest("move the Mom and Dad's House household to 456 Oak Ave")).toBe(true);
+    expect(isHouseholdWriteRequest("delete the Mom and Dad's House household")).toBe(true);
+  });
+
+  it('does not match unrelated household mentions', () => {
+    expect(isHouseholdWriteRequest('my parents live in a nice house')).toBe(false);
   });
 });
 
@@ -134,6 +202,12 @@ describe('isOrganizationGroupWriteRequest', () => {
 
   it('defers wrong-book corrections to reclassify', () => {
     expect(isOrganizationGroupWriteRequest('Northwind Collective is a group, not a place')).toBe(false);
+  });
+
+  it('matches adding members and deleting from the groups book', () => {
+    expect(isOrganizationGroupWriteRequest('add Jamie to the group')).toBe(true);
+    expect(isOrganizationGroupWriteRequest('add Jamie and Alex to my org')).toBe(true);
+    expect(isOrganizationGroupWriteRequest('delete Northwind Collective from my groups book')).toBe(true);
   });
 });
 

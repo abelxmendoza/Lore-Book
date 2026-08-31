@@ -5,6 +5,7 @@ import { DiscoveryOverview } from './DiscoveryOverview';
 import { LoadingSkeleton } from './LoadingSkeleton';
 import { PanelBoundary } from './PanelBoundary';
 import { PanelBreadcrumb } from './PanelBreadcrumb';
+import { DiscoveryDevelopmentNotice } from './DiscoveryDevelopmentNotice';
 
 // Each panel is lazy-loaded — zero cost until its route is active.
 const SoulProfilePanel = lazy(() =>
@@ -102,6 +103,7 @@ const Panel = ({ children }: { children: ReactNode }) => (
 
 export const DiscoveryHub = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void } = {}) => (
   <DiscoveryLayout onOpenAppSidebar={onOpenAppSidebar}>
+    <DiscoveryDevelopmentNotice />
     <Suspense fallback={<PanelFallback />}>
       <Routes>
         {/* Overview — the intelligence dashboard */}
@@ -127,7 +129,8 @@ export const DiscoveryHub = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => vo
         <Route path="memory-fabric"        element={<Panel><MemoryFabricPanel /></Panel>} />
         <Route path="truth-seeker"         element={<Panel><TruthSeekerPanel /></Panel>} />
         {/* Legacy analytics module keys → shared handler */}
-        <Route path="saga"                 element={<Panel><AnalyticsModuleRoute /></Panel>} />
+        {/* Life Saga is the single canonical story-reading surface. */}
+        <Route path="saga"                 element={<Navigate to="/saga" replace />} />
         <Route path="map"                  element={<Panel><AnalyticsModuleRoute /></Panel>} />
         <Route path="predictions"          element={<Panel><AnalyticsModuleRoute /></Panel>} />
         <Route path="search"               element={<Panel><AnalyticsModuleRoute /></Panel>} />

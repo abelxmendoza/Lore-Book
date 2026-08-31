@@ -5,6 +5,7 @@ import { Heart, Search, TrendingUp, Users, Sparkles, Ban, RotateCcw, AlertTriang
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Input } from '../ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import {
@@ -20,7 +21,6 @@ import { isIndividualPersonName } from '../../lib/personNameValidation';
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import {
   DATING_ROMANCE_KNOWLEDGE_SCOPE,
-  datingRomanceIntroducePrompt,
   openDatingRomanceCharacterChat,
 } from '../../lib/datingRomanceChatFocus';
 import { 
@@ -63,6 +63,7 @@ import {
   useGetRomanticRelationshipsQuery,
   useLinkRomanticRelationshipToCharacterMutation,
   useRescanRomanticRelationshipsMutation,
+  useUpdateRomanticRelationshipMutation,
 } from '../../store/api/entitiesApi';
 import { useAccountAuthority } from '../../hooks/useAccountAuthority';
 import { canManuallyAddDatingRomanceCharacters } from '../../lib/datingRomanceManualAdd';
@@ -218,6 +219,10 @@ export const LoveAndRelationshipsView = () => {
   const [linkBusyId, setLinkBusyId] = useState<string | null>(null);
   const [relationshipError, setRelationshipError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [statusChangeTarget, setStatusChangeTarget] = useState<RomanticRelationship | null>(null);
+  const [statusChangeReason, setStatusChangeReason] = useState('');
+  const [statusChangeBusy, setStatusChangeBusy] = useState(false);
+  const [statusChangeError, setStatusChangeError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<CardViewMode>(() =>
     readStoredCardViewMode(LOVE_VIEW_STORAGE_KEY, 'grid'),
   );
@@ -229,6 +234,7 @@ export const LoveAndRelationshipsView = () => {
   const [linkRomanticRelationshipToCharacter] = useLinkRomanticRelationshipToCharacterMutation();
   const [rescanRomanticRelationships] = useRescanRomanticRelationshipsMutation();
   const [addCharacterToDatingBook] = useAddCharacterToDatingBookMutation();
+  const [updateRomanticRelationship] = useUpdateRomanticRelationshipMutation();
   const relationshipsGridRef = useRef<HTMLDivElement>(null);
 
   const scrollToRelationship = useCallback((relationshipId: string) => {
@@ -545,7 +551,6 @@ export const LoveAndRelationshipsView = () => {
             sourceSurface: 'love',
             sourceLabel: 'Dating & Romance',
             knowledgeScope: DATING_ROMANCE_KNOWLEDGE_SCOPE,
-            initialPrompt: datingRomanceIntroducePrompt(name),
             arrivedAt: Date.now(),
           });
         }
@@ -632,6 +637,65 @@ export const LoveAndRelationshipsView = () => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openStatusChange = (relationship: RomanticRelationship) => {
+    if (shouldUseMockData) return;
+    setStatusChangeTarget(relationship);
+    setStatusChangeReason('');
+    setStatusChangeError(null);
+  };
+
+  const closeStatusChange = () => {
+    setStatusChangeTarget(null);
+    setStatusChangeReason('');
+    setStatusChangeError(null);
+  };
+
+  const saveStatusChange = async () => {
+    if (!statusChangeTarget || statusChangeBusy) return;
+    const reason = statusChangeReason.trim();
+    if (!reason) {
+      setStatusChangeError('Add a short reason so this change has context in your relationship history.');
+      return;
+    }
+
+    const nextIsActive = !isActiveRelationship(statusChangeTarget);
+    const nextStatus = nextIsActive ? 'active' : 'ended';
+    const now = new Date().toISOString();
+    setStatusChangeBusy(true);
+    setStatusChangeError(null);
+    try {
+      const result = await updateRomanticRelationship({
+        id: statusChangeTarget.id,
+        values: {
+          status: nextStatus,
+          is_current: nextIsActive,
+          end_date: nextIsActive ? null : now,
+          reason: nextIsActive ? 'user_reactivated_relationship' : 'user_deactivated_relationship',
+          reason_note: reason,
+        },
+      }).unwrap() as { relationship?: Partial<RomanticRelationship> };
+      const updated = result.relationship ?? {};
+      setRelationships((previous) =>
+        previous.map((relationship) =>
+          relationship.id === statusChangeTarget.id
+            ? {
+                ...relationship,
+                ...updated,
+                status: nextStatus,
+                is_current: nextIsActive,
+                end_date: nextIsActive ? undefined : (updated.end_date ?? now),
+              }
+            : relationship,
+        ),
+      );
+      closeStatusChange();
+    } catch (error) {
+      setStatusChangeError(error instanceof Error ? error.message : 'Could not update this relationship.');
+    } finally {
+      setStatusChangeBusy(false);
     }
   };
 
@@ -854,6 +918,7 @@ export const LoveAndRelationshipsView = () => {
       relationship={rel}
       highlighted={highlightedRelationshipId === rel.id}
       onClick={() => setSelectedRelationship(rel.id)}
+      onToggleStatus={openStatusChange}
       onOpenCharacter={openCharacterCard}
       onLinkCharacter={linkRelationshipToCharacter}
       linkBusy={linkBusyId === rel.id}
@@ -902,12 +967,35 @@ export const LoveAndRelationshipsView = () => {
             : ''
         }`}
       >
-        <button
-          type="button"
-          onClick={() => setSelectedRelationship(rel.id)}
-          className="flex min-w-0 flex-1 items-start gap-3 px-3 py-2.5 text-left"
-        >
-          <Heart className="h-4 w-4 text-pink-300/75 mt-0.5 shrink-0" />
+        <div className="flex min-w-0 flex-1 items-start gap-3 px-3 py-2.5">
+          {shouldUseMockData ? (
+            <Heart
+              className={`h-4 w-4 mt-0.5 shrink-0 ${
+                isActiveRelationship(rel) ? 'text-pink-300/75' : 'text-pink-300/35'
+              }`}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => openStatusChange(rel)}
+              className="rounded-full p-1 -m-1 transition-colors hover:bg-pink-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-300"
+              aria-label={isActiveRelationship(rel) ? 'Mark relationship inactive' : 'Mark relationship active'}
+              aria-pressed={isActiveRelationship(rel)}
+              title={isActiveRelationship(rel) ? 'Mark inactive' : 'Mark active'}
+            >
+              <Heart
+                className={`h-4 w-4 mt-0.5 shrink-0 ${
+                  isActiveRelationship(rel) ? 'text-pink-300/75' : 'text-pink-300/35'
+                }`}
+                fill={isActiveRelationship(rel) ? 'currentColor' : 'none'}
+              />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setSelectedRelationship(rel.id)}
+            className="min-w-0 flex-1 text-left"
+          >
           <div className="min-w-0 flex-1 space-y-0.5">
             <p className="text-sm font-medium text-white truncate">
               {rel.person_name || rel.relationship_type.replace(/_/g, ' ')}
@@ -920,8 +1008,9 @@ export const LoveAndRelationshipsView = () => {
               <p className="text-[10px] text-white/40 tabular-nums">{metricLine}</p>
             )}
           </div>
+          </button>
           <ChevronRight className="h-4 w-4 text-white/25 mt-0.5 shrink-0" />
-        </button>
+        </div>
         <div className="flex items-center gap-2 px-3 pb-2.5 sm:py-2.5 sm:pl-0">
           {hasCharacterCard ? (
             <Button
@@ -1369,6 +1458,73 @@ export const LoveAndRelationshipsView = () => {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Quick relationship status dialog */}
+      {statusChangeTarget && (
+        <Dialog open={true} onOpenChange={(open) => !open && !statusChangeBusy && closeStatusChange()}>
+          <DialogContent className="sm:h-auto sm:max-w-md sm:max-h-[90vh]">
+            <DialogHeader>
+              <div className="flex min-w-0 items-center gap-3">
+                <Heart className="h-5 w-5 shrink-0 text-pink-400" />
+                <DialogTitle>
+                  {isActiveRelationship(statusChangeTarget) ? 'Mark relationship inactive' : 'Mark relationship active'}
+                </DialogTitle>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={closeStatusChange}
+                disabled={statusChangeBusy}
+                className="h-9 w-9 shrink-0 p-2"
+                aria-label="Close status change dialog"
+              >
+                <span aria-hidden="true">×</span>
+              </Button>
+            </DialogHeader>
+            <div className="space-y-4 p-4 sm:p-6">
+              <p className="text-sm text-white/65">
+                {statusChangeTarget.person_name ?? 'This relationship'} will be marked{' '}
+                {isActiveRelationship(statusChangeTarget) ? 'inactive' : 'active'}.
+              </p>
+              <div className="space-y-1.5">
+                <label htmlFor="relationship-status-reason" className="text-sm font-medium text-white">
+                  Why are you changing this?
+                </label>
+                <textarea
+                  id="relationship-status-reason"
+                  value={statusChangeReason}
+                  onChange={(event) => setStatusChangeReason(event.target.value)}
+                  placeholder="e.g. We decided to take space."
+                  maxLength={1000}
+                  rows={4}
+                  autoFocus
+                  className="w-full resize-y rounded-lg border border-border/60 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-pink-400/50"
+                />
+                <p className="text-[11px] text-white/40">
+                  This reason is saved with the relationship history.
+                </p>
+              </div>
+              {statusChangeError && (
+                <p role="alert" className="text-sm text-red-300">
+                  {statusChangeError}
+                </p>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="ghost" onClick={closeStatusChange} disabled={statusChangeBusy}>
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void saveStatusChange()}
+                  disabled={statusChangeBusy || !statusChangeReason.trim()}
+                >
+                  {statusChangeBusy ? 'Saving…' : 'Save status'}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Relationship Detail Modal */}
       {selectedRelationship && (

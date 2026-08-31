@@ -44,4 +44,35 @@ describe('placeSuggestionService', () => {
     expect(names).toContain('Bad Dogg Compound');
     expect(names.some((n) => /weeks back/i.test(n))).toBe(false);
   });
+
+  it('does not overshoot past the first "and" into a later occurrence of the same word', () => {
+    // Regression: "at V and Romi saw and heard when that happened" used to
+    // produce the candidate "V and Romi saw" — the lazy character-class
+    // quantifier swallowed the first "and" (since a bare 1-char capture of
+    // just "V" can't satisfy the pattern's minimum length) and kept hunting
+    // until it found the SECOND "and", well past the actual name boundary.
+    const text =
+      'There was also this little girl Olive who I met that day and she yelled at me ' +
+      '"She\'s a minor" at V and Romi saw and heard when that happened';
+
+    const names = processPlaceSuggestionsForOutput(text).map((s) => s.text);
+    expect(names.some((n) => n.includes('and Romi saw'))).toBe(false);
+  });
+  it('titles same-chain gyms from street and landmark context', () => {
+    const text = [
+      'theres the EOS gym on Katella and Euclid',
+      'the other is off state college and not sure the other street',
+      'then theres one thats also on State College too but its off of I believe its Chapman',
+      'the other one is also in Fullerton and is next to Barnes and nobles.',
+    ].join('\n');
+
+    const names = processPlaceSuggestionsForOutput(text).map((s) => s.displayName ?? s.text);
+    expect(names).toEqual(expect.arrayContaining([
+      'EOS Gym — Katella & Euclid',
+      'EOS Gym — State College',
+      'EOS Gym — State College & Chapman',
+      'EOS Gym — Fullerton (Barnes & Noble)',
+    ]));
+    expect(names.filter((name) => /^EOS Gym$/i.test(name))).toEqual([]);
+  });
 });

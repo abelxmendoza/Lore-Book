@@ -13,6 +13,7 @@ function makeChain(result: TableResult) {
     or: () => chain,
     in: () => chain,
     not: () => chain,
+    is: () => chain,
     gt: () => chain,
     gte: () => chain,
     order: () => chain,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isFollowUpShaped, isRetryRequest } from './responseModeResolver';
+import { isFollowUpShaped, isRetryRequest, resolveResponseMode } from './responseModeResolver';
 
 describe('isRetryRequest', () => {
   it('matches common retry phrasings', () => {
@@ -24,5 +24,11 @@ describe('isFollowUpShaped', () => {
   it('treats who-is-he as follow-up shaped even without a question mark', () => {
     expect(isFollowUpShaped('who is he')).toBe(true);
     expect(isFollowUpShaped('who is she?')).toBe(true);
+  });
+});
+
+describe('resolveResponseMode', () => {
+  it('treats an incomplete work-history correction as focused recall', () => {
+    expect(resolveResponseMode("that's not my full work history")).toBe('focused_recall');
   });
 });

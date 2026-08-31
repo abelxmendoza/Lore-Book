@@ -3,11 +3,22 @@ import { useEffect, useRef, useState } from 'react';
 
 import type { DismissSuggestionReason } from '../../api/suggestionDismiss';
 
-const REASONS: Array<{ value: DismissSuggestionReason; label: string; hint: string }> = [
+export type DismissReasonOption = { value: DismissSuggestionReason; label: string; hint: string };
+
+const REASONS: DismissReasonOption[] = [
   { value: 'not_entity', label: 'Not this kind of thing', hint: 'Stop suggesting it in this book' },
   { value: 'wrong_book', label: 'Wrong book', hint: 'Better as another entity type' },
   { value: 'duplicate', label: 'Duplicate / already tracked', hint: 'I have this already' },
   { value: 'noise', label: 'Just noise', hint: 'Sentence fragment or bad extraction' },
+];
+
+/** Person-specific reasons for the Characters/Dating suggestion panels — "wrong
+ *  book" doesn't apply (that flow has its own dedicated redirect control), and
+ *  the generic "not this kind of thing" reads oddly for a detected name. */
+export const PERSON_DISMISS_REASONS: DismissReasonOption[] = [
+  { value: 'duplicate', label: 'Duplicate / already tracked', hint: 'I have this already' },
+  { value: 'not_a_person', label: 'Not a real person', hint: 'Fictional, a title, or a misdetected name — not an individual' },
+  { value: 'error', label: 'This is an error', hint: 'Wrong detection or mistaken identity' },
 ];
 
 type Props = {
@@ -16,6 +27,8 @@ type Props = {
   buttonLabel?: string;
   className?: string;
   align?: 'left' | 'right';
+  /** Override the reason menu — defaults to the generic entity-suggestion set. */
+  reasons?: DismissReasonOption[];
 };
 
 /** Single dismiss control — one X that opens reason options (plus plain dismiss). */
@@ -25,6 +38,7 @@ export function SuggestionDismissButton({
   buttonLabel = 'Dismiss',
   className = '',
   align = 'right',
+  reasons = REASONS,
 }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -77,7 +91,7 @@ export function SuggestionDismissButton({
           </button>
           <div className="my-1 border-t border-white/10" />
           <p className="px-2 py-1 text-[9px] text-white/45">Or teach LoreBook why</p>
-          {REASONS.map((reason) => (
+          {reasons.map((reason) => (
             <button
               key={reason.value}
               type="button"

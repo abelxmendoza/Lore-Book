@@ -66,6 +66,19 @@ describe('EntityClassifier — pet-context predicate → PET (not Person)', () =
   it('"NAME is my puppy" phrasing → PET', () => {
     expect(t('Biscuit', 'Biscuit is my puppy and he never listens')).toBe('PET');
   });
+  it('"my robot Omega1" → PET (companion, not a person or product)', () => {
+    expect(t('Omega1', 'my robot Omega1 needs a charge')).toBe('PET');
+    expect(t('Omega1', 'Omega1 is my android')).toBe('PET');
+    expect(t('Omega1', "our robot's name is Omega1")).toBe('PET');
+  });
+  it('"building my robot Omega1" stays PET, not a shipped product', () => {
+    expect(t('Omega1', 'I am building my robot Omega1 at Vanguard')).toBe('PET');
+  });
+  it('shipping Omega1 without companion language is not a person or pet', () => {
+    expect(t('Omega1', 'I shipped Omega1 last week at Vanguard Robotics')).not.toBe('PET');
+    expect(t('Omega1', 'I shipped Omega1 last week at Vanguard Robotics')).not.toBe('PERSON');
+    expect(t('Omega1', 'I am shipping Omega1 this week')).toBe('PRODUCT');
+  });
   it('pet classification is not Character-eligible', () => {
     expect(isCharacterEligible(classifyEntity('Max', 'my dog Max').type)).toBe(false);
     expect(toStorageType('PET')).toBe('platform');

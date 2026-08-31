@@ -55,6 +55,7 @@ export interface ChronologyEntry {
   source_id?: string;
   source_ids?: string[];
   source_type?: string;
+  timeline_track?: string;
   title?: string;
   tags?: string[];
   user_presence?: 'attended' | 'heard_about' | 'unknown';

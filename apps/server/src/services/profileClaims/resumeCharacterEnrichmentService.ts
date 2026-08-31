@@ -1,20 +1,10 @@
 /**
- * Sync structured resume parse → self character row, entity_attributes, social metadata, blurbs.
+ * Stage structured resume attributes as reviewable evidence for the self character.
  */
-import { discoverEntities } from '../ontology/lexicalIntelligence';
-import { characterBlurbService } from '../characters/characterBlurbService';
 import { entityAttributeDetector, type DetectedAttribute } from '../conversationCentered/entityAttributeDetector';
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
 import { normalizeResumeDate } from './resumeDateUtils';
 import type { ParsedResume } from './resumeStructuredTypes';
-
-function splitFullName(fullName: string): { first: string; last: string | null } {
-  const parts = fullName.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return { first: 'Me', last: null };
-  if (parts.length === 1) return { first: parts[0], last: null };
-  return { first: parts[0], last: parts.slice(1).join(' ') };
-}
 
 function cityFromAddress(address?: string): string | null {
   if (!address) return null;
@@ -36,48 +26,7 @@ class ResumeCharacterEnrichmentService {
     if (!selfRef) return { characterId: null, attributes: 0 };
 
     const characterId = selfRef.id;
-    const meta = { source: 'resume_upload', source_file_id: context.sourceFileId };
     let attributeCount = 0;
-
-    const { data: existing } = await supabaseAdmin
-      .from('characters')
-      .select('metadata, name')
-      .eq('id', characterId)
-      .eq('user_id', userId)
-      .single();
-
-    const existingMeta = (existing?.metadata as Record<string, unknown>) ?? {};
-    const fullName = parsed.contact.fullName?.trim();
-    const { first, last } = fullName ? splitFullName(fullName) : { first: existing?.name ?? 'Me', last: null };
-
-    const currentJob = parsed.employment.find((j) => j.isCurrent) ?? parsed.employment[0];
-    const latestEdu = parsed.education[0];
-    const city = cityFromAddress(parsed.contact.address);
-
-    const roleTagline = currentJob
-      ? `${currentJob.title} · ${currentJob.company}`
-      : parsed.summary?.slice(0, 80) ?? 'Protagonist · Your story';
-
-    const corpus = [
-      parsed.summary ?? '',
-      ...parsed.employment.map((j) => `${j.title} ${j.company} ${j.description ?? ''}`),
-      ...parsed.skills,
-      ...parsed.projects.map((p) => `${p.name} ${p.description ?? ''}`),
-      ...parsed.education.map((e) => `${e.degree ?? ''} ${e.institution}`),
-    ].join(' ');
-
-    const discovered = discoverEntities(corpus);
-    const ontologyTags = [
-      ...new Set(discovered.map((d) => d.surface || d.name).filter(Boolean)),
-    ].slice(0, 16);
-
-    const social = {
-      ...(typeof existingMeta.social_media === 'object' ? (existingMeta.social_media as Record<string, string>) : {}),
-      ...(parsed.contact.email ? { email: parsed.contact.email } : {}),
-      ...(parsed.contact.phone ? { phone: parsed.contact.phone } : {}),
-      ...(parsed.contact.linkedin ? { linkedin: parsed.contact.linkedin } : {}),
-      ...(parsed.contact.website ? { website: parsed.contact.website } : {}),
-    };
 
     const attrs: Array<Omit<DetectedAttribute, 'entityId' | 'entityType'>> = [];
 
@@ -149,6 +98,7 @@ class ResumeCharacterEnrichmentService {
       });
     }
 
+    const city = cityFromAddress(parsed.contact.address);
     if (city) {
       attrs.push({
         attributeType: 'current_city',
@@ -164,6 +114,13 @@ class ResumeCharacterEnrichmentService {
       try {
         await entityAttributeDetector.saveAttribute(userId, {
           ...attr,
+          metadata: {
+            source: 'resume_upload',
+            source_file_id: context.sourceFileId,
+            file_name: context.fileName,
+            review_state: 'pending',
+            review_required: true,
+          },
           entityId: characterId,
           entityType: 'character',
         });
@@ -172,34 +129,6 @@ class ResumeCharacterEnrichmentService {
         logger.warn({ err, attr: attr.attributeType }, 'resume enrich: attribute save skipped');
       }
     }
-
-    await supabaseAdmin
-      .from('characters')
-      .update({
-        name: 'Me',
-        first_name: first,
-        last_name: last,
-        role: roleTagline,
-        archetype: 'protagonist',
-        importance_level: 'protagonist',
-        summary: parsed.summary?.trim() || undefined,
-        metadata: {
-          ...existingMeta,
-          is_self: true,
-          is_user: true,
-          real_name: fullName || existingMeta.real_name,
-          resume_enriched_at: new Date().toISOString(),
-          resume_file_id: context.sourceFileId,
-          resume_file_name: context.fileName,
-          social_media: social,
-          ontology_tags: ontologyTags,
-        },
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', characterId)
-      .eq('user_id', userId);
-
-    await characterBlurbService.refreshAndPersist(userId, characterId, { isSelf: true });
 
     return { characterId, attributes: attributeCount };
   }

@@ -4,6 +4,7 @@ import {
   extractListedMemberNames,
   inferGroupNameFromContext,
   isReplyToGroupNamingPrompt,
+  parseOrganizationClassificationWrite,
   parseOrganizationRelationshipWrite,
   parseOrganizationSiteWrite,
   recoverListedMemberNamesFromHistory,
@@ -78,6 +79,47 @@ describe('groupWriteService helpers', () => {
       organizationName: 'Vanguard Robotics',
       locationName: 'Hollywood',
     });
+    expect(parseOrganizationRelationshipWrite('I belong to Eastside BJJ')).toBeNull();
+  });
+
+  it('parses type and relationship classification corrections', () => {
+    expect(parseOrganizationClassificationWrite("Mom's House is a household")).toEqual({
+      name: "Mom's House",
+      groupType: 'household',
+      usesFocusName: false,
+    });
+    expect(parseOrganizationClassificationWrite("Abuela's Family is a family, not a household")).toEqual({
+      name: "Abuela's Family",
+      groupType: 'family',
+      usesFocusName: false,
+    });
+    expect(parseOrganizationClassificationWrite('I belong to Eastside BJJ')).toEqual({
+      name: 'Eastside BJJ',
+      userRelationship: 'member',
+      usesFocusName: false,
+    });
+    expect(parseOrganizationClassificationWrite("I'm close to Summit Staffing")).toEqual({
+      name: 'Summit Staffing',
+      userRelationship: 'adjacent',
+      usesFocusName: false,
+    });
+    expect(parseOrganizationClassificationWrite('put Radiohead in mentioned')).toEqual({
+      name: 'Radiohead',
+      userRelationship: 'referenced',
+      usesFocusName: false,
+    });
+    expect(parseOrganizationClassificationWrite('put Summit Staffing in their world')).toEqual({
+      name: 'Summit Staffing',
+      userRelationship: 'aware_of',
+      usesFocusName: false,
+    });
+    expect(parseOrganizationClassificationWrite('this is a household')).toEqual({
+      name: 'this',
+      groupType: 'household',
+      usesFocusName: true,
+    });
+    expect(parseOrganizationClassificationWrite('make Robotics a department under Vanguard Robotics')).toBeNull();
+    expect(parseOrganizationClassificationWrite('Jamie is going to the store')).toBeNull();
   });
 
   it('extracts a comma/and roster list', () => {

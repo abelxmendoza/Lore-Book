@@ -15,6 +15,7 @@ import {
   canonicalTemporalFromLegacy,
   type CanonicalTemporalModel,
 } from '../temporal/canonicalTemporalModel';
+import { isReviewPending } from '../reviewableRecord';
 
 export type ProjectionRole = 'canonical' | 'evidence' | 'unresolved' | 'excluded';
 export type OccurrenceStatus = 'confirmed' | 'range' | 'unresolved';
@@ -296,6 +297,12 @@ export function projectCanonicalTimeline(items: ProjectableTimelineItem[]): {
     if (hardExcludeActs.has(eligibility.speechAct)) {
       projected.projectionRole = 'excluded';
       excluded.push(projected);
+      continue;
+    }
+
+    if (isReviewPending(item.metadata)) {
+      projected.projectionRole = 'unresolved';
+      unresolved.push(projected);
       continue;
     }
 

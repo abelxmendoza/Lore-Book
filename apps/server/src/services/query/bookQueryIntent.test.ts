@@ -4,6 +4,7 @@ import {
   detectBookQueryDomains,
   isUniversalBookQueryRequest,
 } from './bookQueryIntent';
+import { queryTerms } from './bookQueryRegistry';
 
 describe('book query chat intent', () => {
   it('detects every explicitly named Book in a cross-Book question', () => {
@@ -26,6 +27,7 @@ describe('book query chat intent', () => {
     expect(isUniversalBookQueryRequest('Which places did I visit?')).toBe(false);
     expect(isUniversalBookQueryRequest('Which people need review?')).toBe(false);
     expect(isUniversalBookQueryRequest('Show people connected to Vanguard Robotics')).toBe(false);
+    expect(isUniversalBookQueryRequest('Which employers have I had?')).toBe(false);
   });
 
   it('does not steal ordinary recall or conversational statements', () => {
@@ -36,5 +38,9 @@ describe('book query chat intent', () => {
   it('routes explicit connection questions into the shared graph path', () => {
     expect(isUniversalBookQueryRequest('Who introduced me to Marcus?')).toBe(true);
     expect(isUniversalBookQueryRequest('What is the connection between Marcus and MemoVault?')).toBe(true);
+  });
+
+  it('does not expose question and quality words as entity match reasons', () => {
+    expect(queryTerms('Which people need review at Vanguard Robotics?')).toEqual(['vanguard', 'robotics']);
   });
 });

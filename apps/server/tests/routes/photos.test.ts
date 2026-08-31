@@ -3,8 +3,14 @@ import request from 'supertest';
 import express from 'express';
 import { photosRouter } from '../../src/routes/photos';
 import { requireAuth } from '../../src/middleware/auth';
+import { photoService } from '../../src/services/photoService';
 
 vi.mock('../../src/middleware/auth');
+vi.mock('../../src/services/photoService', () => ({
+  photoService: {
+    sendToDocuments: vi.fn(),
+  },
+}));
 vi.mock('../../src/services/memoryService', () => ({
   memoryService: {
     searchEntries: vi.fn(),
@@ -48,9 +54,103 @@ describe('Photos API Routes', () => {
     });
   });
 
+  describe('POST /api/photos/query', () => {
+    it('returns matching photo entries from descriptions and metadata', async () => {
+      const { memoryService } = await import('../../src/services/memoryService');
+      vi.mocked(memoryService.searchEntries).mockResolvedValue([
+        {
+          id: 'photo-1',
+          date: '2026-01-02',
+          content: 'A beach sunset with friends.',
+          summary: 'Beach sunset',
+          tags: ['beach', 'sunset'],
+          metadata: { photoId: 'photo-1', locationName: 'Northwind Beach' },
+        },
+        {
+          id: 'entry-1',
+          date: '2026-01-03',
+          content: 'A regular journal entry.',
+          summary: 'Notes',
+          tags: [],
+          metadata: {},
+        },
+      ] as any);
+
+      const response = await request(app)
+        .post('/api/photos/query')
+        .send({ query: 'Northwind', limit: 10 })
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        success: true,
+        result: {
+          query: 'Northwind',
+          total: 1,
+          photos: [{ id: 'photo-1' }],
+        },
+      });
+      expect(memoryService.searchEntries).toHaveBeenCalledWith('user-123', {
+        search: '',
+        limit: 1000,
+      });
+    });
+  });
+
   describe('POST /api/photos/upload', () => {
     it('returns 400 when no file provided', async () => {
       await request(app).post('/api/photos/upload').expect(400);
+    });
+  });
+
+  describe('POST /api/photos/:entryId/send-to-documents', () => {
+    it('moves the authenticated user photo into the selected Documents folder', async () => {
+      vi.mocked(photoService.sendToDocuments).mockResolvedValue({
+        fileId: 'file-1',
+        category: 'family_history',
+      });
+
+      const response = await request(app)
+        .post('/api/photos/entry-1/send-to-documents')
+        .send({ category: 'family_history' })
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        success: true,
+        fileId: 'file-1',
+        category: 'family_history',
+      });
+      expect(photoService.sendToDocuments).toHaveBeenCalledWith(
+        'user-123',
+        'entry-1',
+        { category: 'family_history', documentSubtype: undefined },
+      );
+    });
+
+    it('requires a record type for the Personal & identity folder', async () => {
+      await request(app)
+        .post('/api/photos/entry-1/send-to-documents')
+        .send({ category: 'personal_identity' })
+        .expect(400);
+
+      expect(photoService.sendToDocuments).not.toHaveBeenCalled();
+    });
+
+    it('passes the selected identity record type to the move service', async () => {
+      vi.mocked(photoService.sendToDocuments).mockResolvedValue({
+        fileId: 'file-2',
+        category: 'personal_identity',
+      });
+
+      await request(app)
+        .post('/api/photos/entry-2/send-to-documents')
+        .send({ category: 'personal_identity', documentSubtype: 'passport' })
+        .expect(200);
+
+      expect(photoService.sendToDocuments).toHaveBeenCalledWith(
+        'user-123',
+        'entry-2',
+        { category: 'personal_identity', documentSubtype: 'passport' },
+      );
     });
   });
 

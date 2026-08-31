@@ -102,7 +102,6 @@ describe('romance timeline moment', () => {
         relationshipId: 'rel-001',
         entityName: 'Alex',
         sourceSurface: 'love',
-        autoSubmit: true,
       }),
     );
   });

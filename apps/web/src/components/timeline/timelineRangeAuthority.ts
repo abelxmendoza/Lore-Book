@@ -138,6 +138,7 @@ export function defaultScaleForSpanDays(spanDays: number): TimelineZoomScaleId {
 
 /** Whether an arc should be drawn as a swimlane duration bar. */
 export function shouldDrawSwimlaneArcBar(arc: LifeArc): boolean {
+  if (arc.bar_eligibility) return arc.bar_eligibility.drawable;
   if (arc.arc_type === 'occasion') return false;
   if (arc.metadata && (arc.metadata as { omni_draw_bar?: boolean }).omni_draw_bar === false) {
     return false;

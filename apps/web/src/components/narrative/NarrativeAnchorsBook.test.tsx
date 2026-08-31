@@ -38,7 +38,7 @@ describe('NarrativeAnchorsBook', () => {
     render(<NarrativeAnchorsBook />);
 
     expect(screen.getByText('Narrative Anchors')).toBeInTheDocument();
-    expect(screen.getByText(/Chapters your memories keep returning to/i)).toBeInTheDocument();
+    expect(screen.getByText(/Recurring patterns and evidence worth exploring/i)).toBeInTheDocument();
     expect(await screen.findByText('The college years')).toBeInTheDocument();
     expect(screen.getByText('2018–2022')).toBeInTheDocument();
     expect(screen.getByText('Strong match')).toBeInTheDocument();

@@ -145,12 +145,13 @@ function normalizeRolePhrase(role: string): string {
   return role.replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
-/** Conversational "tell you about X" framing used by Character Book intro presets. */
+/** Conversational person/lore-capture framing used by Character Book presets. */
 const TELL_ABOUT_FRAME_RE =
-  /\b(?:(?:i\s+)?(?:want|wanna|need|like)\s+to\s+tell\s+(?:you\s+)?about|let\s+me\s+tell\s+(?:you\s+)?about|i(?:'|’)d\s+like\s+(?:you\s+)?to\s+(?:meet|know))\b/i;
+  /\b(?:(?:i\s+)?(?:want|wanna|need|like)\s+to\s+(?:tell\s+(?:you\s+)?about|talk\s+(?:to\s+you\s+)?about)|let\s+me\s+(?:tell\s+(?:you\s+)?about|talk\s+(?:to\s+you\s+)?about)|i(?:'|’)d\s+like\s+(?:you\s+)?to\s+(?:meet|know)|help\s+me\s+(?:capture|record|remember)\s+(?:who|details?\s+about|what\s+matters\s+about))\b/i;
 
 /** Canonicalized quest titles after stripping "I want to" → "Tell you about Jamie". */
-const CANONICAL_TELL_ABOUT_TITLE_RE = /^tell(?:\s+you)?\s+about\b/i;
+const CANONICAL_TELL_ABOUT_TITLE_RE =
+  /^(?:tell(?:\s+you)?\s+about|talk\s+about|capture\s+.+\s+(?:in|for)\s+lorebook|record\s+details?\s+about)\b/i;
 
 /**
  * True when text is (or was) a person-onboarding utterance, not a durable quest.
@@ -170,7 +171,7 @@ export function isConversationalPersonIntro(text: string): boolean {
 export function stripConversationalPersonIntro(text: string): string {
   return (text ?? '')
     .replace(
-      /\b(?:(?:i\s+)?(?:want|wanna|need|like)\s+to\s+tell\s+(?:you\s+)?about|let\s+me\s+tell\s+(?:you\s+)?about|i(?:'|’)d\s+like\s+(?:you\s+)?to\s+(?:meet|know))\b[^.!?\n]*/gi,
+      /\b(?:(?:i\s+)?(?:want|wanna|need|like)\s+to\s+(?:tell\s+(?:you\s+)?about|talk\s+(?:to\s+you\s+)?about)|let\s+me\s+(?:tell\s+(?:you\s+)?about|talk\s+(?:to\s+you\s+)?about)|i(?:'|’)d\s+like\s+(?:you\s+)?to\s+(?:meet|know)|help\s+me\s+(?:capture|record|remember)\s+(?:who|details?\s+about|what\s+matters\s+about))\b[^.!?\n]*/gi,
       ' ',
     )
     .replace(/\s+/g, ' ')

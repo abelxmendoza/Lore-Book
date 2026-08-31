@@ -109,4 +109,22 @@ describe('projectCanonicalTimeline — journal/resolved_event dedupe', () => {
     expect(evidenceHidden).toBe(0);
     expect(canonical).toHaveLength(2);
   });
+
+  it('routes pending imported events to unresolved without hiding them as canon', () => {
+    const pending = baseItem({
+      id: 'pending-resume', sourceId: 'pending-resume', sourceKind: 'journal_entry',
+      sortTime: '2026-06-10T12:00:00Z', title: 'Pending resume role', body: 'Worked at a company.',
+      metadata: { source_type: 'resume', review_required: true, review_state: 'pending' },
+    });
+    const confirmed = baseItem({
+      id: 'confirmed-resume', sourceId: 'confirmed-resume', sourceKind: 'journal_entry',
+      sortTime: '2026-06-11T12:00:00Z', title: 'Confirmed resume role', body: 'Worked at a company.',
+      metadata: { source_type: 'resume', review_required: true, review_state: 'user_confirmed' },
+    });
+
+    const result = projectCanonicalTimeline([pending, confirmed]);
+
+    expect(result.canonical.map((item) => item.id)).toEqual(['confirmed-resume']);
+    expect(result.unresolved.map((item) => item.id)).toEqual(['pending-resume']);
+  });
 });

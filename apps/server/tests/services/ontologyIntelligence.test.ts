@@ -29,7 +29,11 @@ describe('groupIntelligence', () => {
     expect(classifyGroup('Tía Grace Household').category).toBe('HOUSEHOLD');
     expect(classifyGroup('Tía Grace Household').isHousehold).toBe(true);
     expect(classifyGroup('Anaheim Family Home').category).toBe('HOUSEHOLD');
-    expect(classifyGroup('Abuela Household').category).toBe('HOUSEHOLD');
+    expect(classifyGroup("Abuela's Family").category).toBe('FAMILY');
+    expect(classifyGroup("Abuela's Family").suggestedGroupType).toBe('family');
+    expect(classifyGroup("Mom's House").category).toBe('HOUSEHOLD');
+    expect(classifyGroup("Mom's House").suggestedGroupType).toBe('household');
+    expect(classifyGroup('The Whitmore-Chen Family').category).toBe('FAMILY');
   });
 
   it('does not classify family home as FAMILY', () => {
@@ -122,5 +126,18 @@ describe('placeIntelligence', () => {
     const review = reviewPlaceDuplicateCompatibility('Moms House', "Mom's House");
     expect(review.canMerge).toBe(true);
     expect(review.relationship).toBe('alias_of');
+  });
+
+  it('does not merge the same chain at different streets or numbered suffixes', () => {
+    const sites = reviewPlaceDuplicateCompatibility(
+      'EOS Gym — Katella & Euclid',
+      'EOS Gym — State College & Chapman',
+    );
+    expect(sites.canMerge).toBe(false);
+    expect(sites.evidence.some((item) => /distinct chain sites/i.test(item))).toBe(true);
+
+    const numbered = reviewPlaceDuplicateCompatibility('Vanguard Fitness gym 1', 'Vanguard Fitness gym 2');
+    expect(numbered.canMerge).toBe(false);
+    expect(placeDuplicateScore('Vanguard Fitness gym 1', 'Vanguard Fitness gym 2')).toBe(0);
   });
 });

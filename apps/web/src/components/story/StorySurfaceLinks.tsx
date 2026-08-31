@@ -1,7 +1,7 @@
-import { CalendarDays, Compass, Sparkles } from 'lucide-react';
+import { BookOpen, CalendarDays, Compass, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-export type StorySurface = 'moments' | 'timeline' | 'anchors';
+export type StorySurface = 'moments' | 'timeline' | 'anchors' | 'saga';
 
 const SURFACES: Array<{
   id: StorySurface;
@@ -29,7 +29,14 @@ const SURFACES: Array<{
     label: 'Anchors',
     href: '/narrative-anchors',
     icon: Compass,
-    hint: 'Chapters those scenes belong to',
+    hint: 'Evidence-backed patterns to inspect',
+  },
+  {
+    id: 'saga',
+    label: 'Saga',
+    href: '/saga',
+    icon: BookOpen,
+    hint: 'Read your life as connected chapters',
   },
 ];
 

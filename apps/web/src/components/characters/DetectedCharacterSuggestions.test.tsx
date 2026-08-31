@@ -58,6 +58,25 @@ describe('DetectedCharacterSuggestions', () => {
     expect(screen.getByText(/fictional sample conversations/i)).toBeInTheDocument();
   });
 
+  it('offers person-specific dismiss reasons, not the generic entity set', async () => {
+    const user = userEvent.setup();
+    render(
+      <DetectedCharacterSuggestions
+        demoMode
+        variant="general"
+        existingCharacterNames={getMockCharacterSuggestionBookNames('general')}
+      />
+    );
+
+    await user.click(screen.getAllByLabelText('Dismiss')[0]);
+
+    expect(screen.getByRole('menuitem', { name: /not a real person/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /this is an error/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /duplicate.*already tracked/i })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /wrong book/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /not this kind of thing/i })).not.toBeInTheDocument();
+  });
+
   it('shows romantic demo suggestions for Love view variant', () => {
     render(
       <DetectedCharacterSuggestions
@@ -246,5 +265,41 @@ describe('DetectedCharacterSuggestions', () => {
 
     expect(await screen.findByText(/No new people to add right now/i)).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /Rescan conversations/i }).length).toBeGreaterThan(0);
+  });
+
+  it('offers Add as robot companion when a person-name add is rejected', async () => {
+    const user = userEvent.setup();
+    vi.mocked(characterSuggestionsApi.list).mockResolvedValue({
+      success: true,
+      suggestions: [{
+        id: 'sug:character:omega1',
+        name: 'Omega1',
+        mentionCount: 2,
+        confidence: 0.8,
+        source: 'chat_extract',
+        context: 'Mentioned in your chats',
+      }],
+      count: 1,
+    });
+    vi.mocked(characterSuggestionsApi.add).mockRejectedValue(new Error('Character name was rejected'));
+
+    render(<DetectedCharacterSuggestions existingCharacterNames={[]} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Add Omega1' }));
+
+    expect(await screen.findByText(/doesn’t look like a person name/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add as robot companion' })).toBeInTheDocument();
+
+    vi.mocked(characterSuggestionsApi.add).mockResolvedValue({
+      character: { id: 'char-omega1', name: 'Omega1' },
+    });
+    await user.click(screen.getByRole('button', { name: 'Add as robot companion' }));
+
+    await waitFor(() => {
+      expect(characterSuggestionsApi.add).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Omega1', species: 'robot', kind: 'pet' }),
+      );
+    });
+    expect(await screen.findByText(/added as a robot companion/i)).toBeInTheDocument();
   });
 });

@@ -48,6 +48,8 @@ type UseChatComposerOptions = {
   /** Desktop default: Enter sends, Shift+Enter newline. Mobile should pass false. */
   submitOnEnter?: boolean;
   threadId?: string;
+  /** A non-text attachment can be submitted without an additional caption. */
+  allowEmptySubmit?: boolean;
 };
 
 export const COMPOSER_DRAFT_PERSIST_DEBOUNCE_MS = 600;
@@ -86,7 +88,7 @@ export const useChatComposer = (
   initialValue?: string | null,
   options: UseChatComposerOptions = {},
 ) => {
-  const { submitOnEnter = true, threadId } = options;
+  const { submitOnEnter = true, threadId, allowEmptySubmit = false } = options;
   const { user } = useAuth();
   // Public /demo must never read/write drafts under the authenticated user id —
   // that is how private unsent lore leaked into the showcase composer.
@@ -323,7 +325,7 @@ export const useChatComposer = (
     // auto-submit effect for why this matters: without it, a fast follow-up
     // typed during the auto-submit delay gets folded into the same message.
     const text = (overrideText ?? input).trim();
-    if (!text && pendingImages.length === 0) return;
+    if (!text && pendingImages.length === 0 && !allowEmptySubmit) return;
 
     const entitiesToSend = visibleMatches.filter(
       (m) =>
@@ -358,7 +360,17 @@ export const useChatComposer = (
     setPreviewCorrections([]);
     setPendingImages([]);
     setImageError(null);
-  }, [input, pendingImages, onSubmit, visibleMatches, includedSlots, previewCorrections, setInput, flushDraftPersist]);
+  }, [
+    allowEmptySubmit,
+    input,
+    pendingImages,
+    onSubmit,
+    visibleMatches,
+    includedSlots,
+    previewCorrections,
+    setInput,
+    flushDraftPersist,
+  ]);
 
   const dismissMatch = useCallback(
     (match: CertifiedEntityMatch) => {

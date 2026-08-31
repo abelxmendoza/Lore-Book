@@ -80,11 +80,6 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
       sourceSurface: 'perceptions',
       sourceLabel: 'Perception Book',
       knowledgeScope: 'the recorded belief, its source, certainty, impact, status, and evolution',
-      initialPrompt:
-        `Let’s examine my recorded perception about ${perception.subject_alias}. Start with a grounded response ` +
-        'that clearly treats it as my belief at the time, not an objective fact about another person. Summarize the ' +
-        'recorded evidence, uncertainty, impact on me, and evolution, then invite me to clarify, resolve, or retract it.',
-      autoSubmit: true,
       startNewThread: true,
     });
   };

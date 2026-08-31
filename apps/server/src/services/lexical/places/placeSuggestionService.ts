@@ -15,6 +15,10 @@ import { analyzePrivateResidence, isOrphanPossessiveResidence } from './privateR
 import { resolveExistingPlace } from './existingPlaceResolver';
 import { canonicalPlaceKey } from './placeDuplicateGuard';
 import {
+  extractChainVenueMentions,
+  parseChainVenueTitle,
+} from './chainVenueDisambiguator';
+import {
   BRAND_STORES,
   KNOWN_CITIES,
   PLACE_PREPOSITIONS,
@@ -36,8 +40,22 @@ const POSSESSIVE_PATTERN =
 // lowercase prose, turning "at her right in the eyes" and "in shock but she
 // let me" into place candidates. Prepositions tolerate sentence-initial
 // capitals explicitly instead.
-const PREP_PHRASE_PATTERN =
-  /\b(?:[Aa]t|[Ii]n|[Ff]rom|[Nn]ear|[Aa]round|[Oo]utside|[Ii]nside|[Nn]ext to|[Dd]rove to|[Ww]ent to|[Tt]ake (?:her|him|them|me) to)\s+(?:[Tt]he\s+)?([A-Z][A-Za-zÀ-ÿ0-9.'\s-]{1,60}?)(?=\s+(?:last|yesterday|today|tonight|a\s+(?:few|couple)|in\s+(?:a\s+)?(?:few|couple)|weren|wasn't|that|who|and|is|are|was|were|\.|,|$))/g;
+// The per-word negative lookahead below (before each continuation word) stops the
+// capture at the FIRST terminator word rather than letting the lazy `{1,60}?`
+// character-class quantifier swallow a terminator + whitespace and keep hunting
+// for a LATER occurrence of the same terminator — that overshoot is what turned
+// "at V and Romi saw and heard..." into the candidate "V and Romi saw" (it ran
+// past the first "and" because a bare capture of just "V" doesn't satisfy the
+// quantifier's minimum length, forcing it to consume through to the next "and").
+const PREP_TERMINATOR_WORDS =
+  'last|yesterday|today|tonight|weren|wasn\'t|that|who|and|is|are|was|were';
+const PREP_PHRASE_PATTERN = new RegExp(
+  '\\b(?:[Aa]t|[Ii]n|[Ff]rom|[Nn]ear|[Aa]round|[Oo]utside|[Ii]nside|[Nn]ext to|[Dd]rove to|[Ww]ent to|[Tt]ake (?:her|him|them|me) to)' +
+    '\\s+(?:[Tt]he\\s+)?' +
+    `([A-Z][A-Za-zÀ-ÿ0-9.'-]*(?:\\s+(?!(?:${PREP_TERMINATOR_WORDS})\\b)[A-Za-zÀ-ÿ0-9.'-]+){0,9})` +
+    `(?=\\s+(?:${PREP_TERMINATOR_WORDS}|a\\s+(?:few|couple)|in\\s+(?:a\\s+)?(?:few|couple))|[.,]|$)`,
+  'g'
+);
 
 const SCHOOL_PATTERN = /\b(CSUF|UCI|UCLA|USC|Cal Poly)\b/g;
 
@@ -378,19 +396,56 @@ function processCandidate(
   return outputs;
 }
 
+function chainVenueSuggestions(text: string, options?: PlaceSuggestionOptions): PlaceSuggestion[] {
+  return extractChainVenueMentions(text).map((mention) => {
+    const taxonomy = classifyPlaceTaxonomy(mention.brand, mention.evidence);
+    return {
+      text: mention.displayName,
+      normalizedText: canonicalPlaceKey(mention.displayName),
+      displayName: mention.displayName,
+      start: 0,
+      end: 0,
+      placeType: taxonomy.placeType === 'unknown_place' ? 'gym' : taxonomy.placeType,
+      placeSubtype: taxonomy.placeType === 'unknown_place' ? 'gym' : taxonomy.placeType,
+      confidence: 0.92,
+      status: linkStatus(mention.displayName, options),
+      evidencePhrases: [mention.evidence],
+      originalCandidate: mention.evidence,
+      finalSpan: mention.displayName,
+      rulesFired: ['chain_venue_site'],
+      sourceMessageIds: options?.sourceMessageIds,
+    } satisfies PlaceSuggestion;
+  });
+}
+
+function dropBareBrandWhenSitesExist(items: PlaceSuggestion[]): PlaceSuggestion[] {
+  const siteBrands = new Set(
+    items
+      .map((item) => parseChainVenueTitle(item.displayName || item.text))
+      .filter((parsed) => parsed.qualifier)
+      .map((parsed) => parsed.brand),
+  );
+  if (siteBrands.size === 0) return items;
+  return items.filter((item) => {
+    const parsed = parseChainVenueTitle(item.displayName || item.text);
+    if (parsed.qualifier) return true;
+    return !parsed.brand || !siteBrands.has(parsed.brand);
+  });
+}
+
 /** Process full text and return all place suggestions (including rejected for debug). */
 export function processPlaceSuggestions(
   text: string,
   options?: PlaceSuggestionOptions
 ): PlaceSuggestion[] {
   const candidates = detectPlaceCandidates(text);
-  const all: PlaceSuggestion[] = [];
+  const all: PlaceSuggestion[] = [...chainVenueSuggestions(text, options)];
 
   for (const candidate of candidates) {
     all.push(...processCandidate(candidate, options));
   }
 
-  return dedupeSuggestions(all);
+  return dropBareBrandWhenSitesExist(dedupeSuggestions(all));
 }
 
 /** Return only place-compatible suggestions for UI / API output. */
@@ -420,12 +475,12 @@ export function processPlaceSuggestionsFromCorpus(
   lines: string[],
   options?: PlaceSuggestionOptions
 ): PlaceSuggestion[] {
-  const merged: PlaceSuggestion[] = [];
+  const merged: PlaceSuggestion[] = [...chainVenueSuggestions(lines.join('\n'), options)];
   for (const line of lines) {
     if (!line.trim()) continue;
     merged.push(...processPlaceSuggestionsForOutput(line, options));
   }
-  return dedupeSuggestions(merged);
+  return dropBareBrandWhenSitesExist(dedupeSuggestions(merged));
 }
 
 export const placeSuggestionPipeline = {

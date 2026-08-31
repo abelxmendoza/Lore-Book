@@ -5,6 +5,7 @@ import { discoverEntities } from '../ontology/lexicalIntelligence';
 import { mapDomainToLexicalEntityType } from '../ontology/canonical';
 import type { LexicalEntity, LexicalEntityType } from './lexicalTypes';
 import { normalizeLexicalText, padForScan, titleCase } from './lexicalNormalizer';
+import { isDiscourseOpener } from '../../utils/discourseTokenGuard';
 
 const ORG_CUES = [
   /\b(?:worked|works?|working|employed|interned|joined|started)\s+(?:at|for|with)\s+([A-Z][\w&'-]+(?:\s+[A-Z][\w&'-]+){0,3})(?=[.,!?;:\s]|$|\s+(?:on|and|with|who)\b)/g,
@@ -172,6 +173,7 @@ export function extractLexicalEntities(text: string): LexicalEntity[] {
 
   const properNouns = text.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\b/g) ?? [];
   for (const pn of properNouns) {
+    if (isDiscourseOpener(pn)) continue;
     if (out.some((e) => normalizeLexicalText(e.surface) === normalizeLexicalText(pn))) continue;
     pushEntity(out, seen, {
       surface: pn,

@@ -26,6 +26,7 @@ import type { GroupType, UserRelationship } from '../organizations/OrganizationP
 import { buildGroupSuggestionsClipboardText } from '../../lib/groupSuggestionsClipboard';
 import { copyTextToClipboard } from '../../lib/listClipboard';
 import { cn } from '../../lib/cn';
+import { GroupSuggestionDetailModal, OPEN_GROUP_SUGGESTION_EVENT } from './GroupSuggestionDetailModal';
 
 const ADD_TOAST_MS = 4500;
 const EXIT_ANIMATION_MS = 360;
@@ -70,10 +71,8 @@ const whyText = (c: GroupCandidate): string | null => {
 
 interface GroupSuggestionsProps {
   /** Called after a candidate is accepted. Receives the created organization so
-   *  the parent can render its card immediately and open it in the modal. */
+   *  the parent can render its card immediately in the book. */
   onGroupCreated?: (created?: Organization) => void;
-  /** Open the full group modal for a pending suggestion (preview / accept flow). */
-  onOpenCandidate?: (organization: Organization) => void;
   categoryFilter?: OrganizationCategory;
   searchTerm?: string;
   demoMode?: boolean;
@@ -243,7 +242,6 @@ const DEMO_GROUP_CANDIDATES: GroupCandidate[] = [
 
 export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({
   onGroupCreated,
-  onOpenCandidate,
   categoryFilter = 'all',
   searchTerm = '',
   demoMode = false,
@@ -262,6 +260,7 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({
   // accepting, instead of only being able to accept the auto-suggested type.
   const [typeOverride, setTypeOverride] = useState<Record<string, GroupType>>({});
   const [copied, setCopied] = useState(false);
+  const [openSuggestionId, setOpenSuggestionId] = useState<string | null>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => {
@@ -454,14 +453,10 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({
     copyTimer.current = setTimeout(() => setCopied(false), 2000);
   };
 
-  const openCandidateModal = (candidate: GroupCandidate) => {
-    if (!onOpenCandidate) return;
-    const overriddenType = typeOverride[candidate.id];
-    const effective =
-      overriddenType && overriddenType !== candidate.suggested_group_type
-        ? { ...candidate, suggested_group_type: overriddenType }
-        : candidate;
-    onOpenCandidate(candidateToOrganization(cleanCandidate(effective), undefined, { preview: true }));
+  const openSuggestion = (candidateId: string) => {
+    setOpenSuggestionId(candidateId);
+    setMergeOpenFor(null);
+    void loadOrgOptions();
   };
 
   const visible = useMemo(() => {
@@ -483,7 +478,58 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({
         ].filter(Boolean).join(' ').toLowerCase().includes(term);
       });
   }, [candidates, categoryFilter, dismissed, searchTerm]);
-  if (visible.length === 0) return null;
+
+  const openSuggestionCandidate = useMemo(() => {
+    if (!openSuggestionId) return null;
+    const candidate = candidates.map(cleanCandidate).find(c => c.id === openSuggestionId);
+    if (!candidate || dismissed.has(candidate.id) || isPollutedCandidate(candidate)) return null;
+    const overriddenType = typeOverride[candidate.id];
+    if (overriddenType && overriddenType !== candidate.suggested_group_type) {
+      return { ...candidate, suggested_group_type: overriddenType };
+    }
+    return candidate;
+  }, [openSuggestionId, candidates, dismissed, typeOverride]);
+
+  useEffect(() => {
+    if (openSuggestionId && !openSuggestionCandidate) setOpenSuggestionId(null);
+  }, [openSuggestionId, openSuggestionCandidate]);
+
+  useEffect(() => {
+    const onOpen = (event: Event) => {
+      const candidateId = (event as CustomEvent<{ candidateId?: string }>).detail?.candidateId;
+      if (typeof candidateId !== 'string' || !candidateId) return;
+      setOpenSuggestionId(candidateId);
+      setMergeOpenFor(null);
+      void loadOrgOptions();
+    };
+    window.addEventListener(OPEN_GROUP_SUGGESTION_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_GROUP_SUGGESTION_EVENT, onOpen);
+  }, [demoMode]);
+
+  if (visible.length === 0 && !openSuggestionCandidate) return null;
+
+  const suggestionModal = openSuggestionCandidate ? (
+    <GroupSuggestionDetailModal
+      suggestion={openSuggestionCandidate}
+      groupName={displayGroupName(openSuggestionCandidate)}
+      subtitle={buildSubtitle(openSuggestionCandidate)}
+      processing={processing === openSuggestionCandidate.id}
+      orgOptions={orgOptions}
+      onClose={() => setOpenSuggestionId(null)}
+      onCreate={() => void handleAccept(openSuggestionCandidate.id)}
+      onMerge={(organizationId) => void handleMerge(openSuggestionCandidate.id, organizationId)}
+      onDismiss={() => void handleReject(openSuggestionCandidate.id)}
+    />
+  ) : null;
+
+  if (visible.length === 0) {
+    return (
+      <>
+        {suggestionModal}
+        <ToastContainer />
+      </>
+    );
+  }
 
   return (
     <>
@@ -541,7 +587,7 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({
         <div className="px-2.5 pb-3 sm:px-3 space-y-2">
           {demoMode && (
             <p className="text-[10px] leading-relaxed text-purple-200/70 rounded-md border border-purple-500/20 bg-purple-500/5 px-2.5 py-1.5">
-              LoreBook found recurring groups in sample conversations. Tap a name to open the card, or Create to add it to your Organizations book.
+              LoreBook found recurring groups in sample conversations. Tap a name to review the suggestion, or Create to add it to your Groups book.
             </p>
           )}
           <div className="space-y-2">
@@ -564,21 +610,15 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({
                       <Users className="h-2.5 w-2.5" />
                       New
                     </span>
-                    {onOpenCandidate ? (
-                      <button
-                        type="button"
-                        onClick={() => openCandidateModal(c)}
-                        aria-label={`Open ${groupName} suggestion`}
-                        className="min-w-0 flex-1 truncate rounded-md text-left text-sm font-semibold text-white leading-tight hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/40 inline-flex items-center gap-1 px-0.5 -mx-0.5"
-                      >
-                        <span className="min-w-0 truncate">{groupName}</span>
-                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/35" />
-                      </button>
-                    ) : (
-                      <h3 className="truncate text-sm font-semibold text-white leading-tight">
-                        {groupName}
-                      </h3>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => openSuggestion(c.id)}
+                      aria-label={`Open ${groupName} suggestion`}
+                      className="min-w-0 flex-1 truncate rounded-md text-left text-sm font-semibold text-white leading-tight hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/40 inline-flex items-center gap-1 px-0.5 -mx-0.5"
+                    >
+                      <span className="min-w-0 truncate">{groupName}</span>
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/35" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleDismissLocal(c.id)}
@@ -590,19 +630,13 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({
                     </button>
                   </div>
 
-                  {onOpenCandidate ? (
-                    <button
-                      type="button"
-                      onClick={() => openCandidateModal(c)}
-                      className="mt-0.5 w-full text-left text-[10px] sm:text-[11px] text-white/50 leading-snug line-clamp-1 hover:text-white/70"
-                    >
-                      {buildSubtitle(c)}
-                    </button>
-                  ) : (
-                    <p className="mt-0.5 text-[10px] sm:text-[11px] text-white/50 leading-snug line-clamp-1">
-                      {buildSubtitle(c)}
-                    </p>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => openSuggestion(c.id)}
+                    className="mt-0.5 w-full text-left text-[10px] sm:text-[11px] text-white/50 leading-snug line-clamp-1 hover:text-white/70"
+                  >
+                    {buildSubtitle(c)}
+                  </button>
 
                   <div className="mt-1 flex flex-wrap items-center gap-1">
                     <select
@@ -745,6 +779,7 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({
         </div>
       )}
     </div>
+    {suggestionModal}
     <ToastContainer />
     </>
   );

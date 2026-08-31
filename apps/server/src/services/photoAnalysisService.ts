@@ -36,10 +36,14 @@ export const PHOTO_CATEGORIES: readonly PhotoCategory[] = [
   'other',
 ];
 
+export type DocumentSubtype = 'passport' | 'drivers_license' | 'diploma' | 'certificate' | 'other_id';
+
 export type PhotoAnalysisResult = {
   photoType: 'memory' | 'document' | 'junk';
   confidence: number;
   extractedText?: string;
+  /** When photoType is 'document' and it looks like an official ID/certificate, which kind — for filing into Documents > Personal & Identity. */
+  documentSubtype?: DocumentSubtype;
   suggestedLocation?: {
     type: 'timeline' | 'character' | 'location' | 'memoir' | 'entry';
     id?: string;
@@ -121,7 +125,13 @@ class PhotoAnalysisService {
 
 Determine:
 1. Photo type: 'memory' (personal photo worth keeping), 'document' (photo of text/documents - extract text only), or 'junk' (screenshot, low quality, irrelevant)
-2. If it's a document, extract all text using OCR
+2. If it's a document, extract all text using OCR. Also check if it's specifically an official ID or certificate document, and if so set documentSubtype:
+   - passport: a passport photo page
+   - drivers_license: a driver's license or state/government ID card
+   - diploma: a diploma or degree certificate
+   - certificate: any other official certificate (birth certificate, professional certification, award, etc.)
+   - other_id: any other official identity document not covered above
+   - omit documentSubtype entirely for regular documents (notes, receipts, letters, screenshots of text, etc.)
 3. Suggest where it should go in the user's lore book (timeline, character, location, memoir section, or specific entry)
 4. Detect entities: people, locations, dates mentioned
 5. Detect skills being practiced - only if clearly visible/obvious
@@ -151,6 +161,7 @@ Return JSON:
   "photoType": "memory" | "document" | "junk",
   "confidence": 0.0-1.0,
   "extractedText": "text from document if document type",
+  "documentSubtype": "passport" | "drivers_license" | "diploma" | "certificate" | "other_id" | null,
   "suggestedLocation": {
     "type": "timeline" | "character" | "location" | "memoir" | "entry",
     "name": "suggested location name",
@@ -494,6 +505,8 @@ Return JSON:
       addToSelfPhotos?: boolean;
       suggestedLocation?: PhotoAnalysisResult['suggestedLocation'];
       analysis?: PhotoAnalysisResult;
+      /** Composer text the user typed alongside this photo — folded into the saved entry, not dropped. */
+      caption?: string;
     }
   ): Promise<{
     entryId?: string;
@@ -518,9 +531,10 @@ Return JSON:
         if (extractedText) {
           const { memoryService } = await import('./memoryService');
           const captureDate = occurrenceDate(metadata.dateTimeOriginal) ?? occurrenceDate(metadata.dateTime);
+          const captionPrefix = options.caption?.trim() ? `[User note: ${options.caption.trim()}]\n\n` : '';
           const entry = await memoryService.saveEntry({
             userId,
-            content: `[Extracted from photo: ${filename}]\n\n${extractedText}`,
+            content: `${captionPrefix}[Extracted from photo: ${filename}]\n\n${extractedText}`,
             date: captureDate,
             temporalSource: captureDate ? 'document_stated' : undefined,
             tags: ['photo', 'document', 'extracted'],
@@ -557,7 +571,8 @@ Return JSON:
           analysis.detectedEntities?.characters?.length
             ? ` People: ${analysis.detectedEntities.characters.join(', ')}.`
             : '';
-        const entryContent = `${summaryLine}${placeLine}${people}`;
+        const captionPrefix = options.caption?.trim() ? `${options.caption.trim()} — ` : '';
+        const entryContent = `${captionPrefix}${summaryLine}${placeLine}${people}`;
 
         const { memoryService } = await import('./memoryService');
         const category = analysis.category ?? 'other';

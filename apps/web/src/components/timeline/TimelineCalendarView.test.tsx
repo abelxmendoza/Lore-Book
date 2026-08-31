@@ -69,6 +69,7 @@ function monthResult(overrides?: Partial<CalendarMonthResult>): CalendarMonthRes
             userPresence: 'attended',
             sourceKind: 'journal_entry',
             sourceId: 'journal-1',
+            timelineTrack: 'projects',
             body: 'Wrote down what happened.',
           },
         ],
@@ -104,6 +105,7 @@ describe('TimelineCalendarView', () => {
       expect(detail).toHaveTextContent('Team dinner');
     });
     expect(detail).toHaveTextContent('Late notes');
+    expect(detail).toHaveTextContent('projects');
     expect(detail).toHaveTextContent(/2 items/i);
   });
 

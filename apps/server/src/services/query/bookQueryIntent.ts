@@ -5,15 +5,15 @@ import {
 
 export const BOOK_QUERY_DOMAIN_HINTS: Record<BookQueryDomain, RegExp> = {
   character: /\b(?:people|person|characters?|friends?|coworkers?|aliases?)\b/i,
-  organization: /\b(?:groups?|organizations?|communities|clubs?|teams?|bands?|companies)\b/i,
+  organization: /\b(?:groups?|organizations?|communities|clubs?|teams?|bands?|companies|employers?|workplaces?|schools?|universit(?:y|ies)|colleges?|education|degrees?)\b/i,
   family: /\b(?:family|relatives?|kinship|maternal|paternal|cousins?|siblings?|parents?|household)\b/i,
   location: /\b(?:places?|locations?|venues?|where|visited|lived|cities|address)\b/i,
   romance: /\b(?:dating|romance|romantic|relationships?|crush|partner|ex(?:es)?|love)\b/i,
   project: /\b(?:projects?|building|shipped|software|creative work)\b/i,
   skill: /\b(?:skills?|practice|learning|proficiency|abilities|good at)\b/i,
   quest: /\b(?:quests?|goals?|working on|priorities|blocked|deadlines?|progress)\b/i,
-  event: /\b(?:events?|life log|logged moments?|calendar entries)\b/i,
-  document: /\b(?:documents?|files?|uploads?|resume|pdf|source file)\b/i,
+  event: /\b(?:events?|life log|logged moments?|calendar entries|education timeline|career timeline)\b/i,
+  document: /\b(?:documents?|files?|uploads?|resume|resumes|cv|pdf|source file|work history|job history|jobs?|school history|schools?|education|degree|degrees|contact|email|phone)\b/i,
   narrative: /\b(?:narrative|anchors?|eras?|chapters?|themes?|story arcs?)\b/i,
 };
 

@@ -8,6 +8,7 @@ import { correctionTracker } from './activeLearning/correctionTracker';
 import { questSuggestionService } from './quests/questSuggestionService';
 import { skillSuggestionService } from './skills/skillSuggestionService';
 import { projectSuggestionService } from './projects/projectSuggestionService';
+import { organizationSuggestionService } from './organizations/organizationSuggestionService';
 import { omegaMemoryService } from './omegaMemoryService';
 import {
   SUGGESTION_DOMAIN_LABELS,
@@ -144,6 +145,28 @@ async function seedTargetSuggestion(
       break;
     case 'locations':
       await omegaMemoryService.createEntity(userId, name, 'LOCATION');
+      break;
+    case 'organizations':
+      // organization_suggestions is a separate, richer table from omega_entities
+      // (organization_type, group_type, role_to_user, etc.) — organizationType
+      // 'unknown_organization' is the documented fallback for a name with no
+      // real classification signal, same idea as characters/locations above.
+      await organizationSuggestionService.upsertFromInference(
+        userId,
+        {
+          displayName: name,
+          organizationType: 'unknown_organization',
+          context: {},
+          aliases: [],
+          evidencePhrases: input.evidence ? [input.evidence] : [],
+          sourceMessageIds: [],
+          confidence: match.disposition === 'uncertain' ? 0.62 : 0.78,
+          inferredNotConfirmed: false,
+          requiresReview: match.disposition === 'uncertain',
+          promotionStatus: 'suggested_organization',
+        },
+        { source: 'chat' }
+      );
       break;
     default:
       break;

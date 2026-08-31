@@ -15,7 +15,6 @@ import { RomanceTimelineMomentPanel } from './RomanceTimelineMomentPanel';
 import type { RomanticPeripheral } from '../../api/romanticPeripherals';
 import {
   buildRomanceTimelineMoment,
-  buildRomanceTimelineMomentChatPrompt,
   intimacyImpactLabel,
   type RomanceTimelineMoment,
   type RomanceTimelineRelatedLink,
@@ -183,6 +182,7 @@ export const RelationshipTimeline = ({
   const continueInChat = (prompt?: string) => {
     if (!selectedMoment) return;
     const moment = selectedMoment;
+    const trimmedPrompt = prompt?.trim();
     setSelectedMoment(null);
     onCloseParentModal?.();
     openChatWithFocus({
@@ -194,8 +194,7 @@ export const RelationshipTimeline = ({
       sourceSurface: 'love',
       sourceLabel: CHAT_FOCUS_SOURCE_LABELS.love,
       knowledgeScope: `intimacy milestone — ${moment.title} with ${personName}`,
-      initialPrompt: prompt?.trim() || buildRomanceTimelineMomentChatPrompt(moment, personName),
-      autoSubmit: true,
+      ...(trimmedPrompt ? { initialPrompt: trimmedPrompt, autoSubmit: true } : {}),
       baseline: {
         affectionScore: scores ? scorePct(scores.affectionScore) : undefined,
         healthScore: scores ? scorePct(scores.healthScore) : undefined,

@@ -352,6 +352,13 @@ export async function deriveCurrentFocus(userId: string, bio: BiographyOutput): 
  * Recent developments = the most recent timeline-derived key events,
  * newest first. These are things that already happened — distinct from
  * "current focus" (forward-looking, from live quests / upcoming events).
+ *
+ * `date` on each key event is occurrence date when resolved, and falls back
+ * to recording (capture) time when the temporal resolver couldn't anchor a
+ * real occurrence date (`dateIsOccurrence: false` — see biographyFoundation-
+ * Service's key-event assembly). Sorting on `date` as-is is intentional:
+ * without this fallback, undated events would vanish from this list
+ * entirely rather than surface as honestly-uncertain-but-recent.
  */
 function deriveRecentDevelopments(bio: BiographyOutput): string[] {
   return [...bio.facts.keyEvents]

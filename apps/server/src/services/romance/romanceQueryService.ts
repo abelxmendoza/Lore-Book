@@ -39,6 +39,7 @@ export type RomanceQuerySource = {
   created_at?: string | null;
   metadata?: Record<string, unknown> | null;
   eligibility?: DatingEligibilityResult;
+  statusChanges?: RomanceStatusChange[];
 };
 
 type QueryHints = {
@@ -47,9 +48,12 @@ type QueryHints = {
   scopes: RomanceQueryScope[];
   statuses: string[];
   flagTerms: string[];
+  wantsStatusHistory: boolean;
   year?: number;
   textTerms: string[];
 };
+
+type RomanceStatusChange = NonNullable<RomanceQueryResult["statusChanges"]>[number];
 
 const END_STATUSES = new Set(["ended", "ghosted", "blocked"]);
 const NO_CONTACT_STATUSES = new Set(["ghosted", "blocked"]);
@@ -115,6 +119,81 @@ function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
 }
 
+function statusChangeFromMutation(row: {
+  previous_value?: unknown;
+  new_value?: unknown;
+  reason?: string | null;
+  source?: string | null;
+  metadata?: unknown;
+  created_at: string;
+}): RomanceStatusChange | null {
+  const previous =
+    row.previous_value && typeof row.previous_value === "object"
+      ? (row.previous_value as Record<string, unknown>)
+      : {};
+  const next =
+    row.new_value && typeof row.new_value === "object"
+      ? (row.new_value as Record<string, unknown>)
+      : {};
+  const from = typeof previous.status === "string" ? previous.status : null;
+  const to = typeof next.status === "string" ? next.status : null;
+  if (!from && !to) return null;
+
+  const metadata =
+    row.metadata && typeof row.metadata === "object"
+      ? (row.metadata as Record<string, unknown>)
+      : {};
+  const reasonNote =
+    typeof metadata.reason_note === "string"
+      ? metadata.reason_note
+      : typeof (metadata.last_user_correction as Record<string, unknown> | undefined)?.reason_note ===
+          "string"
+        ? ((metadata.last_user_correction as Record<string, unknown>).reason_note as string)
+        : null;
+
+  return {
+    from,
+    to,
+    at: row.created_at,
+    source: row.source ?? "SYSTEM",
+    reason: row.reason ?? null,
+    reasonNote,
+  };
+}
+
+async function loadStatusChanges(
+  userId: string,
+  relationshipIds: string[],
+): Promise<Map<string, RomanceStatusChange[]>> {
+  const changesByRelationship = new Map<string, RomanceStatusChange[]>();
+  if (relationshipIds.length === 0) return changesByRelationship;
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("identity_mutations")
+      .select("entity_id, previous_value, new_value, reason, source, metadata, created_at")
+      .eq("user_id", userId)
+      .eq("entity_type", "romantic_relationship")
+      .in("entity_id", relationshipIds)
+      .order("created_at", { ascending: true })
+      .limit(Math.min(500, relationshipIds.length * 25));
+    if (error) {
+      logger.debug({ error, userId }, "Romance status history unavailable");
+      return changesByRelationship;
+    }
+    for (const row of data ?? []) {
+      const change = statusChangeFromMutation(row);
+      if (!change) continue;
+      const list = changesByRelationship.get(row.entity_id) ?? [];
+      list.push(change);
+      changesByRelationship.set(row.entity_id, list);
+    }
+  } catch (error) {
+    logger.debug({ error, userId }, "Romance status history read failed");
+  }
+  return changesByRelationship;
+}
+
 function capturedPerson(query: string): string[] {
   const patterns = [
     /\b(?:relationship|romance|history|connection)\s+with\s+(.+?)\??$/i,
@@ -139,19 +218,24 @@ export function deriveRomanceQueryHints(query: string): QueryHints {
   const scopes: RomanceQueryScope[] = [];
   const statuses: string[] = [];
   const flagTerms: string[] = [];
+  const wantsStatusHistory =
+    /\b(?:status|relationship|romance)\s+(?:change|changes|history)|\bwhat\s+changed\b|\bwhy\s+(?:is|was|did)\b|\breason(?:s)?\b/i.test(
+      query,
+    );
   let intent: QueryHints["intent"] = query.trim() ? "connection" : "browse";
 
   if (personNames.length) intent = "person";
   if (/\b(?:current|active|right now|still dating)\b/i.test(query))
     scopes.push("active");
   if (
-    /\b(?:past|former|previous|exes?|used to date|have i dated|did i date)\b/i.test(
+    /\b(?:past|former|previous|exes?|used to date|have i dated|did i date|inactive|ended)\b/i.test(
       query,
     )
   ) {
     scopes.push("past");
-    intent = "history";
+    intent = wantsStatusHistory ? "status" : "history";
   }
+  if (wantsStatusHistory) intent = "status";
   if (/\b(?:no contact|ghosted|blocked|cut off)\b/i.test(query)) {
     scopes.push("no_contact");
     intent = "status";
@@ -294,6 +378,15 @@ export function deriveRomanceQueryHints(query: string): QueryHints {
     "rank",
     "ranking",
     "top",
+    "inactive",
+    "ended",
+    "change",
+    "changes",
+    "changed",
+    "history",
+    "status",
+    "reason",
+    "reasons",
     "compatibility",
     "health",
     "affection",
@@ -317,6 +410,7 @@ export function deriveRomanceQueryHints(query: string): QueryHints {
     flagTerms: unique(flagTerms),
     year,
     textTerms: unique(textTerms),
+    wantsStatusHistory,
   };
 }
 
@@ -559,6 +653,9 @@ export function compileRomanceQuery(
         needsReview: eligibility?.reviewRequired ?? false,
         score,
         matchedReasons: unique(reasons),
+        ...(hints.wantsStatusHistory
+          ? { statusChanges: row.statusChanges ?? [] }
+          : {}),
       },
     ];
   });
@@ -751,9 +848,19 @@ export async function queryRomanceForUser(
     userId,
     enriched as Parameters<typeof loadDatingEligibilityForRows>[1],
   );
+  const wantsStatusHistory = deriveRomanceQueryHints(request.query).wantsStatusHistory;
+  const statusChangesByRelationship = wantsStatusHistory
+    ? await loadStatusChanges(
+        userId,
+        (enriched as RomanceQuerySource[]).map((row) => row.id),
+      )
+    : new Map<string, RomanceStatusChange[]>();
   const rows = (enriched as RomanceQuerySource[]).map((row) => ({
     ...row,
     eligibility: eligibility.get(row.id),
+    ...(wantsStatusHistory
+      ? { statusChanges: statusChangesByRelationship.get(row.id) ?? [] }
+      : {}),
   }));
   logger.debug(
     { userId, relationshipCount: rows.length },

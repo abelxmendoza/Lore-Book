@@ -647,6 +647,10 @@ export class QuestService {
 
       const suggestions: QuestSuggestion[] = [];
       for (const goal of goals) {
+        // Legacy imports sometimes contain narrative diary sentences in the
+        // goals table. They are not recoverable goals and must not be promoted
+        // into quest suggestions merely because their status is ACTIVE.
+        if (/^(?:yesterday|last\s+(?:night|week|month)|today\s+was|this\s+was|i\s+(?:was|went|felt)|we\s+were)\b/i.test(goal.title ?? '')) continue;
         if (linkedGoalIds.has(goal.id)) continue;
         if (existingTitles.has((goal.title || '').trim().toLowerCase())) continue;
 

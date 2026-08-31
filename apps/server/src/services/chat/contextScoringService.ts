@@ -697,6 +697,8 @@ export function scoreContext(
   filtered.cognitivePlanBlock = loreData.cognitivePlanBlock;
   filtered.epistemicBlock = loreData.epistemicBlock;
   filtered.answerPlanBlock = loreData.answerPlanBlock;
+  filtered.compositionPlan = loreData.compositionPlan;
+  filtered.compositionPlanBlock = loreData.compositionPlanBlock;
   filtered.confirmedSkills = loreData.confirmedSkills;
   // Romantic advisor context only when romanticRelationships scored INCLUDE.
   // Unconditional pass previously steered vents toward active crush partners.

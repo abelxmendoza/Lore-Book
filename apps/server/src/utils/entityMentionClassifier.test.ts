@@ -41,6 +41,12 @@ describe('entityMentionClassifier', () => {
     expect(classifyMentionKind('Alex', 'Alex said she would call').kind).toBe('person');
   });
 
+  it('rejects discourse openers as person candidates', () => {
+    expect(classifyMentionKind("Here's").kind).toBe('fragment');
+    expect(classifyMentionKind('Heres').kind).toBe('fragment');
+    expect(classifyMentionKind("There's").kind).toBe('fragment');
+  });
+
   it('defers single-token first mentions but promotes kinship and multi-token names', () => {
     expect(shouldDeferCharacterPromotion('Alex', 1)).toBe(true);
     expect(shouldDeferCharacterPromotion('Alex', 2)).toBe(false);
@@ -53,5 +59,10 @@ describe('entityMentionClassifier', () => {
     expect(classifyMentionKind('Max', 'my dog Max is the best').kind).toBe('pet');
     expect(classifyMentionKind('Luna', 'our cat Luna knocked over the plant').kind).toBe('pet');
     expect(classifyMentionKind('Max', 'my dog Max is the best').kind).not.toBe('person');
+  });
+
+  it('classifies robot companion mentions as pet, not person', () => {
+    expect(classifyMentionKind('Omega1', 'my robot Omega1 needs a charge').kind).toBe('pet');
+    expect(classifyMentionKind('Omega1', "our robot's name is Omega1").kind).toBe('pet');
   });
 });

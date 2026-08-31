@@ -13,6 +13,11 @@ import { hasQuestSignal } from '../conversationCentered/extractionSignals';
 import { goalCognitionEngine } from '../goals/goalCognitionEngine';
 import { explainGoalEvidence } from '../goals/goalEvidenceService';
 import type { GoalKind, GoalSourceType } from '../goals/goalTypes';
+import {
+  canonicalQuestIntentKey,
+  isQuestCandidateTextAllowed,
+  questTitlesSemanticallyMatch,
+} from './questCandidateBoundary';
 
 export type QuestSuggestionRow = {
   id: string;
@@ -25,7 +30,7 @@ export type QuestSuggestionRow = {
   category?: string | null;
   confidence: number;
   reasoning?: string | null;
-  evidence?: Array<{ text: string } | string>;
+  evidence?: Array<{ text: string; source_message_id?: string; observed_at?: string } | string>;
   source?: string;
   source_message_id?: string | null;
   item_type?: string | null;
@@ -74,6 +79,7 @@ class QuestSuggestionService {
       sourceThreadId?: string | null;
       source?: 'chat' | 'journal' | 'llm_scan';
       sourceText?: string;
+      sourceQuote?: string;
       authorRole?: 'user' | 'assistant' | 'system';
       userConfirmed?: boolean;
     } = {}
@@ -86,6 +92,7 @@ class QuestSuggestionService {
       logger.debug({ userId, title }, 'Goal cognition rejected suggestion without direct source text');
       return false;
     }
+    if (!isQuestCandidateTextAllowed(sourceText, title)) return false;
     const proposedKind: GoalKind =
       extracted.quest_type === 'daily' ? 'TASK'
         : extracted.quest_type === 'achievement' ? 'MILESTONE'
@@ -116,6 +123,8 @@ class QuestSuggestionService {
     if (suppressed.suppressed) return false;
 
     const evidenceText = cognition.candidate.originalText;
+    const sourceQuote = opts.sourceQuote?.trim() || evidenceText;
+    if (!sourceText.replace(/\s+/g, ' ').toLocaleLowerCase().includes(sourceQuote.replace(/\s+/g, ' ').toLocaleLowerCase())) return false;
     const quality = evaluateEntityQuality({
       name: title,
       domain: 'quests',
@@ -142,7 +151,7 @@ class QuestSuggestionService {
       category: extracted.category ?? null,
       confidence: cognition.candidate.confidence,
       reasoning: explainGoalEvidence(cognition.candidate.originalText, cognition.candidate.kind),
-      evidence: [{ text: cognition.candidate.originalText }],
+      evidence: [{ text: sourceQuote, source_message_id: opts.sourceMessageId, observed_at: new Date().toISOString() }],
       source_message_id: opts.sourceMessageId ?? null,
       source: opts.source ?? 'chat',
       status: 'pending',
@@ -150,6 +159,32 @@ class QuestSuggestionService {
     };
 
     const persist = async () => {
+      const { data: pendingRows } = await supabaseAdmin
+        .from('quest_suggestions')
+        .select('id, title, evidence, description, confidence, source_message_id')
+        .eq('user_id', userId)
+        .eq('status', 'pending')
+        .limit(100);
+      const duplicate = (pendingRows ?? []).find((row) =>
+        row.title !== safeTitle && questTitlesSemanticallyMatch(String(row.title ?? ''), safeTitle));
+      if (duplicate?.id) {
+        const currentEvidence = Array.isArray(duplicate.evidence) ? duplicate.evidence : [];
+        const mergedEvidence = [...currentEvidence, { text: sourceQuote, source_message_id: opts.sourceMessageId, observed_at: new Date().toISOString() }]
+          .filter((item, index, all) => {
+            const text = typeof item === 'string' ? item : item?.text;
+            return all.findIndex((candidate) => (typeof candidate === 'string' ? candidate : candidate?.text)?.toLocaleLowerCase() === String(text ?? '').toLocaleLowerCase()) === index;
+          });
+        const { error: duplicateError } = await supabaseAdmin.from('quest_suggestions').update({
+          evidence: mergedEvidence,
+          description: duplicate.description || payload.description,
+          confidence: Math.max(Number(duplicate.confidence ?? 0), Number(payload.confidence ?? 0)),
+          source_message_id: duplicate.source_message_id || payload.source_message_id,
+          normalized_title: canonicalQuestIntentKey(String(duplicate.title)),
+          updated_at: new Date().toISOString(),
+        }).eq('user_id', userId).eq('id', duplicate.id);
+        if (duplicateError && !isTableMissing(duplicateError)) logger.warn({ duplicateError, userId }, 'Failed to merge duplicate quest suggestion');
+        return;
+      }
       const { error } = await supabaseAdmin
         .from('quest_suggestions')
         .upsert(payload, { onConflict: 'user_id,title' });
@@ -171,7 +206,7 @@ class QuestSuggestionService {
         promotion_status:
           cognition.decision === 'ACCEPT' ? 'suggested_quest_log_item' : 'candidate',
         requires_review: cognition.decision === 'REVIEW',
-        normalized_title: normalizeTitle(safeTitle),
+        normalized_title: canonicalQuestIntentKey(safeTitle),
       })
       .eq('user_id', userId)
       .eq('title', safeTitle);
@@ -260,7 +295,26 @@ class QuestSuggestionService {
         created_at: row.created_at as string | undefined,
       });
     }
-    return filtered;
+    const clustered = new Map<string, QuestSuggestionRow>();
+    for (const item of filtered) {
+      const key = canonicalQuestIntentKey(item.title);
+      const current = clustered.get(key);
+      if (!current) {
+        clustered.set(key, item);
+        continue;
+      }
+      const evidence = [...(current.evidence ?? []), ...(item.evidence ?? [])].filter((entry, index, all) => {
+        const text = typeof entry === 'string' ? entry : entry.text;
+        return all.findIndex((candidate) => (typeof candidate === 'string' ? candidate : candidate.text).toLocaleLowerCase() === text.toLocaleLowerCase()) === index;
+      });
+      clustered.set(key, {
+        ...current,
+        evidence,
+        confidence: Math.max(current.confidence, item.confidence),
+        description: current.description || item.description,
+      });
+    }
+    return [...clustered.values()];
   }
 
   private async archiveInvalidSuggestion(
@@ -328,7 +382,6 @@ class QuestSuggestionService {
       sourceSuggestionId: suggestionId,
       threadId: opts?.threadId,
       reason: opts?.reason,
-      permanent: true,
     });
 
     if (result.isPermanent) {
@@ -367,7 +420,6 @@ class QuestSuggestionService {
       sourceSuggestionId: opts?.suggestionId ?? existing?.id,
       threadId: opts?.threadId,
       reason: opts?.reason,
-      permanent: true,
     });
 
     if (result.isPermanent) {
@@ -470,6 +522,36 @@ class QuestSuggestionService {
     });
   }
 
+  async mergeSuggestionIntoQuest(userId: string, suggestionId: string, questId: string): Promise<Quest> {
+    const [{ data: suggestion }, target] = await Promise.all([
+      supabaseAdmin.from('quest_suggestions').select('*').eq('user_id', userId).eq('id', suggestionId).single(),
+      questStorage.getQuest(userId, questId),
+    ]);
+    if (!suggestion) throw new Error('Suggestion not found');
+    if (!target) throw new Error('Quest not found');
+
+    const existingEvidence = Array.isArray(target.metadata?.suggestion_evidence)
+      ? target.metadata.suggestion_evidence
+      : [];
+    const suggestionEvidence = Array.isArray(suggestion.evidence) ? suggestion.evidence : [];
+    const mergedEvidence = [...existingEvidence, ...suggestionEvidence].filter((entry, index, all) => {
+      const text = typeof entry === 'string' ? entry : entry?.text;
+      return all.findIndex((candidate) => (typeof candidate === 'string' ? candidate : candidate?.text)?.toLocaleLowerCase() === String(text ?? '').toLocaleLowerCase()) === index;
+    });
+    const merged = await questStorage.updateQuest(userId, questId, {
+      metadata: {
+        ...(target.metadata ?? {}),
+        suggestion_evidence: mergedEvidence,
+        merged_suggestion_ids: [...new Set([
+          ...(Array.isArray(target.metadata?.merged_suggestion_ids) ? target.metadata.merged_suggestion_ids : []),
+          suggestionId,
+        ])],
+      },
+    });
+    await supabaseAdmin.from('quest_suggestions').update({ status: 'confirmed', updated_at: new Date().toISOString() }).eq('user_id', userId).eq('id', suggestionId);
+    return merged;
+  }
+
   /** Chat messages → pending suggestions (user confirms in Quest Board). */
   async processChatMessageForQuestSuggestions(
     userId: string,
@@ -484,11 +566,10 @@ class QuestSuggestionService {
     const sourceThreadId = await suggestionDismissalService.resolveThreadIdFromMessageId(messageId);
     const extracted = await questExtractor.extractQuestsFromMessage(userId, content, conversationHistory);
     const existing = await questStorage.getQuests(userId, { status: ['active', 'paused'] });
-    const have = new Set(existing.map((q) => normalizeTitle(q.title)));
 
     let saved = 0;
     for (const quest of extracted) {
-      if (!quest.title?.trim() || have.has(normalizeTitle(quest.title))) continue;
+      if (!quest.title?.trim() || existing.some((item) => questTitlesSemanticallyMatch(item.title, quest.title))) continue;
       const upserted = await this.upsertFromExtraction(
         userId,
         {
@@ -502,7 +583,13 @@ class QuestSuggestionService {
           confidence: 0.72,
           reasoning: 'Detected from your conversation',
         },
-        { sourceMessageId: messageId, sourceThreadId, source: 'chat', sourceText: content }
+        {
+          sourceMessageId: messageId,
+          sourceThreadId,
+          source: 'chat',
+          sourceText: content,
+          sourceQuote: typeof quest.metadata?.source_text === 'string' ? quest.metadata.source_text : undefined,
+        }
       );
       if (upserted) saved++;
     }
@@ -513,11 +600,10 @@ class QuestSuggestionService {
   async processEntryForQuestSuggestions(userId: string, entryId: string, content: string): Promise<number> {
     const extracted = await questExtractor.extractQuests(userId, [{ content, date: new Date().toISOString() }]);
     const existing = await questStorage.getQuests(userId, { status: ['active', 'paused'] });
-    const have = new Set(existing.map((q) => normalizeTitle(q.title)));
 
     let saved = 0;
     for (const quest of extracted) {
-      if (!quest.title?.trim() || have.has(normalizeTitle(quest.title))) continue;
+      if (!quest.title?.trim() || existing.some((item) => questTitlesSemanticallyMatch(item.title, quest.title))) continue;
       const upserted = await this.upsertFromExtraction(
         userId,
         {
@@ -531,7 +617,12 @@ class QuestSuggestionService {
           confidence: 0.72,
           reasoning: 'Detected from your journal',
         },
-        { sourceMessageId: entryId, source: 'journal', sourceText: content }
+        {
+          sourceMessageId: entryId,
+          source: 'journal',
+          sourceText: content,
+          sourceQuote: typeof quest.metadata?.source_text === 'string' ? quest.metadata.source_text : undefined,
+        }
       );
       if (upserted) saved++;
     }

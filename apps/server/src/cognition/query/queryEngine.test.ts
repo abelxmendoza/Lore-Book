@@ -36,6 +36,7 @@ describe('IntentClassifier', () => {
     expect(classifyQuery("who's in my story?").intent).toBe(QueryType.AGGREGATE);
     expect(classifyQuery('tell me about my family').intent).toBe(QueryType.RELATIONSHIP);
     expect(classifyQuery('what do I do for work?').intent).toBe(QueryType.ORGANIZATION);
+    expect(classifyQuery('what jobs have I had and schools Ive been to?').intent).toBe(QueryType.ORGANIZATION);
   });
 
   it('keeps foundation-primary flag from the legacy router rules', () => {

@@ -4,6 +4,8 @@ import {
   matchesEntityQuery,
   FAMILY_KIN_TERM_RE,
   detectSyncRecallIntent,
+  EDUCATION_RE,
+  WORK_RE,
 } from './recallIntentPatterns';
 
 describe('recallIntentPatterns — real chat phrasings that previously fell through', () => {
@@ -45,5 +47,36 @@ describe('recallIntentPatterns — real chat phrasings that previously fell thro
     expect(matchesEntityQuery('what do you know about me')).toBe(false);
     expect(matchesEntityQuery('what do you know about myself')).toBe(false);
     expect(matchesEntityQuery('tell me about the characters')).toBe(false);
+  });
+
+  it.each([
+    'what jobs have i had',
+    'show my full employment history',
+    'where have i worked?',
+    'not my full work history',
+  ])('recognizes "%s" as work recall', (message) => {
+    expect(WORK_RE.test(message)).toBe(true);
+    expect(matchesFoundationRecallQuery(message)).toBe(true);
+    expect(detectSyncRecallIntent(message)).toBe('work');
+  });
+
+  it.each([
+    'what schools have I been to?',
+    'where did I go to school?',
+    'show my education history',
+  ])('recognizes "%s" as education recall', (message) => {
+    expect(EDUCATION_RE.test(message)).toBe(true);
+    expect(matchesFoundationRecallQuery(message)).toBe(true);
+    expect(detectSyncRecallIntent(message)).toBe('education');
+  });
+
+  it('recognizes combined work and education recall instead of dropping the second domain', () => {
+    for (const message of [
+      'what jobs have i had and schools ive been to?',
+      'what schools ive been to and what jobs have i had?',
+    ]) {
+      expect(matchesFoundationRecallQuery(message)).toBe(true);
+      expect(detectSyncRecallIntent(message)).toBe('work_and_education');
+    }
   });
 });

@@ -9,9 +9,9 @@
 import { logger } from '../../logger';
 import { normalizeNameKey } from '../../utils/nameNormalization';
 import {
+  isThemeShapedEpithet,
   normalizeEpithetText,
   resolveStoredEpithet,
-  stripPersonNameEpithet,
 } from '../../utils/personNameEpithet';
 import { completeFor } from '../llm/completeFor';
 import { isFallbackEnabled } from '../devFallbackService';
@@ -118,6 +118,7 @@ export function suggestEpithetFromCorpus(corpus: string): EpithetSuggestion | nu
   for (const rule of HEURISTIC_RULES) {
     const m = blob.match(rule.pattern);
     if (!m) continue;
+    if (isThemeShapedEpithet(rule.epithet)) continue;
     return {
       epithet: rule.epithet,
       evidence: {
@@ -168,7 +169,7 @@ async function suggestEpithetFromLlm(
       quote?: string;
     };
     const epithet = normalizeEpithetText(parsed.epithet ?? null);
-    if (!epithet) return null;
+    if (!epithet || isThemeShapedEpithet(epithet)) return null;
     const confidence =
       typeof parsed.confidence === 'number' && parsed.confidence >= 0 && parsed.confidence <= 1
         ? parsed.confidence
@@ -195,6 +196,8 @@ export function shouldAttemptEpithetGeneration(
 ): boolean {
   if (options?.force) return true;
   if (!metadata) return true;
+  // The main character card is an identity surface, not a story-epithet card.
+  if (metadata.is_self === true || metadata.is_user === true) return false;
   if (metadata.epithet_disabled === true) return false;
   if (metadata.epithet_pinned === true) return false;
   if (resolveStoredEpithet(metadata)) {
@@ -216,7 +219,7 @@ export async function persistCharacterEpithet(
   row: { name: string; alias?: string[] | null; metadata?: Record<string, unknown> | null },
 ): Promise<boolean> {
   const epithet = normalizeEpithetText(suggestion.epithet);
-  if (!epithet) return false;
+  if (!epithet || isThemeShapedEpithet(epithet)) return false;
 
   const metadata: Record<string, unknown> = {
     ...(row.metadata ?? {}),
@@ -225,10 +228,10 @@ export async function persistCharacterEpithet(
     epithet_evidence: suggestion.evidence,
   };
   const alias = [...(row.alias ?? [])].filter(Boolean);
-  for (const extra of [epithet, `${stripPersonNameEpithet(row.name)} the ${epithet}`]) {
-    if (extra && !alias.some((a) => normalizeNameKey(a) === normalizeNameKey(extra))) {
-      alias.push(extra);
-    }
+  // Short epithet can live as an alias. The composed "Name the Epithet" form is
+  // display-only — storing it as an alias pollutes the identity line.
+  if (!alias.some((a) => normalizeNameKey(a) === normalizeNameKey(epithet))) {
+    alias.push(epithet);
   }
 
   const { error } = await supabaseAdmin
@@ -266,6 +269,7 @@ export async function maybeGenerateCharacterEpithet(
 
   if (error || !character) return null;
   const metadata = (character.metadata as Record<string, unknown>) ?? {};
+  if (metadata.is_self === true || metadata.is_user === true) return null;
   if (!shouldAttemptEpithetGeneration(metadata, options)) return null;
 
   const mentionNames = [

@@ -1,30 +1,25 @@
 import { Router } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { supabaseAdmin } from '../services/supabaseClient';
+import { loadNavigationCounts } from '../services/navigationCountService';
 
 const router = Router();
 
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
   try {
-    const [chars, locs, evts, orgs, skills, projects] = await Promise.all([
-      supabaseAdmin.from('characters').select('id', { count: 'exact', head: true }).eq('user_id', userId),
-      supabaseAdmin.from('omega_entities').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('entity_type', 'LOCATION'),
-      supabaseAdmin.from('event_candidates').select('id', { count: 'exact', head: true }).eq('user_id', userId),
-      supabaseAdmin.from('organizations').select('id', { count: 'exact', head: true }).eq('user_id', userId),
-      supabaseAdmin.from('skills').select('id', { count: 'exact', head: true }).eq('user_id', userId),
-      supabaseAdmin.from('projects').select('id', { count: 'exact', head: true }).eq('user_id', userId),
-    ]);
-    res.json({
-      characters: chars.count ?? 0,
-      locations: locs.count ?? 0,
-      events: evts.count ?? 0,
-      organizations: orgs.count ?? 0,
-      skills: skills.count ?? 0,
-      projects: projects.count ?? 0,
-    });
+    res.json(await loadNavigationCounts(userId));
   } catch {
-    res.json({ characters: 0, locations: 0, events: 0, organizations: 0, skills: 0, projects: 0 });
+    res.json({
+      characters: 0,
+      family: 0,
+      romantic: 0,
+      organizations: 0,
+      locations: 0,
+      events: 0,
+      projects: 0,
+      skills: 0,
+      anchors: 0,
+    });
   }
 });
 

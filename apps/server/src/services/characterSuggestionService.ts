@@ -7,6 +7,7 @@ import { logger } from '../logger';
 import { normalizeNameKey } from '../utils/nameNormalization';
 import { isIndividualPersonName } from '../utils/personNameValidation';
 import { classifyMentionKind } from '../utils/entityMentionClassifier';
+import { inferCompanionSpecies } from '../utils/companionSpecies';
 import { collectNameKeys, resolveBookNameMatch, type BookNameEntry, type BookNameEntryWithId } from '../utils/suggestionBookFilter';
 import { characterSuggestionId } from '../utils/entitySuggestionId';
 import type { AlternativeCategory } from './suggestionCrossBookService';
@@ -39,6 +40,8 @@ export type CharacterSuggestion = {
   alternative_categories?: AlternativeCategory[];
   /** 'pet' when classifyMentionKind detected pet-context evidence (e.g. "my dog Max"). */
   kind?: 'person' | 'pet';
+  /** Companion species when kind is pet (dog, robot, …). */
+  species?: string;
 };
 
 export type CharacterSuggestionContext = 'general' | 'romantic';
@@ -95,11 +98,29 @@ class CharacterSuggestionService {
       if (!key || key.length < 2 || JUNK.has(key) || seen.has(key)) return;
       if (learning.suppressedByDomain.has(`characters:${key}`)) return;
       if (!isIndividualPersonName(safeName)) return;
-      const mentionKind = classifyMentionKind(safeName).kind;
-      if (mentionKind !== 'person' && mentionKind !== 'pet') return;
+      // Pass the surrounding evidence text through — without it, classifyMentionKind
+      // has nothing to work with beyond the bare name and defaults to 'unknown' for
+      // any name not already in a known-name registry, silently dropping otherwise-
+      // valid candidates (every suggestion source funnels through this one gate).
+      const mentionKind = classifyMentionKind(safeName, s.context ?? '').kind;
+      // classifyMentionKind's romantic/interpersonal-context signal is narrow
+      // (girlfriend/boyfriend/wife/husband/"girl X" etc.) — an ordinary
+      // narrative mention like "and Romi saw and heard" has no such keyword
+      // nearby and classifies as 'unknown', not a confident non-person
+      // rejection (place/concept/event/fragment/common_noun). For
+      // 'chat_extract' candidates specifically, extractNamesFromText's own
+      // regex patterns (my/our/with/and/girl/friend/... + Name, or Name +
+      // said/saw/heard/...) already encode person-context by construction,
+      // so 'unknown' here isn't evidence of a bad candidate — it's just a
+      // gap in the generic classifier's keyword list. Don't let it block an
+      // already-vetted candidate.
+      const kindIsAcceptable =
+        mentionKind === 'person' || mentionKind === 'pet' || (mentionKind === 'unknown' && s.source === 'chat_extract');
+      if (!kindIsAcceptable) return;
       const match = resolveBookNameMatch(safeName, bookExact, bookEntries);
       if (match.status === 'existing') return;
       seen.add(key);
+      const kind = mentionKind === 'pet' ? 'pet' : 'person';
       suggestions.push({
         ...s,
         name: safeName,
@@ -107,7 +128,8 @@ class CharacterSuggestionService {
         match_status: match.status,
         matched_book_id: match.matchedId ?? null,
         matched_book_name: match.matchedName ?? null,
-        kind: mentionKind === 'pet' ? 'pet' : 'person',
+        kind,
+        species: kind === 'pet' ? inferCompanionSpecies(safeName, s.context) : undefined,
       });
     };
 
@@ -242,12 +264,21 @@ class CharacterSuggestionService {
         const extracted = await this.extractNamesFromText(combined);
         for (const name of extracted) {
           if (resolveBookNameMatch(name, bookExact, bookEntries).status === 'existing') continue;
+          // A generic static label here (vs. the actual sentence the name came
+          // from) starves classifyMentionKind of the evidence it needs to
+          // classify an unfamiliar name as a person — it has nothing to key
+          // off besides the bare word, and defaults to rejecting it as
+          // 'unknown'. Pull the real surrounding text instead.
+          const idx = combined.toLowerCase().indexOf(name.toLowerCase());
+          const context = idx >= 0
+            ? combined.slice(Math.max(0, idx - 80), Math.min(combined.length, idx + name.length + 80))
+            : 'Detected in your recent chats';
           add({
             name,
             mentionCount: 2,
             confidence: 0.68,
             source: 'chat_extract',
-            context: 'Detected in your recent chats',
+            context,
           });
         }
       }
@@ -473,8 +504,11 @@ class CharacterSuggestionService {
     const names = new Set<string>();
 
     const patterns = [
-      /\b(?:my|our|with|from|met|saw|called|named)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g,
-      /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:'s|\s+said|\s+told|\s+and)\b/g,
+      /\b(?:my|our|with|from|met|saw|called|named|girl|boy|guy|kid|friend|coworker|neighbor|man|woman)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g,
+      // Trailing-trigger side: originally only 's/said/told/and — a name
+      // immediately followed by an ordinary narrative verb ("Romi saw and
+      // heard...") fell through entirely. Extended to cover common ones.
+      /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:'s|\s+said|\s+told|\s+and|\s+saw|\s+heard|\s+went|\s+came|\s+left|\s+felt|\s+was|\s+were|\s+yelled|\s+asked|\s+looked|\s+walked|\s+ran|\s+cried|\s+laughed|\s+screamed)\b/g,
     ];
 
     for (const pattern of patterns) {

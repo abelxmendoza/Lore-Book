@@ -546,9 +546,7 @@ export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate, onNav
       sourceSurface: 'skills',
       sourceLabel: CHAT_FOCUS_SOURCE_LABELS.skills,
       knowledgeScope: 'skill practice, progress, and milestones',
-      initialPrompt:
-        prompt ??
-        `Tell me about my ${skill.skill_name} skill — where I'm at and what to focus on next.`,
+      initialPrompt: prompt,
     });
   };
 

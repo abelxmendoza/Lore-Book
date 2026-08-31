@@ -10,16 +10,7 @@
  * for debugging chronology or pasting into another assistant.
  */
 
-import {
-  ArrowUpDown,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  Copy,
-  GripVertical,
-  Sparkles,
-  Zap,
-} from 'lucide-react';
+import { ArrowUpDown, Check, ChevronDown, ChevronUp, Copy, GripVertical, Sparkles, Zap } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import type { StitchedTimelineItem } from '../../api/stitchedTimeline';
@@ -50,23 +41,31 @@ function moveItem<T>(list: T[], from: number, to: number): T[] {
 export function buildTimelineClipboardText(items: StitchedTimelineItem[]): string {
   return items
     .map((item) => {
-      const date = item.occurrenceStatus === 'unresolved'
-        ? 'Occurrence date unknown'
-        : item.timePrecision === 'year'
-          ? item.sortTime.slice(0, 4)
-          : item.timePrecision === 'month' || item.timePrecision === 'season'
-            ? item.sortTime.slice(0, 7)
-            : item.sortTime.slice(0, 10);
+      const date =
+        item.occurrenceStatus === 'unresolved'
+          ? 'Occurrence date unknown'
+          : item.timePrecision === 'year'
+            ? item.sortTime.slice(0, 4)
+            : item.timePrecision === 'month' || item.timePrecision === 'season'
+              ? item.sortTime.slice(0, 7)
+              : item.sortTime.slice(0, 10);
       const kind = item.kind === 'event' ? 'Event' : 'Moment';
       const contribution = item.contribution ?? item.cohesion;
       const contributionLabel = contribution != null ? ` [chapter contribution ${contribution}]` : '';
       const body = item.body && item.body !== item.title ? `\n  ${item.body}` : '';
-      const merged = item.mergedTitles?.length
-        ? `\n  (merged duplicates: ${item.mergedTitles.join(' · ')})`
-        : '';
-      return `${date} · ${kind} · ${item.title}${contributionLabel}${body}${merged}`;
+      const merged = item.mergedTitles?.length ? `\n  (merged duplicates: ${item.mergedTitles.join(' · ')})` : '';
+      const track = item.timelineTrack ? ` · ${timelineTrackLabel(item.timelineTrack)}` : '';
+      return `${date} · ${kind}${track} · ${item.title}${contributionLabel}${body}${merged}`;
     })
     .join('\n');
+}
+
+function timelineTrackLabel(track: string): string {
+  return track
+    .split(/[_-]/g)
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(' ');
 }
 
 export const TimelineReorderableList = ({
@@ -84,9 +83,12 @@ export const TimelineReorderableList = ({
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => () => {
-    if (copiedTimer.current) clearTimeout(copiedTimer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    },
+    []
+  );
 
   const applyReorder = (next: StitchedTimelineItem[]) => {
     onReorder(next);
@@ -127,11 +129,7 @@ export const TimelineReorderableList = ({
   };
 
   if (items.length === 0) {
-    return (
-      <p className="text-sm text-white/40 text-center py-12">
-        No moments or events in this timeline yet.
-      </p>
-    );
+    return <p className="text-sm text-white/40 text-center py-12">No moments or events in this timeline yet.</p>;
   }
 
   return (
@@ -238,6 +236,11 @@ export const TimelineReorderableList = ({
                         <KindIcon className="h-3 w-3" />
                         {item.kind === 'event' ? 'Event' : 'Moment'}
                       </span>
+                      {item.timelineTrack && (
+                        <span className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-300 border border-sky-500/25">
+                          {timelineTrackLabel(item.timelineTrack)}
+                        </span>
+                      )}
                       {(item.mergedCount ?? 0) > 1 && (
                         <span
                           title={`Collapsed ${item.mergedCount} duplicate summaries of the same occurrence:\n${(item.mergedTitles ?? []).join('\n')}`}
@@ -263,7 +266,9 @@ export const TimelineReorderableList = ({
                 </button>
 
                 {reorderMode && (
-                  <div className={`flex flex-col items-center justify-center border-l border-white/8 text-white/30 ${isMobile ? 'px-1' : 'px-1 py-2'}`}>
+                  <div
+                    className={`flex flex-col items-center justify-center border-l border-white/8 text-white/30 ${isMobile ? 'px-1' : 'px-1 py-2'}`}
+                  >
                     {!isMobile && <GripVertical className="h-4 w-4 mb-0.5 cursor-grab active:cursor-grabbing" />}
                     <button
                       type="button"

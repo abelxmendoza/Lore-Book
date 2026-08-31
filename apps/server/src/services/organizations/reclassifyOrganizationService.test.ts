@@ -46,6 +46,7 @@ describe('validateOrganizationReclassification', () => {
 
   it('applies Places rules for location target', () => {
     expect(validateOrganizationReclassification('Club Nova', '', 'location').allowed).toBe(true);
+    expect(validateOrganizationReclassification('Catch One', '', 'location').allowed).toBe(true);
   });
 
   it('rejects names that are too long', () => {

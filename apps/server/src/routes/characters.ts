@@ -31,6 +31,7 @@ import {
   splitPersonName,
 } from '../utils/nameNormalization';
 import { classifyMentionKind } from '../utils/entityMentionClassifier';
+import { resolveCompanionSpecies } from '../utils/companionSpecies';
 import { selfCharacterService } from '../services/selfCharacterService';
 import { characterRestoreService } from '../services/characterRestoreService';
 import { characterConversationRescanService } from '../services/characterConversationRescanService';
@@ -85,8 +86,11 @@ const createCharacterSchema = z.object({
   lastName: z.string().optional(),
   alias: z.array(z.string()).optional(),
   pronouns: z.string().optional(),
-  /** Non-null marks this as a pet (dog, cat, etc.) rather than a person. */
+  /** Non-null marks this as a pet or robot companion rather than a person. */
   species: z.string().optional(),
+  /** Surrounding mention text from a suggestion — used to infer companion species. */
+  context: z.string().max(4000).optional(),
+  kind: z.enum(['person', 'pet']).optional(),
   archetype: z.string().optional(),
   role: z.string().optional(),
   status: z.string().optional(),
@@ -587,11 +591,19 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     }
 
     const characterData = parsed.data;
+    const inferredSpecies = resolveCompanionSpecies({
+      name: characterData.name,
+      species: characterData.species,
+      context: characterData.context,
+      kind: characterData.kind,
+    });
+    if (inferredSpecies) characterData.species = inferredSpecies;
     const userId = req.user!.id;
     const createResult = await characterRegistry.runExclusive(userId, async () => {
-      // An explicit species (e.g. "dog") is unambiguous user-asserted evidence
-      // that this row is a pet, not a person — skip the person-shape gate,
-      // which has no pet awareness (it never receives message context here).
+      // An explicit or inferred species (e.g. "dog", "robot") is unambiguous
+      // evidence that this row is a companion, not a person — skip the
+      // person-shape gate, which has no pet/robot awareness (it never receives
+      // message context here unless the client sent `context`).
       if (!characterData.species && looksLikeNonPersonName(characterData.name)) {
         return { type: 'reject' as const, reason: 'non_person_name' };
       }
@@ -622,9 +634,14 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
         return { type: 'merge' as const, character: updated ?? existingByName };
       }
 
-      const decision = await characterRegistry.classifyForCreation(userId, characterData.name);
+      let decision = await characterRegistry.classifyForCreation(userId, characterData.name);
       if (decision.action === 'reject') {
-        return { type: 'reject' as const, reason: decision.reason };
+        // Companion cards (pets, robots) may fail the person-name registry gate
+        // (Omega1 is UNKNOWN/non-person shaped). Species is user-asserted.
+        if (!characterData.species) {
+          return { type: 'reject' as const, reason: decision.reason };
+        }
+        decision = { action: 'create', cleanName: characterData.name.trim() };
       }
       if (decision.action === 'merge') {
         const updated = await mergeExtractedCharacterData(userId, decision.characterId, characterData, {

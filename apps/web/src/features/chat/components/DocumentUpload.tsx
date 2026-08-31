@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Upload, FileText, X, CheckCircle, AlertCircle, Loader2, Image as ImageIcon, Briefcase } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { PhotoUploadReview } from './PhotoUploadReview';
@@ -22,20 +22,27 @@ import {
   simulateDemoDocumentUpload,
 } from '../../../services/demoDocumentUpload';
 import { config } from '../../../config/env';
-import {
-  DemoUploadProgressPanel,
-  type DemoUploadProgress,
-} from '../../../components/demo/DemoUploadProgressPanel';
+import { DemoUploadProgressPanel, type DemoUploadProgress } from '../../../components/demo/DemoUploadProgressPanel';
 import { compressChatImage, type ChatImageAttachment } from '../types/chatImageAttachment';
 
 export type ResumeUploadResult = {
   kind: 'resume';
   fileName: string;
   chatFeedback: string;
+  /** Text entered in the composer while this file was selected. */
+  caption?: string;
   userFileId?: string;
+  /** Canonical resume_documents row used to bind an upload to the next chat turn. */
+  documentId?: string;
   claimsCreated?: number;
   momentsCreated?: number;
   eventsCreated?: number;
+  careerTimeline?: Array<Record<string, unknown>>;
+  educationTimeline?: Array<Record<string, unknown>>;
+  projectTimeline?: Array<Record<string, unknown>>;
+  certificationTimeline?: Array<Record<string, unknown>>;
+  alreadyImported?: boolean;
+  duplicateOfUserFileId?: string;
 };
 
 export type DocumentUploadResult = {
@@ -57,7 +64,11 @@ export type PhotoUploadResult = {
     likelyUserInFrame?: boolean;
     subjectFocus?: string;
     appearanceSignals?: string[];
-    detectedEntities?: { characters?: string[]; locations?: string[]; dates?: string[] };
+    detectedEntities?: {
+      characters?: string[];
+      locations?: string[];
+      dates?: string[];
+    };
     suggestedLocation?: { type?: string; name?: string; reason?: string };
   };
   /** When user chose Add to LoreBook / process */
@@ -87,6 +98,58 @@ function apiUrl(path: string): string {
   return `${base}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
+export const RESUME_UPLOAD_TIMEOUT_MS = 2 * 60 * 1000;
+const RESUME_RECOVERY_TIMEOUT_MS = 4 * 60 * 1000;
+const RESUME_RECOVERY_POLL_MS = 5 * 1000;
+
+export function isResumeUploadAbort(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && 'name' in error && error.name === 'AbortError');
+}
+
+export function resumeUploadErrorMessage(error: unknown): string {
+  if (isResumeUploadAbort(error)) {
+    return 'This import is taking longer than expected. Processing may still finish in the background. Wait a minute, then select the same file again to check—LoreBook will reuse the existing import and will not create duplicates.';
+  }
+  return error instanceof Error ? error.message : 'Failed to upload resume';
+}
+
+type ResumeLibraryFile = {
+  id?: string;
+  filename?: string;
+  kind?: string;
+  uploadedAt?: string;
+  processingStatus?: string;
+  userFileId?: string;
+  resumeDocumentId?: string | null;
+  claimsGenerated?: number | null;
+};
+
+async function waitForResumeRecovery(
+  fileName: string,
+  token: string,
+): Promise<{ file: ResumeLibraryFile; status: 'completed' | 'failed' } | null> {
+  const deadline = Date.now() + RESUME_RECOVERY_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const response = await fetch(apiUrl('/api/documents/files'), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (response.ok) {
+      const data = (await response.json().catch(() => ({}))) as { files?: ResumeLibraryFile[] };
+      const file = (data.files ?? [])
+        .filter((candidate) => candidate.filename === fileName && candidate.kind === 'resume')
+        .sort((a, b) => Date.parse(b.uploadedAt ?? '') - Date.parse(a.uploadedAt ?? ''))[0];
+      if (file?.processingStatus === 'completed' && file.resumeDocumentId) {
+        return { file, status: 'completed' };
+      }
+      if (file?.processingStatus === 'failed') {
+        return { file, status: 'failed' };
+      }
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, RESUME_RECOVERY_POLL_MS));
+  }
+  return null;
+}
+
 interface DocumentUploadProps {
   onUploadComplete?: (result: UploadCompletePayload) => void;
   onUploadError?: (error: string) => void;
@@ -94,6 +157,12 @@ interface DocumentUploadProps {
   /** When chat is focused on a character, message screenshots route there. */
   focusCharacterId?: string;
   focusCharacterName?: string;
+  /** Current composer text — sent alongside the file so it's ingested as one unit, not silently dropped. */
+  caption?: string;
+  /** Called once the caption has been sent with an upload, so the composer can clear it. */
+  onCaptionConsumed?: () => void;
+  /** Keeps the surrounding chat composer from sending a text-only race turn. */
+  onUploadStateChange?: (uploading: boolean) => void;
 }
 
 interface PhotoReviewState {
@@ -107,6 +176,9 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
   compact = false,
   focusCharacterId,
   focusCharacterName,
+  caption,
+  onCaptionConsumed,
+  onUploadStateChange,
 }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
@@ -116,6 +188,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
   const [documentUploadProgress, setDocumentUploadProgress] = useState<DemoUploadProgress | null>(null);
   const [uploadResult, setUploadResult] = useState<{
     success: boolean;
+    pending?: boolean;
     message: string;
     entriesCreated?: number;
     charactersCreated?: number;
@@ -124,6 +197,10 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
   const [photoReview, setPhotoReview] = useState<PhotoReviewState | null>(null);
   const [processingPhoto, setProcessingPhoto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    onUploadStateChange?.(isUploading || processingPhoto);
+  }, [isUploading, onUploadStateChange, processingPhoto]);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -137,29 +214,25 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
 
     const fileName = file.name.toLowerCase();
     const fileExtension = '.' + (file.name.split('.').pop()?.toLowerCase() ?? '');
-    const allowedExtensions = ['.txt', '.md', '.pdf', '.doc', '.docx'];
+    const allowedExtensions = ['.txt', '.md', '.pdf', '.docx'];
 
-    // In chat (compact), PDF/DOC/DOCX uploads are treated as resumes
+    // In chat (compact), PDF/DOCX uploads are treated as resumes
     const isResume =
       fileName.includes('resume') ||
       fileName.includes('cv') ||
       fileName.includes('curriculum') ||
-      (compact && (fileExtension === '.pdf' || fileExtension === '.docx' || fileExtension === '.doc'));
+      (compact && (fileExtension === '.pdf' || fileExtension === '.docx'));
 
     // Validate file type for documents
     const allowedTypes = [
       'text/plain',
       'text/markdown',
       'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     ];
 
-    if (
-      !allowedTypes.includes(file.type) &&
-      !allowedExtensions.includes(fileExtension)
-    ) {
-      const error = 'Invalid file type. Only .txt, .md, .pdf, .doc, .docx, or image files are allowed.';
+    if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
+      const error = 'Invalid file type. Only .txt, .md, .pdf, .docx, or image files are allowed.';
       setUploadResult({ success: false, message: error });
       onUploadError?.(error);
       return;
@@ -168,9 +241,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
     // Validate file size (10MB limit for documents, 5MB for resumes)
     const maxSize = isResume ? 5 * 1024 * 1024 : 10 * 1024 * 1024;
     if (file.size > maxSize) {
-      const error = isResume 
-        ? 'Resume file size exceeds 5MB limit.'
-        : 'File size exceeds 10MB limit.';
+      const error = isResume ? 'Resume file size exceeds 5MB limit.' : 'File size exceeds 10MB limit.';
       setUploadResult({ success: false, message: error });
       onUploadError?.(error);
       return;
@@ -272,9 +343,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
         const feedback = [
           analysis?.summary ? `I looked at this photo: ${analysis.summary}` : 'I can see this photo.',
           analysis?.isSelfie ? 'It looks like a selfie of you.' : '',
-          analysis?.appearanceSignals?.length
-            ? `Appearance notes: ${analysis.appearanceSignals.join(', ')}.`
-            : '',
+          analysis?.appearanceSignals?.length ? `Appearance notes: ${analysis.appearanceSignals.join(', ')}.` : '',
           'Ask me anything about it, or say “add this to my lore book” to save it.',
         ]
           .filter(Boolean)
@@ -297,25 +366,25 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
       }
 
       if (shouldSimulatePhotoUpload()) {
-        const result = await simulateDemoPhotoProcess(
-          photoReview.file,
-          options,
-          (progress) => {
-            setPhotoProcessProgress(progress);
-            setUploadProgress(progress.stageLabel);
-          },
-        );
+        const result = await simulateDemoPhotoProcess(photoReview.file, options, (progress) => {
+          setPhotoProcessProgress(progress);
+          setUploadProgress(progress.stageLabel);
+        });
         const analysis = photoReview.analysis;
         onUploadComplete?.({
           kind: 'photo',
           fileName: photoReview.file.name,
           photoType: (analysis?.photoType as PhotoUploadResult['photoType']) || 'memory',
           analysis: analysis ?? {},
-          processResult: { entryId: 'demo-entry', photoUrl: chatImage?.dataUrl },
+          processResult: {
+            entryId: 'demo-entry',
+            photoUrl: chatImage?.dataUrl,
+          },
           addedToLoreBook: Boolean(options.addToLoreBook),
           chatFeedback: result.message || 'Photo processed (demo).',
           chatImage,
         });
+        onCaptionConsumed?.();
         setUploadResult({ success: true, message: result.message });
         setPhotoReview(null);
         setUploadProgress(null);
@@ -341,9 +410,10 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
           extractTextOnly: options.extractTextOnly,
           addToSelfPhotos: options.addToSelfPhotos !== false,
           suggestedLocation: options.suggestedLocation,
-        }),
+        })
       );
       formData.append('analysis', JSON.stringify(photoReview.analysis ?? {}));
+      if (caption?.trim()) formData.append('caption', caption.trim());
 
       const response = await fetch(apiUrl('/api/photos/process'), {
         method: 'POST',
@@ -364,7 +434,9 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
       if (options.extractTextOnly) {
         parts.push('I extracted the text from this photo and saved it as a memory.');
       } else {
-        parts.push(analysis?.summary ? `Saved this photo: ${analysis.summary}` : 'Photo added to your Lore Book and photo album.');
+        parts.push(
+          analysis?.summary ? `Saved this photo: ${analysis.summary}` : 'Photo added to your Lore Book and photo album.'
+        );
         if (result.isSelfie || analysis?.isSelfie) {
           parts.push('It looked like a selfie — I also put it in your Photos (main character gallery).');
         } else if (result.selfMediaId) {
@@ -394,9 +466,14 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
         addedToLoreBook: Boolean(options.addToLoreBook),
         chatFeedback: parts.join(' '),
         chatImage: result.photoUrl
-          ? { dataUrl: chatImage?.dataUrl ?? result.photoUrl, url: result.photoUrl, mimeType: 'image/jpeg' }
+          ? {
+              dataUrl: chatImage?.dataUrl ?? result.photoUrl,
+              url: result.photoUrl,
+              mimeType: 'image/jpeg',
+            }
           : chatImage,
       });
+      onCaptionConsumed?.();
 
       setUploadResult({
         success: true,
@@ -442,17 +519,24 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
     const finishSuccess = (result: ResumeUploadResult, entriesCreated?: number) => {
       setUploadResult({
         success: true,
-        message: 'Resume saved to library and memory.',
+        message: result.alreadyImported
+          ? 'This resume is already in your library. Existing extracted evidence was reused; nothing was duplicated.'
+          : 'Resume saved to your library. Extracted items are staged for review before becoming confirmed memory.',
         entriesCreated: entriesCreated ?? result.momentsCreated ?? result.claimsCreated,
       });
       setUploadProgress(null);
       setResumeUploadProgress(null);
-      onUploadComplete?.(result);
+      onUploadComplete?.({
+        ...result,
+        caption: caption?.trim() || undefined,
+      });
+      onCaptionConsumed?.();
       window.dispatchEvent(new Event('lk:characters-updated'));
       if (fileInputRef.current) fileInputRef.current.value = '';
       setTimeout(() => setUploadResult(null), 5000);
     };
 
+    let token: string | undefined;
     try {
       if (shouldSimulateResumeUpload()) {
         const result = await simulateDemoResumeUpload(file, (progress) => {
@@ -466,24 +550,61 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
       // Get auth token
       const { supabase } = await import('../../../lib/supabase');
       const { data: session } = await supabase.auth.getSession();
-      const token = session?.session?.access_token;
+      token = session?.session?.access_token;
 
       if (!token) {
         throw new Error('Authentication required. Please log in to upload your resume.');
       }
 
-      setUploadProgress('Saving to library and building your timelines...');
+      setUploadProgress('Uploading resume and preparing extracted evidence…');
 
       const formData = new FormData();
       formData.append('resume', file);
+      if (caption?.trim()) formData.append('caption', caption.trim());
 
-      const response = await fetch('/api/resume/upload', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData
-      });
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), RESUME_UPLOAD_TIMEOUT_MS);
+      let response: Response;
+      try {
+        response = await fetch('/api/resume/upload', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+          signal: controller.signal,
+        });
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+
+      if (response.status === 202) {
+        const data = await response.json().catch(() => ({}));
+        setUploadProgress('Resume is still processing — waiting to attach it to chat…');
+        const recovered = await waitForResumeRecovery(file.name, token);
+        if (recovered?.status === 'completed') {
+          finishSuccess({
+            kind: 'resume',
+            fileName: file.name,
+            chatFeedback: 'Resume processed successfully.',
+            userFileId: recovered.file.userFileId ?? recovered.file.id,
+            documentId: recovered.file.resumeDocumentId ?? undefined,
+            claimsCreated: recovered.file.claimsGenerated ?? undefined,
+          });
+          return;
+        }
+        setUploadResult({
+          success: false,
+          pending: true,
+          message:
+            data.message ||
+            'This resume is already being processed. Wait a minute, then select the same file again to check its status.',
+        });
+        setUploadProgress(null);
+        setResumeUploadProgress(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -495,20 +616,50 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
       const feedbackText =
         typeof data.chatFeedback === 'string' && data.chatFeedback.trim()
           ? data.chatFeedback
-          : data.message || `Resume processed! ${data.claimsCreated ?? 0} claims added to your lore.`;
+          : data.message || `Resume processed. ${data.claimsCreated ?? 0} claims are waiting for your review.`;
 
-      finishSuccess({
-        kind: 'resume',
-        fileName: file.name,
-        chatFeedback: feedbackText,
-        userFileId: data.userFileId,
-        claimsCreated: data.claimsCreated,
-        momentsCreated: data.momentsCreated,
-        eventsCreated: data.eventsCreated,
-      }, data.momentsCreated ?? data.claimsCreated);
+      finishSuccess(
+        {
+          kind: 'resume',
+          fileName: file.name,
+          chatFeedback: feedbackText,
+          userFileId: data.userFileId,
+          documentId: data.document?.id,
+          claimsCreated: data.claimsCreated,
+          momentsCreated: data.momentsCreated,
+          eventsCreated: data.eventsCreated,
+          alreadyImported: data.alreadyImported,
+          duplicateOfUserFileId: data.duplicateOfUserFileId,
+        },
+        data.momentsCreated ?? data.claimsCreated
+      );
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to upload resume';
-      setUploadResult({ success: false, message: errorMessage });
+      if (isResumeUploadAbort(error) && token) {
+        setUploadProgress('Resume is still processing — waiting to attach it to chat…');
+        try {
+          const recovered = await waitForResumeRecovery(file.name, token);
+          if (recovered?.status === 'completed') {
+            finishSuccess({
+              kind: 'resume',
+              fileName: file.name,
+              chatFeedback: 'Resume processed successfully.',
+              userFileId: recovered.file.userFileId ?? recovered.file.id,
+              documentId: recovered.file.resumeDocumentId ?? undefined,
+              claimsCreated: recovered.file.claimsGenerated ?? undefined,
+            });
+            return;
+          }
+        } catch (recoveryError) {
+          error = recoveryError;
+        }
+      }
+      const errorMessage = resumeUploadErrorMessage(error);
+      const timedOut = isResumeUploadAbort(error);
+      setUploadResult({
+        success: false,
+        pending: timedOut,
+        message: errorMessage,
+      });
       setUploadProgress(null);
       setResumeUploadProgress(null);
       onUploadError?.(errorMessage);
@@ -543,6 +694,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
         setUploadProgress(null);
         setDocumentUploadProgress(null);
         onUploadComplete?.(result);
+        onCaptionConsumed?.();
 
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
@@ -567,13 +719,14 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
 
       const formData = new FormData();
       formData.append('file', file);
+      if (caption?.trim()) formData.append('caption', caption.trim());
 
       const response = await fetch('/api/documents/upload', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
-        body: formData
+        body: formData,
       });
 
       if (!response.ok) {
@@ -590,7 +743,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
         message: data.message || 'Document processed successfully!',
         entriesCreated: data.entriesCreated,
         charactersCreated: data.charactersCreated,
-        sectionsCreated: data.sectionsCreated
+        sectionsCreated: data.sectionsCreated,
       });
 
       setUploadProgress(null);
@@ -600,6 +753,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
         message: data.message || 'Document processed successfully!',
         entriesCreated: data.entriesCreated,
       });
+      onCaptionConsumed?.();
 
       // Clear file input
       if (fileInputRef.current) {
@@ -687,12 +841,13 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-          className={`
+        className={`
           relative border-2 border-dashed rounded-lg transition-colors
           ${compact ? 'p-3' : 'p-6'}
-          ${isUploading || processingPhoto
-            ? 'border-primary/50 bg-primary/5' 
-            : 'border-border/60 bg-black/20 hover:border-primary/40 hover:bg-black/30'
+          ${
+            isUploading || processingPhoto
+              ? 'border-primary/50 bg-primary/5'
+              : 'border-border/60 bg-black/20 hover:border-primary/40 hover:bg-black/30'
           }
         `}
       >
@@ -734,11 +889,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
                 <p className={`${compact ? 'text-xs' : 'text-sm'} font-medium text-white mb-1`}>
                   {uploadProgress || 'Uploading...'}
                 </p>
-                {!compact && (
-                  <p className="text-xs text-white/60">
-                    Processing your document...
-                  </p>
-                )}
+                {!compact && <p className="text-xs text-white/60">Processing your document...</p>}
               </>
             )
           ) : (
@@ -747,19 +898,17 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
                 <Upload className={`${compact ? 'w-5 h-5' : 'w-6 h-6'} text-primary`} />
               </div>
               <p className={`${compact ? 'text-xs' : 'text-sm'} font-medium text-white ${compact ? 'mb-1' : 'mb-1'}`}>
-                {compact ? 'Upload Documents, Resumes, or Photos' : 'Upload Documents, Resumes, Photos, Biographies, or Diaries'}
+                {compact
+                  ? 'Upload Documents, Resumes, or Photos'
+                  : 'Upload Documents, Resumes, Photos, Biographies, or Diaries'}
               </p>
-              {!compact && (
-                <p className="text-xs text-white/60 mb-4">
-                  Drag and drop a file here, or click to browse
-                </p>
-              )}
+              {!compact && <p className="text-xs text-white/60 mb-4">Drag and drop a file here, or click to browse</p>}
               <div className="flex gap-2">
                 <Button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   variant="outline"
-                  size={compact ? "sm" : "sm"}
+                  size={compact ? 'sm' : 'sm'}
                   leftIcon={<FileText className="w-4 h-4" />}
                   className="border-primary/40 hover:bg-primary/10"
                 >
@@ -769,7 +918,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   variant="outline"
-                  size={compact ? "sm" : "sm"}
+                  size={compact ? 'sm' : 'sm'}
                   leftIcon={<ImageIcon className="w-4 h-4" />}
                   className="border-primary/40 hover:bg-primary/10"
                 >
@@ -778,8 +927,11 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
               </div>
               {!compact && (
                 <p className="text-xs text-white/40 mt-3">
-                  Supported: .txt, .md, .pdf, .doc, .docx, images (max 10MB)<br />
-                  <span className="text-primary/70">✨ Resumes/CVs are automatically detected and extract skills & experience</span>
+                  Supported: .txt, .md, .pdf, .doc, .docx, images (max 10MB)
+                  <br />
+                  <span className="text-primary/70">
+                    ✨ Resumes/CVs are automatically detected and extract skills & experience
+                  </span>
                 </p>
               )}
               {compact && (
@@ -803,21 +955,26 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
           className={`
             flex items-start gap-3 rounded-lg border
             ${compact ? 'p-2' : 'p-4'}
-            ${uploadResult.success
-              ? 'bg-primary/10 border-primary/30'
-              : 'bg-red-500/10 border-red-500/30'
+            ${
+              uploadResult.success
+                ? 'bg-primary/10 border-primary/30'
+                : uploadResult.pending
+                  ? 'bg-amber-500/10 border-amber-500/30'
+                  : 'bg-red-500/10 border-red-500/30'
             }
           `}
         >
           {uploadResult.success ? (
             <CheckCircle className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+          ) : uploadResult.pending ? (
+            <Loader2 className="w-5 h-5 text-amber-300 flex-shrink-0 mt-0.5" />
           ) : (
             <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
           )}
           <div className="flex-1 min-w-0">
             <p
               className={`text-sm font-medium ${
-                uploadResult.success ? 'text-white' : 'text-red-400'
+                uploadResult.success ? 'text-white' : uploadResult.pending ? 'text-amber-200' : 'text-red-400'
               }`}
             >
               {uploadResult.message}
@@ -836,10 +993,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
               </div>
             )}
           </div>
-          <button
-            onClick={() => setUploadResult(null)}
-            className="text-white/40 hover:text-white/70 transition-colors"
-          >
+          <button onClick={() => setUploadResult(null)} className="text-white/40 hover:text-white/70 transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>

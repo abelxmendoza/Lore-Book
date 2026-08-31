@@ -33,13 +33,16 @@ export const SUGGESTION_DOMAIN_LABELS: Record<SuggestionBookDomain, string> = {
   groups: 'Groups',
 };
 
-/** LoreBooks users can redirect suggestions into from suggestion panels. */
+/** LoreBooks users can redirect suggestions into from suggestion panels.
+ * 'groups' isn't included yet — unlike the others, there's no dedicated
+ * groups-suggestion service to seed on the backend, only 'organizations'. */
 export const REDIRECTABLE_SUGGESTION_DOMAINS: SuggestionBookDomain[] = [
   'characters',
   'locations',
   'skills',
   'projects',
   'quests',
+  'organizations',
 ];
 
 export type SuggestionBookEntry = {

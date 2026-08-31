@@ -668,7 +668,7 @@ export function ProjectStoryTab({ profile }: { profile: ProjectDetailProfile }) 
 type ChatTabProps = {
   project: ProjectCardData;
   profile: ProjectDetailProfile;
-  onAsk: (prompt: string) => void;
+  onAsk: (prompt?: string) => void;
 };
 
 export function ProjectChatTab({ project, profile, onAsk }: ChatTabProps) {
@@ -692,11 +692,7 @@ export function ProjectChatTab({ project, profile, onAsk }: ChatTabProps) {
           <Button
             type="button"
             className="gap-2"
-            onClick={() =>
-              onAsk(
-                `Tell me about my project "${project.name}" — status (${project.status}), progress, milestones, and what I should focus on next.`
-              )
-            }
+            onClick={() => onAsk()}
           >
             <MessageSquare className="h-4 w-4" />
             Open chat about this project

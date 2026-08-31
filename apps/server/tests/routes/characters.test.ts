@@ -224,6 +224,113 @@ describe('Characters API Routes', () => {
       expect(insertedPayload?.species).toBe('dog');
       expect(response.body.character.species).toBe('dog');
     });
+
+    it('should reject a robot designation without companion species', async () => {
+      const response = await request(app)
+        .post('/api/characters')
+        .send({ name: 'Omega1' })
+        .expect(400);
+
+      expect(response.body.reason).toBe('non_person_name');
+    });
+
+    it('should persist a robot companion when species is robot', async () => {
+      const mockFrom = vi.mocked(supabaseAdmin.from);
+      let insertedPayload: Record<string, unknown> | undefined;
+      const robotCharacter = { ...mockCharacter, name: 'Omega1', species: 'robot' };
+
+      mockFrom.mockImplementation((table: string) => {
+        const chain: Record<string, unknown> = {};
+        chain.select = vi.fn().mockReturnValue(chain);
+        chain.eq = vi.fn().mockReturnValue(chain);
+        chain.ilike = vi.fn().mockReturnValue(chain);
+        chain.in = vi.fn().mockReturnValue(chain);
+        chain.contains = vi.fn().mockReturnValue(chain);
+        chain.or = vi.fn().mockReturnValue(chain);
+        chain.order = vi.fn().mockReturnValue(chain);
+        chain.limit = vi.fn().mockReturnValue(chain);
+        chain.maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+        chain.single = vi.fn().mockResolvedValue({ data: robotCharacter, error: null });
+        chain.insert = vi.fn().mockImplementation((payload: Record<string, unknown>) => {
+          insertedPayload = payload;
+          return {
+            select: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({ data: robotCharacter, error: null }),
+            }),
+          };
+        });
+        Object.assign(chain, {
+          then(onFulfilled: (v: { data: unknown; error: null }) => unknown) {
+            const data = table === 'characters' ? [] : [];
+            return Promise.resolve(onFulfilled({ data, error: null }));
+          },
+        });
+        return chain as never;
+      });
+
+      const { characterAvatarUrl, avatarStyleFor } = await import('../../src/utils/avatar');
+      const { cacheAvatar } = await import('../../src/utils/cacheAvatar');
+      vi.mocked(characterAvatarUrl).mockReturnValue('https://avatar.url');
+      vi.mocked(avatarStyleFor).mockReturnValue('adventurer');
+      vi.mocked(cacheAvatar).mockResolvedValue('https://cached.avatar.url');
+
+      const response = await request(app)
+        .post('/api/characters')
+        .send({ name: 'Omega1', species: 'robot' })
+        .expect(201);
+
+      expect(insertedPayload?.species).toBe('robot');
+      expect(response.body.character.species).toBe('robot');
+    });
+
+    it('should infer robot species from suggestion context', async () => {
+      const mockFrom = vi.mocked(supabaseAdmin.from);
+      let insertedPayload: Record<string, unknown> | undefined;
+      const robotCharacter = { ...mockCharacter, name: 'Omega1', species: 'robot' };
+
+      mockFrom.mockImplementation((table: string) => {
+        const chain: Record<string, unknown> = {};
+        chain.select = vi.fn().mockReturnValue(chain);
+        chain.eq = vi.fn().mockReturnValue(chain);
+        chain.ilike = vi.fn().mockReturnValue(chain);
+        chain.in = vi.fn().mockReturnValue(chain);
+        chain.contains = vi.fn().mockReturnValue(chain);
+        chain.or = vi.fn().mockReturnValue(chain);
+        chain.order = vi.fn().mockReturnValue(chain);
+        chain.limit = vi.fn().mockReturnValue(chain);
+        chain.maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+        chain.single = vi.fn().mockResolvedValue({ data: robotCharacter, error: null });
+        chain.insert = vi.fn().mockImplementation((payload: Record<string, unknown>) => {
+          insertedPayload = payload;
+          return {
+            select: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({ data: { ...robotCharacter, species: payload.species }, error: null }),
+            }),
+          };
+        });
+        Object.assign(chain, {
+          then(onFulfilled: (v: { data: unknown; error: null }) => unknown) {
+            const data = table === 'characters' ? [] : [];
+            return Promise.resolve(onFulfilled({ data, error: null }));
+          },
+        });
+        return chain as never;
+      });
+
+      const { characterAvatarUrl, avatarStyleFor } = await import('../../src/utils/avatar');
+      const { cacheAvatar } = await import('../../src/utils/cacheAvatar');
+      vi.mocked(characterAvatarUrl).mockReturnValue('https://avatar.url');
+      vi.mocked(avatarStyleFor).mockReturnValue('adventurer');
+      vi.mocked(cacheAvatar).mockResolvedValue('https://cached.avatar.url');
+
+      const response = await request(app)
+        .post('/api/characters')
+        .send({ name: 'Omega1', context: 'my robot Omega1 needs a charge', kind: 'pet' })
+        .expect(201);
+
+      expect(insertedPayload?.species).toBe('robot');
+      expect(response.body.character.species).toBe('robot');
+    });
   });
 
   describe('PATCH /api/characters/:id — rename auto-alias', () => {

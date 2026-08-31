@@ -82,7 +82,7 @@ describe('LocationDetailModal — Groups & Organizations', () => {
     expect(await screen.findByText(/visits & memories/i)).toBeInTheDocument();
   });
 
-  it('opens the place timeline in main chat and requests the opening response automatically', async () => {
+  it('opens the place timeline in main chat with an empty composer', async () => {
     const onClose = vi.fn();
     const dispatch = vi.spyOn(window, 'dispatchEvent');
     render(<LocationDetailModal location={location} onClose={onClose} />);
@@ -99,11 +99,12 @@ describe('LocationDetailModal — Groups & Organizations', () => {
       entityType: 'location',
       sourceSurface: 'locations',
       sourceLabel: 'Locations',
-      autoSubmit: true,
       startNewThread: true,
     });
     expect(handoff.detail.knowledgeScope).toMatch(/chronological place history/i);
-    expect(handoff.detail.initialPrompt).toMatch(/start with a grounded chronological response/i);
+    // Opening a focus chat must never pre-fill or auto-send a starter prompt.
+    expect(handoff.detail.initialPrompt).toBeUndefined();
+    expect(handoff.detail.autoSubmit).toBeUndefined();
     expect(onClose).toHaveBeenCalled();
   });
 });

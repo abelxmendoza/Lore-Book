@@ -26,7 +26,9 @@ export default defineConfig({
       ]
     },
     setupFiles: ['./tests/setup.ts'],
-    testTimeout: 10000
+    testTimeout: 10000,
+    pool: 'forks',
+    maxWorkers: 1
   },
   resolve: {
     alias: {

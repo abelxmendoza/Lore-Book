@@ -1,7 +1,12 @@
 import { createHash } from 'crypto';
+
 import { v4 as uuid } from 'uuid';
 
 import { logger } from '../../logger';
+import {
+  categoryForMetadata,
+  type DocumentCategory,
+} from '../documents/documentCategories';
 import { supabaseAdmin } from '../supabaseClient';
 
 import type { IngestKind, UserFileDerivedCounts, UserFileRecord } from './types';
@@ -16,6 +21,22 @@ const EMPTY_COUNTS: UserFileDerivedCounts = {
 
 const USER_FILES_BUCKET = 'user-files';
 const SIGNED_URL_TTL_SECONDS = 3600;
+
+export type UserFileListOptions = {
+  page?: number;
+  pageSize?: number;
+  status?: UserFileRecord['processing_status'];
+  kind?: IngestKind;
+  category?: DocumentCategory;
+};
+
+export type UserFilePage = {
+  files: UserFileRecord[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+};
 
 function sha256(buffer: Buffer): string {
   return createHash('sha256').update(buffer).digest('hex');
@@ -38,6 +59,7 @@ export class UserFileRegistry {
       mimeType: string;
       ingestKind: IngestKind;
       storeBinary?: boolean;
+      documentCategory?: DocumentCategory;
     }
   ): Promise<UserFileRecord> {
     const hash = sha256(buffer);
@@ -50,11 +72,11 @@ export class UserFileRegistry {
       .maybeSingle();
 
     if (existing && !existing.storage_url && params.storeBinary !== false) {
-      const filePath = storagePathFor(userId, existing.id, params.filename);
+      const filePath = storagePathFor(userId, existing.id, existing.filename);
       const { error: uploadError } = await supabaseAdmin.storage
         .from(USER_FILES_BUCKET)
         .upload(filePath, buffer, {
-          contentType: params.mimeType,
+          contentType: existing.mime_type || params.mimeType,
           upsert: true,
         });
       if (uploadError) {
@@ -64,6 +86,9 @@ export class UserFileRegistry {
           ...((existing.metadata ?? {}) as Record<string, unknown>),
           source_deleted: false,
           source_restored_at: new Date().toISOString(),
+          ...(params.documentCategory && existing.metadata?.document_category_source !== 'manual'
+            ? { document_category: params.documentCategory }
+            : {}),
         };
         const { data: restored, error: restoreError } = await supabaseAdmin
           .from('user_files')
@@ -78,50 +103,94 @@ export class UserFileRegistry {
     }
 
     if (existing) {
-      return existing as UserFileRecord;
+      const existingFile = existing as UserFileRecord;
+      if (
+        params.documentCategory &&
+        existingFile.metadata?.document_category_source !== 'manual' &&
+        categoryForMetadata(existingFile.metadata) !== params.documentCategory
+      ) {
+        const metadata = {
+          ...(existingFile.metadata ?? {}),
+          document_category: params.documentCategory,
+        };
+        const { data: moved, error: moveError } = await supabaseAdmin
+          .from('user_files')
+          .update({ metadata })
+          .eq('id', existingFile.id)
+          .eq('user_id', userId)
+          .select('*')
+          .single();
+        if (moveError) throw moveError;
+        return moved as UserFileRecord;
+      }
+      return existingFile;
     }
 
     const id = uuid();
-    let storageUrl: string | null = null;
-
-    if (params.storeBinary !== false) {
-      const filePath = storagePathFor(userId, id, params.filename);
-      const { error: uploadError } = await supabaseAdmin.storage
-        .from(USER_FILES_BUCKET)
-        .upload(filePath, buffer, {
-          contentType: params.mimeType,
-          upsert: false,
-        });
-
-      if (uploadError) {
-        logger.warn({ error: uploadError, userId, filename: params.filename }, 'user_files storage upload failed');
-      } else {
-        // Private bucket: store object path; sign at read time.
-        storageUrl = filePath;
-      }
-    }
-
     const row = {
       id,
       user_id: userId,
       filename: params.filename,
       mime_type: params.mimeType,
       sha256: hash,
-      storage_url: storageUrl,
+      storage_url: null,
       processing_status: 'pending' as const,
       ingest_kind: params.ingestKind,
       derived_counts: EMPTY_COUNTS,
-      metadata: {},
+      metadata: params.documentCategory
+        ? { document_category: params.documentCategory }
+        : {},
     };
 
-    const { data, error } = await supabaseAdmin.from('user_files').insert(row).select('*').single();
+    const { data, error } = await supabaseAdmin
+      .from('user_files')
+      .insert(row)
+      .select('*')
+      .single();
 
     if (error) {
+      // The SHA-256 unique key is the concurrency boundary. A second request
+      // racing the first registration should reuse its row rather than create
+      // a second source object or fail the upload.
+      if (error.code === '23505') {
+        const { data: concurrent } = await supabaseAdmin
+          .from('user_files')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('sha256', hash)
+          .maybeSingle();
+        if (concurrent) return concurrent as UserFileRecord;
+      }
       logger.error({ error, userId }, 'Failed to register user_file');
       throw error;
     }
 
-    return data as UserFileRecord;
+    const registered = data as UserFileRecord;
+    if (params.storeBinary === false) return registered;
+
+    const filePath = storagePathFor(userId, registered.id, params.filename);
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from(USER_FILES_BUCKET)
+      .upload(filePath, buffer, {
+        contentType: params.mimeType,
+        upsert: false,
+      });
+
+    if (uploadError) {
+      logger.warn({ error: uploadError, userId, filename: params.filename }, 'user_files storage upload failed');
+      return registered;
+    }
+
+    // Private bucket: store object path; sign at read time.
+    const { data: withStorage, error: storageUpdateError } = await supabaseAdmin
+      .from('user_files')
+      .update({ storage_url: filePath })
+      .eq('id', registered.id)
+      .eq('user_id', userId)
+      .select('*')
+      .single();
+    if (storageUpdateError) throw storageUpdateError;
+    return withStorage as UserFileRecord;
   }
 
   async setStatus(
@@ -129,13 +198,72 @@ export class UserFileRegistry {
     status: UserFileRecord['processing_status'],
     errorMessage?: string | null
   ): Promise<void> {
+    const { data } = await supabaseAdmin
+      .from('user_files')
+      .select('metadata')
+      .eq('id', fileId)
+      .single();
+    const metadata = (data?.metadata ?? {}) as Record<string, unknown>;
+    const now = new Date().toISOString();
     await supabaseAdmin
       .from('user_files')
       .update({
         processing_status: status,
         error_message: errorMessage ?? null,
+        metadata: {
+          ...metadata,
+          ...(status === 'processing' ? { processing_started_at: now } : {}),
+          ...(status === 'completed' || status === 'failed' ? { processing_finished_at: now } : {}),
+        },
       })
       .eq('id', fileId);
+  }
+
+  async tryClaimProcessing(
+    fileId: string,
+    expectedStatus: Extract<UserFileRecord['processing_status'], 'pending' | 'failed'>,
+  ): Promise<boolean> {
+    const { data: current, error: readError } = await supabaseAdmin
+      .from('user_files')
+      .select('metadata')
+      .eq('id', fileId)
+      .maybeSingle();
+    if (readError) throw readError;
+    const metadata = {
+      ...((current?.metadata ?? {}) as Record<string, unknown>),
+      processing_started_at: new Date().toISOString(),
+    };
+    const { data, error } = await supabaseAdmin
+      .from('user_files')
+      .update({
+        processing_status: 'processing',
+        error_message: null,
+        metadata,
+      })
+      .eq('id', fileId)
+      .eq('processing_status', expectedStatus)
+      .select('id')
+      .maybeSingle();
+
+    if (error) throw error;
+    return Boolean(data);
+  }
+
+  async reclaimStaleProcessing(fileId: string, staleBefore: string): Promise<boolean> {
+    const { data, error } = await supabaseAdmin
+      .from('user_files')
+      .update({
+        processing_status: 'pending',
+        error_message: null,
+      })
+      .eq('id', fileId)
+      .eq('processing_status', 'processing')
+      .lt('metadata->>processing_started_at', staleBefore)
+      .select('id')
+      .maybeSingle();
+
+    if (error) throw error;
+    return Boolean(data);
   }
 
   async updateDerivedCounts(fileId: string, counts: Partial<UserFileDerivedCounts>): Promise<void> {
@@ -186,6 +314,59 @@ export class UserFileRegistry {
     return metadata;
   }
 
+  async setDocumentCategoryForUser(
+    userId: string,
+    fileId: string,
+    category: DocumentCategory,
+  ): Promise<UserFileRecord | null> {
+    const current = await this.getForUser(userId, fileId);
+    if (!current) return null;
+
+    const metadata = {
+      ...(current.metadata ?? {}),
+      document_category: category,
+      document_category_source: 'manual',
+      document_category_updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await supabaseAdmin
+      .from('user_files')
+      .update({ metadata })
+      .eq('id', fileId)
+      .eq('user_id', userId)
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+    return (data as UserFileRecord | null) ?? null;
+  }
+
+  async setAutoDocumentCategoryForUser(
+    userId: string,
+    fileId: string,
+    category: DocumentCategory,
+    classification: { confidence: number; reason: string },
+  ): Promise<UserFileRecord | null> {
+    const current = await this.getForUser(userId, fileId);
+    if (!current || current.metadata?.document_category_source === 'manual') return current;
+
+    const metadata = {
+      ...(current.metadata ?? {}),
+      document_category: category,
+      document_category_source: 'automatic',
+      document_category_confidence: classification.confidence,
+      document_category_reason: classification.reason,
+      document_category_updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await supabaseAdmin
+      .from('user_files')
+      .update({ metadata })
+      .eq('id', fileId)
+      .eq('user_id', userId)
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+    return (data as UserFileRecord | null) ?? null;
+  }
+
   async downloadBuffer(
     file: Pick<UserFileRecord, 'user_id' | 'id' | 'filename' | 'storage_url'>
   ): Promise<Buffer> {
@@ -222,7 +403,47 @@ export class UserFileRegistry {
     if (error) throw error;
   }
 
-  async listForUser(userId: string): Promise<UserFileRecord[]> {
+  async listPageForUser(userId: string, options: UserFileListOptions = {}): Promise<UserFilePage> {
+    const page = Math.max(1, options.page ?? 1);
+    const pageSize = Math.min(100, Math.max(1, options.pageSize ?? 25));
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+    let query = supabaseAdmin
+      .from('user_files')
+      .select('*', { count: 'exact' })
+      .eq('user_id', userId)
+      .order('uploaded_at', { ascending: false })
+      .range(from, to);
+    if (options.status) query = query.eq('processing_status', options.status);
+    if (options.kind) query = query.eq('ingest_kind', options.kind);
+    if (options.category === 'unfiled') {
+      query = query.or('metadata->>document_category.is.null,metadata->>document_category.eq.unfiled');
+    } else if (options.category) {
+      query = query.eq('metadata->>document_category', options.category);
+    }
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      logger.error({ error, userId }, 'Failed to list user files');
+      throw error;
+    }
+    const files = (data ?? []) as UserFileRecord[];
+    return {
+      files,
+      page,
+      pageSize,
+      total: count ?? files.length,
+      hasMore: from + files.length < (count ?? files.length),
+    };
+  }
+
+  async listForUser(userId: string, options: UserFileListOptions = {}): Promise<UserFileRecord[]> {
+    const page = await this.listPageForUser(userId, options);
+    return page.files;
+  }
+
+  async listAllForUser(userId: string): Promise<UserFileRecord[]> {
     const { data, error } = await supabaseAdmin
       .from('user_files')
       .select('*')

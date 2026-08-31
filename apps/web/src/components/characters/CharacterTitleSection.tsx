@@ -39,7 +39,7 @@ export function CharacterTitleSection({
     setDisplayTitle((character.metadata?.display_title as CharacterDisplayTitle | undefined) ?? null);
   }, [character]);
 
-  const primary = displayTitle?.primaryTitle ?? getCharacterDisplayTitle(character);
+  const primary = getCharacterDisplayTitle(character);
   const isContextual =
     displayTitle?.titleType === 'role_contextual' ||
     displayTitle?.titleType === 'unknown_contextual_reference';

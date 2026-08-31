@@ -1,7 +1,8 @@
-import { X, MessageSquare, Users, MapPin, Star } from 'lucide-react';
+import { X, MessageSquare, Users, MapPin, Star, CalendarDays, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/button';
 import type { SagaStoryline } from '../../api/saga';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
 
 export interface ChapterContext {
   people: string[];
@@ -9,6 +10,14 @@ export interface ChapterContext {
 }
 
 const TURNING_POINT_STATUSES = new Set(['completed', 'resurfaced']);
+
+function formatDateRange(chapter: SagaStoryline): string | null {
+  const start = chapter.timeStart ? new Date(chapter.timeStart).toLocaleDateString() : null;
+  const end = chapter.timeEnd ? new Date(chapter.timeEnd).toLocaleDateString() : null;
+  if (!start && !end) return null;
+  if (!end || start === end) return start;
+  return `${start ?? 'Unknown start'} – ${end}`;
+}
 
 interface ChapterDetailDrawerProps {
   chapter: SagaStoryline;
@@ -27,10 +36,19 @@ export const ChapterDetailDrawer = ({
 }: ChapterDetailDrawerProps) => {
   const navigate = useNavigate();
   const isTurningPoint = TURNING_POINT_STATUSES.has(chapter.status);
+  const people = context?.people?.length ? context.people : chapter.participants ?? [];
+  const places = context?.places?.length ? context.places : chapter.location ? [chapter.location] : [];
+  const dateRange = formatDateRange(chapter);
 
   const handleChatCTA = () => {
-    navigate('/chat', {
-      state: { prefill: `Tell me more about "${chapter.title}" — a storyline from ${era}.` },
+    openChatWithFocus({
+      entityId: chapter.id,
+      entityName: chapter.title,
+      entityType: 'memory',
+      sourceSurface: 'saga',
+      sourceLabel: 'Life Saga',
+      knowledgeScope: `the supporting moments, dates, people, places, and uncertainty behind the ${era} storyline`,
+      startNewThread: true,
     });
   };
 
@@ -95,15 +113,31 @@ export const ChapterDetailDrawer = ({
             {chapter.summary}
           </p>
 
+          {(dateRange || chapter.confidence != null) && (
+            <div className="flex flex-wrap gap-2">
+              {dateRange && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-white/55">
+                  <CalendarDays className="h-3.5 w-3.5 text-primary/70" />
+                  {dateRange}
+                </span>
+              )}
+              {chapter.confidence != null && (
+                <span className="rounded-full border border-emerald-300/15 bg-emerald-300/[0.06] px-2.5 py-1 text-xs text-emerald-100/65">
+                  {Math.round(chapter.confidence * 100)}% evidence confidence
+                </span>
+              )}
+            </div>
+          )}
+
           {/* People */}
-          {context?.people && context.people.length > 0 && (
+          {people.length > 0 && (
             <div>
               <div className="flex items-center gap-1.5 mb-2.5">
                 <Users className="h-3.5 w-3.5 text-white/25" />
                 <span className="text-xs font-mono uppercase tracking-widest text-white/25">People</span>
               </div>
               <div className="flex flex-wrap gap-2">
-                {context.people.map((name) => (
+                {people.map((name) => (
                   <span
                     key={name}
                     className="px-2.5 py-1 rounded-full bg-primary/10 border border-primary/20 text-xs text-primary/80"
@@ -116,14 +150,14 @@ export const ChapterDetailDrawer = ({
           )}
 
           {/* Places */}
-          {context?.places && context.places.length > 0 && (
+          {places.length > 0 && (
             <div>
               <div className="flex items-center gap-1.5 mb-2.5">
                 <MapPin className="h-3.5 w-3.5 text-white/25" />
                 <span className="text-xs font-mono uppercase tracking-widest text-white/25">Places</span>
               </div>
               <div className="flex flex-wrap gap-2">
-                {context.places.map((place) => (
+                {places.map((place) => (
                   <span
                     key={place}
                     className="px-2.5 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-xs text-cyan-400/80"
@@ -134,6 +168,20 @@ export const ChapterDetailDrawer = ({
               </div>
             </div>
           )}
+
+          <div className="rounded-xl border border-white/8 bg-white/[0.025] p-3 text-xs text-white/40">
+            <p>
+              Grounded in {chapter.sceneIds?.length ?? 0} moments and {chapter.eventIds?.length ?? 0} timeline events.
+              This is a derived storyline, not a confirmed fact.
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate(`/timeline?view=search&q=${encodeURIComponent(chapter.title)}`)}
+              className="mt-2 inline-flex items-center gap-1.5 text-primary/80 hover:text-primary"
+            >
+              View supporting moments <ExternalLink className="h-3 w-3" />
+            </button>
+          </div>
         </div>
 
         {/* Footer CTA */}

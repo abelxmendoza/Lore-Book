@@ -38,6 +38,7 @@ export type StitchedTimelineItem = {
   sourceKind: 'journal_entry' | 'resolved_event' | 'timeline_event';
   sourceIds: string[];
   sourceType: string;
+  timelineTrack?: string;
   tags?: string[];
   userPresence?: 'attended' | 'heard_about' | 'unknown';
   temporalRole?: string;
@@ -151,9 +152,7 @@ export const stitchedTimelineApi = {
     if (params?.scope_type) qs.set('scope_type', params.scope_type);
     if (params?.character_id) qs.set('character_id', params.character_id);
     const query = qs.toString();
-    return fetchJson<StitchedTimelineResult>(
-      `/api/chronology/stitched${query ? `?${query}` : ''}`
-    );
+    return fetchJson<StitchedTimelineResult>(`/api/chronology/stitched${query ? `?${query}` : ''}`);
   },
 
   saveOrder: (body: {

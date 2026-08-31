@@ -31,6 +31,31 @@ describe('characterDisplayTitle epithets', () => {
       } as any),
     ).toBe('Maribel');
   });
+
+  it('does not compose an unpinned theme epithet onto the protagonist', () => {
+    expect(
+      getCharacterDisplayTitle({
+        name: 'Jamie Rivera',
+        first_name: 'Jamie',
+        last_name: 'Rivera',
+        alias: ['Isolation And Resilience', 'Jamie Rivera the Isolation And Resilience'],
+        metadata: {
+          is_self: true,
+          epithet: 'Isolation And Resilience',
+        },
+      } as any),
+    ).toBe('Jamie Rivera');
+  });
+
+  it('drops theme-shaped and composed aliases on the protagonist', () => {
+    expect(
+      getCharacterAliases({
+        name: 'Jamie Rivera',
+        alias: ['Jamie', 'Isolation And Resilience', 'Jamie Rivera the Isolation And Resilience'],
+        metadata: { is_self: true, epithet: 'Isolation And Resilience' },
+      } as any),
+    ).toEqual(['Jamie']);
+  });
 });
 
 describe('characterDisplayTitle alias edits', () => {

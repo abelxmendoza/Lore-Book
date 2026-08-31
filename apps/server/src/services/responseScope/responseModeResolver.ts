@@ -24,7 +24,7 @@ const FOCUSED_RECALL_RE =
 
 /** Corrections to a previous answer — always conversational, never diagnostic. */
 export const CORRECTION_RE =
-  /\b(you (forgot|missed|left out|skipped)|don'?t forget|you'?re missing|(that|this) (is|was) (wrong|incorrect)|actually,? (it|that|he|she|they)\b|not (accurate|right|correct)\b)/i;
+  /\b(you (forgot|missed|left out|skipped)|don'?t forget|you'?re missing|(that|this) (is|was) (wrong|incorrect)|actually,? (it|that|he|she|they)\b|not (accurate|right|correct)\b|not my (full|complete) (work|job|employment) history\b)/i;
 
 /** Continuation openers that lean on the previous exchange for their subject. */
 const FOLLOW_UP_OPENER_RE =

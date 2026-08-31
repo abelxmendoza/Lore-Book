@@ -801,11 +801,6 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
       sourceSurface: 'events',
       sourceLabel: 'Life Log',
       knowledgeScope: 'event detail, participants, meaning, and connected evidence',
-      initialPrompt:
-        `Let’s talk about “${displayTitle}”. Start by giving me a grounded response about ` +
-        'what LoreBook currently understands about this moment and why it may matter. ' +
-        'Use only recorded details, clearly label uncertainty, and then invite me to add or correct context.',
-      autoSubmit: true,
       arrivedAt: Date.now(),
     });
     onClose();

@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import {
-  TimelineReorderableList,
-  buildTimelineClipboardText,
-} from './TimelineReorderableList';
+import { TimelineReorderableList, buildTimelineClipboardText } from './TimelineReorderableList';
 import type { StitchedTimelineItem } from '../../api/stitchedTimeline';
 
 vi.mock('../../hooks/useIsMobile', () => ({
@@ -55,7 +52,7 @@ describe('buildTimelineClipboardText', () => {
     expect(text).toBe(
       '2024-03-01 · Moment · First practice session\n' +
         '  Worked on the new set list\n' +
-        '2024-04-12 · Event · The big show',
+        '2024-04-12 · Event · The big show'
     );
   });
 
@@ -79,8 +76,16 @@ describe('buildTimelineClipboardText', () => {
 
   it('does not print fabricated day precision for coarse or unknown dates', () => {
     const text = buildTimelineClipboardText([
-      { ...ITEMS[0], timePrecision: 'year', sortTime: '2023-01-01T00:00:00.000Z' },
-      { ...ITEMS[1], occurrenceStatus: 'unresolved', sortTime: '2026-08-09T00:00:00.000Z' },
+      {
+        ...ITEMS[0],
+        timePrecision: 'year',
+        sortTime: '2023-01-01T00:00:00.000Z',
+      },
+      {
+        ...ITEMS[1],
+        occurrenceStatus: 'unresolved',
+        sortTime: '2026-08-09T00:00:00.000Z',
+      },
     ]);
     expect(text).toContain('2023 · Moment');
     expect(text).not.toContain('2023-01-01');
@@ -123,9 +128,7 @@ describe('TimelineReorderableList', () => {
     renderList();
     fireEvent.click(screen.getByRole('button', { name: /copy all/i }));
     await waitFor(() => {
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-        buildTimelineClipboardText(ITEMS),
-      );
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(buildTimelineClipboardText(ITEMS));
       expect(screen.getByText('Copied')).toBeTruthy();
     });
   });
@@ -134,6 +137,11 @@ describe('TimelineReorderableList', () => {
     const props = renderList();
     fireEvent.click(screen.getByText('First practice session'));
     expect(props.onSelect).toHaveBeenCalledWith(ITEMS[0]);
+  });
+
+  it('shows the related resume timeline track on a canonical event', () => {
+    renderList({ items: [{ ...ITEMS[1], timelineTrack: 'projects' }] });
+    expect(screen.getByText('Projects')).toBeTruthy();
   });
 
   it('does not open an item when the click ends a text selection', () => {

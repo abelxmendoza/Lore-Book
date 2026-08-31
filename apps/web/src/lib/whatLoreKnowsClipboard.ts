@@ -13,7 +13,10 @@ const CAT_LABEL: Record<string, string> = {
   relationship: 'Relationship',
   history: 'History',
   career: 'Career',
+  education: 'Education',
   location: 'Location',
+  interests: 'Interests',
+  health: 'Health',
   goals: 'Goals',
   general: 'General',
 };

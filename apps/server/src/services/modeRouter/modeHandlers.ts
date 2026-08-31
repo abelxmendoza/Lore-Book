@@ -90,6 +90,9 @@ class ModeHandlers {
       case 'FAMILY_WRITE':
         return await this.handleFamilyWrite(userId, message);
 
+      case 'HOUSEHOLD_WRITE':
+        return await this.handleHouseholdWrite(userId, message);
+
       case 'ROMANCE_WRITE':
         return await this.handleRomanceWrite(userId, message);
 
@@ -511,15 +514,32 @@ class ModeHandlers {
       const lines = result.results.map((relationship) => {
         const details = [
           relationship.relationshipType.replaceAll('_', ' '),
+          relationship.isCurrent ? 'active' : 'inactive',
           relationship.status.replaceAll('_', ' '),
           relationship.matchedReasons[0],
           relationship.scoresEvidenceBacked ? null : 'scores still need evidence',
         ].filter(Boolean);
         return `- **${relationship.personName}** — ${details.join(' · ')}`;
       });
+      const statusChanges = result.results.flatMap((relationship) =>
+        (relationship.statusChanges ?? []).map((change) => {
+          const from = change.from?.replaceAll('_', ' ') ?? 'unknown';
+          const to = change.to?.replaceAll('_', ' ') ?? 'unknown';
+          const reason = change.reasonNote || change.reason || 'no reason recorded';
+          const at = new Date(change.at).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          });
+          return `- **${relationship.personName}** — ${from} → ${to} on ${at}: ${reason}`;
+        }),
+      );
+      const historyBlock = statusChanges.length
+        ? `\n\nStatus changes:\n\n${statusChanges.join('\n')}`
+        : '';
       return {
         content: lines.length
-          ? `I found ${result.total} matching romantic connection${result.total === 1 ? '' : 's'}:\n\n${lines.join('\n')}`
+          ? `I found ${result.total} matching romantic connection${result.total === 1 ? '' : 's'}:\n\n${lines.join('\n')}${historyBlock}`
           : `I couldn't find a grounded Dating & Romance record matching that. I checked confirmed eligibility, relationship type, status, history, risk flags, evidence strength, and Character Book linkage.`,
         response_mode: 'ROMANCE_QUERY',
         confidence: 0.94,
@@ -836,6 +856,26 @@ class ModeHandlers {
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Could not update Family.';
       return { content: msg, response_mode: 'FAMILY_WRITE', confidence: 0.55 };
+    }
+  }
+
+  private async handleHouseholdWrite(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const { writeHouseholdFromChat } = await import('../chat/householdChatService');
+      const result = await writeHouseholdFromChat(userId, message);
+      return {
+        content: result.summary,
+        response_mode: 'HOUSEHOLD_WRITE',
+        confidence: 0.92,
+        metadata: {
+          householdWriteOperation: result.operation,
+          householdId: result.householdId,
+          householdName: result.householdName,
+        },
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Could not update the household.';
+      return { content: msg, response_mode: 'HOUSEHOLD_WRITE', confidence: 0.55 };
     }
   }
 

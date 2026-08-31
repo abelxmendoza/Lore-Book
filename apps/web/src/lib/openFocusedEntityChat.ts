@@ -24,21 +24,17 @@ export function openFocusedEntityChat(
       sourceSurface: preset.sourceSurface,
       sourceLabel: preset.sourceLabel,
       knowledgeScope: preset.knowledgeScope,
-      initialPrompt: preset.existingPrompt(entity.name),
       arrivedAt: Date.now(),
     });
     return;
   }
 
-  // Characters: strip role contamination ("Jamie, Marcus's Social Worker" → Jamie).
+  // People (characters and family, both real Character Book entries): strip
+  // role contamination ("Jamie, Marcus's Social Worker" → Jamie).
   const decomp =
-    preset.kind === 'characters' ? decomposePersonIntro(name) : null;
+    preset.kind === 'characters' || preset.kind === 'family' ? decomposePersonIntro(name) : null;
   const displayName =
     decomp?.canonicalName?.trim() || name.trim();
-  const introMeta =
-    decomp && (decomp.rolePhrase || decomp.supportsAnchor)
-      ? { rolePhrase: decomp.rolePhrase, supportsAnchor: decomp.supportsAnchor }
-      : undefined;
 
   openChatWithFocus({
     entityId: pendingEntityId(preset.pendingIdPrefix, displayName),
@@ -47,7 +43,6 @@ export function openFocusedEntityChat(
     sourceSurface: preset.sourceSurface,
     sourceLabel: preset.sourceLabel,
     knowledgeScope: preset.knowledgeScope,
-    initialPrompt: preset.introducePrompt(displayName, introMeta),
     arrivedAt: Date.now(),
   });
 }

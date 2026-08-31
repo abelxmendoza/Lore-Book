@@ -6,7 +6,8 @@ import type {
 import { queryEngine } from '../../cognition/query/QueryEngine';
 import type { TraversalResult } from '../../cognition/query/QueryTypes';
 
-import { isGraphBookQueryRequest } from './bookQueryIntent';
+import { detectBookQueryDomains, isGraphBookQueryRequest } from './bookQueryIntent';
+import { queryBooksForUser } from './bookQueryRegistry';
 
 export type BookQueryChatResponse = {
   content: string;
@@ -36,7 +37,13 @@ function formatBookQueryResult(response: UniversalBookQueryResponse): string {
       result.status?.replaceAll('_', ' '),
       result.matchedReasons[0],
     ].filter(Boolean);
-    return `- **${result.title}** — ${details.join(' · ')}`;
+    const documentEvidence = result.domain === 'document'
+      ? result.evidence.find((item) => item.fieldPath || item.excerpt)
+      : undefined;
+    const provenance = documentEvidence
+      ? `\n  Source: ${documentEvidence.filename ?? result.title}${documentEvidence.fieldPath ? ` · ${documentEvidence.fieldPath}` : ''}${documentEvidence.excerpt ? `\n  “${documentEvidence.excerpt}”` : ''}`
+      : '';
+    return `- **${result.title}** — ${details.join(' · ')}${provenance}`;
   });
   const connectionLine = response.connections.length
     ? `\n\nI also found ${response.connections.length} grounded connection${response.connections.length === 1 ? '' : 's'} between those records.`
@@ -48,6 +55,67 @@ export async function answerBookQueryForUser(
   userId: string,
   message: string,
 ): Promise<BookQueryChatResponse> {
+  const documentFactQuestion = detectBookQueryDomains(message).includes('document')
+    && /\b(?:resume|resumes|cv|document|documents|file|files|job|jobs|school|schools|degree|degrees|education|employment|work history|contact|email|phone)\b/i.test(message);
+  if (documentFactQuestion) {
+    const response = await queryBooksForUser(userId, {
+      query: message,
+      domains: ['document'],
+      limit: 50,
+      perDomainLimit: 50,
+      includeEvidence: true,
+      includePending: false,
+    });
+    const commonMetadata = {
+      executor: 'document-fact-query',
+      bookQuery: response,
+      queriedBooks: ['document'],
+      degradedBooks: response.diagnostics.degradedDomains,
+      resultCount: response.total,
+      suggestedActions: /\b(?:open|pull up|show|view|display|bring up)\b/i.test(message)
+        ? (() => {
+            const evidence = response.results
+              .flatMap((result) => result.evidence)
+              .find((item) => item.navigationId);
+            return evidence?.navigationId
+              ? [{
+                  id: `open-document-${evidence.navigationId}`,
+                  label: `Open ${evidence.filename || evidence.label || 'document'}`,
+                  kind: 'navigate',
+                  surface: 'documents',
+                  targetId: evidence.navigationId,
+                }]
+              : [];
+          })()
+        : [],
+      sources: response.results.flatMap((result) => result.evidence.map((item) => ({
+        type: 'document',
+        id: item.sourceId,
+        navigationId: item.navigationId ?? undefined,
+        label: item.filename ?? item.label,
+        title: item.filename ?? item.label,
+        snippet: item.excerpt ?? undefined,
+        sourceTable: item.sourceTable,
+        fieldPath: item.fieldPath ?? undefined,
+        reviewState: item.reviewState ?? undefined,
+        timestamp: item.observedAt ?? undefined,
+      }))),
+    };
+    if (response.total === 0) {
+      return {
+        content: 'I searched your completed documents and resumes but found no grounded facts matching that. No answer was invented.',
+        response_mode: 'BOOK_QUERY_EMPTY',
+        confidence: 0.9,
+        metadata: commonMetadata,
+      };
+    }
+    return {
+      content: formatBookQueryResult(response),
+      response_mode: response.diagnostics.degradedDomains.length ? 'BOOK_QUERY_DEGRADED' : 'BOOK_QUERY',
+      confidence: response.diagnostics.degradedDomains.length ? 0.75 : 0.94,
+      metadata: commonMetadata,
+    };
+  }
   const input = { userId, message };
   const run = await queryEngine.run(input);
   const bookResult = run.results.find((result) => result.source === 'books' && !result.skipped);
@@ -112,10 +180,15 @@ export async function answerBookQueryForUser(
     sources: [
       ...response!.results.flatMap((result) =>
       result.evidence.map((item) => ({
-        type: 'entity',
+        type: result.domain === 'document' ? 'document' : 'entity',
         id: item.sourceId,
-        label: item.label,
+        navigationId: item.navigationId ?? undefined,
+        label: item.filename ?? item.label,
+        title: item.filename ?? item.label,
+        snippet: item.excerpt ?? undefined,
         sourceTable: item.sourceTable,
+        fieldPath: item.fieldPath ?? undefined,
+        reviewState: item.reviewState ?? undefined,
         timestamp: item.observedAt ?? undefined,
       }))),
       ...(graphResult?.citations ?? []),

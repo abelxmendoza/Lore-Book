@@ -8,6 +8,20 @@ import { resolvePlaceBoundary as lexicalResolvePlaceBoundary } from '../lexical/
 const DISCOURSE_FRAGMENT_ONLY =
   /^(?:because|when|after|while|and\s+then|so|where|if|although|before|until|unless|since|that|which|who|i|we|they|he|she|it)(?:\s+i)?$/i;
 
+// Multi-word spans that still contain a bare narrative pronoun or a common
+// finite narration verb are sentence fragments the upstream regex/lexical
+// extractors over-captured (e.g. "Marcus and Jamie saw", "Marcus she freaked out"),
+// not place names — real place names essentially never contain these as a
+// standalone token. Scoped to 3+ words so short legitimate names aren't at risk.
+const NARRATIVE_PRONOUN = /\b(?:she|he|they|we|i)\b/i;
+const NARRATIVE_VERB =
+  /\b(?:saw|said|heard|freaked|yelled|told|asked|felt|knew|thought|started|stopped|cried|laughed|screamed|ran|walked|looked|found|got|gave|did|happened|realized|noticed|remembered|forgot)\b/i;
+
+function isNarrativeFragment(text: string): boolean {
+  if (text.split(/\s+/).filter(Boolean).length < 3) return false;
+  return NARRATIVE_PRONOUN.test(text) || NARRATIVE_VERB.test(text);
+}
+
 export type PlaceBoundaryResult = {
   text: string;
   original: string;
@@ -31,6 +45,16 @@ export function resolveCognitionPlaceBoundary(span: string): PlaceBoundaryResult
       text,
       original,
       fixes: [...fixes, 'discourse_fragment_only'],
+      clearBoundary: false,
+      rejectionReason: 'fragment',
+    };
+  }
+
+  if (isNarrativeFragment(text)) {
+    return {
+      text,
+      original,
+      fixes: [...fixes, 'narrative_fragment'],
       clearBoundary: false,
       rejectionReason: 'fragment',
     };

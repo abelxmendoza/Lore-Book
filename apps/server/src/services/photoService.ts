@@ -4,10 +4,48 @@ import { config } from '../config';
 import { openai } from '../lib/openai';
 import { logger } from '../logger';
 
+import type { DocumentCategory } from './documents/documentCategories';
+import type { DocumentSubtype } from './documents/documentSubtypes';
+import { userFileRegistry } from './ingestion/userFileRegistry';
 import { memoryService } from './memoryService';
 import type { PhotoAnalysisResult } from './photoAnalysisService';
 import { supabaseAdmin as supabase } from './supabaseClient';
 import { occurrenceDate, photoCaptureOccurrenceDate } from './temporal/explicitOccurrence';
+
+const PHOTO_MIME_TYPES: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  heic: 'image/heic',
+  heif: 'image/heif',
+};
+
+function mimeTypeFromFilename(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  return PHOTO_MIME_TYPES[ext || ''] || 'image/jpeg';
+}
+
+function storagePathFromPhotoUrl(photoUrl: string): string | undefined {
+  try {
+    const pathname = new URL(photoUrl).pathname;
+    const marker = '/storage/v1/object/';
+    const markerIndex = pathname.indexOf(marker);
+    if (markerIndex < 0) return undefined;
+    const segments = pathname
+      .slice(markerIndex + marker.length)
+      .split('/')
+      .filter(Boolean);
+    if (segments.length < 3 || segments[1] !== 'photos') return undefined;
+    return segments
+      .slice(2)
+      .map((segment) => decodeURIComponent(segment))
+      .join('/');
+  } catch {
+    return undefined;
+  }
+}
 
 export type PhotoMetadata = {
   latitude?: number;
@@ -508,6 +546,7 @@ Generate a journal entry:`;
         visionGenerated: true,
         category,
         customCategoryLabel: analysis.customCategoryLabel,
+        suggestedDocumentSubtype: analysis.documentSubtype,
       }
     });
 
@@ -568,6 +607,101 @@ Generate a journal entry:`;
       logger.error({ error }, 'Failed to get user photos');
       throw error;
     }
+  }
+
+  /**
+   * Move a Photo Album entry into a selected Documents folder. The journal
+   * entry is retained as provenance, hidden from the Photos listing, and the
+   * source binary is removed only after private Documents storage succeeds.
+   */
+  async sendToDocuments(
+    userId: string,
+    entryId: string,
+    options: {
+      category: DocumentCategory;
+      documentSubtype?: DocumentSubtype;
+    },
+  ): Promise<{ fileId: string; category: DocumentCategory }> {
+    const entry = await memoryService.getEntry(userId, entryId);
+    if (!entry) {
+      throw new Error('Photo entry not found');
+    }
+
+    const metadata = (entry.metadata as Record<string, unknown>) ?? {};
+    const photoId = typeof metadata.photoId === 'string' ? metadata.photoId : undefined;
+    if (!photoId) {
+      throw new Error('Entry is not a stored photo');
+    }
+    if (metadata.movedToDocuments) {
+      throw new Error('Photo has already been sent to Documents');
+    }
+
+    const filename =
+      typeof metadata.photoFilename === 'string' && metadata.photoFilename.trim()
+        ? metadata.photoFilename.trim()
+        : `${photoId}.jpg`;
+    const storagePath =
+      (typeof metadata.photoStoragePath === 'string' && metadata.photoStoragePath.trim()
+        ? metadata.photoStoragePath.trim()
+        : undefined) ??
+      storagePathFromPhotoUrl(typeof metadata.photoUrl === 'string' ? metadata.photoUrl : '') ??
+      `${userId}/${photoId}-${filename}`;
+
+    const { data: downloaded, error: downloadError } = await supabase.storage
+      .from('photos')
+      .download(storagePath);
+    if (downloadError || !downloaded) {
+      logger.error({ error: downloadError, storagePath, userId }, 'Failed to download photo for Documents move');
+      throw downloadError ?? new Error('Could not download photo');
+    }
+    const buffer = Buffer.from(await downloaded.arrayBuffer());
+    const mimeType = mimeTypeFromFilename(filename);
+
+    const userFile = await userFileRegistry.registerOrReuse(userId, buffer, {
+      filename,
+      mimeType,
+      ingestKind: 'photo',
+      storeBinary: true,
+      documentCategory: options.category,
+    });
+    if (!userFile.storage_url) {
+      await userFileRegistry.setStatus(
+        userFile.id,
+        'failed',
+        'The photo could not be stored in the Documents library.',
+      );
+      throw new Error('The photo could not be stored in Documents');
+    }
+
+    await userFileRegistry.updateMetadata(userFile.id, {
+      ...(options.documentSubtype
+        ? { document_subtype: options.documentSubtype }
+        : {}),
+      source_photo_entry_id: entryId,
+      moved_from_photo_album: true,
+      moved_at: new Date().toISOString(),
+    });
+    await userFileRegistry.setStatus(userFile.id, 'completed');
+
+    const { error: removeError } = await supabase.storage.from('photos').remove([storagePath]);
+    if (removeError) {
+      logger.warn({ error: removeError, storagePath, userId }, 'Failed to remove original photo after Documents move');
+    }
+
+    await memoryService.updateEntry(userId, entryId, {
+      metadata: {
+        ...metadata,
+        movedToDocuments: true,
+        documentFileId: userFile.id,
+        documentCategory: options.category,
+        ...(options.documentSubtype
+          ? { documentSubtype: options.documentSubtype }
+          : {}),
+        movedToDocumentsAt: new Date().toISOString(),
+      },
+    });
+
+    return { fileId: userFile.id, category: options.category };
   }
 }
 

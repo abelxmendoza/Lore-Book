@@ -24,6 +24,10 @@ export interface LifeArc {
   source: 'inferred' | 'user_created';
   tags: string[];
   metadata?: Record<string, unknown>;
+  bar_eligibility?: {
+    drawable: boolean;
+    reason: 'occasion' | 'explicitly_suppressed' | 'missing_start_date' | 'invalid_dates' | 'single_day_span' | 'insufficient_evidence' | null;
+  };
   children?: LifeArc[];
 }
 

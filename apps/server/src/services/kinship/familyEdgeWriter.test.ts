@@ -45,6 +45,8 @@ describe('familyEdgeWriter — type normalization', () => {
     expect(normalizeFamilyEdgeType('stepdad')).toBe('step_parent_of');
     expect(normalizeFamilyEdgeType('grandson')).toBe('grandchild_of');
     expect(normalizeFamilyEdgeType('granddaughter')).toBe('grandchild_of');
+    expect(normalizeFamilyEdgeType('robot')).toBe('pet_of');
+    expect(normalizeFamilyEdgeType('android')).toBe('pet_of');
   });
 
   it('inverts directed family edges bidirectionally', () => {

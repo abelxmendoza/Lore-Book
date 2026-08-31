@@ -28,8 +28,8 @@ const fictionalResume: ParsedResume = {
     },
   ],
   skills: ['ROS2', 'Python', 'PX4'],
-  projects: [{ name: 'Atlas Drive' }],
-  certifications: [{ name: 'FAA Part 107 Certified' }],
+  projects: [{ name: 'Atlas Drive', startDate: '2023-01-01', endDate: '2024-01-01' }],
+  certifications: [{ name: 'FAA Part 107 Certified', date: '2024-06-01' }],
   employmentGaps: [],
 };
 
@@ -53,10 +53,14 @@ describe('resumeFeedbackService', () => {
     expect(result.chatFeedback).toContain('Documents library');
     expect(result.chatFeedback).toContain('Career timeline');
     expect(result.chatFeedback).toContain('Education timeline');
+    expect(result.chatFeedback).toContain('Projects timeline');
+    expect(result.chatFeedback).toContain('Open Calendar');
     expect(result.chatFeedback).toContain('Meridian Test Labs');
     expect(result.chatFeedback).toContain('Meridian State');
     expect(result.careerTimeline).toHaveLength(2);
     expect(result.educationTimeline).toHaveLength(1);
+    expect(result.projectTimeline).toHaveLength(1);
+    expect(result.certificationTimeline).toHaveLength(1);
     expect(result.savedToLibrary).toBe(true);
   });
 });
