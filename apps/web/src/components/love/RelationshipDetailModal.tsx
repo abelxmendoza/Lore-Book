@@ -1,7 +1,7 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
 import { useState, useEffect, useCallback } from 'react';
-import { X, Heart, Calendar, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, MessageSquare, BarChart3, List, Clock, Activity, RefreshCw, Sparkles, GitBranch, Trash2, Baby, History } from 'lucide-react';
+import { X, Heart, Calendar, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, MessageSquare, BarChart3, List, Clock, Activity, RefreshCw, Sparkles, GitBranch, Trash2, Baby, History, Pencil } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -38,6 +38,7 @@ import { pickMetricReason } from '../../lib/relationshipScoreReasons';
 import { useRomanticExPartners } from '../../hooks/useRomanticExPartners';
 import {
   composeRomanticRelationshipBadgeLabel,
+  humanizeRomanceToken,
 } from '../../lib/romanticRelationshipLabel';
 import { getRelationshipStatusClasses } from './relationshipStatusColors';
 import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
@@ -131,6 +132,42 @@ const RELATIONSHIP_TABS = [
 
 type RelationshipModalTab = (typeof RELATIONSHIP_TABS)[number]['value'];
 
+/** Must match the server's romanticRelationshipPatchSchema relationship_type enum. */
+const RELATIONSHIP_TYPE_OPTIONS = [
+  'talking', 'dating', 'situationship', 'hooking_up', 'one_night_stand',
+  'friends_with_benefits', 'fuck_buddy', 'crush', 'obsession', 'infatuation', 'lust', 'in_love',
+  'boyfriend', 'girlfriend', 'complicated', 'on_break',
+  'fiancé', 'fiancée', 'wife', 'husband',
+  'ex_boyfriend', 'ex_girlfriend', 'ex_wife', 'ex_husband', 'ex_lover', 'divorced',
+  'co_parent', 'baby_mama', 'baby_daddy', 'lover',
+] as const;
+
+/** Must match the server's romanticRelationshipPatchSchema exclusivity_status enum. */
+const EXCLUSIVITY_STATUS_OPTIONS = ['unknown', 'exclusive', 'non_exclusive', 'complicated'] as const;
+
+/** Must match the server's romanticRelationshipPatchSchema status enum. */
+const STATUS_OPTIONS = [
+  'active', 'on_break', 'paused', 'complicated', 'fading',
+  'unrequited', 'ghosted', 'blocked', 'rekindled', 'ended',
+] as const;
+
+type RomanceFieldChange = {
+  from: string | null;
+  to: string | null;
+  at: string;
+  reason: string | null;
+  source: string;
+};
+
+type RomanceFieldHistory = {
+  current: { relationship_type: string; status: string; exclusivity_status: string | null };
+  history: {
+    relationship_type: RomanceFieldChange[];
+    status: RomanceFieldChange[];
+    exclusivity_status: RomanceFieldChange[];
+  };
+};
+
 interface RelationshipDetailModalProps {
   relationshipId: string;
   onClose: () => void;
@@ -182,6 +219,15 @@ export const RelationshipDetailModal = ({
   );
   const [deleteReason, setDeleteReason] = useState('wrong_person_or_not_real');
   const [deleteReasonNote, setDeleteReasonNote] = useState('');
+  const [editingRomanceFields, setEditingRomanceFields] = useState(false);
+  const [relationshipTypeDraft, setRelationshipTypeDraft] = useState('');
+  const [exclusivityDraft, setExclusivityDraft] = useState('');
+  const [statusDraft, setStatusDraft] = useState('');
+  const [romanceReasonNote, setRomanceReasonNote] = useState('');
+  const [showRomanceHistory, setShowRomanceHistory] = useState(false);
+  const [romanceHistoryLoading, setRomanceHistoryLoading] = useState(false);
+  const [romanceHistoryLoaded, setRomanceHistoryLoaded] = useState(false);
+  const [romanceHistory, setRomanceHistory] = useState<RomanceFieldHistory | null>(null);
   const [scoresRefreshing, setScoresRefreshing] = useState(false);
   const { exPartners, loading: exPartnersLoading } = useRomanticExPartners(
     relationshipId,
@@ -292,6 +338,24 @@ export const RelationshipDetailModal = ({
     if (activeTab === 'kids') loadKids();
   }, [activeTab, loadKids]);
 
+  const loadRomanceHistory = useCallback(async () => {
+    if (romanceHistoryLoaded || shouldUseMockData) return;
+    setRomanceHistoryLoading(true);
+    try {
+      const data = await fetchJson<{ success: boolean } & RomanceFieldHistory>(
+        `/api/conversation/romantic-relationships/${relationshipId}/history`
+      ).catch(() => null);
+      if (data?.success) setRomanceHistory(data);
+      setRomanceHistoryLoaded(true);
+    } finally {
+      setRomanceHistoryLoading(false);
+    }
+  }, [relationshipId, romanceHistoryLoaded, shouldUseMockData]);
+
+  useEffect(() => {
+    if (showRomanceHistory && !romanceHistoryLoaded) loadRomanceHistory();
+  }, [showRomanceHistory, romanceHistoryLoaded, loadRomanceHistory]);
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -385,11 +449,25 @@ export const RelationshipDetailModal = ({
     }
   };
 
-  const updateRelationshipStatus = async (
-    status: 'active' | 'on_break' | 'ended' | 'complicated' | 'paused',
-    reason: string,
-  ) => {
+  const saveRomanceFields = async () => {
     if (!relationship || shouldUseMockData) return;
+    const changedType = relationshipTypeDraft && relationshipTypeDraft !== relationship.relationship_type;
+    const changedExclusivity =
+      exclusivityDraft && exclusivityDraft !== (relationship.exclusivity_status ?? '');
+    const changedStatus = statusDraft && statusDraft !== relationship.status;
+    if (!changedType && !changedExclusivity && !changedStatus) {
+      setEditingRomanceFields(false);
+      return;
+    }
+    if (changedStatus && !romanceReasonNote.trim()) {
+      setCrudError('Add a reason for the status change so it is saved with relationship history.');
+      return;
+    }
+    const changedFieldLabels = [
+      changedType && 'relationship_type',
+      changedExclusivity && 'exclusivity_status',
+      changedStatus && 'status',
+    ].filter(Boolean) as string[];
     setCrudBusy(true);
     setCrudError(null);
     try {
@@ -397,14 +475,24 @@ export const RelationshipDetailModal = ({
       const result = await updateRomanticRelationship({
         id: relationship.id,
         values: {
-          status,
-          is_current: status === 'active' || status === 'complicated',
-          ...(status === 'ended' ? { end_date: now } : {}),
-          ...(status === 'active' ? { end_date: null } : {}),
-          reason,
+          ...(changedType ? { relationship_type: relationshipTypeDraft } : {}),
+          ...(changedExclusivity ? { exclusivity_status: exclusivityDraft } : {}),
+          ...(changedStatus
+            ? {
+                status: statusDraft,
+                is_current: !['ended', 'ghosted', 'blocked'].includes(statusDraft),
+                ...(statusDraft === 'ended' ? { end_date: now } : {}),
+                ...(statusDraft === 'active' ? { end_date: null } : {}),
+              }
+            : {}),
+          reason: `user_corrected_${changedFieldLabels.join('_and_')}`,
+          ...(romanceReasonNote.trim() ? { reason_note: romanceReasonNote.trim() } : {}),
         },
       }).unwrap() as { relationship?: RelationshipData };
       if (result.relationship) setRelationship(result.relationship);
+      setEditingRomanceFields(false);
+      setRomanceReasonNote('');
+      setRomanceHistoryLoaded(false);
       await loadData();
       onUpdate?.();
     } catch (error) {
@@ -837,31 +925,155 @@ export const RelationshipDetailModal = ({
             {/* Status and Dates */}
             <div className="grid grid-cols-2 gap-1.5 sm:gap-4">
               <div className="p-2 sm:p-4 rounded-lg border border-border/60 bg-black/40 min-w-0">
-                <h3 className="text-[10px] sm:text-sm font-semibold text-white mb-1.5 sm:mb-3">Status</h3>
-                <div className="space-y-1 sm:space-y-2">
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-white/55 text-[10px] sm:text-sm shrink-0">Status</span>
-                    <Badge variant="outline" className="text-[9px] sm:text-xs px-1.5 py-0 bg-green-500/20 text-green-300 border-green-500/30 truncate max-w-[60%]">
-                      {relationship.status}
-                    </Badge>
-                  </div>
-                  {relationship.is_situationship && relationship.relationship_type !== 'situationship' && (
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-white/55 text-[10px] sm:text-sm shrink-0">Type</span>
-                      <Badge variant="outline" className="text-[9px] sm:text-xs px-1.5 py-0 bg-purple-500/20 text-purple-300 border-purple-500/30">
-                        Situationship
-                      </Badge>
-                    </div>
-                  )}
-                  {relationship.exclusivity_status && (
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-white/55 text-[10px] sm:text-sm shrink-0">Exclusivity</span>
-                      <Badge variant="outline" className="text-[9px] sm:text-xs px-1.5 py-0 truncate max-w-[55%]">
-                        {relationship.exclusivity_status}
-                      </Badge>
-                    </div>
+                <div className="flex items-center justify-between mb-1.5 sm:mb-3">
+                  <h3 className="text-[10px] sm:text-sm font-semibold text-white">Status</h3>
+                  {!editingRomanceFields && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={shouldUseMockData}
+                      title={shouldUseMockData ? 'Sign in to edit relationship status' : 'Edit status / type / exclusivity'}
+                      onClick={() => {
+                        if (shouldUseMockData) return;
+                        setStatusDraft(relationship.status);
+                        setRelationshipTypeDraft(relationship.relationship_type);
+                        setExclusivityDraft(relationship.exclusivity_status ?? 'unknown');
+                        setRomanceReasonNote('');
+                        setEditingRomanceFields(true);
+                      }}
+                      className="h-7 gap-1.5 border-pink-400/35 bg-pink-500/10 px-2 text-[10px] text-pink-100 hover:bg-pink-500/20"
+                      data-testid="relationship-edit-status"
+                    >
+                      <Pencil className="h-3 w-3" />
+                      <span>{shouldUseMockData ? 'Sign in to edit' : 'Edit status'}</span>
+                    </Button>
                   )}
                 </div>
+                {editingRomanceFields ? (
+                  <div className="space-y-2">
+                    <div className="rounded-lg border border-pink-500/20 bg-pink-500/5 p-2">
+                      <p className="mb-1.5 text-[10px] text-white/55">Relationship state</p>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={statusDraft === 'active' ? 'default' : 'outline'}
+                          onClick={() => setStatusDraft('active')}
+                          className="h-8 text-xs"
+                        >
+                          Active
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={statusDraft === 'ended' ? 'default' : 'outline'}
+                          onClick={() => setStatusDraft('ended')}
+                          className="h-8 text-xs"
+                        >
+                          Inactive
+                        </Button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-white/50 block mb-1">Status</label>
+                      <select
+                        value={statusDraft}
+                        onChange={(e) => setStatusDraft(e.target.value)}
+                        className="w-full px-2 py-1.5 bg-black/40 border border-border/60 rounded text-xs text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      >
+                        {STATUS_OPTIONS.map((s) => (
+                          <option key={s} value={s}>{humanizeRomanceToken(s)}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-white/50 block mb-1">Type</label>
+                      <select
+                        value={relationshipTypeDraft}
+                        onChange={(e) => setRelationshipTypeDraft(e.target.value)}
+                        className="w-full px-2 py-1.5 bg-black/40 border border-border/60 rounded text-xs text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      >
+                        {RELATIONSHIP_TYPE_OPTIONS.map((t) => (
+                          <option key={t} value={t}>{humanizeRomanceToken(t)}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-white/50 block mb-1">Exclusivity</label>
+                      <select
+                        value={exclusivityDraft}
+                        onChange={(e) => setExclusivityDraft(e.target.value)}
+                        className="w-full px-2 py-1.5 bg-black/40 border border-border/60 rounded text-xs text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      >
+                        {EXCLUSIVITY_STATUS_OPTIONS.map((s) => (
+                          <option key={s} value={s}>{humanizeRomanceToken(s)}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-white/50 block mb-1">
+                        Why are you changing this?{statusDraft !== relationship.status && ' (required)'}
+                      </label>
+                      <input
+                        type="text"
+                        value={romanceReasonNote}
+                        onChange={(e) => setRomanceReasonNote(e.target.value)}
+                        placeholder="e.g. We decided to take space."
+                        className="w-full px-2 py-1.5 bg-black/40 border border-border/60 rounded text-xs text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      />
+                      {statusDraft !== relationship.status && (
+                        <p className="mt-1 text-[10px] text-pink-200/70">
+                          Add a reason so this status change is recorded with context.
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <Button size="sm" variant="outline" disabled={crudBusy} onClick={() => void saveRomanceFields()}>
+                        {crudBusy ? 'Saving…' : 'Save'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={crudBusy}
+                        onClick={() => setEditingRomanceFields(false)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1 sm:space-y-2">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-white/55 text-[10px] sm:text-sm shrink-0">Status</span>
+                      <Badge variant="outline" className="text-[9px] sm:text-xs px-1.5 py-0 bg-green-500/20 text-green-300 border-green-500/30 truncate max-w-[60%]">
+                        {relationship.status}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-white/55 text-[10px] sm:text-sm shrink-0">Type</span>
+                      <Badge variant="outline" className="text-[9px] sm:text-xs px-1.5 py-0 bg-purple-500/20 text-purple-300 border-purple-500/30 truncate max-w-[60%]">
+                        {humanizeRomanceToken(relationship.relationship_type)}
+                      </Badge>
+                    </div>
+                    {relationship.is_situationship && relationship.relationship_type !== 'situationship' && (
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-white/55 text-[10px] sm:text-sm shrink-0">Also flagged</span>
+                        <Badge variant="outline" className="text-[9px] sm:text-xs px-1.5 py-0 bg-purple-500/20 text-purple-300 border-purple-500/30">
+                          Situationship
+                        </Badge>
+                      </div>
+                    )}
+                    {relationship.exclusivity_status && (
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-white/55 text-[10px] sm:text-sm shrink-0">Exclusivity</span>
+                        <Badge variant="outline" className="text-[9px] sm:text-xs px-1.5 py-0 truncate max-w-[55%]">
+                          {humanizeRomanceToken(relationship.exclusivity_status)}
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="p-2 sm:p-4 rounded-lg border border-border/60 bg-black/40 min-w-0">
                 <h3 className="text-[10px] sm:text-sm font-semibold text-white mb-1.5 sm:mb-3">Timeline</h3>
@@ -892,44 +1104,84 @@ export const RelationshipDetailModal = ({
             </div>
 
             {!shouldUseMockData && (
+              <div className="rounded-lg border border-border/60 bg-black/40 p-3 sm:p-4">
+                <button
+                  type="button"
+                  onClick={() => setShowRomanceHistory((v) => !v)}
+                  className="w-full flex items-center justify-between text-left"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <History className="w-3.5 h-3.5 text-white/50" />
+                    <h3 className="text-xs sm:text-sm font-semibold text-white">Status &amp; type history</h3>
+                  </div>
+                  <span className="text-[10px] text-white/40">{showRomanceHistory ? 'Hide' : 'Show'}</span>
+                </button>
+                {showRomanceHistory && (
+                  <div className="mt-3 space-y-4">
+                    {romanceHistoryLoading && <p className="text-xs text-white/40">Loading history…</p>}
+                    {!romanceHistoryLoading && romanceHistory && (
+                      <>
+                        {(
+                          [
+                            ['relationship_type', 'Type'],
+                            ['status', 'Status'],
+                            ['exclusivity_status', 'Exclusivity'],
+                          ] as const
+                        ).map(([field, label]) => {
+                          const changes = romanceHistory.history[field];
+                          const currentValue = romanceHistory.current[field];
+                          return (
+                            <div key={field}>
+                              <div className="flex items-center justify-between mb-1.5">
+                                <span className="text-[10px] uppercase tracking-wide text-white/40">{label}</span>
+                                <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-primary/15 text-primary border-primary/30">
+                                  Current: {humanizeRomanceToken(currentValue ?? 'unknown')}
+                                </Badge>
+                              </div>
+                              {changes.length === 0 ? (
+                                <p className="text-[11px] text-white/35">No recorded changes yet.</p>
+                              ) : (
+                                <ol className="space-y-1.5 border-l border-white/10 pl-3">
+                                  {changes.map((c, idx) => {
+                                    const nextChange = changes[idx + 1];
+                                    const rangeEnd = nextChange
+                                      ? new Date(nextChange.at).toLocaleDateString()
+                                      : 'Present';
+                                    return (
+                                      <li key={`${field}-${c.at}-${idx}`} className="text-[11px] text-white/60">
+                                        <span className="text-white/85 font-medium">{humanizeRomanceToken(c.to ?? 'unknown')}</span>
+                                        {' — '}
+                                        {new Date(c.at).toLocaleDateString()} → {rangeEnd}
+                                        {c.reason && (
+                                          <span className="text-white/40">
+                                            {' · '}
+                                            {c.source === 'USER' ? 'You: ' : 'Auto-detected: '}
+                                            {c.reason.replace(/_/g, ' ')}
+                                          </span>
+                                        )}
+                                      </li>
+                                    );
+                                  })}
+                                </ol>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
+                    {!romanceHistoryLoading && !romanceHistory && (
+                      <p className="text-xs text-white/40">No history recorded yet.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!shouldUseMockData && (
               <div className="rounded-lg border border-amber-500/20 bg-amber-950/10 p-4 space-y-3">
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h3 className="text-sm font-semibold text-white">Correct this relationship</h3>
-                    <p className="text-xs text-white/45">Use this when the relationship status is wrong or the row should not be in Dating & Romance.</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={crudBusy}
-                      onClick={() => void updateRelationshipStatus('active', 'user_restored_relationship_active')}
-                      className="border-green-500/30 bg-green-500/10 text-green-100 hover:bg-green-500/20"
-                    >
-                      Active
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={crudBusy}
-                      onClick={() => void updateRelationshipStatus('paused', 'user_paused_relationship')}
-                      className="border-yellow-500/30 bg-yellow-500/10 text-yellow-100 hover:bg-yellow-500/20"
-                    >
-                      Pause
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={crudBusy}
-                      onClick={() => void updateRelationshipStatus('ended', 'user_marked_relationship_ended')}
-                      className="border-red-500/30 bg-red-500/10 text-red-100 hover:bg-red-500/20"
-                    >
-                      Mark ended
-                    </Button>
-                  </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-white">Remove this relationship</h3>
+                  <p className="text-xs text-white/45">Wrong status, type, or exclusivity? Edit it above. Use this only when the row shouldn't be in Dating &amp; Romance at all.</p>
                 </div>
 
                 <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto]">

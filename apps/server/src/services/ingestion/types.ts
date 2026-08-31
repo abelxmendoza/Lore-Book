@@ -43,8 +43,12 @@ export type ResumeImportConflict = {
 
 export type UnifiedIngestResult = {
   userFileId: string;
-  processingStatus: 'completed' | 'failed';
+  processingStatus: 'processing' | 'completed' | 'failed';
   derivedCounts: UserFileDerivedCounts;
+  /** Exact or conservative near-duplicate of a completed prior import. */
+  alreadyImported?: boolean;
+  duplicateOfUserFileId?: string;
+  duplicateSimilarity?: number;
   momentsCreated?: number;
   charactersCreated?: number;
   sectionsCreated?: number;

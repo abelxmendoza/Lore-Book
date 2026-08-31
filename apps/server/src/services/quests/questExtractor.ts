@@ -122,6 +122,7 @@ Return JSON:
 Reject fragments, completed/past actions, memories, feedback, negated desires, hypotheticals,
 passive phrases, third-party goals, assistant suggestions, wishes, and waiting states.
 Reject person introductions and Character Book onboarding ("I want to tell you about X",
+"I want to talk about X", "help me capture who X is", "record details about X",
 "let me tell you about X", "someone new in my life", "meet X") — those are cast/lore updates,
 not quests, even when they contain "want to".
 Keep tasks, habits, projects, milestones, and durable quests distinct. A candidate must express

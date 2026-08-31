@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { isReviewPending } from '../services/reviewableRecord';
 import { z } from 'zod';
 import { skillQueryRequestSchema } from '@lorebook/api-contracts';
 
@@ -30,10 +31,10 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     const activeOnly = req.query.active_only === 'true';
     const category = req.query.category as string | undefined;
 
-    const skills = await skillService.getSkills(userId, {
+    const skills = (await skillService.getSkills(userId, {
       active_only: activeOnly,
-      category: category as any
-    });
+      category: category as any,
+    })).filter((skill) => !isReviewPending(skill.metadata));
 
     res.json({ skills });
   } catch (error) {

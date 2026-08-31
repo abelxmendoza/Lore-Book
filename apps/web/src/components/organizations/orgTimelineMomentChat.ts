@@ -63,8 +63,6 @@ export function openOrgTimelineMomentChat(input: {
     sourceSurface: 'organizations',
     sourceLabel: CHAT_FOCUS_SOURCE_LABELS.organizations,
     knowledgeScope: 'group timeline moment — recount, correct, and update knowledge',
-    initialPrompt: buildOrgTimelineMomentChatPrompt(input.event, input.organizationName),
-    autoSubmit: true,
     startNewThread: true,
     arrivedAt: Date.now(),
   });

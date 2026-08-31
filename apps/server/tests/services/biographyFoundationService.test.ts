@@ -20,6 +20,7 @@ function makeChain(result: TableResult) {
     or: () => chain,
     in: () => chain,
     not: () => chain,
+    is: () => chain,
     gt: () => chain,
     gte: () => chain,
     order: () => chain,
@@ -320,5 +321,115 @@ describe('buildProvenance (via generateBiography output) — traceability (Sprin
     expect(periods[0]?.label).toBe('Jun 2024');
     expect(periods[0]?.startDate).toBe('2024-06-01');
     expect(periods[0]?.eventCount).toBe(1);
+  });
+});
+
+describe('keyEvents — recording-time fallback for undated activity', () => {
+  it('flags occurrence-dated events dateIsOccurrence: true and undated-but-recorded events dateIsOccurrence: false', async () => {
+    const { buildCanonicalCharacterTimeline } = await import('../../src/services/characters/characterEntityTimelineService');
+    vi.mocked(buildCanonicalCharacterTimeline).mockResolvedValueOnce({
+      sharedExperiences: [
+        {
+          eventTitle: 'Dated Event', eventType: 'career_milestone', timelineType: 'shared_experience',
+          occurredStart: '2026-06-01T00:00:00.000Z', confidence: 0.8, connectionCharacter: null,
+          isUnresolved: false, legacyOnly: false, recordedAt: '2026-06-01T00:00:00.000Z',
+        },
+      ],
+      lore: [],
+      unresolved: [
+        {
+          eventTitle: 'Undated Recent Event', eventType: 'nightlife_event', timelineType: 'lore',
+          occurredStart: null, confidence: 0.7, connectionCharacter: null,
+          isUnresolved: true, recordedAt: '2026-08-20T00:00:00.000Z',
+        },
+        // No recordedAt at all — must never fabricate a date, so this is dropped entirely.
+        {
+          eventTitle: 'Undated No RecordedAt', eventType: 'lore', timelineType: 'lore',
+          occurredStart: null, confidence: 0.5, connectionCharacter: null,
+          isUnresolved: true, recordedAt: null,
+        },
+      ],
+      legacyOnly: [],
+      summary: { lastInteractionAt: null, lastInteractionId: null, lastMentionedAt: null, lastMentionedId: null, firstKnownAppearanceAt: null, firstKnownAppearanceId: null, firstKnownOccurrenceAt: null, firstKnownOccurrenceId: null, lastKnownOccurrenceAt: null, lastKnownOccurrenceId: null, firstMentionedAt: null, firstMentionedId: null },
+    } as never);
+
+    const facts = await biographyFoundationService.extractBiographyFacts(USER_ID);
+
+    const dated = facts.keyEvents.find(e => e.title === 'Dated Event');
+    expect(dated?.dateIsOccurrence).toBe(true);
+    expect(dated?.date).toBe('2026-06-01T00:00:00.000Z');
+
+    const undated = facts.keyEvents.find(e => e.title === 'Undated Recent Event');
+    expect(undated?.dateIsOccurrence).toBe(false);
+    expect(undated?.date).toBe('2026-08-20T00:00:00.000Z');
+
+    expect(facts.keyEvents.find(e => e.title === 'Undated No RecordedAt')).toBeUndefined();
+  });
+
+  it('caps the recording-time fallback and orders it newest-recorded-first', async () => {
+    const { buildCanonicalCharacterTimeline } = await import('../../src/services/characters/characterEntityTimelineService');
+    const unresolved = Array.from({ length: 15 }, (_, i) => ({
+      eventTitle: `Event ${i}`, eventType: 'lore', timelineType: 'lore',
+      occurredStart: null, confidence: 0.5, connectionCharacter: null,
+      isUnresolved: true, recordedAt: new Date(Date.UTC(2026, 7, i + 1)).toISOString(),
+    }));
+    vi.mocked(buildCanonicalCharacterTimeline).mockResolvedValueOnce({
+      sharedExperiences: [], lore: [], unresolved, legacyOnly: [],
+      summary: { lastInteractionAt: null, lastInteractionId: null, lastMentionedAt: null, lastMentionedId: null, firstKnownAppearanceAt: null, firstKnownAppearanceId: null, firstKnownOccurrenceAt: null, firstKnownOccurrenceId: null, lastKnownOccurrenceAt: null, lastKnownOccurrenceId: null, firstMentionedAt: null, firstMentionedId: null },
+    } as never);
+
+    const facts = await biographyFoundationService.extractBiographyFacts(USER_ID);
+
+    expect(facts.keyEvents).toHaveLength(10);
+    expect(facts.keyEvents[0]?.title).toBe('Event 14');
+    expect(facts.keyEvents.every(e => e.dateIsOccurrence === false)).toBe(true);
+  });
+});
+
+describe('keyEvents — unpromoted Scene fallback (real recent life content stuck below the Event-significance bar)', () => {
+  it('folds in recent unpromoted scenes not already covered by canonical events', async () => {
+    tableResults.narrative_scenes = {
+      data: [
+        { title: 'Went to the club last night', time_start: '2026-08-25T02:17:28.684Z', created_at: '2026-08-25T02:18:11.753Z', promoted_event_id: null },
+        { title: 'Met her at the afters', time_start: null, created_at: '2026-08-25T01:49:45.021Z', promoted_event_id: null },
+      ],
+      error: null,
+    };
+
+    const facts = await biographyFoundationService.extractBiographyFacts(USER_ID);
+
+    const clubScene = facts.keyEvents.find(e => e.title === 'Went to the club last night');
+    expect(clubScene?.eventType).toBe('scene');
+    expect(clubScene?.dateIsOccurrence).toBe(true);
+    expect(clubScene?.date).toBe('2026-08-25T02:17:28.684Z');
+
+    const aftersScene = facts.keyEvents.find(e => e.title === 'Met her at the afters');
+    expect(aftersScene?.dateIsOccurrence).toBe(false);
+    expect(aftersScene?.date).toBe('2026-08-25T01:49:45.021Z');
+  });
+
+  it('does not duplicate a scene whose title already appears as a canonical event', async () => {
+    const { buildCanonicalCharacterTimeline } = await import('../../src/services/characters/characterEntityTimelineService');
+    vi.mocked(buildCanonicalCharacterTimeline).mockResolvedValueOnce({
+      sharedExperiences: [
+        {
+          eventTitle: 'Went to the club last night', eventType: 'nightlife_event', timelineType: 'shared_experience',
+          occurredStart: '2026-08-25T02:17:28.684Z', confidence: 0.8, connectionCharacter: null,
+          isUnresolved: false, legacyOnly: false, recordedAt: '2026-08-25T02:17:28.684Z',
+        },
+      ],
+      lore: [], unresolved: [], legacyOnly: [],
+      summary: { lastInteractionAt: null, lastInteractionId: null, lastMentionedAt: null, lastMentionedId: null, firstKnownAppearanceAt: null, firstKnownAppearanceId: null, firstKnownOccurrenceAt: null, firstKnownOccurrenceId: null, lastKnownOccurrenceAt: null, lastKnownOccurrenceId: null, firstMentionedAt: null, firstMentionedId: null },
+    } as never);
+    tableResults.narrative_scenes = {
+      data: [
+        { title: 'Went to the club last night', time_start: '2026-08-25T02:17:28.684Z', created_at: '2026-08-25T02:18:11.753Z', promoted_event_id: 'evt-1' },
+      ],
+      error: null,
+    };
+
+    const facts = await biographyFoundationService.extractBiographyFacts(USER_ID);
+
+    expect(facts.keyEvents.filter(e => e.title === 'Went to the club last night')).toHaveLength(1);
   });
 });

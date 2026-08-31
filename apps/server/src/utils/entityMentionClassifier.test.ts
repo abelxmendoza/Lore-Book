@@ -41,6 +41,12 @@ describe('entityMentionClassifier', () => {
     expect(classifyMentionKind('Alex', 'Alex said she would call').kind).toBe('person');
   });
 
+  it('rejects discourse openers as person candidates', () => {
+    expect(classifyMentionKind("Here's").kind).toBe('fragment');
+    expect(classifyMentionKind('Heres').kind).toBe('fragment');
+    expect(classifyMentionKind("There's").kind).toBe('fragment');
+  });
+
   it('defers single-token first mentions but promotes kinship and multi-token names', () => {
     expect(shouldDeferCharacterPromotion('Alex', 1)).toBe(true);
     expect(shouldDeferCharacterPromotion('Alex', 2)).toBe(false);

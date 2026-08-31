@@ -54,10 +54,12 @@ describe('openGeneratedTimelineChat', () => {
       entityName: 'Marcus',
       entityType: 'character',
       sourceSurface: 'timeline',
-      autoSubmit: true,
       startNewThread: true,
     });
     expect(event.detail.knowledgeScope).toContain('2025-04-01: Made the project official');
+    // Opening a focus chat must never pre-fill or auto-send a starter prompt.
+    expect(event.detail.initialPrompt).toBeUndefined();
+    expect(event.detail.autoSubmit).toBeUndefined();
   });
 
   it('never sends simulated moments as evidence', () => {
@@ -77,6 +79,7 @@ describe('openGeneratedTimelineChat', () => {
     const event = dispatch.mock.calls[0][0] as CustomEvent;
     expect(event.detail.knowledgeScope).toContain('simulated preview only');
     expect(event.detail.knowledgeScope).not.toContain('fabricated preview moment');
-    expect(event.detail.initialPrompt).toContain('what actually happened');
+    // Opening a focus chat must never pre-fill or auto-send a starter prompt.
+    expect(event.detail.initialPrompt).toBeUndefined();
   });
 });

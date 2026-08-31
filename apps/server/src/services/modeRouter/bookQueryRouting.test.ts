@@ -29,6 +29,40 @@ describe('Book query mode routing', () => {
     )).resolves.toMatchObject({ mode: 'BOOK_QUERY' });
   });
 
+  it('routes People Book list queries to the dedicated character handler', async () => {
+    await expect(modeRouterService.routeMessage(
+      'synthetic-user',
+      'Which people need review?',
+    )).resolves.toMatchObject({ mode: 'CHARACTER_QUERY' });
+    await expect(modeRouterService.routeMessage(
+      'synthetic-user',
+      'Who do I know from Vanguard Robotics?',
+    )).resolves.toMatchObject({ mode: 'CHARACTER_QUERY' });
+    await expect(modeRouterService.routeMessage(
+      'synthetic-user',
+      'Show people in my character book',
+    )).resolves.toMatchObject({ mode: 'CHARACTER_QUERY' });
+    await expect(modeRouterService.routeMessage(
+      'synthetic-user',
+      'Which people look related?',
+    )).resolves.toMatchObject({ mode: 'CHARACTER_QUERY' });
+  });
+
+  it('does not steal who-is recall or family-tree review into Character Book list query', async () => {
+    await expect(modeRouterService.routeMessage(
+      'synthetic-user',
+      'Who is Marcus?',
+    )).resolves.not.toMatchObject({ mode: 'CHARACTER_QUERY' });
+    await expect(modeRouterService.routeMessage(
+      'synthetic-user',
+      'Which relatives need review?',
+    )).resolves.toMatchObject({ mode: 'FAMILY_QUERY' });
+    await expect(modeRouterService.routeMessage(
+      'synthetic-user',
+      'Who are the characters in my story?',
+    )).resolves.toMatchObject({ mode: 'FOUNDATION_RECALL' });
+  });
+
   it('preserves single-Book, timeline, and write precedence', async () => {
     await expect(modeRouterService.routeMessage(
       'synthetic-user',

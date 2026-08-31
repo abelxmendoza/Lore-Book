@@ -78,6 +78,7 @@ function reciprocityLabel(relationship: RomanticRelationship): string | null {
 interface RelationshipCardProps {
   relationship: RomanticRelationship;
   onClick?: () => void;
+  onToggleStatus?: (relationship: RomanticRelationship) => void;
   onOpenCharacter?: (relationship: RomanticRelationship) => void;
   onLinkCharacter?: (relationship: RomanticRelationship) => void;
   linkBusy?: boolean;
@@ -125,6 +126,7 @@ function getDuration(rel: RomanticRelationship): string | null {
 export const RelationshipCard = ({
   relationship,
   onClick,
+  onToggleStatus,
   onOpenCharacter,
   onLinkCharacter,
   linkBusy,
@@ -133,7 +135,8 @@ export const RelationshipCard = ({
   const demoProfile = getRomanticDemoProfile(relationship.id);
   const displayName =
     relationship.person_name || formatRelationshipType(relationship.relationship_type);
-  const isActive = relationship.is_current && relationship.status === 'active';
+  const isActive =
+    relationship.is_current && !['ended', 'ghosted', 'blocked'].includes(relationship.status.toLowerCase());
   const sig = relationship.metadata?.signals;
   const stillLearning = sig?.signal_strength === 'low';
   const hasCharacterCard =
@@ -211,15 +214,39 @@ export const RelationshipCard = ({
                 </Badge>
               )}
           </div>
-          <Heart
-            className={cn(
-              'h-5 w-5 shrink-0 mt-0.5 transition-transform group-hover:scale-110 sm:h-6 sm:w-6',
-              isActive ? 'text-pink-400' : 'text-pink-400/45',
-            )}
-            fill={`rgba(244, 114, 182, ${heartFill})`}
-            stroke="currentColor"
-            strokeWidth={2}
-          />
+          {onToggleStatus ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleStatus(relationship);
+              }}
+              className="rounded-full p-1.5 -m-1.5 transition-colors hover:bg-pink-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-300"
+              aria-label={isActive ? 'Mark relationship inactive' : 'Mark relationship active'}
+              aria-pressed={isActive}
+              title={isActive ? 'Mark inactive' : 'Mark active'}
+            >
+              <Heart
+                className={cn(
+                  'h-5 w-5 shrink-0 mt-0.5 transition-transform group-hover:scale-110 sm:h-6 sm:w-6',
+                  isActive ? 'text-pink-400' : 'text-pink-400/45',
+                )}
+                fill={`rgba(244, 114, 182, ${heartFill})`}
+                stroke="currentColor"
+                strokeWidth={2}
+              />
+            </button>
+          ) : (
+            <Heart
+              className={cn(
+                'h-5 w-5 shrink-0 mt-0.5 transition-transform group-hover:scale-110 sm:h-6 sm:w-6',
+                isActive ? 'text-pink-400' : 'text-pink-400/45',
+              )}
+              fill={`rgba(244, 114, 182, ${heartFill})`}
+              stroke="currentColor"
+              strokeWidth={2}
+            />
+          )}
         </div>
 
         {directionLabel && (

@@ -59,10 +59,41 @@ const COLLECTIVE_TAIL_WORDS = new Set([
   'kids', 'executives', 'executive', 'leadership', 'management', 'workers',
   'worker', 'associates', 'associate', 'representatives', 'representative',
   'agents', 'agent', 'specialists', 'specialist', 'onboarding', 'hiring',
+  // Deliberately narrow: only words that are essentially never a real
+  // surname/last-token ("guy"/"girl"/"boy"/"kid" tail-match legacy junk like
+  // "the new guy"). Broader generic nouns ("person", "fan", "user",
+  // "attendee", "organizer"...) stay OUT of this tail-word set — matching on
+  // last-token-alone would reject real two-word names that merely end in
+  // one of those words (e.g. "Fail Person", "Sam Fisher"-shaped names). They
+  // are still caught when the ENTIRE name is a generic reference via
+  // GENERIC_PERSON_REFERENCE_PATTERN below.
+  'guy', 'girl', 'boy', 'kid', 'egirl', 'egirls', 'e-girl', 'e-girls',
 ]);
 
 const COLLECTIVE_INLINE_PATTERN =
   /\b(?:team|crew|squad|group|department|division|unit|staff|roster|committee|guild|union|society|association|board|leadership|management|workforce|personnel)\b/i;
+
+/**
+ * Generic person references like "one girl", "the new guy", or
+ * "people in the scene" — whole-string anchored so real names that merely
+ * contain one of these words (e.g. a surname) aren't caught in passing.
+ * Mirrors the frontend's equivalent filter in
+ * apps/web/src/features/chat/utils/mentionLifecycle.ts, extended to cover
+ * singular forms and an open-ended "in ..." suffix.
+ *
+ * The modifier group requires its own trailing space (`\s+` inside the
+ * group, not a bare `\s*` after it) specifically so a concatenated real
+ * name like "NewPerson" can't accidentally align "new" + "person" with zero
+ * separating characters — only an actual "new <noun>" with a real space
+ * matches.
+ */
+// "friends" stays plural-only (no `?`) — bare singular "Friend" already has
+// its own, deliberately distinct rejection path (isRoleDescriptorPersonName
+// / isTitleOnlyPersonName, reason "bare_title_without_context") that a
+// test pins; widening this word to match singular would silently reclassify
+// it as "collective_not_individual" instead.
+const GENERIC_PERSON_REFERENCE_PATTERN =
+  /^(?:(?:the|some|other|those|these|my|our|one|a|an)\s+)?(?:(?:other|new|random|popular)\s+)?(?:girls?|guys?|boys?|kids?|persons?|people|folks?|friends|coworkers?|co-workers?|organizers?|attendees?|fans?|users?|egirls?|e-girls?)(?:\s+in\s+.+)?$/i;
 
 const HONORIFIC_ONLY = new Set(['mr', 'mrs', 'ms', 'miss', 'dr', 'prof', 'sir', 'maam', "ma'am"]);
 
@@ -98,6 +129,8 @@ export function isCollectivePersonName(name: string | null | undefined): boolean
   const key = normalizePersonNameKey(trimmed);
   const tokens = key.split(' ').filter(Boolean);
   if (tokens.length === 0) return false;
+
+  if (GENERIC_PERSON_REFERENCE_PATTERN.test(trimmed)) return true;
 
   const last = tokens[tokens.length - 1];
   if (COLLECTIVE_TAIL_WORDS.has(last)) return true;

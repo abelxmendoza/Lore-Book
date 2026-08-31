@@ -4,10 +4,25 @@ import userEvent from '@testing-library/user-event';
 import { render } from '../test/utils';
 import { Sidebar } from './Sidebar';
 
-const { mockNavigate, demoRuntime, mockClearDemoSession } = vi.hoisted(() => ({
+const { mockNavigate, demoRuntime, mockClearDemoSession, entityCounts } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
   demoRuntime: { current: false },
   mockClearDemoSession: vi.fn(),
+  entityCounts: {
+    characters: 11,
+    family: 12,
+    romantic: 13,
+    organizations: 14,
+    locations: 15,
+    events: 16,
+    projects: 17,
+    skills: 18,
+    anchors: 19,
+  },
+}));
+
+vi.mock('../hooks/useEntityCounts', () => ({
+  useEntityCounts: () => entityCounts,
 }));
 
 vi.mock('react-router-dom', async () => {
@@ -157,6 +172,25 @@ describe('Sidebar', () => {
       'Open love and relationships',
       'Open groups view',
     ]);
+  });
+
+  it('shows the canonical count for every Focus on book', () => {
+    render(<Sidebar {...defaultProps} />);
+
+    const expected = [
+      ['Open characters view', '11'],
+      ['Open family view', '12'],
+      ['Open love and relationships', '13'],
+      ['Open groups view', '14'],
+      ['Open locations view', '15'],
+      ['Open life log', '16'],
+      ['Open projects view', '17'],
+      ['Open skills view', '18'],
+      ['Open narrative anchors', '19'],
+    ];
+    for (const [label, count] of expected) {
+      expect(screen.getAllByRole('button', { name: label })[0]).toHaveTextContent(count);
+    }
   });
 
   it('navigates when Chat is clicked', async () => {

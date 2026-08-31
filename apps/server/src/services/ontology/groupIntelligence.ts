@@ -28,6 +28,7 @@ const norm = (s: string) => (s ?? '').trim().toLowerCase().replace(/['']/g, "'")
 
 const HOUSEHOLD_RE = /\b(household|family\s+home|home)\b/i;
 const FAMILY_RE = /\b(my\s+family|the\s+family|our\s+family|^family$)\b/i;
+const NAMED_FAMILY_RE = /\s+family$/i;
 const POSSESSIVE_HOUSEHOLD = /^([a-zà-ÿ][\wà-ÿ'’.\s-]+?)'s?\s+(household|home|house|apartment|casa)\b/i;
 const COMPANY_KW = /\b(amazon|kforce|corp|inc|llc|ltd|company|employer|staffing|recruiter|agency)\b/i;
 const INSTITUTION_KW = /\b(bootcamp|university|college|school|academy|institute|hospital|clinic|program)\b/i;
@@ -95,7 +96,7 @@ export function classifyGroup(rawName: string, context = '', storedType?: string
     };
   }
 
-  if (FAMILY_RE.test(n) && !/\bfamily\s+home\b/i.test(n)) {
+  if ((FAMILY_RE.test(n) || NAMED_FAMILY_RE.test(n)) && !/\bfamily\s+home\b/i.test(n) && !/\bhousehold\b/i.test(n)) {
     return { ...base, category: 'FAMILY', isFamily: true, subcategory: 'FAMILY', suggestedGroupType: 'family', confidence: 0.9, reason: 'family keyword' };
   }
 

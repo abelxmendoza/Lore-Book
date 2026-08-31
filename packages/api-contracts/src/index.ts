@@ -66,6 +66,17 @@ export {
 } from "./characters/characterQuery";
 
 export {
+  CHARACTER_BOOK_QUERY_SCOPES,
+  CHARACTER_BOOK_QUERY_SORTS,
+  characterBookQueryRequestSchema,
+  type CharacterBookQueryRequest,
+  type CharacterBookQueryScope,
+  type CharacterBookQuerySort,
+  type CharacterBookQueryResult,
+  type CharacterBookQueryResponse,
+} from "./characters/characterBookQuery";
+
+export {
   ORGANIZATION_QUERY_STANCES,
   ORGANIZATION_QUERY_SORTS,
   organizationQueryRequestSchema,

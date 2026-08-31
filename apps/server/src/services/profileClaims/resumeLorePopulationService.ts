@@ -16,6 +16,7 @@ import { normalizeNameKey } from '../../utils/nameNormalization';
 
 import type {
   ParsedResume,
+  ResumeCertification,
   ResumeEducation,
   ResumeEmployment,
   ResumeEmploymentGap,
@@ -30,16 +31,20 @@ import { occurrenceDate } from '../temporal/explicitOccurrence';
 
 export { normalizeResumeDate } from './resumeDateUtils';
 
-const PROVENANCE = (sourceFileId: string, resumeDocumentId: string) => ({
+const PROVENANCE = (sourceFileId: string, resumeDocumentId: string, fileName: string) => ({
   source: 'resume_upload',
+  source_type: 'resume',
+  review_state: 'pending',
+  review_required: true,
   source_file_id: sourceFileId,
   resume_document_id: resumeDocumentId,
+  file_name: fileName,
   provenance: 'resume_lore_population',
 });
 
 function resumeOccurrenceFields(
   rawStart?: string | null,
-  rawEnd?: string | null,
+  rawEnd?: string | null
 ): {
   date?: string;
   occurredEnd?: string;
@@ -98,11 +103,7 @@ function skillCategory(name: string): 'technical' | 'professional' | 'creative' 
 }
 
 async function resolveSelfCharacterId(userId: string): Promise<string | null> {
-  const { data } = await supabaseAdmin
-    .from('characters')
-    .select('id, name')
-    .eq('user_id', userId)
-    .limit(20);
+  const { data } = await supabaseAdmin.from('characters').select('id, name').eq('user_id', userId).limit(20);
   const rows = data ?? [];
   const me = rows.find((c) => /^me$/i.test(c.name) || /^self$/i.test(c.name));
   return me?.id ?? rows[0]?.id ?? null;
@@ -112,7 +113,11 @@ class ResumeLorePopulationService {
   async populate(
     userId: string,
     parsed: ParsedResume,
-    context: { sourceFileId: string; resumeDocumentId: string; fileName: string }
+    context: {
+      sourceFileId: string;
+      resumeDocumentId: string;
+      fileName: string;
+    }
   ): Promise<ResumeLorePopulationResult> {
     const result: ResumeLorePopulationResult = {
       journalEntries: 0,
@@ -128,7 +133,7 @@ class ResumeLorePopulationService {
       itemsReconciled: 0,
     };
 
-    const meta = PROVENANCE(context.sourceFileId, context.resumeDocumentId);
+    const meta = PROVENANCE(context.sourceFileId, context.resumeDocumentId, context.fileName);
     const selfId = await resolveSelfCharacterId(userId);
 
     // Contact info → entity facts + summary entry
@@ -148,86 +153,86 @@ class ResumeLorePopulationService {
     const conflictedCompanies = conflictedCompanyKeys(result.roleConflicts);
 
     await withSuggestionWriteContext(userId, async () => {
-    // Employers as organizations
-    for (const job of parsed.employment) {
-      const conflicted = job.isCurrent && conflictedCompanies.has(normalizeNameKey(job.company));
-      try {
-        const write = await applySuggestionCandidate({
-          userId,
-          domain: 'organizations',
-          name: job.company,
-          incomingType: 'company',
-          evidence: [job.title, job.description, job.location].filter(Boolean).join(' · '),
-          extractor: 'resume_import',
-          source: 'resume',
-          writePolicy: 'trusted_import',
-          onCreate: async () => {
-            await organizationService.createOrganization(userId, {
-              name: job.company,
-              type: 'company',
-              group_type: 'company',
-              user_relationship: 'member',
-              description: job.description ?? `${job.title}${job.location ? ` · ${job.location}` : ''}`,
-              status: job.isCurrent && !conflicted ? 'active' : 'inactive',
-              metadata: {
-                ...meta,
-                section: 'employment',
-                job_title: job.title,
-                start_date: job.startDate,
-                end_date: job.endDate,
-                ...(conflicted
-                  ? {
-                      pending_status_review: true,
-                      status_conflict: result.roleConflicts.find(
-                        (c) => normalizeNameKey(c.resumeCompany) === normalizeNameKey(job.company)
-                      ),
-                    }
-                  : {}),
-              },
-            });
-          },
-        });
-        if (write.outcome === 'CREATED' || write.outcome === 'ATTACHED') {
-          result.organizations++;
+      // Employers as organizations
+      for (const job of parsed.employment) {
+        const conflicted = job.isCurrent && conflictedCompanies.has(normalizeNameKey(job.company));
+        try {
+          const write = await applySuggestionCandidate({
+            userId,
+            domain: 'organizations',
+            name: job.company,
+            incomingType: 'company',
+            evidence: [job.title, job.description, job.location].filter(Boolean).join(' · '),
+            extractor: 'resume_import',
+            source: 'resume',
+            writePolicy: 'trusted_import',
+            onCreate: async () => {
+              await organizationService.createOrganization(userId, {
+                name: job.company,
+                type: 'company',
+                group_type: 'company',
+                user_relationship: 'member',
+                description: job.description ?? `${job.title}${job.location ? ` · ${job.location}` : ''}`,
+                status: job.isCurrent && !conflicted ? 'active' : 'inactive',
+                metadata: {
+                  ...meta,
+                  section: 'employment',
+                  job_title: job.title,
+                  start_date: job.startDate,
+                  end_date: job.endDate,
+                  ...(conflicted
+                    ? {
+                        pending_status_review: true,
+                        status_conflict: result.roleConflicts.find(
+                          (c) => normalizeNameKey(c.resumeCompany) === normalizeNameKey(job.company)
+                        ),
+                      }
+                    : {}),
+                },
+              });
+            },
+          });
+          if (write.outcome === 'CREATED' || write.outcome === 'ATTACHED') {
+            result.organizations++;
+          }
+        } catch (error) {
+          logger.warn({ error, company: job.company }, 'resume lore: org create skipped');
         }
-      } catch (error) {
-        logger.warn({ error, company: job.company }, 'resume lore: org create skipped');
       }
-    }
 
-    // Skills
-    const seenSkills = new Set<string>();
-    for (const raw of parsed.skills) {
-      const name = raw.trim();
-      if (!name || seenSkills.has(name.toLowerCase())) continue;
-      seenSkills.add(name.toLowerCase());
-      try {
-        const write = await applySuggestionCandidate({
-          userId,
-          domain: 'skills',
-          name,
-          evidence: `From resume: ${context.fileName}`,
-          extractor: 'resume_import',
-          source: 'resume',
-          writePolicy: 'trusted_import',
-          onCreate: async () => {
-            await skillService.createSkill(userId, {
-              skill_name: name,
-              skill_category: skillCategory(name),
-              description: `From resume: ${context.fileName}`,
-              auto_detected: true,
-              confidence_score: 0.85,
-              metadata: { ...meta, section: 'skills' },
-            });
-          },
-        });
-        if (write.outcome === 'CREATED' || write.outcome === 'ATTACHED') {
-          result.skills++;
+      // Skills
+      const seenSkills = new Set<string>();
+      for (const raw of parsed.skills) {
+        const name = raw.trim();
+        if (!name || seenSkills.has(name.toLowerCase())) continue;
+        seenSkills.add(name.toLowerCase());
+        try {
+          const write = await applySuggestionCandidate({
+            userId,
+            domain: 'skills',
+            name,
+            evidence: `From resume: ${context.fileName}`,
+            extractor: 'resume_import',
+            source: 'resume',
+            writePolicy: 'trusted_import',
+            onCreate: async () => {
+              await skillService.createSkill(userId, {
+                skill_name: name,
+                skill_category: skillCategory(name),
+                description: `From resume: ${context.fileName}`,
+                auto_detected: true,
+                confidence_score: 0.85,
+                metadata: { ...meta, section: 'skills' },
+              });
+            },
+          });
+          if (write.outcome === 'CREATED' || write.outcome === 'ATTACHED') {
+            result.skills++;
+          }
+        } catch (error) {
+          logger.warn({ error, skill: name }, 'resume lore: skill create skipped');
         }
-      } catch (error) {
-        logger.warn({ error, skill: name }, 'resume lore: skill create skipped');
       }
-    }
     });
 
     // Projects → Projects book as review-first suggestions (rule: projects never
@@ -243,9 +248,7 @@ class ResumeLorePopulationService {
             status: project.endDate ? ('completed' as const) : ('active' as const),
             confidence: 0.85,
             reasoning: `Listed under Technical Projects in resume ${context.fileName}`,
-            evidence: [
-              [project.name, project.description].filter(Boolean).join(' — ').slice(0, 300),
-            ],
+            evidence: [[project.name, project.description].filter(Boolean).join(' — ').slice(0, 300)],
           })),
           { source: 'resume' }
         );
@@ -277,6 +280,11 @@ class ResumeLorePopulationService {
       | { kind: 'job'; date: string | null; job: ResumeEmployment }
       | { kind: 'education'; date: string | null; edu: ResumeEducation }
       | { kind: 'project'; date: string | null; project: ResumeProject }
+      | {
+          kind: 'certification';
+          date: string | null;
+          certification: ResumeCertification;
+        }
       | { kind: 'gap'; date: string | null; gap: ResumeEmploymentGap };
 
     const items: TimelineItem[] = [];
@@ -292,6 +300,13 @@ class ResumeLorePopulationService {
     for (const project of parsed.projects) {
       const date = normalizeResumeDate(project.endDate) ?? normalizeResumeDate(project.startDate);
       items.push({ kind: 'project', date, project });
+    }
+    for (const certification of parsed.certifications) {
+      items.push({
+        kind: 'certification',
+        date: normalizeResumeDate(certification.date),
+        certification,
+      });
     }
     for (const gap of parsed.employmentGaps) {
       items.push({ kind: 'gap', date: gap.startDate ?? null, gap });
@@ -340,16 +355,54 @@ class ResumeLorePopulationService {
           result.timelineEvents++;
         }
       } else if (item.kind === 'project') {
-        const entryId = await this.createProjectEntry(userId, item.project, meta);
+        const { entryId, eventId, reconciled } = await this.createProjectEntry(userId, item.project, meta);
+        if (reconciled) {
+          result.itemsReconciled++;
+          if (eventId) result.eventIds.push(eventId);
+          continue;
+        }
         if (entryId) {
           result.entryIds.push(entryId);
           result.journalEntries++;
         }
-      } else if (item.kind === 'gap') {
-        const entryId = await this.createGapEntry(userId, item.gap, meta);
+        if (eventId) {
+          result.eventIds.push(eventId);
+          result.timelineEvents++;
+        }
+      } else if (item.kind === 'certification') {
+        const { entryId, eventId, reconciled } = await this.createCertificationEntry(
+          userId,
+          item.certification,
+          meta,
+          selfId
+        );
+        if (reconciled) {
+          result.itemsReconciled++;
+          if (eventId) result.eventIds.push(eventId);
+          continue;
+        }
         if (entryId) {
           result.entryIds.push(entryId);
           result.journalEntries++;
+        }
+        if (eventId) {
+          result.eventIds.push(eventId);
+          result.timelineEvents++;
+        }
+      } else if (item.kind === 'gap') {
+        const { entryId, eventId, reconciled } = await this.createGapEntry(userId, item.gap, meta);
+        if (reconciled) {
+          result.itemsReconciled++;
+          if (eventId) result.eventIds.push(eventId);
+          continue;
+        }
+        if (entryId) {
+          result.entryIds.push(entryId);
+          result.journalEntries++;
+        }
+        if (eventId) {
+          result.eventIds.push(eventId);
+          result.timelineEvents++;
         }
       }
     }
@@ -396,7 +449,6 @@ class ResumeLorePopulationService {
       mention_count: 1,
       status: 'active',
       first_seen_at: new Date().toISOString(),
-      last_confirmed_at: new Date().toISOString(),
       metadata,
     });
     if (error) {
@@ -453,7 +505,6 @@ class ResumeLorePopulationService {
         mention_count: 1,
         status: 'active',
         first_seen_at: new Date().toISOString(),
-        last_confirmed_at: new Date().toISOString(),
         metadata: meta,
       });
       if (!error) result.facts++;
@@ -485,7 +536,10 @@ class ResumeLorePopulationService {
 
     const targetKey = normalizeNameKey(companyOrInstitution);
     const match = data.find((row) => {
-      const md = row.metadata as { employment?: { company?: string }; education?: { institution?: string } } | null;
+      const md = row.metadata as {
+        employment?: { company?: string };
+        education?: { institution?: string };
+      } | null;
       const name = type === 'career' ? md?.employment?.company : md?.education?.institution;
       return name ? normalizeNameKey(name) === targetKey : false;
     });
@@ -502,7 +556,13 @@ class ResumeLorePopulationService {
    */
   private async reinforceExistingEvent(
     eventId: string,
-    variant: { sourceFileId: string; fileName: string; title?: string; description?: string; location?: string }
+    variant: {
+      sourceFileId: string;
+      fileName: string;
+      title?: string;
+      description?: string;
+      location?: string;
+    }
   ): Promise<{ isNewVariant: boolean }> {
     const { data } = await supabaseAdmin
       .from('resolved_events')
@@ -551,7 +611,11 @@ class ResumeLorePopulationService {
     job: ResumeEmployment,
     meta: Record<string, unknown>,
     selfId: string | null
-  ): Promise<{ entryId: string | null; eventId: string | null; reconciled: boolean }> {
+  ): Promise<{
+    entryId: string | null;
+    eventId: string | null;
+    reconciled: boolean;
+  }> {
     const start = normalizeResumeDate(job.startDate);
     const end = job.isCurrent ? null : normalizeResumeDate(job.endDate);
 
@@ -577,7 +641,12 @@ class ResumeLorePopulationService {
           tags: ['resume', 'career', 'employment', 'variant', job.company.toLowerCase().replace(/\s+/g, '-')],
           source: 'document_upload',
           summary: `${job.company} — additional resume detail`,
-          metadata: { ...meta, section: 'employment_variant', employment: job, related_event_id: existingEventId },
+          metadata: {
+            ...meta,
+            section: 'employment_variant',
+            employment: job,
+            related_event_id: existingEventId,
+          },
         });
         entryId = entry.id;
       }
@@ -602,7 +671,12 @@ class ResumeLorePopulationService {
       tags: ['resume', 'career', 'employment', job.company.toLowerCase().replace(/\s+/g, '-')],
       source: 'document_upload',
       summary: `${job.title} at ${job.company}`,
-      metadata: { ...meta, section: 'employment', employment: job },
+      metadata: {
+        ...meta,
+        section: 'employment',
+        employment: job,
+        timeline_track: 'career',
+      },
     });
 
     let eventId: string | null = null;
@@ -619,7 +693,12 @@ class ResumeLorePopulationService {
         confidence: 0.88,
         tags: ['resume', 'employment'],
         people: selfId ? [selfId] : [],
-        metadata: { ...meta, section: 'employment', employment: job },
+        metadata: {
+          ...meta,
+          section: 'employment',
+          employment: job,
+          timeline_track: 'career',
+        },
       });
       if (error) {
         logger.warn({ error, company: job.company }, 'resume lore: timeline event failed');
@@ -635,7 +714,11 @@ class ResumeLorePopulationService {
     edu: ResumeEducation,
     meta: Record<string, unknown>,
     selfId: string | null
-  ): Promise<{ entryId: string | null; eventId: string | null; reconciled: boolean }> {
+  ): Promise<{
+    entryId: string | null;
+    eventId: string | null;
+    reconciled: boolean;
+  }> {
     const start = normalizeResumeDate(edu.startDate);
     const end = normalizeResumeDate(edu.endDate);
 
@@ -662,7 +745,12 @@ class ResumeLorePopulationService {
       tags: ['resume', 'education', edu.institution?.toLowerCase().replace(/\s+/g, '-') ?? 'school'],
       source: 'document_upload',
       summary: `Education at ${edu.institution}`,
-      metadata: { ...meta, section: 'education', education: edu, timeline_track: 'education' },
+      metadata: {
+        ...meta,
+        section: 'education',
+        education: edu,
+        timeline_track: 'education',
+      },
     });
 
     let eventId: string | null = null;
@@ -679,7 +767,12 @@ class ResumeLorePopulationService {
         confidence: 0.86,
         tags: ['resume', 'education'],
         people: selfId ? [selfId] : [],
-        metadata: { ...meta, section: 'education', education: edu, timeline_track: 'education' },
+        metadata: {
+          ...meta,
+          section: 'education',
+          education: edu,
+          timeline_track: 'education',
+        },
       });
       if (error) {
         logger.warn({ error, institution: edu.institution }, 'resume lore: education event failed');
@@ -694,7 +787,23 @@ class ResumeLorePopulationService {
     userId: string,
     project: ResumeProject,
     meta: Record<string, unknown>
-  ): Promise<string> {
+  ): Promise<{
+    entryId: string | null;
+    eventId: string | null;
+    reconciled: boolean;
+  }> {
+    const start = normalizeResumeDate(project.startDate);
+    const end = normalizeResumeDate(project.endDate);
+    const existingEventId = await this.findExistingSectionEvent(userId, 'project', project.name, start ?? end);
+    if (existingEventId) {
+      await this.reinforceExistingEvent(existingEventId, {
+        sourceFileId: String(meta.source_file_id ?? ''),
+        fileName: String(meta.file_name ?? project.name),
+        title: project.name,
+        description: project.description,
+      });
+      return { entryId: null, eventId: existingEventId, reconciled: true };
+    }
     const tech = project.technologies?.length ? `\nTechnologies: ${project.technologies.join(', ')}` : '';
     const entry = await memoryService.saveEntry({
       userId,
@@ -703,16 +812,128 @@ class ResumeLorePopulationService {
       tags: ['resume', 'project'],
       source: 'document_upload',
       summary: project.name,
-      metadata: { ...meta, section: 'projects', project },
+      metadata: {
+        ...meta,
+        section: 'projects',
+        project,
+        timeline_track: 'projects',
+      },
     });
-    return entry.id;
+    let eventId: string | null = null;
+    if (start || end) {
+      eventId = randomUUID();
+      const { error } = await supabaseAdmin.from('resolved_events').insert({
+        id: eventId,
+        user_id: userId,
+        title: project.name,
+        summary: project.description ?? `Resume project: ${project.name}`,
+        type: 'project',
+        start_time: start ?? end,
+        end_time: end ?? null,
+        confidence: 0.84,
+        tags: ['resume', 'project'],
+        people: [],
+        metadata: {
+          ...meta,
+          section: 'projects',
+          project,
+          timeline_track: 'projects',
+        },
+      });
+      if (error) {
+        logger.warn({ error, project: project.name }, 'resume lore: project timeline event failed');
+        eventId = null;
+      }
+    }
+    return { entryId: entry.id, eventId, reconciled: false };
+  }
+
+  private async createCertificationEntry(
+    userId: string,
+    certification: ResumeCertification,
+    meta: Record<string, unknown>,
+    selfId: string | null
+  ): Promise<{
+    entryId: string | null;
+    eventId: string | null;
+    reconciled: boolean;
+  }> {
+    const date = normalizeResumeDate(certification.date);
+    const existingEventId = await this.findExistingSectionEvent(userId, 'certification', certification.name, date);
+    if (existingEventId) {
+      await this.reinforceExistingEvent(existingEventId, {
+        sourceFileId: String(meta.source_file_id ?? ''),
+        fileName: String(meta.file_name ?? certification.name),
+        title: certification.name,
+        description: certification.issuer,
+      });
+      return { entryId: null, eventId: existingEventId, reconciled: true };
+    }
+
+    const entry = await memoryService.saveEntry({
+      userId,
+      content: `Certification: ${certification.name}${certification.issuer ? ` — ${certification.issuer}` : ''}.`,
+      ...resumeOccurrenceFields(certification.date, null),
+      tags: ['resume', 'education', 'certification'],
+      source: 'document_upload',
+      summary: certification.name,
+      metadata: {
+        ...meta,
+        section: 'certifications',
+        certification,
+        timeline_track: 'education',
+      },
+    });
+
+    let eventId: string | null = null;
+    if (date) {
+      eventId = randomUUID();
+      const { error } = await supabaseAdmin.from('resolved_events').insert({
+        id: eventId,
+        user_id: userId,
+        title: `Earned ${certification.name}`,
+        summary: certification.issuer ? `Issued by ${certification.issuer}` : certification.name,
+        type: 'certification',
+        start_time: date,
+        end_time: null,
+        confidence: 0.86,
+        tags: ['resume', 'education', 'certification'],
+        people: selfId ? [selfId] : [],
+        metadata: {
+          ...meta,
+          section: 'certifications',
+          certification,
+          timeline_track: 'education',
+        },
+      });
+      if (error) {
+        logger.warn({ error, certification: certification.name }, 'resume lore: certification event failed');
+        eventId = null;
+      }
+    }
+    return { entryId: entry.id, eventId, reconciled: false };
   }
 
   private async createGapEntry(
     userId: string,
     gap: ResumeEmploymentGap,
     meta: Record<string, unknown>
-  ): Promise<string> {
+  ): Promise<{
+    entryId: string | null;
+    eventId: string | null;
+    reconciled: boolean;
+  }> {
+    const start = normalizeResumeDate(gap.startDate);
+    const end = normalizeResumeDate(gap.endDate);
+    const existingEventId = await this.findExistingSectionEvent(userId, 'career_gap', gap.label, start);
+    if (existingEventId) {
+      await this.reinforceExistingEvent(existingEventId, {
+        sourceFileId: String(meta.source_file_id ?? ''),
+        fileName: String(meta.file_name ?? gap.label),
+        title: gap.label,
+      });
+      return { entryId: null, eventId: existingEventId, reconciled: true };
+    }
     const entry = await memoryService.saveEntry({
       userId,
       content: `Period between jobs (${gap.label}): ${gap.startDate} to ${gap.endDate}.`,
@@ -720,9 +941,72 @@ class ResumeLorePopulationService {
       tags: ['resume', 'career', 'unemployment'],
       source: 'document_upload',
       summary: 'Between jobs',
-      metadata: { ...meta, section: 'employment', employment_gap: gap },
+      metadata: {
+        ...meta,
+        section: 'employment',
+        employment_gap: gap,
+        timeline_track: 'career',
+      },
     });
-    return entry.id;
+    let eventId: string | null = null;
+    if (start) {
+      eventId = randomUUID();
+      const { error } = await supabaseAdmin.from('resolved_events').insert({
+        id: eventId,
+        user_id: userId,
+        title: gap.label,
+        summary: `Employment gap from ${gap.startDate} to ${gap.endDate}`,
+        type: 'career_gap',
+        start_time: start,
+        end_time: end,
+        confidence: 0.8,
+        tags: ['resume', 'career', 'unemployment'],
+        people: [],
+        metadata: {
+          ...meta,
+          section: 'employment',
+          employment_gap: gap,
+          timeline_track: 'career',
+        },
+      });
+      if (error) {
+        logger.warn({ error, gap: gap.label }, 'resume lore: employment gap event failed');
+        eventId = null;
+      }
+    }
+    return { entryId: entry.id, eventId, reconciled: false };
+  }
+
+  private async findExistingSectionEvent(
+    userId: string,
+    type: 'project' | 'certification' | 'career_gap',
+    name: string,
+    start: string | null
+  ): Promise<string | null> {
+    if (!start) return null;
+    const { data, error } = await supabaseAdmin
+      .from('resolved_events')
+      .select('id, metadata')
+      .eq('user_id', userId)
+      .eq('type', type)
+      .eq('start_time', start);
+    if (error || !data?.length) return null;
+    const targetKey = normalizeNameKey(name);
+    const match = data.find((row) => {
+      const md = row.metadata as {
+        project?: { name?: string };
+        certification?: { name?: string };
+        employment_gap?: { label?: string };
+      } | null;
+      const candidate =
+        type === 'project'
+          ? md?.project?.name
+          : type === 'certification'
+            ? md?.certification?.name
+            : md?.employment_gap?.label;
+      return candidate ? normalizeNameKey(candidate) === targetKey : false;
+    });
+    return match?.id ?? null;
   }
 }
 

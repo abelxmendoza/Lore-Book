@@ -35,4 +35,29 @@ describe('Cognitive Observatory', () => {
     });
     expect(observatory.get('different-user', 'message-1')).toBeNull();
   });
+
+  it('retains structured privacy-safe composition details', () => {
+    observatory.recordStage({
+      userId: 'synthetic-user', sourceId: 'message-composition',
+      trace: {
+        stage: 'RESPONSE_PLANNING', status: 'WARN', startedAt: 'now', durationMs: 0,
+        counts: { inputs: 3, outputs: 2, discarded: 1 },
+        decisions: ['profile:recall', 'quality:0.667'],
+        downstreamEffects: ['VISIBLE_RESPONSE_FINALIZED'],
+        details: {
+          version: 'composition-plan-v1',
+          selectedEvidenceIds: ['evidence-1', 'evidence-2'],
+          discardedEvidenceIds: ['evidence-3'],
+          quality: { score: 0.667, passed: false },
+        },
+      },
+    });
+
+    expect(observatory.get('synthetic-user', 'message-composition')?.stages[0]?.details).toEqual(
+      expect.objectContaining({
+        version: 'composition-plan-v1',
+        quality: expect.objectContaining({ passed: false }),
+      }),
+    );
+  });
 });

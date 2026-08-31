@@ -97,6 +97,12 @@ export interface PhotoEntry {
     category?: string;
     /** Short free-text label when category is 'other' and a specific type is obvious. */
     customCategoryLabel?: string;
+    /** AI-suggested document subtype (passport, drivers_license, diploma, certificate, other_id) — a suggestion to send this photo to Documents, not yet acted on. */
+    suggestedDocumentSubtype?: string;
+    /** True once this photo has been sent to the Documents library — excluded from the album by the server, kept here for local state transitions. */
+    movedToDocuments?: boolean;
+    /** The user_files id this photo was filed as, once moved to Documents. */
+    documentFileId?: string;
   };
 }
 

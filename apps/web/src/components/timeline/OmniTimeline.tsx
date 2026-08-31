@@ -1,11 +1,11 @@
 /**
  * OmniTimeline — clean shell replacing OmniTimelinePanel.
- * Fetches arc + chronology data once, routes between three views.
+ * Fetches arc + chronology data once, routes between timeline views.
  */
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { LayoutTemplate, BookOpen, Search, Sparkles, Menu, CalendarDays, Calendar, X, Clock3, ChevronLeft } from 'lucide-react';
+import { LayoutTemplate, Search, Sparkles, Menu, CalendarDays, Calendar, X, Clock3, ChevronLeft } from 'lucide-react';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useLifeArcs, type LifeArc } from '../../hooks/useLifeArcs';
 import { useStitchedTimeline } from '../../hooks/useStitchedTimeline';
@@ -14,7 +14,7 @@ import { useAuth } from '../../lib/supabase';
 import { useGuest } from '../../contexts/GuestContext';
 import { useEntityModal } from '../../contexts/EntityModalContext';
 import { TimelineSwimlanes } from './TimelineSwimlanes';
-import { TimelineStoryView } from './TimelineStoryView';
+import { LifeArcProposalAwakening } from './LifeArcProposalAwakening';
 import { TimelineStitchedView } from './TimelineStitchedView';
 import { TimelineCalendarView } from './TimelineCalendarView';
 import { OmniTimelineBottomNav, type OmniTimelineView } from './OmniTimelineBottomNav';
@@ -59,7 +59,6 @@ const VIEWS: { id: View; label: string; shortLabel: string; Icon: React.ElementT
   { id: 'swimlanes', label: 'Swimlanes', shortLabel: 'Lanes', Icon: LayoutTemplate, desc: 'Your life across parallel tracks in calendar time' },
   { id: 'calendar',  label: 'Calendar',  shortLabel: 'Calendar', Icon: Calendar,  desc: 'Named occasions and events by day' },
   { id: 'events',    label: 'Chronology', shortLabel: 'Chronology', Icon: CalendarDays,  desc: 'Same scenes stitched in time — copyable, with an explicit reorder mode' },
-  { id: 'story',     label: 'Story',     shortLabel: 'Story', Icon: BookOpen,       desc: 'Read life arcs in order' },
   { id: 'library',   label: 'Library',   shortLabel: 'Library', Icon: Clock3,       desc: 'All generated timeline history you’ve spun up' },
 ];
 
@@ -85,7 +84,7 @@ type OmniTimelineProps = {
   onOpenAppSidebar?: () => void;
 };
 
-const VALID_VIEWS = new Set<View>(['swimlanes', 'events', 'calendar', 'story', 'library']);
+const VALID_VIEWS = new Set<View>(['swimlanes', 'events', 'calendar', 'library']);
 
 function viewFromSearchParams(params: URLSearchParams): View {
   const raw = params.get('view');
@@ -126,9 +125,13 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
 
   // Keep view in sync with ?view= so Life Log / deep links share one calendar.
   useEffect(() => {
+    if (searchParams.get('view') === 'story') {
+      navigate('/saga', { replace: true });
+      return;
+    }
     const next = viewFromSearchParams(searchParams);
     setViewState((prev) => (prev === next ? prev : next));
-  }, [searchParams]);
+  }, [navigate, searchParams]);
 
   const setView = useCallback(
     (next: View) => {
@@ -755,23 +758,31 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
         return libraryPanel;
       case 'swimlanes':
         return (
-          <TimelineSwimlanes
-            arcs={arcs}
-            arcsByTrack={arcsByTrack}
-            activeArcs={activeArcs}
-            entries={displayEntries}
-            loading={loading}
-            unresolvedItems={unresolvedItems}
-            lifeEras={lifeEras.map((era) => ({
-              id: era.id,
-              label: era.chapter_title,
-              startDate: era.start_date,
-              endDate: era.end_date,
-            }))}
-            onOpenArcTimeline={handleOpenArcTimeline}
-            onCreateLorebook={handleCreateLorebookFromArc}
-            canCreateLorebookForArc={canCreateLorebookForArc}
-          />
+          <>
+            <LifeArcProposalAwakening
+              enabled={Boolean(user) && !isDemoMode}
+              canonicalItemCount={entries.length}
+              arcs={arcs}
+              onArcsChanged={refreshArcs}
+            />
+            <TimelineSwimlanes
+              arcs={arcs}
+              arcsByTrack={arcsByTrack}
+              activeArcs={activeArcs}
+              entries={displayEntries}
+              loading={loading}
+              unresolvedItems={unresolvedItems}
+              lifeEras={lifeEras.map((era) => ({
+                id: era.id,
+                label: era.chapter_title,
+                startDate: era.start_date,
+                endDate: era.end_date,
+              }))}
+              onOpenArcTimeline={handleOpenArcTimeline}
+              onCreateLorebook={handleCreateLorebookFromArc}
+              canCreateLorebookForArc={canCreateLorebookForArc}
+            />
+          </>
         );
       case 'events':
         return (
@@ -802,25 +813,16 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
             onOpenDayInTimeline={handleOpenDayInTimeline}
           />
         );
-      case 'story':
-        return (
-          <TimelineStoryView
-            arcs={arcs}
-            entries={displayEntries}
-            loading={loading}
-            onOpenArcTimeline={handleOpenArcTimeline}
-          />
-        );
       default:
         return null;
     }
   };
 
-  const hidePeerChrome = view === 'story' || view === 'library' || view === 'calendar';
+  const hidePeerChrome = view === 'library' || view === 'calendar';
 
   return (
     <div
-      className={`omni-timeline-root${view === 'story' ? ' omni-timeline-root--story' : ''}${view === 'calendar' ? ' omni-timeline-root--calendar' : ''}${view === 'library' ? ' omni-timeline-root--library' : ''}`}
+      className={`omni-timeline-root${view === 'calendar' ? ' omni-timeline-root--calendar' : ''}${view === 'library' ? ' omni-timeline-root--library' : ''}`}
       data-testid="omni-timeline"
     >
       {/* ── Mobile header ──────────────────────────────────────────────── */}

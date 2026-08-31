@@ -38,6 +38,12 @@ function stitchedOccurredStart(item: StitchedTimelineItem): string | null {
   return item.temporal?.occurred.start ?? null;
 }
 
+/** Cap on recording-time-only key events folded in as a "recent" fallback. */
+const MAX_UNDATED_KEY_EVENTS = 10;
+
+/** Cap on unpromoted narrative Scenes folded in as a "recent" fallback. */
+const MAX_SCENE_FALLBACK_KEY_EVENTS = 10;
+
 // ── Fact types ────────────────────────────────────────────────────────────────
 
 export type BiographyFacts = {
@@ -60,6 +66,13 @@ export type BiographyFacts = {
     title: string;
     eventType: string;
     date: string;
+    /**
+     * False when `date` is a recording-time fallback (no resolved occurrence
+     * date exists — see the honesty fix in 30b51ba1). Undefined on older
+     * fixtures/callers is treated as true (occurrence-dated) for backward
+     * compatibility.
+     */
+    dateIsOccurrence?: boolean;
     connection: string | null;
     confidence: number;
     sourceEntryIds: string[];
@@ -300,11 +313,68 @@ class BiographyFoundationService {
           title: item.eventTitle,
           eventType: item.eventType ?? item.timelineType,
           date: item.occurredStart,
+          dateIsOccurrence: true,
           connection: item.connectionCharacter ?? null,
           confidence: item.confidence,
           sourceEntryIds: [],
         });
       }
+
+      // Events the temporal resolver couldn't anchor to a real occurrence
+      // date (see 30b51ba1) would otherwise vanish from every date-sorted
+      // view entirely. Fold in the most recently *captured* undated items
+      // too, honestly flagged as recording-time only rather than faking an
+      // occurrence date — so genuinely recent activity still surfaces.
+      const recentUndated = modal.unresolved
+        .filter(item => !item.occurredStart && item.recordedAt)
+        .sort((a, b) => new Date(b.recordedAt!).getTime() - new Date(a.recordedAt!).getTime())
+        .slice(0, MAX_UNDATED_KEY_EVENTS);
+      for (const item of recentUndated) {
+        keyEvents.push({
+          title: item.eventTitle,
+          eventType: item.eventType ?? item.timelineType,
+          date: item.recordedAt!,
+          dateIsOccurrence: false,
+          connection: item.connectionCharacter ?? null,
+          confidence: item.confidence,
+          sourceEntryIds: [],
+        });
+      }
+    }
+
+    // Narrative Scenes that haven't cleared the (structurally strict — see
+    // sceneSignificance.ts) bar to be promoted into a canonical Event would
+    // otherwise never reach "recent developments" at all, no matter how
+    // recent or real. A single-moment scene rarely crosses that bar since
+    // its synergy bonus requires >=2 moments, so ordinary day-to-day life
+    // content can go unpromoted indefinitely. Fold in the user's most
+    // recent unpromoted scenes as a last-resort fallback tier — same
+    // honesty principle as the recording-time fallback above: real, recent,
+    // just not (yet) elevated to formal Event status.
+    const { data: recentScenes } = await supabaseAdmin
+      .from('narrative_scenes')
+      .select('title, time_start, created_at, promoted_event_id')
+      .eq('user_id', userId)
+      .is('promoted_event_id', null)
+      .order('created_at', { ascending: false })
+      .limit(MAX_SCENE_FALLBACK_KEY_EVENTS);
+
+    const seenTitleKeys = new Set(keyEvents.map(e => e.title.trim().toLowerCase()));
+    for (const scene of recentScenes ?? []) {
+      const title = (scene.title as string | null)?.trim();
+      if (!title) continue;
+      const titleKey = title.toLowerCase();
+      if (seenTitleKeys.has(titleKey)) continue;
+      seenTitleKeys.add(titleKey);
+      keyEvents.push({
+        title,
+        eventType: 'scene',
+        date: (scene.time_start as string | null) ?? (scene.created_at as string),
+        dateIsOccurrence: Boolean(scene.time_start),
+        connection: null,
+        confidence: 0.5,
+        sourceEntryIds: [],
+      });
     }
 
     // ── Living situation ─────────────────────────────────────────────────────

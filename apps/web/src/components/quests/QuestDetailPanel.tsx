@@ -106,11 +106,6 @@ export const QuestDetailPanel = ({ questId, onClose, mobile = false, embedded = 
       sourceSurface: 'quests',
       sourceLabel: 'Quest Log',
       knowledgeScope: 'this quest, its current status, progress, milestones, motivation, blockers, history, and connected evidence',
-      initialPrompt:
-        `Let’s focus on my quest “${quest.title}.” Start by giving me a grounded update on where it stands ` +
-        `(${Math.round(quest.progress_percentage)}% complete, ${quest.status}), what progress or blockers LoreBook can support, ` +
-        'and the most useful next step. Clearly separate recorded details from suggestions, then invite me to update the quest.',
-      autoSubmit: true,
       startNewThread: true,
     });
   };

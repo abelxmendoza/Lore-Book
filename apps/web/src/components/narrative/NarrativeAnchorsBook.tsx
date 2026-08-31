@@ -458,7 +458,6 @@ export function NarrativeAnchorsBook() {
       sourceSurface: 'anchors',
       sourceLabel: CHAT_FOCUS_SOURCE_LABELS.anchors,
       knowledgeScope: 'the people, places, moments, evidence, and unanswered questions in this recurring life chapter',
-      initialPrompt: `I want to talk about the chapter “${anchor.title}”. Help me add real memories, clarify what happened, and strengthen its timeline and LoreBook.`,
       startNewThread: true,
     });
   }, []);
@@ -489,12 +488,12 @@ export function NarrativeAnchorsBook() {
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
               <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200/70">
-                <Compass className="h-4 w-4" /> Your story map
+                <Compass className="h-4 w-4" /> Evidence map
                 {isDemoMode && <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-2 py-0.5 text-[9px] tracking-[0.12em] text-violet-100/80">Demo story</span>}
               </div>
               <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">Narrative Anchors</h1>
               <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/55 sm:text-base">
-                Chapters your memories keep returning to.
+                Recurring patterns and evidence worth exploring.
               </p>
               <StorySurfaceLinks current="anchors" className="mt-3" />
             </div>
@@ -539,9 +538,9 @@ export function NarrativeAnchorsBook() {
           {loading ? <LoadingState /> : anchors.length === 0 ? (
             <div className="mx-auto max-w-xl py-14 text-center sm:py-20">
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.07]"><Anchor className="h-7 w-7 text-cyan-200/70" /></div>
-              <h2 className="mt-5 text-xl font-semibold text-white">Your story map is ready to be discovered</h2>
+              <h2 className="mt-5 text-xl font-semibold text-white">Your evidence map is ready to be discovered</h2>
               <p className="mt-2 text-sm leading-relaxed text-white/50">
-                Share life scenes in chat — they show up as Moments. When people, places, and rituals recur, Lorekeeper organizes them into chapters here.
+                Share life scenes in chat — they show up as Moments. When people, places, and rituals recur, Lorekeeper surfaces the evidence and patterns here.
               </p>
               <Button className="mt-6 bg-white text-black hover:bg-white/90" onClick={() => void rebuild()} disabled={rebuilding}><Sparkles className="mr-2 h-4 w-4" />Discover my anchors</Button>
               <p className="mt-4 inline-flex items-center gap-1 text-xs text-white/30">

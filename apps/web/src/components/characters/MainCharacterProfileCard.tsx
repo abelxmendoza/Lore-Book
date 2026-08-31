@@ -9,6 +9,7 @@ import { CharacterAvatar } from './CharacterAvatar';
 import { fetchJson } from '../../lib/api';
 import { useGetCharactersBookQuery } from '../../store/api/entitiesApi';
 import { canCallAuthenticatedApi } from '../../lib/runtimeIdentity';
+import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { isSyntheticSelfId } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
 import { selectProfileLifeArcs, type LifeArcLike } from '../../lib/durableLifeArcs';
@@ -25,7 +26,6 @@ import {
   resolveProfileTagline,
 } from '../../lib/characterDisplay';
 import { getCharacterDisplayTitle, getCharacterAliases } from '../../lib/characterDisplayTitle';
-import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import type { Character } from './CharacterProfileCard';
 
 type CharacterAttribute = {

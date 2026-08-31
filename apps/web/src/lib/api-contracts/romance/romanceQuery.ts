@@ -108,6 +108,14 @@ export type RomanceQueryResult = {
   needsReview: boolean;
   score: number;
   matchedReasons: string[];
+  statusChanges?: Array<{
+    from: string | null;
+    to: string | null;
+    at: string;
+    source: string;
+    reason: string | null;
+    reasonNote: string | null;
+  }>;
 };
 
 export type RomanceQueryResponse = {

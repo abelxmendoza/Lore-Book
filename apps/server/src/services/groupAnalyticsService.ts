@@ -5,6 +5,7 @@
 
 import { logger } from '../logger';
 
+import { getRecentUserMessages } from './chat/recentUserMessagesCache';
 import { organizationService, type Organization, type OrganizationMember } from './organizationService';
 import { supabaseAdmin } from './supabaseClient';
 
@@ -290,16 +291,7 @@ export class GroupAnalyticsService {
     since: Date
   ): Promise<any[]> {
     try {
-      const { data, error } = await supabaseAdmin
-        .from('chat_messages')
-        .select('id, content, created_at, role')
-        .eq('user_id', userId)
-        .eq('role', 'user')
-        .gte('created_at', since.toISOString())
-        .order('created_at', { ascending: false })
-        .limit(1000);
-
-      if (error) throw error;
+      const data = await getRecentUserMessages(userId, since);
 
       // organization is already fully hydrated by the caller (getOrganization) —
       // re-fetching it here via organizationService.getOrganization would call

@@ -46,6 +46,13 @@ import { entityConversationLinkService } from '../services/conversationCentered/
 import { ChatPersonaRL } from '../services/reinforcementLearning/chatPersonaRL';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { incrementAiRequestCount } from '../services/usageTracking';
+import {
+  evaluateComposition,
+  recomposeResponseDraft,
+  type CompositionPlan,
+  type CompositionQualityResult,
+} from '../services/responseComposition';
+import { cognitiveObservatory } from '../services/cognitiveObservatory';
 
 const personaRL = new ChatPersonaRL();
 
@@ -78,7 +85,7 @@ const soulProfileContextSchema = z.object({
 const chatFocusSchema = z.object({
   entityId: z.string().min(1),
   entityName: z.string(),
-  entityType: z.enum(['character', 'location', 'organization', 'project', 'skill', 'relationship', 'quest', 'event', 'memory', 'perception']),
+  entityType: z.enum(['character', 'location', 'organization', 'project', 'skill', 'relationship', 'quest', 'event', 'memory', 'perception', 'document']),
   sourceSurface: z.string(),
   sourceLabel: z.string(),
   relationshipId: z.string().optional(),
@@ -96,6 +103,12 @@ const chatFocusSchema = z.object({
     connectionScore: z.number().optional(),
     healthScore: z.number().optional(),
   }).optional(),
+  documentAttachments: z.array(z.object({
+    fileId: z.string().uuid(),
+    fileName: z.string().min(1).max(512),
+    kind: z.string().max(64).nullable().optional(),
+    resumeDocumentId: z.string().uuid().nullable().optional(),
+  })).max(10).optional(),
 }).optional();
 
 const chatImageSchema = z.object({
@@ -194,13 +207,23 @@ const chatSchema = z
       .optional(),
     /** Inline vision attachments for this turn. Not re-sent on later turns. */
     images: z.array(chatImageSchema).max(MAX_CHAT_IMAGES_PER_TURN).optional(),
+    /** Resume uploaded immediately before this turn; server binds it to RAG. */
+    resumeDocumentId: z.string().min(1).max(128).optional(),
+    /** User-file IDs explicitly attached from the Documents book. */
+    documentIds: z.array(z.string().uuid()).max(10).optional(),
     /** Client send-attempt key for idempotent user-message acceptance. */
     clientIdempotencyKey: z.string().min(8).max(128).optional(),
   })
-  .refine((data) => data.message.trim().length > 0 || (data.images?.length ?? 0) > 0, {
-    message: 'Message text or an image is required',
-    path: ['message'],
-  });
+  .refine(
+    (data) =>
+      data.message.trim().length > 0 ||
+      (data.images?.length ?? 0) > 0 ||
+      (data.documentIds?.length ?? 0) > 0,
+    {
+      message: 'Message text, an image, or an attached document is required',
+      path: ['message'],
+    },
+  );
 
 // If the client supplied a threadId but no thread context, derive it so the
 // RAG builder takes the thread-scoped + cross-thread entity retrieval path.
@@ -315,6 +338,8 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
       composerEntities,
       previewCorrections,
       images,
+      resumeDocumentId,
+      documentIds,
       clientIdempotencyKey,
     } = parsed.data;
     const currentContext = resolveThreadContext(threadId, parsed.data.currentContext);
@@ -389,6 +414,8 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
         previewCorrections,
         images,
         clientIdempotencyKey,
+        resumeDocumentId,
+        documentIds,
       );
       const mc = getMessageCost();
       if (mc) mc.messageId = result.metadata.messageId;
@@ -401,8 +428,15 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
           ? 'OpenAI 429 quota exceeded'
           : `OpenAI error: ${setupError instanceof Error ? setupError.message.substring(0, 60) : 'unknown'}`;
         const msgForFallback = (req.body as { message?: string })?.message ?? '';
+        // A ChatDurabilityError's .message is copied verbatim from the underlying
+        // cause, so a circuit-breaker trip AFTER the user message was already
+        // saved still matches isFallbackError here — that's expected, but it
+        // must not discard the durability payload proving the save succeeded.
+        const persistedUserMessageId = isChatDurabilityError(setupError)
+          ? setupError.durability.userMessage.id
+          : undefined;
         // Headers already committed above — write into the open stream.
-        writeFallbackToOpenStream(res, msgForFallback, reason);
+        writeFallbackToOpenStream(res, msgForFallback, reason, persistedUserMessageId);
       } else {
         logger.error({ err: setupError }, 'Chat stream setup error');
 
@@ -570,7 +604,13 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
     // inline in omegaChatService when the user's current message mentions a
     // gray-zone name. Async ingestion queues questions for the Characters Book
     // suggestions UI instead — see characterSuggestionService.
-    sseWrite({ type: 'metadata', data: result.metadata });
+    // Composition decisions and quality details remain in persistence and
+    // observability for admin review; normal clients receive only client-safe
+    // metadata and the canonical visible response.
+    const publicMetadata = { ...result.metadata } as Record<string, unknown>;
+    delete publicMetadata.compositionPlan;
+    delete publicMetadata.compositionQuality;
+    sseWrite({ type: 'metadata', data: publicMetadata });
 
     // ── Durable assistant persistence ──────────────────────────────────────────
     let fullResponse = '';
@@ -587,6 +627,10 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
 
     let assistantRowId: string | null = null;
     let assistantPersistResult: MessagePersistResult | null = null;
+    let compositionQuality: (CompositionQualityResult & {
+      recompositionAttempted: boolean;
+      recomposed: boolean;
+    }) | undefined;
 
     const emitPersistence = (patch: {
       user?: MessagePersistResult;
@@ -657,6 +701,8 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
           recall_sources: result.metadata.recall_sources,
           citations: result.metadata.citations,
           ragStats: result.metadata.ragStats,
+          compositionPlan: result.metadata.compositionPlan,
+          compositionQuality,
           mentionedEntities: result.metadata.mentionedEntities,
           characterIds: result.metadata.characterIds,
           creationOutcomes: result.metadata.creationOutcomes,
@@ -711,6 +757,45 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
       }
       let visibleFinalContent = fullResponse;
       let responseCompilerMeta: Record<string, unknown> | undefined;
+      let draftForCompilation = fullResponse;
+      const compositionPlan = result.metadata.compositionPlan as CompositionPlan | undefined;
+      if (compositionPlan) {
+        const initialQuality = evaluateComposition({
+          userMessage: message,
+          response: fullResponse,
+          plan: compositionPlan,
+        });
+        compositionQuality = {
+          ...initialQuality,
+          recompositionAttempted: false,
+          recomposed: false,
+        };
+        if (initialQuality.recompositionRecommended && req.user?.id) {
+          const recomposedDraft = await recomposeResponseDraft({
+            userMessage: message,
+            draft: fullResponse,
+            plan: compositionPlan,
+            quality: initialQuality,
+          });
+          if (recomposedDraft) {
+            const recomposedQuality = evaluateComposition({
+              userMessage: message,
+              response: recomposedDraft,
+              plan: compositionPlan,
+            });
+            compositionQuality = {
+              ...recomposedQuality,
+              recompositionAttempted: true,
+              recomposed: recomposedQuality.score > initialQuality.score,
+            };
+            if (recomposedQuality.score > initialQuality.score) {
+              draftForCompilation = recomposedDraft;
+            }
+          } else {
+            compositionQuality.recompositionAttempted = true;
+          }
+        }
+      }
       let visibleDoneFields: Record<string, unknown> = {
         verified: false,
         rewritten: false,
@@ -729,17 +814,47 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
           );
           const compiled = await compileAssistantResponseWithCanon({
             userId: req.user.id,
-            rawResponse: fullResponse,
+            rawResponse: draftForCompilation,
             userMessage: message,
             userMessageId: result.metadata.messageId,
             conversationHistory,
           }, { semantic: false });
+          if (compositionPlan) {
+            compiled.composition = {
+              planVersion: compositionPlan.version,
+              profile: compositionPlan.profile,
+              selectedEvidenceIds: compositionPlan.selectedEvidenceIds,
+              discardedEvidenceIds: compositionPlan.discardedEvidenceIds,
+              ...(compositionQuality
+                ? {
+                    quality: {
+                      version: compositionQuality.version,
+                      score: compositionQuality.score,
+                      passed: compositionQuality.passed,
+                      reasons: compositionQuality.reasons,
+                    },
+                  }
+                : {}),
+            };
+          }
           const finalization = finalizeVisibleAssistantResponse({
-            draftContent: fullResponse,
+            draftContent: draftForCompilation,
             compiled,
           });
           visibleFinalContent = finalization.finalContent;
           visibleDoneFields = toChatStreamDoneFields(finalization);
+          if (compositionPlan && compositionQuality) {
+            const finalQuality = evaluateComposition({
+              userMessage: message,
+              response: visibleFinalContent,
+              plan: compositionPlan,
+            });
+            compositionQuality = {
+              ...finalQuality,
+              recompositionAttempted: compositionQuality.recompositionAttempted,
+              recomposed: compositionQuality.recomposed,
+            };
+          }
           responseCompilerMeta = {
             actionCandidates: compiled.actionCandidates,
             certaintyScore: compiled.certaintyScore,
@@ -767,13 +882,62 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
         } catch (compileErr) {
           logger.warn({ err: compileErr, userId: req.user.id }, 'Response compiler failed (non-blocking)');
           const finalization = finalizeVisibleAssistantResponse({
-            draftContent: fullResponse,
+            draftContent: draftForCompilation,
             compiled: null,
             verificationFailed: true,
           });
           visibleFinalContent = finalization.finalContent;
           visibleDoneFields = toChatStreamDoneFields(finalization);
+          if (compositionPlan && compositionQuality) {
+            const finalQuality = evaluateComposition({
+              userMessage: message,
+              response: visibleFinalContent,
+              plan: compositionPlan,
+            });
+            compositionQuality = {
+              ...finalQuality,
+              recompositionAttempted: compositionQuality.recompositionAttempted,
+              recomposed: compositionQuality.recomposed,
+            };
+          }
         }
+      }
+      result.metadata.compositionQuality = compositionQuality;
+      if (req.user?.id && result.metadata.messageId && compositionPlan && compositionQuality) {
+        cognitiveObservatory.recordStage({
+          userId: req.user.id,
+          sourceId: result.metadata.messageId,
+          trace: {
+            stage: 'RESPONSE_PLANNING',
+            status: compositionQuality.passed ? 'PASS' : 'WARN',
+            startedAt: new Date().toISOString(),
+            durationMs: 0,
+            counts: {
+              inputs: compositionPlan.selectedEvidenceIds.length + compositionPlan.discardedEvidenceIds.length,
+              outputs: compositionPlan.selectedEvidenceIds.length,
+              discarded: compositionPlan.discardedEvidenceIds.length,
+            },
+            decisions: [
+              `profile:${compositionPlan.profile}`,
+              `quality:${compositionQuality.score}`,
+              `recomposition_attempted:${compositionQuality.recompositionAttempted}`,
+              `recomposed:${compositionQuality.recomposed}`,
+            ],
+            downstreamEffects: ['VISIBLE_RESPONSE_FINALIZED'],
+            details: {
+              version: compositionPlan.version,
+              selectedEvidenceIds: compositionPlan.selectedEvidenceIds,
+              discardedEvidenceIds: compositionPlan.discardedEvidenceIds,
+              quality: compositionQuality,
+            },
+          },
+        });
+      }
+      if (compositionQuality && draftForCompilation !== fullResponse) {
+        visibleDoneFields = {
+          ...visibleDoneFields,
+          content: visibleFinalContent,
+        };
       }
       await persistAssistant(clientGone ? 'partial' : 'complete', visibleFinalContent);
       if (streamResponseId && req.user?.id && persistSessionId) {
@@ -828,7 +992,19 @@ router.post('/stream', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, 
       await persistAssistant(fullResponse.trim().length > 0 ? 'partial' : 'failed');
       // Mid-stream failure — headers committed, can only write an error event.
       if (isFallbackEnabled() && isFallbackError(streamError)) {
-        writeFallbackToOpenStream(res, message, streamError instanceof Error ? streamError.message : 'stream error');
+        // The user's message was already durably saved before streaming began
+        // (see the setup-catch branch above, which threads this same id
+        // through) — a circuit-breaker trip here is an assistant-generation
+        // failure, not a user-message persistence failure. Passing the id
+        // through tells the client the message was saved; omitting it makes
+        // writeFallbackToOpenStream default to "not persisted," which is what
+        // produced the false-positive "Cloud sync failed" banner.
+        writeFallbackToOpenStream(
+          res,
+          message,
+          streamError instanceof Error ? streamError.message : 'stream error',
+          result.metadata.durability?.userMessage?.id,
+        );
       } else {
         logger.error({ error: streamError }, 'Chat stream mid-stream error');
         const durability = result.metadata.durability;
@@ -905,7 +1081,16 @@ router.post('/', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, checkA
       return res.status(400).json({ error: 'Invalid message format', details });
     }
 
-    const { message, conversationHistory = [], stream, threadId, entityContext, soulProfileContext } = parsed.data;
+    const {
+      message,
+      conversationHistory = [],
+      stream,
+      threadId,
+      entityContext,
+      soulProfileContext,
+      resumeDocumentId,
+      documentIds,
+    } = parsed.data;
     const currentContext = resolveThreadContext(threadId, parsed.data.currentContext);
     if (shouldBlockAnonymousAiChat(req.user)) {
       return sendAnonymousAiBlocked(res);
@@ -917,15 +1102,26 @@ router.post('/', optionalAuth, chatStreamHttpLimit, chatStreamBurstLimit, checkA
       return res.status(400).json({ error: 'Use /api/chat/stream for streaming' });
     }
 
-    const result = await omegaChatService.chat(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext, threadId);
+    const result = await omegaChatService.chat(
+      userId,
+      message,
+      conversationHistory,
+      entityContext,
+      currentContext,
+      soulProfileContext,
+      threadId,
+      resumeDocumentId,
+      documentIds,
+    );
 
     // Increment usage count (fire and forget)
     incrementAiRequestCount(userId).catch(err => 
       logger.warn({ error: err }, 'Failed to increment AI request count')
     );
 
+    const { compositionPlan: _compositionPlan, compositionQuality: _compositionQuality, ...publicResult } = result;
     res.json({
-      ...result,
+      ...publicResult,
       timestamp: new Date().toISOString()
     });
   } catch (error) {

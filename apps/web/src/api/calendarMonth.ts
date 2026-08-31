@@ -15,6 +15,7 @@ export type CalendarDayItem = {
   sourceId?: string;
   sourceIds?: string[];
   sourceType?: string;
+  timelineTrack?: string;
   tags?: string[];
 };
 

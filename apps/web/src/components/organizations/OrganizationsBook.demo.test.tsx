@@ -47,10 +47,6 @@ vi.mock('../chat/FocusedEntityChatLauncher', () => ({
   FocusedEntityChatLauncher: () => null,
 }));
 
-vi.mock('../ontology/OntologyCompliancePanel', () => ({
-  OntologyCompliancePanel: () => null,
-}));
-
 import { fetchJson } from '../../lib/api';
 
 import { OrganizationsBook } from './OrganizationsBook';

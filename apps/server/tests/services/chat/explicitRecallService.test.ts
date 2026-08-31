@@ -72,4 +72,34 @@ describe('executeExplicitRecall — identity hierarchy precedence', () => {
     expect(executeKind).toHaveBeenCalledTimes(1);
     expect(executeKind).toHaveBeenCalledWith('structured', expect.anything());
   });
+
+  it('preserves structured Markdown for combined work and education recall', async () => {
+    executeKind.mockResolvedValue({
+      raw: {
+        intent: 'work_and_education',
+        entityName: null,
+        contextBlock: [
+          'Here’s the work and education history I found:',
+          '',
+          '## Work history',
+          '- **Test Engineer** — Vanguard Robotics · Jan 2025 – Present',
+          '',
+          '## Education',
+          '- **Northwind University** — Bachelor of Science · 2018 – 2022',
+        ].join('\n'),
+        confidence: 0.95,
+        foundationPrimary: true,
+      },
+    });
+
+    const result = await executeExplicitRecall(
+      'user-1',
+      'what jobs have I had and schools Ive been to?',
+    );
+
+    expect(result.content).toContain('Here’s the work and education history I found:');
+    expect(result.content).toContain('## Work history');
+    expect(result.content).toContain('## Education');
+    expect(result.content).not.toContain('WORK HISTORY');
+  });
 });

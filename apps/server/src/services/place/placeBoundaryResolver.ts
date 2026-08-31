@@ -10,7 +10,7 @@ const DISCOURSE_FRAGMENT_ONLY =
 
 // Multi-word spans that still contain a bare narrative pronoun or a common
 // finite narration verb are sentence fragments the upstream regex/lexical
-// extractors over-captured (e.g. "V and Romi saw", "Jordan she freaked out"),
+// extractors over-captured (e.g. "Marcus and Jamie saw", "Marcus she freaked out"),
 // not place names — real place names essentially never contain these as a
 // standalone token. Scoped to 3+ words so short legitimate names aren't at risk.
 const NARRATIVE_PRONOUN = /\b(?:she|he|they|we|i)\b/i;

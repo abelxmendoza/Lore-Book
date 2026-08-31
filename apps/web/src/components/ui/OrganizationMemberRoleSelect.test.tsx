@@ -31,6 +31,26 @@ describe('OrganizationMemberRoleSelect', () => {
     expect(onChange).toHaveBeenCalledWith('founder');
   });
 
+  it('limits household variant to home roles', () => {
+    render(
+      <OrganizationMemberRoleSelect
+        variant="household"
+        value="lives here"
+        onChange={vi.fn()}
+        data-testid="role"
+      />,
+    );
+
+    expect(screen.getByRole('option', { name: 'Lives Here' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Weekends' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Head Of Household' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Member' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Founder' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('role-hint')).toHaveTextContent(
+      'How they belong in this home — a person can also belong to another household.',
+    );
+  });
+
   it('opens Custom mode for legacy relationship roles like coworker', () => {
     render(<OrganizationMemberRoleSelect value="coworker" onChange={vi.fn()} data-testid="role" />);
     expect(screen.getByTestId('role')).toHaveValue('__custom__');

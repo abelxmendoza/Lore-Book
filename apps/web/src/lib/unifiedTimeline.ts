@@ -31,10 +31,7 @@ function mapPrecision(precision?: string): TimePrecision {
  *
  * Precision/confidence come from Chronology Authority — never invent exact/1.0.
  */
-export function stitchedItemsToChronology(
-  items: StitchedTimelineItem[],
-  userId = '',
-): ChronologyEntry[] {
+export function stitchedItemsToChronology(items: StitchedTimelineItem[], userId = ''): ChronologyEntry[] {
   return items.map((item) => {
     const timeConfidence =
       typeof item.timeConfidence === 'number'
@@ -42,6 +39,7 @@ export function stitchedItemsToChronology(
         : typeof item.confidence === 'number'
           ? item.confidence
           : 0.5;
+    const timelineNames = [...new Set([item.timelineTrack, item.sourceType].filter(Boolean) as string[])];
     return {
       id: item.id,
       user_id: userId,
@@ -50,15 +48,14 @@ export function stitchedItemsToChronology(
       end_time: item.temporal?.occurred.end ?? null,
       time_precision: mapPrecision(item.timePrecision),
       time_confidence: timeConfidence,
-      content: [item.title, item.body]
-        .filter((part) => typeof part === 'string' && part.trim())
-        .join('\n'),
+      content: [item.title, item.body].filter((part) => typeof part === 'string' && part.trim()).join('\n'),
       timeline_memberships: [],
-      timeline_names: item.sourceType ? [item.sourceType] : [],
+      timeline_names: timelineNames,
       source_kind: item.sourceKind,
       source_id: item.sourceId,
       source_ids: item.sourceIds,
       source_type: item.sourceType,
+      timeline_track: item.timelineTrack,
       title: item.title,
       tags: item.tags ?? [],
       user_presence: item.userPresence,
@@ -67,18 +64,11 @@ export function stitchedItemsToChronology(
   });
 }
 
-export function filterChronologyByExactDate(
-  entries: ChronologyEntry[],
-  date: string,
-): ChronologyEntry[] {
+export function filterChronologyByExactDate(entries: ChronologyEntry[], date: string): ChronologyEntry[] {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return [];
   return entries.filter((entry) => entry.start_time.slice(0, 10) === date);
 }
 
-export function sortStitchedItemsNewestFirst(
-  items: StitchedTimelineItem[],
-): StitchedTimelineItem[] {
-  return [...items].sort(
-    (a, b) => new Date(b.sortTime).getTime() - new Date(a.sortTime).getTime(),
-  );
+export function sortStitchedItemsNewestFirst(items: StitchedTimelineItem[]): StitchedTimelineItem[] {
+  return [...items].sort((a, b) => new Date(b.sortTime).getTime() - new Date(a.sortTime).getTime());
 }

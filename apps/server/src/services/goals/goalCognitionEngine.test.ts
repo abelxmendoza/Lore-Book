@@ -117,6 +117,34 @@ describe('Goal Cognition Engine', () => {
     expect(result.decision).toBe('REJECT');
   });
 
+  it('rejects Character Book talk-about and lore-capture prompts', () => {
+    const result = goalCognitionEngine.evaluate({
+      ownerEntityId: 'synthetic-user',
+      sourceText: 'I want to talk about Taylor the recruiter. Help me capture who they are and how we know each other.',
+      proposedTitle: 'Capture Taylor in LoreBook',
+      proposedKind: 'QUEST',
+      sourceMessageId: 'synthetic-message',
+      sourceType: 'chat',
+      authorRole: 'user',
+    });
+    expect(result.candidate.kind).toBe('NON_GOAL');
+    expect(result.decision).toBe('REJECT');
+  });
+
+  it('does not let a proposed kind manufacture intent from a possession or event', () => {
+    const result = goalCognitionEngine.evaluate({
+      ownerEntityId: 'synthetic-user',
+      sourceText: 'I have an interview with Vanguard Robotics.',
+      proposedTitle: 'Interview with Vanguard Robotics',
+      proposedKind: 'INTENTION',
+      sourceMessageId: 'synthetic-message',
+      sourceType: 'chat',
+      authorRole: 'user',
+    });
+    expect(result.candidate.kind).toBe('NON_GOAL');
+    expect(result.decision).toBe('REJECT');
+  });
+
   it('still accepts a real goal that co-occurs with a person intro', () => {
     const result = evaluate(
       "I want to tell you about Jamie. My goal is to launch MemoVault this year.",

@@ -17,6 +17,8 @@ type Props = {
   className?: string;
   /** When true, first option is "Choose role…" with empty value. */
   allowEmpty?: boolean;
+  /** Household pickers only show home roles (lives here, weekends, visitor, …). */
+  variant?: 'default' | 'household';
 };
 
 /**
@@ -32,6 +34,7 @@ export function OrganizationMemberRoleSelect({
   'data-testid': dataTestId,
   className = 'rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white focus:border-primary/60 focus:outline-none',
   allowEmpty = true,
+  variant = 'default',
 }: Props) {
   const [customMode, setCustomMode] = useState(
     () => Boolean(value) && !isPresetOrganizationMemberRole(value),
@@ -58,6 +61,12 @@ export function OrganizationMemberRoleSelect({
 
   const preset = resolveOrganizationMemberRolePreset(value);
   const selectValue = customMode ? CUSTOM_ORG_MEMBER_ROLE : (preset ?? value);
+  const roleGroups = variant === 'household'
+    ? ORGANIZATION_MEMBER_ROLE_GROUPS.filter((group) => group.label === 'Household')
+    : ORGANIZATION_MEMBER_ROLE_GROUPS;
+  const hint = variant === 'household'
+    ? 'How they belong in this home — a person can also belong to another household.'
+    : 'Their role in this group — not how you know them.';
 
   return (
     <div className="space-y-1.5 min-w-0">
@@ -83,7 +92,7 @@ export function OrganizationMemberRoleSelect({
         className={`w-full ${className}`}
       >
         {allowEmpty && <option value="">Choose role…</option>}
-        {ORGANIZATION_MEMBER_ROLE_GROUPS.map((group) => (
+        {roleGroups.map((group) => (
           <optgroup key={group.label} label={group.label}>
             {group.roles.map((role) => (
               <option key={role} value={role}>
@@ -107,7 +116,7 @@ export function OrganizationMemberRoleSelect({
         />
       )}
       <p className="text-[10px] text-white/40 leading-snug" data-testid={dataTestId ? `${dataTestId}-hint` : undefined}>
-        Their role in this group — not how you know them.
+        {hint}
       </p>
     </div>
   );

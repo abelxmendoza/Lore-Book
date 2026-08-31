@@ -21,6 +21,8 @@ export type AssistantPersistMetadataInput = {
   recall_sources?: unknown;
   citations?: unknown;
   ragStats?: unknown;
+  compositionPlan?: unknown;
+  compositionQuality?: unknown;
   mentionedEntities?: unknown;
   characterIds?: unknown;
   creationOutcomes?: unknown;
@@ -50,6 +52,8 @@ export function buildAssistantPersistMetadata(
     recall_sources: input.recall_sources,
     citations: input.citations,
     ragStats: input.ragStats,
+    compositionPlan: input.compositionPlan,
+    compositionQuality: input.compositionQuality,
     mentionedEntities: input.mentionedEntities,
     characterIds: input.characterIds,
   };

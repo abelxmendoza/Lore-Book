@@ -1,30 +1,26 @@
-import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { GroupSuggestions } from './GroupSuggestions';
 
 describe('GroupSuggestions', () => {
-  it('opens a preview organization modal when a detected group name is clicked', async () => {
+  it('opens a suggestion review dialog instead of the Groups book modal', async () => {
     const user = userEvent.setup();
-    const onOpenCandidate = vi.fn();
 
-    render(
-      <GroupSuggestions
-        demoMode
-        onOpenCandidate={onOpenCandidate}
-      />,
-    );
+    render(<GroupSuggestions demoMode />);
 
     await user.click(screen.getByRole('button', { name: 'Open Whitmore-Chen Family suggestion' }));
 
-    expect(onOpenCandidate).toHaveBeenCalledTimes(1);
-    const preview = onOpenCandidate.mock.calls[0]![0];
-    expect(preview.name).toBe('Whitmore-Chen Family');
-    expect(preview.id).toBe('candidate-demo-group-whitmore-chen');
-    expect(preview.metadata?.preview_candidate).toBe(true);
-    expect(preview.metadata?.group_candidate_id).toBe('demo-group-whitmore-chen');
-    expect(preview.members?.map((m: { character_name: string }) => m.character_name)).toEqual(
-      expect.arrayContaining(['Aunt Maribel', 'Nico', 'Nana Elena']),
-    );
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: 'Whitmore-Chen Family' })).toBeInTheDocument();
+    expect(within(dialog).getByText(/Group suggestion/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Aunt Maribel, Nico, and Nana Elena keep appearing/i)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Create Whitmore-Chen Family' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('tab')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Overview')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Timeline')).not.toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Close suggestion' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

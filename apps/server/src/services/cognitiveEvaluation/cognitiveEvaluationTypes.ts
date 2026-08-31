@@ -1,3 +1,5 @@
+import type { CompositionPlan, CompositionQualityResult } from '../responseComposition';
+
 export type CognitiveEvaluationStatus = 'PASS' | 'WARN' | 'FAIL' | 'SKIPPED';
 
 export type CognitiveMetricName =
@@ -9,7 +11,8 @@ export type CognitiveMetricName =
   | 'leakage'
   | 'explainability'
   | 'compression_quality'
-  | 'identity_preservation';
+  | 'identity_preservation'
+  | 'composition_adherence';
 
 export type CognitiveEvaluationDomain =
   | 'career_timeline'
@@ -21,7 +24,8 @@ export type CognitiveEvaluationDomain =
   | 'character_summary'
   | 'memory_compression'
   | 'contradiction_handling'
-  | 'temporal_reconstruction';
+  | 'temporal_reconstruction'
+  | 'response_composition';
 
 export type CognitiveTimelineItem = {
   id: string;
@@ -38,6 +42,11 @@ export type CognitiveEvaluationOutput = {
   recall: string;
   narrativeTransitions: string[];
   evidenceLinks: Array<{ claim: string; evidenceIds: string[] }>;
+  composition?: {
+    plan: CompositionPlan;
+    response: string;
+    quality?: CompositionQualityResult;
+  };
 };
 
 export type CognitiveEvaluationExpectations = {

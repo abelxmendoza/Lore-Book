@@ -43,7 +43,7 @@ const SidebarContent = ({
   // Demo sandbox never shows the authenticated account / admin chrome.
   const showRealAccount = Boolean(user) && !demoRuntime;
   const { authority, loading: authorityLoading } = useAccountAuthority();
-  const counts = useEntityCounts();
+  const counts = useEntityCounts(user?.id ?? (demoRuntime ? 'demo' : isGuest ? 'guest' : 'anonymous'));
   const userIsAdmin = showRealAccount && canAccessAdmin(authority);
   const runtimeRoute = (route: string) => demoRuntime ? `/demo${route}` : route;
 
@@ -168,6 +168,9 @@ const SidebarContent = ({
           >
             <TreePine className="h-4 w-4 text-emerald-400 shrink-0" aria-hidden="true" />
             <span className="flex-1 text-left">Family</span>
+            {counts && counts.family > 0 && (
+              <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.family}</span>
+            )}
           </button>
           <button
             type="button"
@@ -183,6 +186,9 @@ const SidebarContent = ({
           >
             <Heart className="h-4 w-4 text-pink-400 shrink-0" aria-hidden="true" />
             <span className="flex-1 text-left">Dating & Romance</span>
+            {counts && counts.romantic > 0 && (
+              <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.romantic}</span>
+            )}
           </button>
           <button
             type="button"
@@ -288,6 +294,9 @@ const SidebarContent = ({
           >
             <Anchor className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
             <span className="flex-1 text-left">Narrative Anchors</span>
+            {counts && counts.anchors > 0 && (
+              <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.anchors}</span>
+            )}
           </button>
 
           {/* 3. Beliefs & evidence */}

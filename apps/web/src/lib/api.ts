@@ -34,6 +34,8 @@ export const fetchJson = async <T>(
     onError?: (error: Error) => void;
     /** Override default API timeout (ms). Use for heavy admin aggregates on mobile. */
     timeoutMs?: number;
+    /** Skip the shared GET cache for account-sensitive or explicitly refreshed reads. */
+    cache?: boolean;
   }
 ): Promise<T> => {
   // Get session first so we can skip mock when user is logged in.
@@ -78,7 +80,7 @@ export const fetchJson = async <T>(
 
   // Check cache for GET requests (skip cache if using mock data)
   const isGetRequest = !init?.method || init.method === 'GET';
-  const useCache = !shouldUseMock && isGetRequest;
+  const useCache = !shouldUseMock && isGetRequest && options?.cache !== false;
   const urlStr = typeof url === 'string' ? url : (url as Request).url;
   const cacheKey = useCache ? generateCacheKey(urlStr, init) : null;
 

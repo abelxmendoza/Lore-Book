@@ -58,6 +58,10 @@ vi.mock('./CharacterDetailModal', () => ({
   CharacterDetailModal: () => <div data-testid="nested-character-modal">Nested</div>,
 }));
 
+vi.mock('../organizations/OrganizationDetailModal', () => ({
+  OrganizationDetailModal: () => <div data-testid="nested-org-modal">Org</div>,
+}));
+
 const mainCharacter: Character = {
   id: 'self-synthetic',
   name: 'Alex Rivera',
@@ -119,6 +123,18 @@ describe('MainCharacterDetailModal', () => {
     expect(screen.getByTestId('main-tab-lore')).toBeInTheDocument();
     expect(screen.getByTestId('main-tab-memories')).toBeInTheDocument();
     expect(screen.getByTestId('main-tab-chat')).toBeInTheDocument();
+  });
+
+  it('shows your household on the people tab in demo', async () => {
+    const user = userEvent.setup();
+    render(
+      <MainCharacterDetailModal character={mainCharacter} onClose={onClose} />,
+    );
+
+    await user.click(screen.getByTestId('main-tab-people'));
+    const households = await screen.findByTestId('character-households-section');
+    expect(households).toHaveTextContent('Morgan Household');
+    expect(households).toHaveTextContent(/Elena Morgan/);
   });
 
   it('timeline tab stays in the modal and hands off to Omni Timeline on CTA', async () => {

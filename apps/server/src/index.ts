@@ -358,7 +358,9 @@ async function runBootTasks(): Promise<void> {
     accessibilityDecayJob.register();
     const { arcStabilityDecayJob } = await import('./jobs/arcStabilityDecayJob');
     arcStabilityDecayJob.register();
-    logger.info('Core background jobs registered: sync, memoryExtraction, continuityEngine, accessibilityDecay, arcStabilityDecay');
+    const { lifeArcProposalRebuildJob } = await import('./jobs/lifeArcProposalRebuildJob');
+    lifeArcProposalRebuildJob.register();
+    logger.info('Core background jobs registered: sync, memoryExtraction, continuityEngine, accessibilityDecay, arcStabilityDecay, lifeArcProposalRebuild');
 
     // EXPERIMENTAL jobs — gated behind ENABLE_EXPERIMENTAL_RUNTIME
     if (process.env.ENABLE_EXPERIMENTAL_RUNTIME === 'true') {

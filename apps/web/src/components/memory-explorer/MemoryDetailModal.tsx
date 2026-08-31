@@ -325,11 +325,6 @@ export const MemoryDetailModal = ({ memory, onClose, onNavigate, allMemories = [
       sourceSurface: 'lorebook',
       sourceLabel: 'Memory Explorer',
       knowledgeScope: 'this memory, its context, connections, linked memories, and supporting evidence',
-      initialPrompt:
-        `Let’s talk about “${memory.title}”. Start by giving me a grounded response about what LoreBook ` +
-        'currently understands about this memory and why it may matter. Use only recorded details, clearly ' +
-        'label uncertainty, connect it to supported people, places, and timeline moments, and then invite me to add or correct context.',
-      autoSubmit: true,
       startNewThread: true,
     });
   };

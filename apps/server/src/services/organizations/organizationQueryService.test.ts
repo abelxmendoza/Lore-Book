@@ -46,6 +46,16 @@ describe('organizationQueryService', () => {
       members: [{ id: 'member-1', organization_id: 'org-1', character_id: 'char-1', character_name: 'Marcus', status: 'active' }],
     }))).toBe('their_world');
     expect(resolveOrganizationQueryStance(baseOrganization({ user_relationship: 'referenced', is_public_entity: true }))).toBe('mentioned');
+    expect(resolveOrganizationQueryStance(baseOrganization({
+      user_relationship: 'aware_of',
+      metadata: { user_relationship_source: 'user_confirmed' },
+      members: [],
+    }))).toBe('their_world');
+    expect(resolveOrganizationQueryStance(baseOrganization({
+      user_relationship: 'referenced',
+      metadata: { user_relationship_source: 'user_confirmed' },
+      members: [{ id: 'member-2', organization_id: 'org-1', character_id: 'char-2', character_name: 'Jamie', status: 'active' }],
+    }))).toBe('mentioned');
   });
 
   it('extracts membership, quality, and type hints from natural language', () => {
@@ -121,5 +131,21 @@ describe('organizationQueryService', () => {
     expect(result.total).toBe(1);
     expect(result.results[0].unlinkedMemberCount).toBe(1);
     expect(result.facets.groupTypes).toEqual([{ value: 'band', count: 1 }]);
+  });
+
+  it('hides pending imported organizations while retaining confirmed ones', () => {
+    const pending = baseOrganization({
+      id: 'pending-org',
+      name: 'Pending Employer',
+      metadata: { review_required: true, review_state: 'pending' },
+    });
+    const confirmed = baseOrganization({
+      id: 'confirmed-org',
+      name: 'Confirmed Employer',
+      metadata: { review_required: true, review_state: 'user_confirmed' },
+    });
+    const result = compileOrganizationQuery([pending, confirmed], request(''));
+
+    expect(result.results.map((item) => item.organizationId)).toEqual(['confirmed-org']);
   });
 });

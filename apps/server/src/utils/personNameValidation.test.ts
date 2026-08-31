@@ -53,4 +53,24 @@ describe('personNameValidation', () => {
     expect(isIndividualPersonName('Organizations Book')).toBe(false);
     expect(isIndividualPersonName('Character Book')).toBe(false);
   });
+
+  it('rejects singular generic person references', () => {
+    expect(isCollectivePersonName('one girl')).toBe(true);
+    expect(isCollectivePersonName('the new guy')).toBe(true);
+    expect(isCollectivePersonName('a random person')).toBe(true);
+    expect(isIndividualPersonName('one girl')).toBe(false);
+    expect(isIndividualPersonName('the new guy')).toBe(false);
+  });
+
+  it('rejects generic person references with an "in ..." suffix', () => {
+    expect(isCollectivePersonName('people in the scene')).toBe(true);
+    expect(isCollectivePersonName('people in the office')).toBe(true);
+    expect(isCollectivePersonName('friends in the group chat')).toBe(true);
+    expect(isIndividualPersonName('people in the scene')).toBe(false);
+  });
+
+  it('still allows real names that merely contain a generic word', () => {
+    expect(isIndividualPersonName('The Rock')).toBe(true);
+    expect(isCollectivePersonName('Guy Fieri')).toBe(false);
+  });
 });

@@ -105,6 +105,9 @@ class ModeHandlers {
       case 'ORGANIZATION_QUERY':
         return await this.handleOrganizationQuery(userId, message);
 
+      case 'CHARACTER_QUERY':
+        return await this.handleCharacterQuery(userId, message);
+
       case 'FAMILY_QUERY':
         return await this.handleFamilyQuery(userId, message);
 
@@ -386,6 +389,48 @@ class ModeHandlers {
     }
   }
 
+  private async handleCharacterQuery(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const [{ characterBookQueryRequestSchema }, { queryCharactersForUser, isCharacterSimilarityQuery }] =
+        await Promise.all([
+          import('@lorebook/api-contracts'),
+          import('../characters/characterBookQueryService'),
+        ]);
+      const request = characterBookQueryRequestSchema.parse({ query: message, limit: 30 });
+      const result = await queryCharactersForUser(userId, request);
+      const similarQuery = isCharacterSimilarityQuery(message);
+      const lines = result.results.map((person) => {
+        const details = [
+          person.role?.replaceAll('_', ' '),
+          person.organizationNames[0],
+          person.matchedReasons[0],
+          person.needsReview ? 'needs review' : null,
+        ].filter(Boolean);
+        return `- **${person.name}** — ${details.join(' · ')}`;
+      });
+      const hint = similarQuery
+        ? '\n\nOpen a person and use Merge if two cards are the same, or ask “which people need review?”'
+        : '';
+      return {
+        content: lines.length
+          ? `I found ${result.total} matching ${result.total === 1 ? 'person' : 'people'}:\n\n${lines.join('\n')}${hint}`
+          : similarQuery
+            ? `I didn't find related people pairs in your Character Book. You can still merge two cards from a person modal.`
+            : `I couldn't find a grounded person matching that. I checked names, aliases, roles, groups, review status, and whether they're you.`,
+        response_mode: 'CHARACTER_QUERY',
+        confidence: 0.94,
+        metadata: { characterQuery: result },
+      };
+    } catch (error) {
+      logger.error({ err: error, userId }, 'Failed to handle Character Book query');
+      return {
+        content: 'Something went wrong querying your Character Book — want me to try again?',
+        response_mode: 'CHARACTER_QUERY_FAILED',
+        confidence: 0.4,
+      };
+    }
+  }
+
   private async handleFamilyQuery(userId: string, message: string): Promise<ModeHandlerResponse> {
     try {
       const [{ familyQueryRequestSchema }, { queryFamilyForUser }] = await Promise.all([
@@ -469,15 +514,32 @@ class ModeHandlers {
       const lines = result.results.map((relationship) => {
         const details = [
           relationship.relationshipType.replaceAll('_', ' '),
+          relationship.isCurrent ? 'active' : 'inactive',
           relationship.status.replaceAll('_', ' '),
           relationship.matchedReasons[0],
           relationship.scoresEvidenceBacked ? null : 'scores still need evidence',
         ].filter(Boolean);
         return `- **${relationship.personName}** — ${details.join(' · ')}`;
       });
+      const statusChanges = result.results.flatMap((relationship) =>
+        (relationship.statusChanges ?? []).map((change) => {
+          const from = change.from?.replaceAll('_', ' ') ?? 'unknown';
+          const to = change.to?.replaceAll('_', ' ') ?? 'unknown';
+          const reason = change.reasonNote || change.reason || 'no reason recorded';
+          const at = new Date(change.at).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          });
+          return `- **${relationship.personName}** — ${from} → ${to} on ${at}: ${reason}`;
+        }),
+      );
+      const historyBlock = statusChanges.length
+        ? `\n\nStatus changes:\n\n${statusChanges.join('\n')}`
+        : '';
       return {
         content: lines.length
-          ? `I found ${result.total} matching romantic connection${result.total === 1 ? '' : 's'}:\n\n${lines.join('\n')}`
+          ? `I found ${result.total} matching romantic connection${result.total === 1 ? '' : 's'}:\n\n${lines.join('\n')}${historyBlock}`
           : `I couldn't find a grounded Dating & Romance record matching that. I checked confirmed eligibility, relationship type, status, history, risk flags, evidence strength, and Character Book linkage.`,
         response_mode: 'ROMANCE_QUERY',
         confidence: 0.94,

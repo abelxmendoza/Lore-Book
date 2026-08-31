@@ -3,6 +3,7 @@ import {
   familyQueryRequestSchema,
   locationQueryRequestSchema,
   organizationQueryRequestSchema,
+  characterBookQueryRequestSchema,
   projectQueryRequestSchema,
   questQueryRequestSchema,
   romanceQueryRequestSchema,
@@ -15,8 +16,7 @@ import {
 } from '@lorebook/api-contracts';
 
 import { logger } from '../../logger';
-import { queryBookEntities } from '../entities/bookEntityQueryService';
-import { userFileRegistry } from '../ingestion/userFileRegistry';
+import { queryCharactersForUser } from '../characters/characterBookQueryService';
 import { queryFamilyForUser } from '../kinship/familyQueryService';
 import { queryLocationsForUser } from '../locations/locationQueryService';
 import { narrativeAnchorService } from '../narrative/narrativeAnchorService';
@@ -29,6 +29,7 @@ import { supabaseAdmin } from '../supabaseClient';
 
 import { detectBookQueryDomains } from './bookQueryIntent';
 import { BOOK_QUERY_DOMAIN_CONCURRENCY } from './bookQuerySourceCaps';
+import { documentFactQueryService } from './documentFactQueryService';
 
 export type BookQueryRegistryEntry = {
   domain: BookQueryDomain;
@@ -58,6 +59,8 @@ const STOP_WORDS = new Set([
   'does', 'find', 'for', 'from', 'have', 'i', 'in', 'is', 'it', 'lorebook', 'me',
   'my', 'of', 'on', 'or', 'records', 'show', 'the', 'to', 'what', 'when', 'where',
   'which', 'who', 'with',
+  'can', 'could', 'get', 'give', 'list', 'need', 'needs', 'please', 'tell',
+  'that', 'these', 'those', 'current', 'missing', 'review', 'status',
   ...BOOK_QUERY_DOMAINS,
   'people', 'person', 'characters', 'groups', 'organizations', 'places', 'locations',
   'relationships', 'dating', 'romance', 'projects', 'skills', 'quests', 'events',
@@ -71,7 +74,7 @@ function normalize(value: unknown): string {
     .replace(/\p{Diacritic}/gu, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
 
-function queryTerms(query: string): string[] {
+export function queryTerms(query: string): string[] {
   return [...new Set(normalize(query).split(/\s+/).filter((term) => term.length > 2 && !STOP_WORDS.has(term)))];
 }
 
@@ -104,27 +107,31 @@ export function inferBookQueryIntent(
 }
 
 const queryCharacters: DomainQuery = async (userId, request) => {
-  const response = await queryBookEntities(userId, { types: ['character'], limit: 100 });
-  const terms = queryTerms(request.query);
-  return response.entities
-    .filter((row) => {
-      if (!terms.length) return true;
-      const searchable = normalize([row.name, ...row.aliases, row.status].join(' '));
-      return terms.some((term) => searchable.includes(term));
-    })
-    .slice(0, request.perDomainLimit)
-    .map((row) => ({
-      id: row.id,
-      domain: 'character' as const,
-      title: row.name,
-      subtitle: row.aliases.length ? `Also known as ${row.aliases.join(', ')}` : 'Character Book',
-      status: row.status,
-      updatedAt: row.updatedAt,
-      score: terms.filter((term) => normalize([row.name, ...row.aliases].join(' ')).includes(term)).length * 10 + 1,
-      matchedReasons: terms.length ? ['Matches a name or alias in Character Book'] : ['Character Book record'],
-      evidence: request.includeEvidence ? [evidence('characters', row.id, 'Canonical Character Book record', null, row.updatedAt)] : [],
-      relatedEntities: [],
-    }));
+  const response = await queryCharactersForUser(userId, characterBookQueryRequestSchema.parse({
+    query: request.query, limit: request.perDomainLimit, includeFacets: false,
+  }));
+  return response.results.map((row) => ({
+    id: row.characterId,
+    domain: 'character' as const,
+    title: row.name,
+    subtitle: row.organizationNames.length
+      ? row.organizationNames.slice(0, 2).join(', ')
+      : row.aliases.length
+        ? `Also known as ${row.aliases.join(', ')}`
+        : 'Character Book',
+    status: row.needsReview ? 'needs_review' : row.status,
+    updatedAt: row.updatedAt,
+    score: row.score,
+    matchedReasons: row.matchedReasons,
+    evidence: request.includeEvidence
+      ? [evidence('characters', row.characterId, 'Canonical Character Book record', null, row.updatedAt)]
+      : [],
+    relatedEntities: row.organizationNames.map((name) => ({
+      domain: 'organization' as const,
+      name,
+      relation: 'group member',
+    })),
+  }));
 };
 
 const queryOrganizations: DomainQuery = async (userId, request) => {
@@ -324,29 +331,39 @@ const queryEvents: DomainQuery = async (userId, request) => {
 };
 
 const queryDocuments: DomainQuery = async (userId, request) => {
-  const rows = await userFileRegistry.listForUser(userId);
-  const terms = queryTerms(request.query);
-  return rows.flatMap((row) => {
-    const searchable = normalize([row.filename, row.mime_type, row.ingest_kind, row.processing_status].join(' '));
-    const matched = terms.filter((term) => searchable.includes(term));
-    if (terms.length && !matched.length) return [];
-    const counts = row.derived_counts ?? {};
-    return [{
-      id: row.id,
-      domain: 'document' as const,
-      title: row.filename,
-      subtitle: `${row.ingest_kind ?? 'document'} · ${Number(counts.facts ?? 0)} facts · ${Number(counts.events ?? 0)} events`,
-      status: row.processing_status,
-      occurredAt: row.uploaded_at,
-      updatedAt: row.uploaded_at,
-      score: matched.length * 10 + Number(counts.facts ?? 0) + Number(counts.events ?? 0),
-      matchedReasons: matched.length ? matched.slice(0, 3).map((term) => `Matches "${term}"`) : ['Uploaded document'],
-      evidence: request.includeEvidence
-        ? [evidence('user_files', row.id, 'Private uploaded source file', null, row.uploaded_at)]
-        : [],
-      relatedEntities: [],
-    }];
-  }).slice(0, request.perDomainLimit);
+  const response = await documentFactQueryService.query(userId, {
+    query: request.query,
+    documentId: request.documentId,
+    includePending: request.includePending,
+    includeEvidence: request.includeEvidence,
+    limit: request.perDomainLimit,
+  });
+  return response.facts.map((fact) => ({
+    id: `${fact.sourceTable}:${fact.sourceId}:${fact.fieldPath}`,
+    domain: 'document' as const,
+    title: fact.kind === 'filename' ? fact.filename : fact.value,
+    subtitle: `${fact.filename} · ${fact.fieldPath}`,
+    status: fact.reviewState,
+    occurredAt: fact.observedAt,
+    updatedAt: fact.observedAt,
+    score: fact.score,
+    matchedReasons: [`Document ${fact.kind.replaceAll('_', ' ')}`],
+    evidence: request.includeEvidence
+      ? [{
+          sourceTable: fact.sourceTable,
+          sourceId: fact.sourceId,
+          navigationId: fact.fileId,
+          label: `${fact.filename} · ${fact.fieldPath}`,
+          confidence: fact.confidence,
+          observedAt: fact.observedAt,
+          fieldPath: fact.fieldPath,
+          excerpt: fact.excerpt,
+          reviewState: fact.reviewState,
+          filename: fact.filename,
+        }]
+      : [],
+    relatedEntities: [],
+  }));
 };
 
 const queryNarrative: DomainQuery = async (userId, request) => {

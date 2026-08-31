@@ -60,7 +60,7 @@ function characterProvenanceText(row: { metadata?: unknown }): string {
     .join('\n');
 }
 
-function isVisibleCharacter(row: {
+export function isVisibleCharacter(row: {
   name?: string | null;
   metadata?: unknown;
   status?: string | null;
@@ -75,7 +75,7 @@ function isVisibleCharacter(row: {
   return !evaluateWrongDomain(name, characterProvenanceText(row)).wrongDomain;
 }
 
-function dedupeCharacters<T extends { name?: string | null; importance_score?: number | null; updated_at?: string | null }>(
+export function dedupeCharacters<T extends { name?: string | null; importance_score?: number | null; updated_at?: string | null }>(
   rows: T[],
 ): T[] {
   const byName = new Map<string, T>();
@@ -186,7 +186,7 @@ export async function loadProjectsBook(userId: string) {
 
 export async function loadSkillsBook(userId: string) {
   const [skills, counts, suggestions] = await Promise.all([
-    skillService.getSkills(userId, { active_only: false }),
+    skillService.getSkills(userId, { active_only: false, displayable_only: true }),
     loadCounts(userId),
     skillSuggestionService.getPendingSuggestions(userId).catch(() => []),
   ]);

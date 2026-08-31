@@ -163,8 +163,8 @@ export function openStitchedTimelineChat(
     sourceSurface: 'timeline',
     sourceLabel: CHAT_FOCUS_SOURCE_LABELS.timeline,
     knowledgeScope,
-    initialPrompt: input.initialPrompt ?? buildStitchedTimelineChatPrompt(input),
-    autoSubmit: input.autoSubmit !== false,
+    initialPrompt: input.initialPrompt,
+    autoSubmit: input.autoSubmit === true,
     startNewThread: true,
   });
 }

@@ -8,8 +8,9 @@
  */
 
 export type ChatSourceLike = {
-  type: 'entry' | 'event' | 'chapter' | 'character' | 'location' | 'task' | 'hqi' | 'fabric' | 'knowledge';
+  type: 'entry' | 'event' | 'chapter' | 'character' | 'location' | 'task' | 'document' | 'photo' | 'hqi' | 'fabric' | 'knowledge';
   id: string;
+  navigationId?: string;
   title: string;
   snippet?: string;
   date?: string;

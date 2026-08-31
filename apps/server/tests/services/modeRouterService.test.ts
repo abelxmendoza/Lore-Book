@@ -82,6 +82,25 @@ describe("ModeRouterService", () => {
       }
     });
 
+    it("routes People Book list queries to the Character Book compiler", async () => {
+      for (const query of [
+        "Which people need review?",
+        "Who do I know from Vanguard Robotics?",
+        "Which people look related?",
+        "Show people in my character book",
+        "Show people connected to Vanguard Robotics",
+      ]) {
+        await expect(
+          modeRouterService.routeMessage("user-1", query),
+        ).resolves.toMatchObject({ mode: "CHARACTER_QUERY" });
+      }
+    });
+
+    it("keeps a who-is question out of Character Book list query mode", async () => {
+      const result = await modeRouterService.routeMessage("user-1", "Who is Marcus?");
+      expect(result.mode).not.toBe("CHARACTER_QUERY");
+    });
+
     it("routes place-set questions to the location query compiler", async () => {
       for (const query of [
         "Which places did I visit with Marcus?",
@@ -106,6 +125,8 @@ describe("ModeRouterService", () => {
       for (const query of [
         "Who am I currently dating?",
         "Show my past romantic relationships",
+        "Show my inactive relationships",
+        "What changed with my relationship with Marcus?",
         "Which romantic records need review?",
         "Rank my romantic relationships by compatibility",
       ]) {
@@ -306,6 +327,10 @@ describe("ModeRouterService", () => {
         "What do you know about me?",
         "Tell me about my family",
         "Tell me about Sam Chen",
+        "What jobs have I had?",
+        "Not my full work history",
+        "What schools have I been to?",
+        "What jobs have I had and schools I've been to?",
       ];
 
       for (const query of queries) {
@@ -316,7 +341,7 @@ describe("ModeRouterService", () => {
 
       await expect(
         modeRouterService.routeMessage("user-1", "Who are the characters in my story?"),
-      ).resolves.toMatchObject({ mode: "BOOK_QUERY" });
+      ).resolves.toMatchObject({ mode: "FOUNDATION_RECALL" });
     });
 
     it("should detect MEMORY_RECALL for factual questions", async () => {
@@ -597,7 +622,7 @@ describe("ModeRouterService", () => {
         modeRouterService.routeMessage("user-1", "mark Marcus as my cousin"),
       ).resolves.toMatchObject({ mode: "FAMILY_WRITE" });
       await expect(
-        modeRouterService.routeMessage("user-1", "mark Jamie as dating"),
+        modeRouterService.routeMessage("user-1", "mark Jamie as ended"),
       ).resolves.toMatchObject({ mode: "ROMANCE_WRITE" });
       await expect(
         modeRouterService.routeMessage(

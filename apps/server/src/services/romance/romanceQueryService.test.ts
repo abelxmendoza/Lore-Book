@@ -96,6 +96,16 @@ const rows: RomanceQuerySource[] = [
     end_date: "2024-06-01T00:00:00Z",
     red_flags: ["Frequent conflict", "Poor communication"],
     relationship_health: 0.25,
+    statusChanges: [
+      {
+        from: "active",
+        to: "ended",
+        at: "2024-06-01T00:00:00Z",
+        source: "USER",
+        reason: "user_deactivated_relationship",
+        reasonNote: "We drifted apart",
+      },
+    ],
   }),
   row({
     id: "possible-mutual",
@@ -151,6 +161,29 @@ describe("romanceQueryService", () => {
         (item) => item.personName,
       ),
     ).toEqual(["Morgan"]);
+  });
+
+  it("treats inactive as past and returns status-change context when requested", () => {
+    expect(
+      compileRomanceQuery(rows, request("Show my inactive relationships")).results.map(
+        (item) => item.personName,
+      ),
+    ).toEqual(["Morgan"]);
+
+    const result = compileRomanceQuery(
+      rows,
+      request("What changed with my relationship with Morgan?"),
+    );
+    expect(result.results[0]).toMatchObject({
+      personName: "Morgan",
+      statusChanges: [
+        expect.objectContaining({
+          from: "active",
+          to: "ended",
+          reasonNote: "We drifted apart",
+        }),
+      ],
+    });
   });
 
   it("separates one-sided, possible mutual, and confirmed mutual interest", () => {

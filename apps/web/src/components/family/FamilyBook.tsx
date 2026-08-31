@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TreePine, Home, Users, BarChart3, Loader2, GitBranch, Check, X, MessageSquare, Clock } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
@@ -10,18 +10,22 @@ import { FamilyTreePanel } from './FamilyTreePanel';
 import { FamilyTreeCopyAllButton } from './FamilyTreeCopyAllButton';
 import { HierarchicalFamilyTree } from './HierarchicalFamilyTree';
 import { FamilyTreeView } from './FamilyTreeView';
+import { FamilyTreeDepthToggle } from './FamilyTreeDepthToggle';
+import { filterFamilyTreeByDepth, type FamilyTreeDepth } from '../../lib/familyTreeDepth';
 import { HouseholdDirectory, type HouseholdDTO } from './HouseholdDirectory';
 import { FamilyAnalyticsPanel, type RelationshipAnalyticDTO } from './FamilyAnalyticsPanel';
 import { FamilyExtendedNetworkPanel } from './FamilyExtendedNetworkPanel';
+import { FamilyFocusChatPanel } from './FamilyFocusChatPanel';
 import { CharacterDetailModal } from '../characters/CharacterDetailModal';
 import { useToast } from '../ui/toast';
 import { RelationshipEditor, type RelationshipEdit } from './RelationshipEditor';
-import { openChatWithFocus } from '../../lib/openChatWithFocus';
-import { CHAT_FOCUS_SOURCE_LABELS } from '../../types/chatFocus';
 import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
 import type { Character } from '../characters/CharacterProfileCard';
+import { FocusedEntityChatLauncher, type FocusedEntityOption } from '../chat/FocusedEntityChatLauncher';
+import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
+import { openFocusedEntityChat } from '../../lib/openFocusedEntityChat';
 
-type Tab = 'tree' | 'households' | 'groups' | 'analytics' | 'extended' | 'chat' | 'timeline';
+type Tab = 'tree' | 'households' | 'groups' | 'analytics' | 'extended' | 'focus-chat' | 'timeline';
 
 type SummaryResponse = {
   success: boolean;
@@ -41,7 +45,10 @@ export function FamilyBook() {
   const [demoTree, setDemoTree] = useState<FamilyTree | null>(null);
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [viewMode, setViewMode] = useState<'hierarchical' | 'visual'>('visual');
+  const [treeDepth, setTreeDepth] = useState<FamilyTreeDepth>('close');
   const [editorMember, setEditorMember] = useState<FamilyMember | null>(null);
+  const [focusedChatBusy, setFocusedChatBusy] = useState(false);
+  const [focusedChatError, setFocusedChatError] = useState<string | null>(null);
   const { success, error: toastError, ToastContainer } = useToast();
 
   const load = useCallback(async () => {
@@ -71,6 +78,44 @@ export function FamilyBook() {
   useEffect(() => onStoryDataUpdated(() => { void load(); }, 'family'), [load]);
 
   const activeTree = demoTree || summary?.tree || null;
+  const visibleTree = useMemo(
+    () => (activeTree ? filterFamilyTreeByDepth(activeTree, treeDepth) : null),
+    [activeTree, treeDepth],
+  );
+
+  // Known relatives to search against before falling back to "introduce a new
+  // person" — synthetic tree nodes (head-/group-/__ ids), the account owner,
+  // and unresolved placeholders aren't real Character Book entries yet.
+  const familyChatOptions: FocusedEntityOption[] = useMemo(
+    () =>
+      (activeTree?.members ?? [])
+        .filter(
+          (m) =>
+            !m.is_self &&
+            !m.is_account_self &&
+            !m.is_placeholder &&
+            !m.id.startsWith('head-') &&
+            !m.id.startsWith('group-') &&
+            !m.id.startsWith('__'),
+        )
+        .map((m) => ({ id: m.id, name: m.name })),
+    [activeTree],
+  );
+
+  const openFamilyFocusedChat = useCallback(
+    async (selection: { name: string; entity?: FocusedEntityOption }) => {
+      setFocusedChatBusy(true);
+      setFocusedChatError(null);
+      try {
+        openFocusedEntityChat(FOCUSED_ENTITY_CHAT_PRESETS.family, selection);
+      } catch (err) {
+        setFocusedChatError(err instanceof Error ? err.message : 'Could not open chat');
+      } finally {
+        setFocusedChatBusy(false);
+      }
+    },
+    [],
+  );
 
   const openCharacter = async (characterId: string, name: string) => {
     if (characterId.startsWith('head-') || characterId.startsWith('group-') || characterId.startsWith('__')) return;
@@ -421,19 +466,6 @@ export function FamilyBook() {
         onDisconnectParent: (m: FamilyMember) => void disconnectParent(m),
       };
 
-  const openFamilyMainChat = () => {
-    openChatWithFocus({
-      entityId: 'family',
-      entityName: 'Your family',
-      entityType: 'memory',
-      sourceSurface: 'family',
-      sourceLabel: CHAT_FOCUS_SOURCE_LABELS.family,
-      knowledgeScope: 'family tree, households, relationships, and family history',
-      initialPrompt:
-        'Tell me about my family — the people, relationships, households, and what stands out.',
-    });
-  };
-
   const openFamilyOmniTimeline = () => {
     navigate('/timeline?view=events');
   };
@@ -444,7 +476,7 @@ export function FamilyBook() {
     { key: 'groups', label: 'Family Groups', icon: Users },
     { key: 'analytics', label: 'Analytics', icon: BarChart3 },
     { key: 'extended', label: 'Extended family', icon: GitBranch },
-    { key: 'chat', label: 'Chat', icon: MessageSquare },
+    { key: 'focus-chat', label: 'Focus Chat', icon: MessageSquare },
     { key: 'timeline', label: 'Timeline', icon: Clock },
   ];
 
@@ -464,6 +496,16 @@ export function FamilyBook() {
           Living family graphs inferred from your conversations — trees, households, groups, and relationship strength.
         </p>
       </header>
+
+      <FocusedEntityChatLauncher
+        options={familyChatOptions}
+        copy={FOCUSED_ENTITY_CHAT_PRESETS.family.copy}
+        theme={FOCUSED_ENTITY_CHAT_PRESETS.family.theme}
+        icon={FOCUSED_ENTITY_CHAT_PRESETS.family.icon}
+        busy={focusedChatBusy}
+        error={focusedChatError}
+        onContinue={openFamilyFocusedChat}
+      />
 
       {!!summary?.possibleFamilyMatches?.length && (
         <div className="space-y-2">
@@ -553,23 +595,26 @@ export function FamilyBook() {
                 </button>
                 <div className="ml-auto">
                   <FamilyTreeCopyAllButton
-                    tree={activeTree}
+                    tree={visibleTree}
                     title="Your family tree"
-                    filters={[`view=${viewMode}`, shouldUseMock ? 'mode=demo' : 'mode=live']}
+                    filters={[`view=${viewMode}`, `depth=${treeDepth}`, shouldUseMock ? 'mode=demo' : 'mode=live']}
                     size="md"
                     data-testid="family-book-copy-all"
                   />
                 </div>
               </div>
-              {viewMode === 'hierarchical' && activeTree?.members?.length ? (
+              {activeTree && (
+                <FamilyTreeDepthToggle value={treeDepth} onChange={setTreeDepth} tree={activeTree} />
+              )}
+              {viewMode === 'hierarchical' && visibleTree?.members?.length ? (
                 <HierarchicalFamilyTree
-                  tree={activeTree}
+                  tree={visibleTree}
                   onMemberClick={(m) => void openCharacter(m.id, m.name)}
                 />
-              ) : viewMode === 'visual' && shouldUseMock && activeTree?.members?.length ? (
+              ) : viewMode === 'visual' && shouldUseMock && visibleTree?.members?.length ? (
                 <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
                   <FamilyTreeView
-                    tree={activeTree}
+                    tree={visibleTree}
                     onMemberClick={(m) => void openCharacter(m.id, m.name)}
                     {...editHandlers}
                   />
@@ -579,6 +624,9 @@ export function FamilyBook() {
                   scope="mine"
                   title="Your family tree"
                   hint="Mention relatives in chat — LoreBook builds your tree automatically."
+                  depth={treeDepth}
+                  onDepthChange={setTreeDepth}
+                  showDepthToggle={false}
                   onMemberClick={(id, name) => void openCharacter(id, name)}
                   {...editHandlers}
                 />
@@ -647,28 +695,12 @@ export function FamilyBook() {
             />
           )}
 
-          {tab === 'chat' && (
-            <div className="space-y-3" data-testid="family-chat-panel">
-              <button
-                type="button"
-                onClick={() => openFamilyMainChat()}
-                data-testid="family-chat-open-main-chat"
-                className="group flex w-full items-center justify-between gap-3 rounded-xl border border-emerald-400/30 bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-transparent px-3.5 py-3 text-left transition hover:border-emerald-300/50 hover:from-emerald-500/25 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
-              >
-                <div className="min-w-0">
-                  <p className="flex items-center gap-2 text-sm font-semibold text-emerald-50">
-                    <MessageSquare className="h-4 w-4 text-emerald-300" />
-                    Ask about your family in main chat
-                  </p>
-                  <p className="mt-1 text-[11px] text-white/50">
-                    Relationships, households, and family history.
-                  </p>
-                </div>
-                <span className="shrink-0 rounded-full border border-emerald-300/25 bg-emerald-300/10 px-2.5 py-1 text-[11px] font-medium text-emerald-100 transition group-hover:bg-emerald-300/20">
-                  Open in chat
-                </span>
-              </button>
-            </div>
+          {tab === 'focus-chat' && (
+            <FamilyFocusChatPanel
+              memberCount={activeTree?.members?.length ?? 0}
+              householdCount={summary?.households?.length ?? 0}
+              groupCount={summary?.familyGroups?.length ?? 0}
+            />
           )}
 
           {tab === 'timeline' && (

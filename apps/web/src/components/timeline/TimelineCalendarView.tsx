@@ -288,7 +288,14 @@ export const TimelineCalendarView = ({
                 className="w-full text-left rounded-xl border border-white/8 bg-white/[0.03] p-3 hover:border-primary/35 hover:bg-primary/8 transition touch-manipulation min-h-[44px] disabled:opacity-50"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[10px] text-white/35 uppercase tracking-wide">{item.kind}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-[10px] text-white/35 uppercase tracking-wide">{item.kind}</p>
+                    {item.timelineTrack && (
+                      <span className="rounded border border-sky-500/25 bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-semibold capitalize text-sky-300">
+                        {item.timelineTrack.replace(/[_-]/g, ' ')}
+                      </span>
+                    )}
+                  </div>
                   {item.userPresence === 'heard_about' && (
                     <span className="text-[10px] text-amber-200/80">Heard about</span>
                   )}

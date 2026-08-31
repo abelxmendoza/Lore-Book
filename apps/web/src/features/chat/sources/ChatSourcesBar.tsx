@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronUp, Copy, Sparkles } from 'lucide-react';
+
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '../../../components/ui/badge';
 import {
   buildChatSourcesClipboardText,
   rankChatSourcesForDisplay,
 } from '../../../lib/chatSourcesClipboard';
 import { copyTextToClipboard } from '../../../lib/listClipboard';
-import type { ChatSource } from '../message/ChatMessage';
-import { SOURCE_TYPE_LABELS } from '../message/ChatMessage';
+import { SOURCE_TYPE_LABELS, type ChatSource } from '../message/ChatMessage';
 
 type ChatSourcesBarProps = {
   sources?: ChatSource[];
@@ -16,7 +16,7 @@ type ChatSourcesBarProps = {
 
 export const ChatSourcesBar = ({ sources, onSourceClick }: ChatSourcesBarProps) => {
   const [copied, setCopied] = useState(false);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -68,7 +68,7 @@ export const ChatSourcesBar = ({ sources, onSourceClick }: ChatSourcesBarProps) 
         >
           <div className="flex items-center gap-2">
             <Sparkles className="h-3 w-3 text-primary/70 shrink-0" />
-            <span className="text-xs font-semibold text-primary/70">Sources for this answer</span>
+            <span className="text-xs font-semibold text-primary/70">Sources</span>
             <span className="text-xs text-white/40">({visible.length})</span>
             {expanded ? (
               <ChevronUp className="h-3 w-3 text-white/40 shrink-0" />
@@ -76,12 +76,6 @@ export const ChatSourcesBar = ({ sources, onSourceClick }: ChatSourcesBarProps) 
               <ChevronDown className="h-3 w-3 text-white/40 shrink-0" />
             )}
           </div>
-          {expanded && (
-            <p className="text-[10px] text-white/35 mt-0.5 leading-snug">
-              Supporting sources are cited or matched to the answer. Background sources were
-              consulted but are not presented as direct support.
-            </p>
-          )}
         </button>
         <button
           type="button"
@@ -101,11 +95,6 @@ export const ChatSourcesBar = ({ sources, onSourceClick }: ChatSourcesBarProps) 
       </div>
       {expanded && (
         <div id="chat-sources-bar-body" className="flex flex-wrap gap-2">
-          {visible.some((source) => source.usage === 'supporting') && (
-            <span className="text-[10px] font-medium text-emerald-300/70 w-full">
-              Sources supporting this answer
-            </span>
-          )}
           {Object.entries(groupedSources).map(([type, typeSources]) => (
             <div key={type} className="flex items-center gap-1">
               <Badge variant="outline" className="text-xs border-border/30 text-white/50">
@@ -117,22 +106,9 @@ export const ChatSourcesBar = ({ sources, onSourceClick }: ChatSourcesBarProps) 
                   type="button"
                   onClick={() => onSourceClick?.(source)}
                   className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-white/60 hover:text-white hover:bg-black/40 transition-colors max-w-[160px]"
-                  title={
-                    [
-                      source.title,
-                      source.snippet,
-                      source.relevanceScore != null ? `relevance ${source.relevanceScore}` : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' — ')
-                  }
+                  title={source.title}
                 >
                   <span className="truncate">{source.title}</span>
-                  {source.relevanceScore != null && (
-                    <span className="shrink-0 text-[10px] tabular-nums text-primary/60">
-                      {source.relevanceScore}
-                    </span>
-                  )}
                 </button>
               ))}
               {typeSources.length > 3 && (
@@ -140,11 +116,6 @@ export const ChatSourcesBar = ({ sources, onSourceClick }: ChatSourcesBarProps) 
               )}
             </div>
           ))}
-          {visible.some((source) => source.usage !== 'supporting') && (
-            <span className="text-[10px] text-white/35 w-full mt-1">
-              Consulted background: {visible.filter((source) => source.usage !== 'supporting').length}
-            </span>
-          )}
         </div>
       )}
     </div>

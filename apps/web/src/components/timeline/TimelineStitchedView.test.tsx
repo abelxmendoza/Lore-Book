@@ -150,9 +150,12 @@ describe('TimelineStitchedView overlay', () => {
         title: 'Agency Years',
         lifeArcId: 'arc-1',
         scopeType: 'life_arc',
-        autoSubmit: true,
       }),
     );
+    const call = vi.mocked(openStitchedTimelineChat).mock.calls[0][0];
+    // Opening a focus chat must never pre-fill or auto-send a starter prompt.
+    expect(call.initialPrompt).toBeUndefined();
+    expect(call.autoSubmit).toBeUndefined();
     expect(onClose).toHaveBeenCalled();
   });
 });

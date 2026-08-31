@@ -106,6 +106,19 @@ describe("skillQueryService", () => {
     expect(result.results.map((row) => row.name)).toEqual(["Robotics"]);
   });
 
+  it("keeps pending resume skills out of normal results but exposes review queries", () => {
+    const pending = skill({
+      id: "skill-pending",
+      skill_name: "Pending Skill",
+      metadata: { review_required: true, review_state: "pending" },
+    });
+    const normal = compileSkillQuery([pending], skillQueryRequestSchema.parse({ query: "show my skills" }));
+    const review = compileSkillQuery([pending], skillQueryRequestSchema.parse({ query: "which skills need review" }));
+
+    expect(normal.results).toEqual([]);
+    expect(review.results.map((row) => row.name)).toEqual(["Pending Skill"]);
+  });
+
   it("keeps evidence-backed proficiency ahead of unsupported inferred scores", () => {
     const request = skillQueryRequestSchema.parse({
       query: "show my strongest skills by proficiency",

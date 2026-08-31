@@ -198,15 +198,23 @@ async function retireConflictingFamilyEdgesBetween(
   b: string,
   keepTypes: Set<string>,
 ): Promise<void> {
+  // Legacy rows can carry a generic bucket type ("family") with
+  // relationship_category left null instead of 'family' — those evade an
+  // `.eq('relationship_category', 'family')` filter and survive forever
+  // alongside a freshly-corrected specific edge (e.g. Tía Grace ending up
+  // with both a stale self→Grace "family" row from before category-tagging
+  // existed AND the new "aunt_of"/"niece_of" pair). Catch category='family'
+  // OR a generic-bucket type regardless of category so those legacy rows
+  // get retired too.
   const { data: rows, error: selectError } = await supabaseAdmin
     .from('character_relationships')
     .select('id, relationship_type')
     .eq('user_id', userId)
-    .eq('relationship_category', 'family')
     .eq('status', 'active')
     .or(
       `and(source_character_id.eq.${a},target_character_id.eq.${b}),and(source_character_id.eq.${b},target_character_id.eq.${a})`,
-    );
+    )
+    .or(`relationship_category.eq.family,relationship_type.in.(${[...GENERIC_FAMILY_TYPES].join(',')})`);
   if (selectError) {
     const code = (selectError as { code?: string }).code;
     if (code === 'PGRST205' || code === '42P01') return;

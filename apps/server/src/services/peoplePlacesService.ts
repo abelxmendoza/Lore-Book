@@ -21,6 +21,12 @@ const relationshipTags: RelationshipTag[] = ['friend', 'family', 'coach', 'roman
 // 'unclassified' and 'event' added so unknown/non-person entities are NOT forced
 // to 'person' (which promotes them to Character cards). See entityClassifier.ts.
 type EntityType = 'person' | 'place' | 'organization' | 'platform' | 'event' | 'unclassified';
+const LEGACY_PEOPLE_PLACE_TYPES: ReadonlySet<EntityType> = new Set([
+  'person',
+  'place',
+  'organization',
+  'platform',
+]);
 
 type DetectedEntity = {
   name: string;
@@ -432,7 +438,12 @@ class PeoplePlacesService {
   async recordEntitiesForEntry(entry: MemoryEntry, relationships?: EntryRelationship[]): Promise<PeoplePlaceEntity[]> {
     const fromMetadata = (entry.metadata as { relationships?: EntryRelationship[] } | undefined)?.relationships;
     const normalizedRelationships = relationships ?? fromMetadata ?? [];
-    const detected = await this.detectEntities(entry.content);
+    // people_places predates the broader ontology and its database constraint
+    // only permits these four storage types. Unknown/event entities belong in
+    // newer stores; never send them to the legacy table.
+    const detected = (await this.detectEntities(entry.content)).filter((entity) =>
+      LEGACY_PEOPLE_PLACE_TYPES.has(entity.type)
+    );
 
     const upserted: PeoplePlaceEntity[] = [];
     for (const entity of detected) {

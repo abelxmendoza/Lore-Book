@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { emptyChatFocusSessionStats, type ChatFocus } from '../types/chatFocus';
+
 import { focusToComposerEntities, focusToEntityContext } from './chatFocusUtils';
 
 describe('chatFocusUtils', () => {
@@ -54,5 +55,19 @@ describe('chatFocusUtils', () => {
         status: 'confirmed',
       }),
     ]);
+  });
+
+  it('keeps a photo focus conversational without creating a character entity chip', () => {
+    const focus: ChatFocus = {
+      entityId: 'photo-1',
+      entityName: 'Mountain hike',
+      entityType: 'memory',
+      sourceSurface: 'photos',
+      sourceLabel: 'Photo Album',
+      sessionStats: emptyChatFocusSessionStats(),
+    };
+
+    expect(focusToEntityContext(focus)).toBeUndefined();
+    expect(focusToComposerEntities(focus)).toEqual([]);
   });
 });

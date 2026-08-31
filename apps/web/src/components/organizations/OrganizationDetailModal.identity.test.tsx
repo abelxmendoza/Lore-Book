@@ -107,6 +107,13 @@ describe('OrganizationDetailModal — name + aliases', () => {
     }));
   });
 
+  it('shows classification controls on Overview', () => {
+    renderModal();
+    expect(screen.getByTestId('org-classification-editor')).toBeInTheDocument();
+    expect(screen.getByLabelText('Group type')).toBeInTheDocument();
+    expect(screen.getByLabelText('Your relationship')).toBeInTheDocument();
+  });
+
   it('renames the group from the header pencil', async () => {
     renderModal();
 

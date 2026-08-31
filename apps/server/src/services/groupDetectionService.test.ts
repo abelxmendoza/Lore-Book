@@ -329,4 +329,22 @@ describe('groupDetectionService', () => {
     const type = groupDetectionService.suggestGroupType('', [], 'Cursor');
     expect(type).toBe('software');
   });
+
+  it('classifies kin households as Mine and named-roster groups without first person as Their world', () => {
+    expect(
+      groupDetectionService.suggestUserRelationship('', false, "Mom's House", 'household'),
+    ).toBe('member');
+    expect(
+      groupDetectionService.suggestUserRelationship('', false, "Abuela's Family", 'family'),
+    ).toBe('member');
+    expect(
+      groupDetectionService.suggestUserRelationship('Jamie is in that crew', true, 'Eastside Crew', 'crew'),
+    ).toBe('aware_of');
+    expect(
+      groupDetectionService.suggestUserRelationship('I worked at Vanguard Robotics.', true, 'Vanguard Robotics Organization', 'company'),
+    ).toBe('member');
+    expect(
+      groupDetectionService.suggestUserRelationship('radiohead came up in conversation', false, 'Radiohead', 'band'),
+    ).toBe('referenced');
+  });
 });

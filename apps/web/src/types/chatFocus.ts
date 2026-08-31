@@ -17,7 +17,10 @@ export type ChatFocusSourceSurface =
   | 'lorebook'
   | 'timeline'
   | 'anchors'
-  | 'memoir';
+  | 'saga'
+  | 'memoir'
+  | 'documents'
+  | 'photos';
 
 export type ChatFocusEntityType =
   | 'character'
@@ -29,7 +32,18 @@ export type ChatFocusEntityType =
   | 'quest'
   | 'event'
   | 'memory'
-  | 'perception';
+  | 'perception'
+  | 'document';
+
+export interface ChatDocumentAttachment {
+  /** ID of the user_files row; the server re-checks ownership before retrieval. */
+  fileId: string;
+  fileName: string;
+  kind?: string | null;
+  resumeDocumentId?: string | null;
+}
+
+export const CHAT_DOCUMENT_DRAG_TYPE = 'application/x-lorebook-documents';
 
 export interface ChatFocusSessionStats {
   messagesSent: number;
@@ -68,6 +82,8 @@ export interface ChatFocus {
    * instead of dumping the focus chip into the last sticky mega-thread.
    */
   startNewThread?: boolean;
+  /** Documents selected from the library and carried into the focused composer. */
+  documentAttachments?: ChatDocumentAttachment[];
   /** Increments on each focused message; drives stat bump animations. */
   statBumpKey?: number;
 }
@@ -86,7 +102,10 @@ export const CHAT_FOCUS_SOURCE_LABELS: Record<ChatFocusSourceSurface, string> = 
   lorebook: 'Lorebooks',
   timeline: 'Omni Timeline',
   anchors: 'Narrative Anchors',
+  saga: 'Life Saga',
   memoir: 'LoreBook Editor',
+  documents: 'Documents',
+  photos: 'Photo Album',
 };
 
 export function emptyChatFocusSessionStats(): ChatFocusSessionStats {

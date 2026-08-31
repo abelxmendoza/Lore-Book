@@ -67,7 +67,9 @@ function classifyGoalKind(text: string, proposedKind?: string, proposedTitle?: s
   }
   if (/\b(?:my goal|want to|trying to|still want|plan to|intend to)\b/.test(lower)) return 'QUEST';
   const normalized = proposedKind?.toUpperCase();
-  if (normalized && [
+  // An extractor-proposed kind is advisory. It may refine an explicit user
+  // commitment, but must never manufacture intent from unrelated prose.
+  if (normalized && explicitUserIntent(text) && [
     'QUEST', 'PROJECT', 'MILESTONE', 'TASK', 'HABIT', 'ROUTINE', 'INTENTION',
   ].includes(normalized)) return normalized as GoalKind;
   return 'NON_GOAL';
@@ -81,7 +83,7 @@ function inferDurability(kind: GoalKind, text: string): GoalDurability {
 }
 
 function explicitUserIntent(text: string): boolean {
-  return /\b(?:I|we)\s+(?:still\s+)?(?:want|need|plan|intend|will|am going|have|must|should|am trying)\b/i.test(text)
+  return /\b(?:I|we)\s+(?:still\s+)?(?:want|need|plan|intend|will|am going|have\s+to|must|should|am trying)\b/i.test(text)
     || /\bI(?:'m| am)\s+(?:still\s+)?(?:going|trying|planning|working)\b/i.test(text)
     || /\bmy goal\b/i.test(text)
     || /\b(?:every day|every week|per week)\b/i.test(text);

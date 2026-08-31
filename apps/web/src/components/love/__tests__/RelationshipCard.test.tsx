@@ -89,6 +89,23 @@ describe('RelationshipCard', () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
+  it('opens the status change action from the heart without opening the card', () => {
+    const onClick = vi.fn();
+    const onToggleStatus = vi.fn();
+    render(
+      <RelationshipCard
+        relationship={mockRelationship}
+        onClick={onClick}
+        onToggleStatus={onToggleStatus}
+      />,
+    );
+
+    screen.getByRole('button', { name: 'Mark relationship inactive' }).click();
+
+    expect(onToggleStatus).toHaveBeenCalledWith(mockRelationship);
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
   it('displays compact duration when start_date is provided', () => {
     const onClick = vi.fn();
     render(<RelationshipCard relationship={mockRelationship} onClick={onClick} />);

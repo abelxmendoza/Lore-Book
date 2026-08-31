@@ -57,11 +57,11 @@ describe('MemoryDetailModal main chat handoff', () => {
       entityType: 'memory',
       sourceSurface: 'lorebook',
       sourceLabel: 'Memory Explorer',
-      autoSubmit: true,
       startNewThread: true,
     });
-    expect(handoff.detail.initialPrompt).toMatch(/start by giving me a grounded response/i);
-    expect(handoff.detail.initialPrompt).toMatch(/invite me to add or correct context/i);
+    // Opening a focus chat must never pre-fill or auto-send a starter prompt.
+    expect(handoff.detail.initialPrompt).toBeUndefined();
+    expect(handoff.detail.autoSubmit).toBeUndefined();
     expect(onClose).toHaveBeenCalledOnce();
   });
 });

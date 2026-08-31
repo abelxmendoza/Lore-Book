@@ -58,7 +58,6 @@ describe('placeSuggestionService', () => {
     const names = processPlaceSuggestionsForOutput(text).map((s) => s.text);
     expect(names.some((n) => n.includes('and Romi saw'))).toBe(false);
   });
-
   it('titles same-chain gyms from street and landmark context', () => {
     const text = [
       'theres the EOS gym on Katella and Euclid',

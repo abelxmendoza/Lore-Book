@@ -1,9 +1,12 @@
-import { scrubLegacyComposerPrefill } from '../../../lib/scrubLegacyComposerPrefill';
-import { composerIntelligenceMetrics, noteRawComposerDraft } from '../../../lib/composerIntelligence';
+import { scrubLegacyComposerPrefill } from "../../../lib/scrubLegacyComposerPrefill";
+import {
+  composerIntelligenceMetrics,
+  noteRawComposerDraft,
+} from "../../../lib/composerIntelligence";
 
-const VAULT_KEY = 'lorekeeper.storySafetyVault.v1';
-const DRAFT_PREFIX = 'lorekeeper.composerDraft.v1';
-const RECOVERY_EVENT = 'lorekeeper:story-recovery-requested';
+const VAULT_KEY = "lorekeeper.storySafetyVault.v1";
+const DRAFT_PREFIX = "lorekeeper.composerDraft.v1";
+const RECOVERY_EVENT = "lorekeeper:story-recovery-requested";
 const MAX_ATTEMPTS = 20;
 
 export type StorySafetyAttempt = {
@@ -12,6 +15,8 @@ export type StorySafetyAttempt = {
   threadId: string;
   text: string;
   createdAt: string;
+  resumeDocumentId?: string;
+  documentIds?: string[];
 };
 
 // In-flight sends, tracked in memory (module scope) rather than a component
@@ -23,13 +28,15 @@ export type StorySafetyAttempt = {
 const inFlightAttemptIds = new Set<string>();
 
 function storageAvailable(): boolean {
-  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+  return (
+    typeof window !== "undefined" && typeof window.localStorage !== "undefined"
+  );
 }
 
 function readAttempts(): StorySafetyAttempt[] {
   if (!storageAvailable()) return [];
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(VAULT_KEY) ?? '[]');
+    const parsed = JSON.parse(window.localStorage.getItem(VAULT_KEY) ?? "[]");
     return Array.isArray(parsed) ? parsed.filter(isStorySafetyAttempt) : [];
   } catch {
     return [];
@@ -37,9 +44,15 @@ function readAttempts(): StorySafetyAttempt[] {
 }
 
 function isStorySafetyAttempt(value: unknown): value is StorySafetyAttempt {
-  if (!value || typeof value !== 'object') return false;
+  if (!value || typeof value !== "object") return false;
   const row = value as Partial<StorySafetyAttempt>;
-  return Boolean(row.id && row.ownerId && row.threadId && typeof row.text === 'string' && row.createdAt);
+  return Boolean(
+    row.id &&
+    row.ownerId &&
+    row.threadId &&
+    typeof row.text === "string" &&
+    row.createdAt,
+  );
 }
 
 function writeAttempts(attempts: StorySafetyAttempt[]): boolean {
@@ -56,10 +69,14 @@ function writeAttempts(attempts: StorySafetyAttempt[]): boolean {
 }
 
 function draftKey(ownerId: string, threadId?: string): string {
-  return `${DRAFT_PREFIX}:${ownerId}:${threadId ?? 'new-thread'}`;
+  return `${DRAFT_PREFIX}:${ownerId}:${threadId ?? "new-thread"}`;
 }
 
-export function saveComposerDraft(ownerId: string, threadId: string | undefined, text: string): void {
+export function saveComposerDraft(
+  ownerId: string,
+  threadId: string | undefined,
+  text: string,
+): void {
   if (!storageAvailable()) return;
   try {
     const key = draftKey(ownerId, threadId);
@@ -73,10 +90,10 @@ export function saveComposerDraft(ownerId: string, threadId: string | undefined,
 }
 
 export function readComposerDraft(ownerId: string, threadId?: string): string {
-  if (!storageAvailable()) return '';
+  if (!storageAvailable()) return "";
   try {
     const key = draftKey(ownerId, threadId);
-    const raw = window.localStorage.getItem(key) ?? '';
+    const raw = window.localStorage.getItem(key) ?? "";
     const scrubbed = scrubLegacyComposerPrefill(raw);
     if (scrubbed !== raw) {
       if (scrubbed.trim()) window.localStorage.setItem(key, scrubbed);
@@ -84,7 +101,7 @@ export function readComposerDraft(ownerId: string, threadId?: string): string {
     }
     return scrubbed;
   } catch {
-    return '';
+    return "";
   }
 }
 
@@ -99,11 +116,20 @@ export function clearComposerDraft(ownerId: string, threadId?: string): void {
 }
 
 /** Persist a pending send. Returns false when localStorage write fails (quota/private mode). */
-export function preserveStoryAttempt(attempt: StorySafetyAttempt): { ok: boolean } {
+export function preserveStoryAttempt(attempt: StorySafetyAttempt): {
+  ok: boolean;
+} {
   const attempts = readAttempts().filter(
     (row) =>
       row.id !== attempt.id &&
-      !(row.ownerId === attempt.ownerId && row.threadId === attempt.threadId && row.text === attempt.text)
+      !(
+        row.ownerId === attempt.ownerId &&
+        row.threadId === attempt.threadId &&
+        row.text === attempt.text &&
+        row.resumeDocumentId === attempt.resumeDocumentId &&
+        JSON.stringify(row.documentIds ?? []) ===
+          JSON.stringify(attempt.documentIds ?? [])
+      ),
   );
   attempts.push(attempt);
   inFlightAttemptIds.add(attempt.id);
@@ -115,25 +141,33 @@ export function clearStoryAttempt(id: string): void {
   writeAttempts(readAttempts().filter((attempt) => attempt.id !== id));
 }
 
-export function latestRecoverableStory(ownerId: string, threadId?: string): StorySafetyAttempt | null {
+export function latestRecoverableStory(
+  ownerId: string,
+  threadId?: string,
+): StorySafetyAttempt | null {
   const matches = readAttempts().filter(
     (attempt) =>
       attempt.ownerId === ownerId &&
       (!threadId || attempt.threadId === threadId) &&
-      !inFlightAttemptIds.has(attempt.id)
+      !inFlightAttemptIds.has(attempt.id),
   );
   return matches.length > 0 ? matches[matches.length - 1]! : null;
 }
 
 export function requestStoryRecovery(attempt: StorySafetyAttempt): void {
   inFlightAttemptIds.delete(attempt.id);
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent<StorySafetyAttempt>(RECOVERY_EVENT, { detail: attempt }));
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent<StorySafetyAttempt>(RECOVERY_EVENT, { detail: attempt }),
+  );
 }
 
-export function subscribeStoryRecovery(listener: (attempt: StorySafetyAttempt) => void): () => void {
-  if (typeof window === 'undefined') return () => undefined;
-  const handler = (event: Event) => listener((event as CustomEvent<StorySafetyAttempt>).detail);
+export function subscribeStoryRecovery(
+  listener: (attempt: StorySafetyAttempt) => void,
+): () => void {
+  if (typeof window === "undefined") return () => undefined;
+  const handler = (event: Event) =>
+    listener((event as CustomEvent<StorySafetyAttempt>).detail);
   window.addEventListener(RECOVERY_EVENT, handler);
   return () => window.removeEventListener(RECOVERY_EVENT, handler);
 }

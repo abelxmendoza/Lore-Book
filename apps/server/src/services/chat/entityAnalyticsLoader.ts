@@ -5,6 +5,7 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { locationService } from '../locationService';
+import { identityLedgerService } from '../identity/identityLedgerService';
 
 export type EntityContextInput = {
   type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP' | 'ORG';
@@ -95,10 +96,40 @@ export async function loadEntityAnalyticsForContext(
 
         const { romanticRelationshipAnalytics } = await import('../conversationCentered/romanticRelationshipAnalytics');
         const analytics = await romanticRelationshipAnalytics.generateAnalytics(userId, entityContext.id);
+        const statusHistory = await identityLedgerService.getEntityHistory(
+          userId,
+          entityContext.id,
+          { limit: 20, ascending: true },
+        );
+        const statusChanges = statusHistory.flatMap((entry) => {
+          const previous =
+            entry.previous_value && typeof entry.previous_value === 'object'
+              ? (entry.previous_value as Record<string, unknown>)
+              : {};
+          const next =
+            entry.new_value && typeof entry.new_value === 'object'
+              ? (entry.new_value as Record<string, unknown>)
+              : {};
+          const from = typeof previous.status === 'string' ? previous.status : null;
+          const to = typeof next.status === 'string' ? next.status : null;
+          if (!from && !to) return [];
+          const metadata = entry.metadata ?? {};
+          const reasonNote =
+            typeof metadata.reason_note === 'string' ? metadata.reason_note : null;
+          return [{
+            from,
+            to,
+            at: entry.created_at,
+            source: entry.source,
+            reason: entry.reason,
+            reasonNote,
+          }];
+        });
 
         entityAnalytics = {
           relationship,
           personName,
+          statusChanges,
           analytics: analytics || {
             pros: relationship.pros || [],
             cons: relationship.cons || [],
