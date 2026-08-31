@@ -4054,6 +4054,111 @@ router.get(
 );
 
 /**
+ * GET /api/conversation/romantic-relationships/:id/intimacy
+ * Manual, private intimacy log for a relationship. Date/frequency only —
+ * never auto-populated, never included in mock/demo data.
+ */
+router.get(
+  '/romantic-relationships/:id/intimacy',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const id = req.params.id as string;
+
+    const { data: relationship, error: relationshipError } = await supabaseAdmin
+      .from('romantic_relationships')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (relationshipError) throw relationshipError;
+    if (!relationship) {
+      return res.status(404).json({ success: false, error: 'Relationship not found' });
+    }
+
+    const { data: entries, error } = await supabaseAdmin
+      .from('romantic_intimacy_log')
+      .select('id, occurred_at, created_at')
+      .eq('user_id', userId)
+      .eq('relationship_id', id)
+      .order('occurred_at', { ascending: false });
+    if (error) throw error;
+
+    res.json({ success: true, entries: entries ?? [] });
+  })
+);
+
+const intimacyLogCreateSchema = z.object({
+  occurred_at: z.string().datetime(),
+}).strict();
+
+/**
+ * POST /api/conversation/romantic-relationships/:id/intimacy
+ * Add a manual intimacy log entry (date/time only).
+ */
+router.post(
+  '/romantic-relationships/:id/intimacy',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const id = req.params.id as string;
+    const parsed = intimacyLogCreateSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'Invalid intimacy log entry', details: parsed.error.flatten() });
+    }
+
+    const { data: relationship, error: relationshipError } = await supabaseAdmin
+      .from('romantic_relationships')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (relationshipError) throw relationshipError;
+    if (!relationship) {
+      return res.status(404).json({ success: false, error: 'Relationship not found' });
+    }
+
+    const { data: entry, error } = await supabaseAdmin
+      .from('romantic_intimacy_log')
+      .insert({
+        user_id: userId,
+        relationship_id: id,
+        occurred_at: parsed.data.occurred_at,
+      })
+      .select('id, occurred_at, created_at')
+      .single();
+    if (error) throw error;
+
+    res.status(201).json({ success: true, entry });
+  })
+);
+
+/**
+ * DELETE /api/conversation/romantic-relationships/:id/intimacy/:entryId
+ */
+router.delete(
+  '/romantic-relationships/:id/intimacy/:entryId',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { id, entryId } = req.params as { id: string; entryId: string };
+
+    const { error, count } = await supabaseAdmin
+      .from('romantic_intimacy_log')
+      .delete({ count: 'exact' })
+      .eq('id', entryId)
+      .eq('relationship_id', id)
+      .eq('user_id', userId);
+    if (error) throw error;
+    if (!count) {
+      return res.status(404).json({ success: false, error: 'Entry not found' });
+    }
+
+    res.json({ success: true });
+  })
+);
+
+/**
  * POST /api/conversation/romantic-relationships/calculate-affection
  * Recalculate affection scores
  */

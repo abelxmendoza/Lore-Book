@@ -4,9 +4,10 @@
 // =====================================================
 
 import { useState, useEffect } from 'react';
-import { X, Heart, Calendar, TrendingUp, TrendingDown, AlertTriangle, CheckCircle } from 'lucide-react';
+import { X, Heart, Calendar, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
@@ -53,6 +54,12 @@ type DateEvent = {
   was_positive?: boolean;
 };
 
+type IntimacyLogEntry = {
+  id: string;
+  occurred_at: string;
+  created_at: string;
+};
+
 export const RomanticRelationshipDetailModal: React.FC<RomanticRelationshipDetailModalProps> = ({
   relationshipId,
   onClose,
@@ -61,10 +68,72 @@ export const RomanticRelationshipDetailModal: React.FC<RomanticRelationshipDetai
   const [analytics, setAnalytics] = useState<RelationshipAnalytics | null>(null);
   const [dates, setDates] = useState<DateEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [intimacyEntries, setIntimacyEntries] = useState<IntimacyLogEntry[]>([]);
+  const [intimacyLoading, setIntimacyLoading] = useState(true);
+  const [addingIntimacyEntry, setAddingIntimacyEntry] = useState(false);
+  const [newEntryDate, setNewEntryDate] = useState(() => new Date().toISOString().slice(0, 16));
 
   useEffect(() => {
     loadData();
+    loadIntimacyEntries();
   }, [relationshipId, isMockDataEnabled]);
+
+  const loadIntimacyEntries = async () => {
+    // Deliberately excluded from demo/mock data — this log is manual-only
+    // and never shown in the guest/demo showcase.
+    if (isMockDataEnabled) {
+      setIntimacyEntries([]);
+      setIntimacyLoading(false);
+      return;
+    }
+    setIntimacyLoading(true);
+    try {
+      const data = await fetchJson<{ success: boolean; entries: IntimacyLogEntry[] }>(
+        `/api/conversation/romantic-relationships/${relationshipId}/intimacy`
+      );
+      if (data.success) setIntimacyEntries(data.entries);
+    } catch (error) {
+      console.error('Failed to load intimacy log:', error);
+    } finally {
+      setIntimacyLoading(false);
+    }
+  };
+
+  const handleAddIntimacyEntry = async () => {
+    if (!newEntryDate) return;
+    setAddingIntimacyEntry(true);
+    try {
+      const occurredAt = new Date(newEntryDate).toISOString();
+      const data = await fetchJson<{ success: boolean; entry: IntimacyLogEntry }>(
+        `/api/conversation/romantic-relationships/${relationshipId}/intimacy`,
+        { method: 'POST', body: JSON.stringify({ occurred_at: occurredAt }) }
+      );
+      if (data.success) {
+        setIntimacyEntries((prev) =>
+          [...prev, data.entry].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))
+        );
+      }
+    } catch (error) {
+      console.error('Failed to add intimacy log entry:', error);
+    } finally {
+      setAddingIntimacyEntry(false);
+    }
+  };
+
+  const handleDeleteIntimacyEntry = async (entryId: string) => {
+    const prev = intimacyEntries;
+    setIntimacyEntries((cur) => cur.filter((e) => e.id !== entryId));
+    try {
+      const data = await fetchJson<{ success: boolean }>(
+        `/api/conversation/romantic-relationships/${relationshipId}/intimacy/${entryId}`,
+        { method: 'DELETE' }
+      );
+      if (!data.success) setIntimacyEntries(prev);
+    } catch (error) {
+      console.error('Failed to delete intimacy log entry:', error);
+      setIntimacyEntries(prev);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -144,6 +213,7 @@ export const RomanticRelationshipDetailModal: React.FC<RomanticRelationshipDetai
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
             <TabsTrigger value="dates">Dates & Milestones</TabsTrigger>
             <TabsTrigger value="insights">Insights</TabsTrigger>
+            <TabsTrigger value="intimacy">Intimacy</TabsTrigger>
           </TabsList>
 
           <TabsContent value="analytics" className="mt-4 space-y-4">
@@ -322,6 +392,77 @@ export const RomanticRelationshipDetailModal: React.FC<RomanticRelationshipDetai
                     ))}
                   </ul>
                 </div>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="intimacy" className="mt-4">
+            <div className="space-y-4">
+              <p className="text-xs text-white/40">
+                Private and manual — nothing here is auto-detected from chat or shown outside this tab.
+              </p>
+
+              {isMockDataEnabled ? (
+                <div className="text-center text-white/60 py-8">
+                  <p>Not available in demo mode.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 p-3 rounded-lg border border-white/10 bg-black/20">
+                    <input
+                      type="datetime-local"
+                      value={newEntryDate}
+                      onChange={(e) => setNewEntryDate(e.target.value)}
+                      className="flex-1 bg-black/40 border border-white/10 rounded-md px-2 py-1.5 text-sm text-white/90"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={handleAddIntimacyEntry}
+                      disabled={addingIntimacyEntry || !newEntryDate}
+                    >
+                      Add entry
+                    </Button>
+                  </div>
+
+                  {intimacyLoading ? (
+                    <div className="text-center text-white/60 py-8">Loading...</div>
+                  ) : intimacyEntries.length === 0 ? (
+                    <div className="text-center text-white/60 py-8">
+                      <Heart className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                      <p>No entries logged yet</p>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-xs text-white/50">
+                        {
+                          intimacyEntries.filter(
+                            (e) => Date.now() - new Date(e.occurred_at).getTime() <= 30 * 24 * 60 * 60 * 1000
+                          ).length
+                        }{' '}
+                        in the last 30 days · {intimacyEntries.length} total
+                      </p>
+                      <div className="space-y-2">
+                        {intimacyEntries.map((entry) => (
+                          <div
+                            key={entry.id}
+                            className="flex items-center justify-between p-3 rounded-lg border border-white/10 bg-black/20"
+                          >
+                            <span className="text-sm text-white/80">
+                              {new Date(entry.occurred_at).toLocaleString()}
+                            </span>
+                            <button
+                              onClick={() => handleDeleteIntimacyEntry(entry.id)}
+                              className="text-white/40 hover:text-red-400 transition-colors"
+                              aria-label="Delete entry"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </>
               )}
             </div>
           </TabsContent>
