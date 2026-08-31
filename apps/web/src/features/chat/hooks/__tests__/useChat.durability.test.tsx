@@ -99,6 +99,9 @@ import { makeStore } from '../../../../store';
 import type { Message } from '../../message/ChatMessage';
 import {
   latestRecoverableStory,
+  preserveStoryAttempt,
+  requestStoryRecovery,
+  type StorySafetyAttempt,
   resetStorySafetyVaultForTests,
 } from '../../services/storySafetyVault';
 
@@ -119,6 +122,40 @@ describe('useChat — assistant bubble durability', () => {
       }
     );
     mockCooldownRemaining.mockReturnValue(0);
+  });
+
+  it('does not clear a failed attempt when an older identical message exists', async () => {
+    const attempt: StorySafetyAttempt = {
+      id: 'attempt-repeated-text',
+      ownerId: 'user-chat-1',
+      threadId: 'thread-chat-1',
+      text: 'same text sent twice',
+      createdAt: new Date('2026-08-30T15:00:00.000Z').toISOString(),
+    };
+    preserveStoryAttempt(attempt);
+    // Simulate a page reload: the in-memory in-flight marker is gone while
+    // the local vault entry remains available for recovery.
+    requestStoryRecovery(attempt);
+
+    mockMutateThreadMessagesForThread.mockImplementation(
+      (_threadId: string, updater: (prev: Message[]) => Message[]) => {
+        updater([
+          {
+            id: 'older-success',
+            role: 'user',
+            content: attempt.text,
+            timestamp: new Date('2026-08-29T15:00:00.000Z'),
+            persistStatus: 'saved',
+          },
+        ]);
+      },
+    );
+
+    renderHook(() => useChat(), { wrapper });
+
+    await waitFor(() => {
+      expect(latestRecoverableStory('user-chat-1', 'thread-chat-1')).not.toBeNull();
+    });
   });
 
   it('reconciles assistant id from stream metadata and hydrates after complete', async () => {

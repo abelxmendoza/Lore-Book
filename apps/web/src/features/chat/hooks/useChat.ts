@@ -319,6 +319,30 @@ export const useChat = () => {
     if (restoredVaultAttemptsRef.current.has(restoreKey)) return;
 
     mutateThreadMessagesForThread(threadId, (prev) => {
+      // clearStoryAttempt only runs when a live SSE confirmation reaches this
+      // browser (see applyPersistence below). If the tab reloaded or lost
+      // connection after the write actually succeeded server-side but before
+      // that confirmation arrived, the vault entry is stuck — reconcile
+      // against messages already loaded for this thread before re-flagging
+      // it as failed, otherwise a genuinely-saved message resurfaces this
+      // notice on every future reload forever.
+      const alreadySaved = prev.some(
+        (m) =>
+          m.role === "user" &&
+          m.persistStatus !== "failed" &&
+          (m.metadata?.clientIdempotencyKey === attempt.id ||
+            (m.content === attempt.text &&
+              Math.abs(
+                new Date(m.timestamp).getTime() -
+                  new Date(attempt.createdAt).getTime(),
+              ) <=
+                5 * 60 * 1000)),
+      );
+      if (alreadySaved) {
+        clearStoryAttempt(attempt.id);
+        return prev;
+      }
+
       const alreadyPresent = prev.some(
         (m) =>
           m.metadata?.clientIdempotencyKey === attempt.id ||
