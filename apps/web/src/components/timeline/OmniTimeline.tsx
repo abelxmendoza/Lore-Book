@@ -14,6 +14,7 @@ import { useAuth } from '../../lib/supabase';
 import { useGuest } from '../../contexts/GuestContext';
 import { useEntityModal } from '../../contexts/EntityModalContext';
 import { TimelineSwimlanes } from './TimelineSwimlanes';
+import { LifeArcProposalAwakening } from './LifeArcProposalAwakening';
 import { TimelineStitchedView } from './TimelineStitchedView';
 import { TimelineCalendarView } from './TimelineCalendarView';
 import { OmniTimelineBottomNav, type OmniTimelineView } from './OmniTimelineBottomNav';
@@ -757,23 +758,31 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
         return libraryPanel;
       case 'swimlanes':
         return (
-          <TimelineSwimlanes
-            arcs={arcs}
-            arcsByTrack={arcsByTrack}
-            activeArcs={activeArcs}
-            entries={displayEntries}
-            loading={loading}
-            unresolvedItems={unresolvedItems}
-            lifeEras={lifeEras.map((era) => ({
-              id: era.id,
-              label: era.chapter_title,
-              startDate: era.start_date,
-              endDate: era.end_date,
-            }))}
-            onOpenArcTimeline={handleOpenArcTimeline}
-            onCreateLorebook={handleCreateLorebookFromArc}
-            canCreateLorebookForArc={canCreateLorebookForArc}
-          />
+          <>
+            <LifeArcProposalAwakening
+              enabled={Boolean(user) && !isDemoMode}
+              canonicalItemCount={entries.length}
+              arcs={arcs}
+              onArcsChanged={refreshArcs}
+            />
+            <TimelineSwimlanes
+              arcs={arcs}
+              arcsByTrack={arcsByTrack}
+              activeArcs={activeArcs}
+              entries={displayEntries}
+              loading={loading}
+              unresolvedItems={unresolvedItems}
+              lifeEras={lifeEras.map((era) => ({
+                id: era.id,
+                label: era.chapter_title,
+                startDate: era.start_date,
+                endDate: era.end_date,
+              }))}
+              onOpenArcTimeline={handleOpenArcTimeline}
+              onCreateLorebook={handleCreateLorebookFromArc}
+              canCreateLorebookForArc={canCreateLorebookForArc}
+            />
+          </>
         );
       case 'events':
         return (
