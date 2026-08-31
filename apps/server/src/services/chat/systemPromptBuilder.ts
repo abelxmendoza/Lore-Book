@@ -289,11 +289,28 @@ When explaining analytics, provide context about what these scores mean and why 
       const enriched = (loreData?.romanticContext || []).find(
         (r: any) => r.relationshipId === rel?.id
       );
+      const statusChanges = Array.isArray(entityAnalytics.statusChanges)
+        ? entityAnalytics.statusChanges as Array<{
+            from: string | null;
+            to: string | null;
+            at: string;
+            reason: string | null;
+            reasonNote: string | null;
+          }>
+        : [];
       entityAnalyticsContext += `
 **FOCUSED RELATIONSHIP CONTEXT — ${entityAnalytics.personName || rel?.partner_name || 'Unknown'}**${confidenceNote}${disclaimer}
 You are deeply familiar with this relationship and everything the user has shared about it.
 
 ${entityAnalytics.personName || rel?.partner_name || 'Unknown'} — ${rel?.relationship_type || 'relationship'}${rel?.start_date ? ` (since ${new Date(rel.start_date).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })})` : ''}${rel?.end_date ? ` → ended ${new Date(rel.end_date).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}` : ''}${rel?.is_situationship ? ' [situationship]' : ''}
+${statusChanges.length > 0 ? `
+STATUS CHANGE HISTORY:
+${statusChanges.map((change) => {
+  const from = change.from?.replace(/_/g, ' ') || 'unknown';
+  const to = change.to?.replace(/_/g, ' ') || 'unknown';
+  const reason = change.reasonNote || change.reason || 'no reason recorded';
+  return `- ${from} → ${to} (${new Date(change.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}): ${reason}`;
+}).join('\n')}` : ''}
 
 SCORES:
 - Affection: ${Math.round((analytics?.affectionScore || rel?.affection_score || 0.5) * 100)}%
@@ -324,6 +341,7 @@ INSIGHTS: ${analytics.insights.slice(0, 3).join(' | ')}` : ''}
 HOW TO ENGAGE:
 - You know this relationship in depth. Reference specific things the user has shared.
 - When the user describes what happened, absorb it naturally — don't ask for a form to fill.
+- Treat the status-change history above as explicit user or system-recorded context. Discuss why and when the relationship changed when asked, without inventing missing details.
 - If you notice something that matches a known pattern (drift, cycle), name it gently.
 - When they ask for your honest take, give it — evidence-based, not hedged to death.
 - If they share a new interaction (date, fight, text, call), acknowledge it and note what it adds to the picture.

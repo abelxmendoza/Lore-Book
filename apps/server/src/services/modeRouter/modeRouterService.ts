@@ -986,12 +986,12 @@ export function isLocationQueryRequest(message: string): boolean {
 export function isRomanceQueryRequest(message: string): boolean {
   const text = message.trim();
   if (!text || !looksLikeQueryPhrasing(text)) return false;
-  if (!/\b(?:dating|romance|romantic|relationships?|exes?|crushes?|situationships?|boyfriends?|girlfriends?|partners?|lovers?|no contact|ghosted|blocked)\b/i.test(text)) {
+  if (!/\b(?:dating|romance|romantic|relationships?|relationship\s+(?:status|history|changes?)|exes?|crushes?|situationships?|boyfriends?|girlfriends?|partners?|lovers?|no contact|ghosted|blocked|inactive)\b/i.test(text)) {
     return false;
   }
   return (
     /\b(?:which|who|what|show|find|list|how many|rank|compare)\b/i.test(text) &&
-    /\b(?:my|i|current|active|past|former|dated|dating|romantic|relationship|crush|situationship|no contact|ghosted|blocked|risk|flag|review|linked|compatibility|health|affection|intensity|attachment|evidence)\b/i.test(text)
+    /\b(?:my|i|current|active|inactive|past|former|dated|dating|romantic|relationship|history|changed|changes|reason|crush|situationship|no contact|ghosted|blocked|risk|flag|review|linked|compatibility|health|affection|intensity|attachment|evidence)\b/i.test(text)
   );
 }
 

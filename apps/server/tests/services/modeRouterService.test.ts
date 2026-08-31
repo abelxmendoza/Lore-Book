@@ -125,6 +125,8 @@ describe("ModeRouterService", () => {
       for (const query of [
         "Who am I currently dating?",
         "Show my past romantic relationships",
+        "Show my inactive relationships",
+        "What changed with my relationship with Marcus?",
         "Which romantic records need review?",
         "Rank my romantic relationships by compatibility",
       ]) {

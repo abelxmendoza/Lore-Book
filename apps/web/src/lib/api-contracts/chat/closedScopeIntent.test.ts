@@ -101,6 +101,11 @@ describe('isFamilyWriteRequest / isRomanceWriteRequest', () => {
     expect(isRomanceWriteRequest('things with Jamie are complicated')).toBe(true);
   });
 
+  it('matches active/inactive changes with a reason', () => {
+    expect(isRomanceWriteRequest('mark Marcus as inactive because we drifted apart')).toBe(true);
+    expect(isRomanceWriteRequest('make Marcus active since we are together again')).toBe(true);
+  });
+
   it('matches the full canonical romance status vocabulary and free-form lifecycle phrasing', () => {
     expect(isRomanceWriteRequest('set Jamie as paused')).toBe(true);
     expect(isRomanceWriteRequest('mark Jamie as ghosted')).toBe(true);

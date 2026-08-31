@@ -459,6 +459,10 @@ export const RelationshipDetailModal = ({
       setEditingRomanceFields(false);
       return;
     }
+    if (changedStatus && !romanceReasonNote.trim()) {
+      setCrudError('Add a reason for the status change so it is saved with relationship history.');
+      return;
+    }
     const changedFieldLabels = [
       changedType && 'relationship_type',
       changedExclusivity && 'exclusivity_status',
@@ -923,25 +927,54 @@ export const RelationshipDetailModal = ({
               <div className="p-2 sm:p-4 rounded-lg border border-border/60 bg-black/40 min-w-0">
                 <div className="flex items-center justify-between mb-1.5 sm:mb-3">
                   <h3 className="text-[10px] sm:text-sm font-semibold text-white">Status</h3>
-                  {!shouldUseMockData && !editingRomanceFields && (
-                    <button
+                  {!editingRomanceFields && (
+                    <Button
                       type="button"
-                      title="Edit status / type / exclusivity"
+                      size="sm"
+                      variant="outline"
+                      disabled={shouldUseMockData}
+                      title={shouldUseMockData ? 'Sign in to edit relationship status' : 'Edit status / type / exclusivity'}
                       onClick={() => {
+                        if (shouldUseMockData) return;
                         setStatusDraft(relationship.status);
                         setRelationshipTypeDraft(relationship.relationship_type);
                         setExclusivityDraft(relationship.exclusivity_status ?? 'unknown');
                         setRomanceReasonNote('');
                         setEditingRomanceFields(true);
                       }}
-                      className="p-1 rounded text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+                      className="h-7 gap-1.5 border-pink-400/35 bg-pink-500/10 px-2 text-[10px] text-pink-100 hover:bg-pink-500/20"
+                      data-testid="relationship-edit-status"
                     >
-                      <Pencil className="w-3 h-3" />
-                    </button>
+                      <Pencil className="h-3 w-3" />
+                      <span>{shouldUseMockData ? 'Sign in to edit' : 'Edit status'}</span>
+                    </Button>
                   )}
                 </div>
                 {editingRomanceFields ? (
                   <div className="space-y-2">
+                    <div className="rounded-lg border border-pink-500/20 bg-pink-500/5 p-2">
+                      <p className="mb-1.5 text-[10px] text-white/55">Relationship state</p>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={statusDraft === 'active' ? 'default' : 'outline'}
+                          onClick={() => setStatusDraft('active')}
+                          className="h-8 text-xs"
+                        >
+                          Active
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={statusDraft === 'ended' ? 'default' : 'outline'}
+                          onClick={() => setStatusDraft('ended')}
+                          className="h-8 text-xs"
+                        >
+                          Inactive
+                        </Button>
+                      </div>
+                    </div>
                     <div>
                       <label className="text-[10px] text-white/50 block mb-1">Status</label>
                       <select
@@ -979,14 +1012,21 @@ export const RelationshipDetailModal = ({
                       </select>
                     </div>
                     <div>
-                      <label className="text-[10px] text-white/50 block mb-1">Why? (optional)</label>
+                      <label className="text-[10px] text-white/50 block mb-1">
+                        Why are you changing this?{statusDraft !== relationship.status && ' (required)'}
+                      </label>
                       <input
                         type="text"
                         value={romanceReasonNote}
                         onChange={(e) => setRomanceReasonNote(e.target.value)}
-                        placeholder="e.g. we agreed to be exclusive"
+                        placeholder="e.g. We decided to take space."
                         className="w-full px-2 py-1.5 bg-black/40 border border-border/60 rounded text-xs text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-primary/50"
                       />
+                      {statusDraft !== relationship.status && (
+                        <p className="mt-1 text-[10px] text-pink-200/70">
+                          Add a reason so this status change is recorded with context.
+                        </p>
+                      )}
                     </div>
                     <div className="flex gap-2 pt-1">
                       <Button size="sm" variant="outline" disabled={crudBusy} onClick={() => void saveRomanceFields()}>

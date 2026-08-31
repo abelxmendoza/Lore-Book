@@ -505,7 +505,7 @@ export function isHouseholdWriteRequest(message: string): boolean {
 }
 
 const ROMANCE_STATUS_RE = new RegExp(
-  `\\b(?:mark|set)\\s+(${phraseTokens(7)})\\s+(?:(?:as|to)\\s+)?(dating|ex|broke\\s*up|breakup|no\\s*contact|complicated|crush|partner|married|ended|ending|on\\s*(?:a\\s*)?break|paused|ghosted|blocked|unrequited|fading|faded|rekindled|active)\\b`,
+  `\\b(?:mark|set|make)\\s+(${phraseTokens(7)})\\s+(?:(?:as|to)\\s+)?(dating|ex|broke\\s*up|breakup|no\\s*contact|complicated|crush|partner|married|ended|ending|on\\s*(?:a\\s*)?break|paused|ghosted|blocked|unrequited|fading|faded|rekindled|active|inactive)\\b`,
   'i',
 );
 const ROMANCE_BREAKUP_RE =

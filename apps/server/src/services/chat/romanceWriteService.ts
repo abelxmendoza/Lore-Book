@@ -33,15 +33,27 @@ type ExistingRomance = {
 
 function cleanName(raw: string): string {
   return raw
+    .replace(/^(?:the\s+)?(?:my\s+)?(?:romantic\s+)?(?:relationship|romance)\s+(?:with|to)\s+/i, '')
     .replace(/^(?:the|a|an|my|with)\s+/i, '')
     .replace(/[.!?,"]+$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
+function splitReason(raw: string): { value: string; reasonNote?: string } {
+  const match = raw.match(
+    /\s+(?:because|since|reason(?:\s+is)?|note)\s*[:\-]?\s*(.{1,1000})$/i,
+  );
+  if (!match) return { value: raw.trim() };
+  const value = raw.slice(0, match.index).trim();
+  const reasonNote = match[1].trim();
+  return reasonNote ? { value, reasonNote } : { value };
+}
+
 /** Map free chat phrasing to the canonical romantic_relationships.status enum. */
 function mapRomanceStatus(raw: string): CanonicalStatus | null {
   const s = raw.toLowerCase().trim();
+  if (/\binactive\b/.test(s)) return 'ended';
   if (/\b(broke\s*up|breakup|split\s*up|ended?|no\s*longer\s*(dating|together))\b/.test(s)) return 'ended';
   if (/\b(on\s*(?:a\s*)?break|taking\s*space|need(?:ed)?\s*space)\b/.test(s)) return 'on_break';
   if (/\bcomplicated\b/.test(s)) return 'complicated';
@@ -93,6 +105,7 @@ async function applyStatusUpdate(
   userId: string,
   existing: ExistingRomance,
   nextStatus: CanonicalStatus,
+  reasonNote?: string,
 ): Promise<void> {
   const now = new Date().toISOString();
   const { error } = await supabaseAdmin
@@ -107,6 +120,11 @@ async function applyStatusUpdate(
         ...(existing.metadata ?? {}),
         status_source: 'user_confirmed',
         status_confirmed_at: now,
+        last_user_correction: {
+          reason: 'user_corrected_status_via_chat',
+          ...(reasonNote ? { reason_note: reasonNote } : {}),
+          corrected_at: now,
+        },
       },
     })
     .eq('id', existing.id)
@@ -126,7 +144,10 @@ async function applyStatusUpdate(
       newValue: { status: nextStatus },
       reason: 'user_corrected_status_via_chat',
       source: 'USER',
-      metadata: { partner_name: existing.characterName },
+      metadata: {
+        partner_name: existing.characterName,
+        ...(reasonNote ? { reason_note: reasonNote } : {}),
+      },
     })
     .catch((err) =>
       logger.warn({ err, userId, entityId: existing.id }, 'Failed to record romance chat correction in identity ledger'),
@@ -163,10 +184,11 @@ export async function writeRomanceFromChat(userId: string, message: string): Pro
     /\b(?:we\s+)?(?:broke\s*up|ended\s+(?:things|it)|are\s+no\s+longer\s+dating)\s+(?:with\s+)?(.{1,60})$/i,
   );
   if (breakup) {
-    const name = cleanName(breakup[1]);
+    const parsed = splitReason(breakup[1]);
+    const name = cleanName(parsed.value);
     const existing = await findRomanceByPartner(userId, name);
     if (!existing) throw new Error(`I couldn't find a romance record for "${name}".`);
-    await applyStatusUpdate(userId, existing, 'ended');
+    await applyStatusUpdate(userId, existing, 'ended', parsed.reasonNote);
     return {
       summary: `Marked your relationship with **${existing.characterName}** as ended.`,
       operation: 'status',
@@ -200,7 +222,9 @@ export async function writeRomanceFromChat(userId: string, message: string): Pro
   }
 
   // Explicit command — "mark/set Jamie as ended|paused|ghosted|...".
-  const status = text.match(/\b(?:mark|set)\s+(.{1,60}?)\s+(?:as|to)\s+(.{1,40})$/i);
+  const status = text.match(
+    /\b(?:mark|set|make)\s+(.{1,80}?)\s+(?:(?:as|to)\s+)?(active|inactive|dating|ex|broke\s*up|breakup|no\s+contact|complicated|crush|partner|married|ended|ending|on\s*(?:a\s*)?break|paused|ghosted|blocked|unrequited|fading|faded|rekindled)(?:\s+(?:because|since|reason(?:\s+is)?|note)\s*[:\-]?\s*(.{1,1000}))?$/i,
+  );
   if (status) {
     const name = cleanName(status[1]);
     const mapped = mapRomanceStatus(status[2]);
@@ -211,9 +235,9 @@ export async function writeRomanceFromChat(userId: string, message: string): Pro
     }
     const existing = await findRomanceByPartner(userId, name);
     if (!existing) throw new Error(`I couldn't find a romance record for "${name}".`);
-    await applyStatusUpdate(userId, existing, mapped);
+    await applyStatusUpdate(userId, existing, mapped, status[3]?.trim() || undefined);
     return {
-      summary: `Marked **${existing.characterName}** as ${mapped.replace(/_/g, ' ')}.`,
+      summary: `Marked **${existing.characterName}** as ${mapped === 'ended' && /\binactive\b/i.test(status[2]) ? 'inactive' : mapped.replace(/_/g, ' ')}.`,
       operation: 'status',
       relationshipId: existing.id,
       partnerName: existing.characterName,
@@ -222,6 +246,6 @@ export async function writeRomanceFromChat(userId: string, message: string): Pro
   }
 
   throw new Error(
-    'Try "mark Jamie as ended", "we broke up with Jamie", "Jamie and I are on a break", or "delete the romance record for Jamie".',
+    'Try "mark Jamie as inactive because we drifted apart", "mark Jamie as ended", "Jamie and I are on a break", or "delete the romance record for Jamie".',
   );
 }
