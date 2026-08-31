@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { TreePine, Home, Users, BarChart3, Loader2, GitBranch, Check, X, MessageSquare } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { TreePine, Home, Users, BarChart3, Loader2, GitBranch, Check, X, MessageSquare, Clock } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
 import { booksApi, type PossibleFamilyMatch } from '../../api/books';
 import { onStoryDataUpdated, dispatchStoryDataUpdated } from '../../lib/storyRefresh';
@@ -24,7 +25,7 @@ import { FocusedEntityChatLauncher, type FocusedEntityOption } from '../chat/Foc
 import { FOCUSED_ENTITY_CHAT_PRESETS } from '../chat/focusedEntityChatPresets';
 import { openFocusedEntityChat } from '../../lib/openFocusedEntityChat';
 
-type Tab = 'tree' | 'households' | 'groups' | 'analytics' | 'extended' | 'focus-chat';
+type Tab = 'tree' | 'households' | 'groups' | 'analytics' | 'extended' | 'focus-chat' | 'timeline';
 
 type SummaryResponse = {
   success: boolean;
@@ -36,6 +37,7 @@ type SummaryResponse = {
 };
 
 export function FamilyBook() {
+  const navigate = useNavigate();
   const shouldUseMock = useShouldUseMockData();
   const [tab, setTab] = useState<Tab>('tree');
   const [loading, setLoading] = useState(true);
@@ -464,6 +466,10 @@ export function FamilyBook() {
         onDisconnectParent: (m: FamilyMember) => void disconnectParent(m),
       };
 
+  const openFamilyOmniTimeline = () => {
+    navigate('/timeline?view=events');
+  };
+
   const tabs: Array<{ key: Tab; label: string; icon: typeof TreePine }> = [
     { key: 'tree', label: 'Family Tree', icon: TreePine },
     { key: 'households', label: 'Households', icon: Home },
@@ -471,6 +477,7 @@ export function FamilyBook() {
     { key: 'analytics', label: 'Analytics', icon: BarChart3 },
     { key: 'extended', label: 'Extended family', icon: GitBranch },
     { key: 'focus-chat', label: 'Focus Chat', icon: MessageSquare },
+    { key: 'timeline', label: 'Timeline', icon: Clock },
   ];
 
   return (
@@ -694,6 +701,31 @@ export function FamilyBook() {
               householdCount={summary?.households?.length ?? 0}
               groupCount={summary?.familyGroups?.length ?? 0}
             />
+          )}
+
+          {tab === 'timeline' && (
+            <div
+              className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-8 text-center space-y-4"
+              data-testid="family-timeline-handoff"
+            >
+              <Clock className="h-10 w-10 mx-auto text-amber-300/70" />
+              <div className="space-y-1.5">
+                <h3 className="text-base font-semibold text-white">Family history on Omni Timeline</h3>
+                <p className="text-sm text-white/50 max-w-md mx-auto">
+                  Chronology, arcs, and event search live in Omni Timeline — open it to explore
+                  moments connected to your family across time.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={openFamilyOmniTimeline}
+                data-testid="family-open-omni-timeline"
+                className="inline-flex items-center gap-2 rounded-lg border border-amber-400/35 bg-amber-500/25 px-4 py-2 text-sm font-medium text-amber-100 transition hover:bg-amber-500/35"
+              >
+                <Clock className="h-4 w-4" />
+                Open Omni Timeline
+              </button>
+            </div>
           )}
         </>
       )}
