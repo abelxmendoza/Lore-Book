@@ -19,7 +19,8 @@ export type ClosedScopeReason =
   | 'household_write_request'
   | 'romance_write_request'
   | 'event_write_request'
-  | 'life_arc_write_request';
+  | 'life_arc_write_request'
+  | 'life_arc_brainstorm_request';
 
 // General-purpose ReDoS-safe "short filler phrase" token pattern, replacing
 // every `.{0,N}` / `.{1,N}` construct below that sat directly against a
@@ -574,6 +575,22 @@ export function isLifeArcWriteRequest(message: string): boolean {
   return LIFE_ARC_RENAME_RE.test(text) || LIFE_ARC_RELANE_RE.test(text) || LIFE_ARC_REDATE_RE.test(text);
 }
 
+// "brainstorm/suggest/give me ideas" — a read-only fan-out of NAME OPTIONS,
+// never a write. Deliberately requires an arc/lane/era scope word so it
+// doesn't swallow unrelated "give me some ideas" chat (e.g. character
+// epithet brainstorming, which is a separate future feature).
+const LIFE_ARC_BRAINSTORM_SCOPE_RE = /\b(?:arc|lane|era|swimlane|track)\b/i;
+const LIFE_ARC_BRAINSTORM_VERB_RE =
+  /\b(?:brainstorm|suggest)\s+(?:some\s+|a\s+few\s+|new\s+|other\s+|different\s+)?(?:name|title)s?(?:\s*ideas?)?\b|\bgive\s+me\s+(?:some\s+|a\s+few\s+|other\s+|different\s+)?(?:name|title)\s*ideas?\b|\bhelp\s+me\s+(?:name|title|rename)\s+(?:my\s+|the\s+)?(?:[a-zA-Z0-9][\w'-]*\s+){0,3}(?:arc|lane|era|swimlane|track)\b|\bwhat\s+should\s+i\s+(?:call|name)\s+(?:my\s+|the\s+)?(?:[a-zA-Z0-9][\w'-]*\s+){0,3}(?:arc|lane|era|swimlane|track)\b/i;
+
+export function isLifeArcBrainstormRequest(message: string): boolean {
+  const text = message.trim();
+  if (!text) return false;
+  if (isLifeArcWriteRequest(text)) return false;
+  if (!LIFE_ARC_BRAINSTORM_SCOPE_RE.test(text)) return false;
+  return LIFE_ARC_BRAINSTORM_VERB_RE.test(text);
+}
+
 export function isClosedScopeQuery(message: string): { closedScope: boolean; reason?: ClosedScopeReason } {
   if (isEntityReclassifyWriteRequest(message)) {
     return { closedScope: true, reason: 'entity_reclassify_write_request' };
@@ -607,6 +624,9 @@ export function isClosedScopeQuery(message: string): { closedScope: boolean; rea
   }
   if (isLifeArcWriteRequest(message)) {
     return { closedScope: true, reason: 'life_arc_write_request' };
+  }
+  if (isLifeArcBrainstormRequest(message)) {
+    return { closedScope: true, reason: 'life_arc_brainstorm_request' };
   }
   if (isCastRosterQuery(message)) return { closedScope: true, reason: 'cast_roster_query' };
   if (isCharacterBookWriteRequest(message)) return { closedScope: true, reason: 'character_book_write_request' };

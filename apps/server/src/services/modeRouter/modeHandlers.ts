@@ -102,6 +102,9 @@ class ModeHandlers {
       case 'LIFE_ARC_WRITE':
         return await this.handleLifeArcWrite(userId, message);
 
+      case 'LIFE_ARC_BRAINSTORM':
+        return await this.handleLifeArcBrainstorm(userId, message);
+
       case 'SUGGESTION_DISMISS_WRITE':
         return await this.handleSuggestionDismissWrite(userId, message, options?.threadId);
 
@@ -798,6 +801,26 @@ class ModeHandlers {
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Could not update your timeline arcs.';
       return { content: msg, response_mode: 'LIFE_ARC_WRITE', confidence: 0.55 };
+    }
+  }
+
+  private async handleLifeArcBrainstorm(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const { brainstormLifeArcNames } = await import('../chat/lifeArcBrainstormService');
+      const result = await brainstormLifeArcNames(userId, message);
+      return {
+        content: result.summary,
+        response_mode: 'LIFE_ARC_BRAINSTORM',
+        confidence: 0.85,
+        metadata: {
+          lifeArcId: result.arcId,
+          lifeArcTitle: result.arcTitle,
+          lifeArcNameSuggestions: result.suggestions,
+        },
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Could not brainstorm arc name ideas right now.';
+      return { content: msg, response_mode: 'LIFE_ARC_BRAINSTORM', confidence: 0.5 };
     }
   }
 

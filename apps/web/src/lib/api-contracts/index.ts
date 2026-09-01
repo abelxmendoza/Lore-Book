@@ -45,6 +45,7 @@ export {
   isRomanceWriteRequest,
   isEventWriteRequest,
   isLifeArcWriteRequest,
+  isLifeArcBrainstormRequest,
   isClosedScopeQuery,
   isFocusEntityRelevant,
   isPronounPersonQuery,

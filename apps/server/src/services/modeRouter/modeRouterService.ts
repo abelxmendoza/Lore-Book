@@ -27,6 +27,7 @@ import {
   isRomanceWriteRequest,
   isEventWriteRequest,
   isLifeArcWriteRequest,
+  isLifeArcBrainstormRequest,
 } from '@lorebook/api-contracts';
 
 import { logger } from '../../logger';
@@ -64,6 +65,7 @@ export type ChatMode =
   | 'ROMANCE_WRITE'          // Explicit Dating & Romance status writes
   | 'EVENT_WRITE'            // Explicit Life Log user-posted Event create
   | 'LIFE_ARC_WRITE'         // Explicit swim-lane life arc rename/re-date/re-lane
+  | 'LIFE_ARC_BRAINSTORM'    // Read-only name-idea brainstorming for an arc/lane/era
   | 'SUGGESTION_DISMISS_WRITE' // Explicit "that suggestion is wrong" correction
   | 'ORGANIZATION_QUERY'     // Relational read over the Groups & Organizations Book
   | 'CHARACTER_QUERY'        // Grounded read over the People / Character Book
@@ -286,6 +288,14 @@ class ModeRouterService {
         mode: 'LIFE_ARC_WRITE',
         confidence: 0.95,
         reasoning: 'Explicit life arc rename/re-date/re-lane request detected',
+      };
+    }
+
+    if (isLifeArcBrainstormRequest(message)) {
+      return {
+        mode: 'LIFE_ARC_BRAINSTORM',
+        confidence: 0.9,
+        reasoning: 'Explicit request to brainstorm arc/lane/era name ideas detected',
       };
     }
 
@@ -796,6 +806,7 @@ Modes:
 10h. ROMANCE_WRITE - Explicit Dating & Romance status write: "mark Jamie as dating", "we broke up with Jamie".
 10i. EVENT_WRITE - Explicit Life Log Event post: "we played a backyard show at Northwind Depot", "post an event: House Show at Ritual Coffee".
 10j. LIFE_ARC_WRITE - Explicit swim-lane life arc rename/re-date/re-lane: "rename the arc Robotics Career Push to Robotics Push", "move the arc Ángel Negr0 to my Creative lane", "change the dates of arc Reconstruction to 2026-ongoing".
+10k. LIFE_ARC_BRAINSTORM - Read-only request for name/title ideas for an arc, lane, or era (no write): "give me some name ideas for my Career arc", "brainstorm names for my Romance lane", "what should I call my Creative arc".
 11. ORGANIZATION_QUERY - Read-only query over the Groups & Organizations Book: "which groups am I in?", "what organizations is Marcus connected to?", "show unlinked bands".
 11b. CHARACTER_QUERY - Grounded query over the People / Character Book: "which people need review?", "who do I know from Vanguard Robotics?", "which people look related?", "show people in my character book". NOT "who is Marcus?" (foundation recall) and NOT family-tree questions.
 12. FAMILY_QUERY - Read-only query over Family and Family Tree: "who is on my maternal side?", "show my cousins", "who lives in the Solenne House?", "which relatives need review?".
@@ -840,7 +851,7 @@ Respond with JSON:
       const result = JSON.parse(response.choices[0].message.content || '{}');
       
       // Validate mode
-      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'CURRENT_STORY_CAST', 'CHARACTER_BOOK_WRITE', 'ORGANIZATION_GROUP_WRITE', 'ENTITY_RECLASSIFY_WRITE', 'LOCATION_WRITE', 'PROJECT_WRITE', 'SKILL_WRITE', 'QUEST_WRITE', 'FAMILY_WRITE', 'HOUSEHOLD_WRITE', 'ROMANCE_WRITE', 'EVENT_WRITE', 'LIFE_ARC_WRITE', 'SUGGESTION_DISMISS_WRITE', 'ORGANIZATION_QUERY', 'CHARACTER_QUERY', 'FAMILY_QUERY', 'LOCATION_QUERY', 'ROMANCE_QUERY', 'PROJECT_QUERY', 'SKILL_QUERY', 'QUEST_QUERY', 'BOOK_QUERY', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
+      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'CURRENT_STORY_CAST', 'CHARACTER_BOOK_WRITE', 'ORGANIZATION_GROUP_WRITE', 'ENTITY_RECLASSIFY_WRITE', 'LOCATION_WRITE', 'PROJECT_WRITE', 'SKILL_WRITE', 'QUEST_WRITE', 'FAMILY_WRITE', 'HOUSEHOLD_WRITE', 'ROMANCE_WRITE', 'EVENT_WRITE', 'LIFE_ARC_WRITE', 'LIFE_ARC_BRAINSTORM', 'SUGGESTION_DISMISS_WRITE', 'ORGANIZATION_QUERY', 'CHARACTER_QUERY', 'FAMILY_QUERY', 'LOCATION_QUERY', 'ROMANCE_QUERY', 'PROJECT_QUERY', 'SKILL_QUERY', 'QUEST_QUERY', 'BOOK_QUERY', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
       const mode = validModes.includes(result.mode) ? result.mode : 'UNKNOWN';
       
       return {
