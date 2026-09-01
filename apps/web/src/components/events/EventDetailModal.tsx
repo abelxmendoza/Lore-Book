@@ -4,7 +4,7 @@ import {
   X, Clock, MapPin, Users, MessageSquare,
   Calendar, ArrowRight, ArrowLeft, Eye, Heart, Link2, FileText,
   Lightbulb, GitBranch, CheckCircle2, Quote, UserCircle2, Trash2,
-  Compass, ImagePlus, Loader2, BookOpen, Plus,
+  Compass, ImagePlus, Loader2, BookOpen, Plus, Pencil,
 } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -31,6 +31,23 @@ import { EntityLorebookCompileControl } from '../lorebook/EntityLorebookCompileC
 import { openChatWithFocus } from '../../lib/openChatWithFocus';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
+
+/** Mirrors apps/server/src/services/temporal/temporalEvidence.ts's TemporalPrecision. */
+export type TemporalPrecision =
+  | 'exact' | 'time_of_day' | 'date' | 'week' | 'month' | 'season' | 'quarter' | 'year' | 'approximate' | 'unknown';
+
+const TEMPORAL_PRECISION_LABELS: Record<TemporalPrecision, string> = {
+  exact: 'Exact date & time',
+  time_of_day: 'Exact date, approx. time',
+  date: 'Exact date',
+  week: 'That week',
+  month: 'That month',
+  season: 'That season',
+  quarter: 'That quarter',
+  year: 'That year',
+  approximate: 'Approximately',
+  unknown: 'Unknown',
+};
 
 export interface Event {
   id: string;
@@ -571,6 +588,49 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
   const [venueDraft, setVenueDraft] = useState('');
   const [postingStory, setPostingStory] = useState(false);
   const [postingVenue, setPostingVenue] = useState(false);
+  const [editingTemporal, setEditingTemporal] = useState(false);
+  const [temporalDraft, setTemporalDraft] = useState({ date: '', endDate: '', precision: 'date' as TemporalPrecision });
+  const [savingTemporal, setSavingTemporal] = useState(false);
+
+  const openTemporalEdit = () => {
+    setTemporalDraft({
+      date: eventData.start_time ? eventData.start_time.slice(0, 10) : '',
+      endDate: eventData.end_time ? eventData.end_time.slice(0, 10) : '',
+      precision: (eventData.temporal_precision as TemporalPrecision) || 'date',
+    });
+    setEditingTemporal(true);
+  };
+
+  const handleSaveTemporal = async () => {
+    if (!temporalDraft.date || savingTemporal) return;
+    setSavingTemporal(true);
+    try {
+      const start_time = `${temporalDraft.date}T12:00:00.000Z`;
+      const end_time = temporalDraft.endDate ? `${temporalDraft.endDate}T12:00:00.000Z` : null;
+      if (eventData.id.startsWith('demo-posted-event-')) {
+        setEventData((prev) => ({
+          ...prev,
+          start_time,
+          end_time,
+          temporal_precision: temporalDraft.precision,
+          temporal_source: 'user_corrected',
+          temporal_status: 'corrected',
+        }));
+      } else {
+        const res = await fetchJson<{ success: boolean; event: Event }>(
+          `/api/conversation/events/${eventData.id}/temporal`,
+          { method: 'PATCH', body: JSON.stringify({ start_time, end_time, precision: temporalDraft.precision }) },
+        );
+        setEventData(res.event);
+        onUpdated?.(res.event);
+      }
+      setEditingTemporal(false);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Could not save the date correction');
+    } finally {
+      setSavingTemporal(false);
+    }
+  };
 
   const handleDeleteEvent = async () => {
     if (deleting) return;
@@ -1434,12 +1494,79 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
                   )}
                 </section>
                 <section>
-                  <h3 className="text-xs font-bold text-white/55 uppercase tracking-widest mb-2.5 flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5" /> When
-                  </h3>
-                  <p className="text-sm text-white/85">{formatEventTime(eventData, { full: true })}</p>
-                  {eventData.end_time && (
-                    <p className="text-xs text-white/45 mt-1">until {formatDate(eventData.end_time)}</p>
+                  <div className="flex items-center justify-between gap-2 mb-2.5">
+                    <h3 className="text-xs font-bold text-white/55 uppercase tracking-widest flex items-center gap-2">
+                      <Clock className="w-3.5 h-3.5" /> When
+                    </h3>
+                    {!editingTemporal && (
+                      <button
+                        type="button"
+                        onClick={openTemporalEdit}
+                        data-testid="event-edit-temporal"
+                        className="flex items-center gap-1 text-[11px] text-white/40 hover:text-white/80 transition-colors"
+                      >
+                        <Pencil className="w-3 h-3" /> Correct
+                      </button>
+                    )}
+                  </div>
+                  {editingTemporal ? (
+                    <div className="space-y-2.5 rounded-xl border border-primary/25 bg-primary/[0.04] p-3" data-testid="event-temporal-edit-form">
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-wide text-white/40 mb-1">Date</label>
+                        <Input
+                          type="date"
+                          value={temporalDraft.date}
+                          onChange={(e) => setTemporalDraft((d) => ({ ...d, date: e.target.value }))}
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-wide text-white/40 mb-1">
+                          End date <span className="normal-case text-white/25">(only if it spans a range)</span>
+                        </label>
+                        <Input
+                          type="date"
+                          value={temporalDraft.endDate}
+                          onChange={(e) => setTemporalDraft((d) => ({ ...d, endDate: e.target.value }))}
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-wide text-white/40 mb-1">How sure is this?</label>
+                        <select
+                          value={temporalDraft.precision}
+                          onChange={(e) => setTemporalDraft((d) => ({ ...d, precision: e.target.value as TemporalPrecision }))}
+                          className="w-full h-8 rounded-md border border-border/60 bg-black/40 px-2 text-sm text-white"
+                        >
+                          {(Object.keys(TEMPORAL_PRECISION_LABELS) as TemporalPrecision[]).map((p) => (
+                            <option key={p} value={p}>{TEMPORAL_PRECISION_LABELS[p]}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <Button
+                          size="sm"
+                          onClick={() => void handleSaveTemporal()}
+                          disabled={!temporalDraft.date || savingTemporal}
+                          data-testid="event-temporal-save"
+                        >
+                          {savingTemporal ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Save'}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingTemporal(false)} disabled={savingTemporal}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm text-white/85">{formatEventTime(eventData, { full: true })}</p>
+                      {eventData.end_time && (
+                        <p className="text-xs text-white/45 mt-1">until {formatDate(eventData.end_time)}</p>
+                      )}
+                      {eventData.temporal_source === 'user_corrected' && (
+                        <p className="text-[11px] text-emerald-400/70 mt-1">Corrected by you</p>
+                      )}
+                    </>
                   )}
                 </section>
               </div>

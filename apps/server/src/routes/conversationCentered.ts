@@ -5239,4 +5239,76 @@ router.delete(
   })
 );
 
+const eventTemporalCorrectionSchema = z.object({
+  start_time: z.string().datetime({ offset: true }),
+  end_time: z.string().datetime({ offset: true }).nullable().optional(),
+  precision: z.enum([
+    'exact', 'time_of_day', 'date', 'week', 'month', 'season', 'quarter', 'year', 'approximate', 'unknown',
+  ]),
+  reason_note: z.string().max(500).optional(),
+}).strict();
+
+/**
+ * PATCH /api/conversation/events/:id/temporal
+ * User-authoritative date/time correction for a resolved event. Always
+ * writes temporal_source: 'user_corrected' — the top evidence class in
+ * temporalEvidence.ts's precedence policy (rank 70, beats user_stated/
+ * document_stated/relative_expression/context_inferred), so this can never
+ * be silently overwritten by a lower-confidence re-extraction later.
+ */
+router.patch(
+  '/events/:id/temporal',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const id = req.params.id as string;
+    const parsed = eventTemporalCorrectionSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'Invalid temporal correction', details: parsed.error.flatten() });
+    }
+
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from('resolved_events')
+      .select('id, metadata')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (existingError) throw existingError;
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Event not found' });
+    }
+
+    const now = new Date().toISOString();
+    const existingMeta = (existing.metadata ?? {}) as Record<string, unknown>;
+
+    const { data: updated, error } = await supabaseAdmin
+      .from('resolved_events')
+      .update({
+        start_time: parsed.data.start_time,
+        end_time: parsed.data.end_time ?? null,
+        temporal_precision: parsed.data.precision,
+        temporal_source: 'user_corrected',
+        temporal_status: 'corrected',
+        temporal_confidence: 1,
+        temporal_expression: null,
+        metadata: {
+          ...existingMeta,
+          last_user_correction: {
+            field: 'temporal',
+            reason_note: parsed.data.reason_note,
+            corrected_at: now,
+          },
+        },
+        updated_at: now,
+      })
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('*')
+      .single();
+    if (error) throw error;
+
+    res.json({ success: true, event: updated });
+  })
+);
+
 export default router;
