@@ -7,6 +7,8 @@ import {
 } from '../../chronologyV2/stitchedTimelineService';
 import { supabaseAdmin } from '../../supabaseClient';
 
+import { buildLoreEvidenceProvenance } from '../../provenance/loreSourceExtractor';
+import type { LoreEntityRef, LoreIntakeChannel, LoreSourceRef } from '@lorebook/api-contracts';
 import { arcService, type ArcTrack, type ArcType, type LifeArc } from './arcService';
 import { lifeArcBarEligibility, type LifeArcSuppressionReason } from './lifeArcEligibility';
 
@@ -21,6 +23,10 @@ export type LifeArcProposalEvidence = {
   title: string;
   occurredAt: string;
   confidence: number;
+  sourceType: string;
+  intakeChannel: LoreIntakeChannel;
+  sources: LoreSourceRef[];
+  entities: LoreEntityRef[];
 };
 
 export type LifeArcProposalDraft = {
@@ -132,6 +138,7 @@ export function buildArcProposalsFromItems(items: StitchedTimelineItem[]): LifeA
       confidence,
       dateMs,
       track: textTrack(item),
+      ...buildLoreEvidenceProvenance(item),
     }];
   });
 
@@ -211,6 +218,10 @@ export class LifeArcProposalService {
       const date = item.occurredAt ?? item.temporalProjection?.occurredStart;
       return Boolean(date && Number.isFinite(new Date(date).getTime()));
     }).length;
+    const dataErrors = (timeline.data_errors ?? []).filter((error) => !(
+      error.source === 'timeline_events'
+      && /does not exist|schema cache|PGRST205/i.test(error.message)
+    ));
     return {
       drafts,
       audit: {
@@ -222,7 +233,7 @@ export class LifeArcProposalService {
         drawableArcs: arcs.filter((arc) => lifeArcBarEligibility(arc).drawable).length,
         suppressedArcs: countSuppressed(arcs),
         proposedArcs: drafts.length,
-        dataErrors: timeline.data_errors ?? [],
+        dataErrors,
       },
     };
   }
