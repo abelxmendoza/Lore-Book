@@ -18,7 +18,8 @@ export type ClosedScopeReason =
   | 'family_write_request'
   | 'household_write_request'
   | 'romance_write_request'
-  | 'event_write_request';
+  | 'event_write_request'
+  | 'life_arc_write_request';
 
 // General-purpose ReDoS-safe "short filler phrase" token pattern, replacing
 // every `.{0,N}` / `.{1,N}` construct below that sat directly against a
@@ -553,6 +554,26 @@ export function isEventWriteRequest(message: string): boolean {
   );
 }
 
+const LIFE_ARC_RENAME_RE = new RegExp(
+  `\\b(?:rename)\\s+(?:the\\s+|my\\s+)?arc\\s+(${phraseTokens(7)})\\s+to\\s+(.{1,60})$`,
+  'i',
+);
+const LIFE_ARC_RELANE_RE = new RegExp(
+  `\\b(?:move|put)\\s+(?:the\\s+|my\\s+)?arc\\s+(${phraseTokens(7)})\\s+(?:to|into)\\s+(?:my\\s+|the\\s+)?(${phraseTokens(3)})\\s+lane\\b`,
+  'i',
+);
+const LIFE_ARC_REDATE_RE = new RegExp(
+  `\\b(?:set|change)\\s+(?:the\\s+)?(?:dates?|time\\s*frame|when)\\s+(?:of|for)\\s+(?:the\\s+|my\\s+)?arc\\s+(${phraseTokens(7)})\\s+to\\s+(.{1,60})$`,
+  'i',
+);
+
+export function isLifeArcWriteRequest(message: string): boolean {
+  const text = message.trim();
+  if (!text) return false;
+  if (isEntityReclassifyWriteRequest(text)) return false;
+  return LIFE_ARC_RENAME_RE.test(text) || LIFE_ARC_RELANE_RE.test(text) || LIFE_ARC_REDATE_RE.test(text);
+}
+
 export function isClosedScopeQuery(message: string): { closedScope: boolean; reason?: ClosedScopeReason } {
   if (isEntityReclassifyWriteRequest(message)) {
     return { closedScope: true, reason: 'entity_reclassify_write_request' };
@@ -583,6 +604,9 @@ export function isClosedScopeQuery(message: string): { closedScope: boolean; rea
   }
   if (isEventWriteRequest(message)) {
     return { closedScope: true, reason: 'event_write_request' };
+  }
+  if (isLifeArcWriteRequest(message)) {
+    return { closedScope: true, reason: 'life_arc_write_request' };
   }
   if (isCastRosterQuery(message)) return { closedScope: true, reason: 'cast_roster_query' };
   if (isCharacterBookWriteRequest(message)) return { closedScope: true, reason: 'character_book_write_request' };

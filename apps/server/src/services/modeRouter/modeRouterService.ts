@@ -26,6 +26,7 @@ import {
   isHouseholdWriteRequest,
   isRomanceWriteRequest,
   isEventWriteRequest,
+  isLifeArcWriteRequest,
 } from '@lorebook/api-contracts';
 
 import { logger } from '../../logger';
@@ -62,6 +63,7 @@ export type ChatMode =
   | 'HOUSEHOLD_WRITE'        // Explicit household create/delete/member/location writes
   | 'ROMANCE_WRITE'          // Explicit Dating & Romance status writes
   | 'EVENT_WRITE'            // Explicit Life Log user-posted Event create
+  | 'LIFE_ARC_WRITE'         // Explicit swim-lane life arc rename/re-date/re-lane
   | 'SUGGESTION_DISMISS_WRITE' // Explicit "that suggestion is wrong" correction
   | 'ORGANIZATION_QUERY'     // Relational read over the Groups & Organizations Book
   | 'CHARACTER_QUERY'        // Grounded read over the People / Character Book
@@ -276,6 +278,14 @@ class ModeRouterService {
         mode: 'EVENT_WRITE',
         confidence: 0.95,
         reasoning: 'Explicit Life Log Event post request detected',
+      };
+    }
+
+    if (isLifeArcWriteRequest(message)) {
+      return {
+        mode: 'LIFE_ARC_WRITE',
+        confidence: 0.95,
+        reasoning: 'Explicit life arc rename/re-date/re-lane request detected',
       };
     }
 
@@ -785,6 +795,7 @@ Modes:
 10g2. HOUSEHOLD_WRITE - Explicit household create/delete/member/location write: "add Ralph to the Mom and Dad's House household", "move the Mom and Dad's House household to 456 Oak Ave".
 10h. ROMANCE_WRITE - Explicit Dating & Romance status write: "mark Jamie as dating", "we broke up with Jamie".
 10i. EVENT_WRITE - Explicit Life Log Event post: "we played a backyard show at Northwind Depot", "post an event: House Show at Ritual Coffee".
+10j. LIFE_ARC_WRITE - Explicit swim-lane life arc rename/re-date/re-lane: "rename the arc Robotics Career Push to Robotics Push", "move the arc Ángel Negr0 to my Creative lane", "change the dates of arc Reconstruction to 2026-ongoing".
 11. ORGANIZATION_QUERY - Read-only query over the Groups & Organizations Book: "which groups am I in?", "what organizations is Marcus connected to?", "show unlinked bands".
 11b. CHARACTER_QUERY - Grounded query over the People / Character Book: "which people need review?", "who do I know from Vanguard Robotics?", "which people look related?", "show people in my character book". NOT "who is Marcus?" (foundation recall) and NOT family-tree questions.
 12. FAMILY_QUERY - Read-only query over Family and Family Tree: "who is on my maternal side?", "show my cousins", "who lives in the Solenne House?", "which relatives need review?".
@@ -829,7 +840,7 @@ Respond with JSON:
       const result = JSON.parse(response.choices[0].message.content || '{}');
       
       // Validate mode
-      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'CURRENT_STORY_CAST', 'CHARACTER_BOOK_WRITE', 'ORGANIZATION_GROUP_WRITE', 'ENTITY_RECLASSIFY_WRITE', 'LOCATION_WRITE', 'PROJECT_WRITE', 'SKILL_WRITE', 'QUEST_WRITE', 'FAMILY_WRITE', 'HOUSEHOLD_WRITE', 'ROMANCE_WRITE', 'EVENT_WRITE', 'SUGGESTION_DISMISS_WRITE', 'ORGANIZATION_QUERY', 'CHARACTER_QUERY', 'FAMILY_QUERY', 'LOCATION_QUERY', 'ROMANCE_QUERY', 'PROJECT_QUERY', 'SKILL_QUERY', 'QUEST_QUERY', 'BOOK_QUERY', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
+      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'SUBJECT_TIMELINE', 'CURRENT_STORY_CAST', 'CHARACTER_BOOK_WRITE', 'ORGANIZATION_GROUP_WRITE', 'ENTITY_RECLASSIFY_WRITE', 'LOCATION_WRITE', 'PROJECT_WRITE', 'SKILL_WRITE', 'QUEST_WRITE', 'FAMILY_WRITE', 'HOUSEHOLD_WRITE', 'ROMANCE_WRITE', 'EVENT_WRITE', 'LIFE_ARC_WRITE', 'SUGGESTION_DISMISS_WRITE', 'ORGANIZATION_QUERY', 'CHARACTER_QUERY', 'FAMILY_QUERY', 'LOCATION_QUERY', 'ROMANCE_QUERY', 'PROJECT_QUERY', 'SKILL_QUERY', 'QUEST_QUERY', 'BOOK_QUERY', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
       const mode = validModes.includes(result.mode) ? result.mode : 'UNKNOWN';
       
       return {

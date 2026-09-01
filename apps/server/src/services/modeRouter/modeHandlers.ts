@@ -99,6 +99,9 @@ class ModeHandlers {
       case 'EVENT_WRITE':
         return await this.handleEventWrite(userId, message);
 
+      case 'LIFE_ARC_WRITE':
+        return await this.handleLifeArcWrite(userId, message);
+
       case 'SUGGESTION_DISMISS_WRITE':
         return await this.handleSuggestionDismissWrite(userId, message, options?.threadId);
 
@@ -775,6 +778,26 @@ class ModeHandlers {
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Could not update Places.';
       return { content: msg, response_mode: 'LOCATION_WRITE', confidence: 0.55 };
+    }
+  }
+
+  private async handleLifeArcWrite(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const { writeLifeArcFromChat } = await import('../chat/lifeArcWriteService');
+      const result = await writeLifeArcFromChat(userId, message);
+      return {
+        content: result.summary,
+        response_mode: 'LIFE_ARC_WRITE',
+        confidence: 0.92,
+        metadata: {
+          lifeArcWriteOperation: result.operation,
+          lifeArcId: result.arcId,
+          lifeArcTitle: result.arcTitle,
+        },
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Could not update your timeline arcs.';
+      return { content: msg, response_mode: 'LIFE_ARC_WRITE', confidence: 0.55 };
     }
   }
 
