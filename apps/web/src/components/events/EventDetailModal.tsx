@@ -32,7 +32,7 @@ import { openChatWithFocus } from '../../lib/openChatWithFocus';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-interface Event {
+export interface Event {
   id: string;
   title: string;
   summary: string | null;
@@ -149,10 +149,10 @@ interface EventDetailModalProps {
   onUpdated?: (event: Event) => void;
 }
 
-type LinkedEventStub = { id: string; title: string; summary: string | null; start_time: string };
+export type LinkedEventStub = { id: string; title: string; summary: string | null; start_time: string };
 
 /** Build a minimal Event stub for modal stacking — loadEvent will fetch the rest. */
-function makeEventStub(e: LinkedEventStub): Event {
+export function makeEventStub(e: LinkedEventStub): Event {
   return {
     id: e.id,
     title: e.title,
