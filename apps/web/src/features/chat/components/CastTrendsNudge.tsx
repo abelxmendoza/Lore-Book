@@ -1,7 +1,7 @@
 /**
  * CastTrendsNudge — gentle continuity nudges on the empty chat state.
  *
- * "It's been a while since Genni came up" — computed deterministically from
+ * "It's been a while since Jordan came up" — computed deterministically from
  * conversation link aggregates (castTrendsService), never LLM-guessed.
  * Clicking a name prefills the composer; dismissal lasts for the session.
  */

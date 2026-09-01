@@ -48,7 +48,7 @@ Full map: `docs/live-chat-retrieval-map.md` (pre-existing).
 
 | Failure | Cause |
 |---------|--------|
-| Relevant lesson missed (Genni → dancing) | Meaning not on chat path; no causal continuity model |
+| Relevant lesson missed (Jordan → dancing) | Meaning not on chat path; no causal continuity model |
 | Prima AI → Cousin James | Weak identity resolution; no correction-precedence selector |
 | Ring camera on definition question | No “zero is valid” continuity mode |
 | Dump of loosely related WMA items | Budget 20 without recommendedUse |
@@ -178,10 +178,10 @@ OVERALL: PASS
 
 | | |
 |--|--|
-| Earlier | “The situation with Genni taught me to respect boundaries.” |
+| Earlier | “The situation with Jordan taught me to respect boundaries.” |
 | Later | “Someone pulled away while we were dancing, so I backed off.” |
 | Before | Often no lesson link (meaning unwired) or unrelated dump |
-| After | Selects Genni lesson with mode `progress`, recommendedUse `direct_reference` / subtle; composition says do not claim permanent healing |
+| After | Selects Jordan lesson with mode `progress`, recommendedUse `direct_reference` / subtle; composition says do not claim permanent healing |
 
 ### Correction (Scenario E)
 

@@ -11,7 +11,7 @@ describe('isInvalidPersonName — AI model name denylist', () => {
   });
 
   it('still allows ordinary person names, including ones that sound similar', () => {
-    expect(isInvalidPersonName('Genni').invalid).toBe(false);
+    expect(isInvalidPersonName('Ginny').invalid).toBe(false);
     expect(isInvalidPersonName('Marcus Chen').invalid).toBe(false);
   });
 

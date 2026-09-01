@@ -13,7 +13,7 @@ export type ExpectedMemory = {
   places?: string[];
   organizations?: string[];
   lessons?: string[]; // substrings that should appear in lesson labels
-  pastEventHints?: string[]; // e.g. "Genni"
+  pastEventHints?: string[]; // e.g. "Jordan"
   behaviorChanges?: string[]; // e.g. "boundary"
   relationshipDimensions?: Array<{ person: string; dimension: string }>;
   progressions?: string[]; // kind or label substrings

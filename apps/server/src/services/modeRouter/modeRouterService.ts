@@ -825,10 +825,10 @@ Modes:
 10g2. HOUSEHOLD_WRITE - Explicit household create/delete/member/location write: "add Ralph to the Mom and Dad's House household", "move the Mom and Dad's House household to 456 Oak Ave".
 10h. ROMANCE_WRITE - Explicit Dating & Romance status write: "mark Jamie as dating", "we broke up with Jamie".
 10i. EVENT_WRITE - Explicit Life Log Event post: "we played a backyard show at Northwind Depot", "post an event: House Show at Ritual Coffee".
-10j. LIFE_ARC_WRITE - Explicit swim-lane life arc rename/re-date/re-lane: "rename the arc Robotics Career Push to Robotics Push", "move the arc Ángel Negr0 to my Creative lane", "change the dates of arc Reconstruction to 2026-ongoing".
+10j. LIFE_ARC_WRITE - Explicit swim-lane life arc rename/re-date/re-lane: "rename the arc Robotics Career Push to Robotics Push", "move the arc Night Shift to my Creative lane", "change the dates of arc Reconstruction to 2026-ongoing".
 10k. LIFE_ARC_BRAINSTORM - Read-only request for name/title ideas for an arc, lane, or era (no write): "give me some name ideas for my Career arc", "brainstorm names for my Romance lane", "what should I call my Creative arc".
-10l. CHARACTER_EPITHET_WRITE - Explicit apply-a-picked-title write for a character's card title: "set Genni's title to Card Table Rival", "change Ángel Negr0's epithet to Underground Selector".
-10m. CHARACTER_EPITHET_BRAINSTORM - Read-only request for card-title/epithet ideas for a character (no write): "give me some title ideas for Genni", "brainstorm epithets for Genni", "help me title Genni's card".
+10l. CHARACTER_EPITHET_WRITE - Explicit apply-a-picked-title write for a character's card title: "set Jordan's title to Card Table Rival", "change Sam's epithet to Underground Selector".
+10m. CHARACTER_EPITHET_BRAINSTORM - Read-only request for card-title/epithet ideas for a character (no write): "give me some title ideas for Jordan", "brainstorm epithets for Jordan", "help me title Jordan's card".
 11. ORGANIZATION_QUERY - Read-only query over the Groups & Organizations Book: "which groups am I in?", "what organizations is Marcus connected to?", "show unlinked bands".
 11b. CHARACTER_QUERY - Grounded query over the People / Character Book: "which people need review?", "who do I know from Vanguard Robotics?", "which people look related?", "show people in my character book". NOT "who is Marcus?" (foundation recall) and NOT family-tree questions.
 12. FAMILY_QUERY - Read-only query over Family and Family Tree: "who is on my maternal side?", "show my cousins", "who lives in the Solenne House?", "which relatives need review?".

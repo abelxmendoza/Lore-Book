@@ -131,7 +131,7 @@ Would use:
 
 ```text
 POST {STAGING_API_URL}/api/chat/stream
-body: { message: "<Genni / Catch One fixture>", threadId, clientIdempotencyKey }
+body: { message: "<Jordan / Catch One fixture>", threadId, clientIdempotencyKey }
 ```
 
 Expected job path (code design; unproven live):

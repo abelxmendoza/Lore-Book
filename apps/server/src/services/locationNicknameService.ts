@@ -53,7 +53,7 @@ export function isFigurativeHouseReference(context: string | undefined, type: st
 }
 
 /**
- * A generated possessive label ("Genni's House") is only trustworthy when the
+ * A generated possessive label ("Jordan's House") is only trustworthy when the
  * source text itself uses the possessive ("genni's ..."). A person who is
  * merely mentioned elsewhere in the same message is NOT the owner — the model
  * fabricates that link from proximity. Returns null when ownership was
