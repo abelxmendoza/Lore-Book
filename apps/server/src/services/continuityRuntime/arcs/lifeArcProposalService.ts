@@ -2,13 +2,19 @@ import { createHash } from 'node:crypto';
 
 import { logger } from '../../../logger';
 import {
+  extractLoreEntityRefsFromMetadata,
+  extractLoreSourcesFromMetadata,
+  intakeChannelFromSourceType,
+  type LoreEntityRef,
+  type LoreIntakeChannel,
+  type LoreSourceRef,
+} from '@lorebook/api-contracts';
+import {
   stitchedTimelineService,
   type StitchedTimelineItem,
 } from '../../chronologyV2/stitchedTimelineService';
 import { supabaseAdmin } from '../../supabaseClient';
 
-import { buildLoreEvidenceProvenance } from '../../provenance/loreSourceExtractor';
-import type { LoreEntityRef, LoreIntakeChannel, LoreSourceRef } from '@lorebook/api-contracts';
 import { arcService, type ArcTrack, type ArcType, type LifeArc } from './arcService';
 import { lifeArcBarEligibility, type LifeArcSuppressionReason } from './lifeArcEligibility';
 
@@ -97,6 +103,24 @@ function textTrack(item: StitchedTimelineItem): ArcTrack {
   return 'inner';
 }
 
+function evidenceProvenance(item: StitchedTimelineItem): Pick<
+  LifeArcProposalEvidence,
+  'sourceType' | 'intakeChannel' | 'sources' | 'entities'
+> {
+  const metadata = (item.metadata ?? {}) as Record<string, unknown>;
+  const sourceType = item.sourceType ?? item.sourceKind;
+  return {
+    sourceType,
+    intakeChannel: intakeChannelFromSourceType(sourceType),
+    sources: extractLoreSourcesFromMetadata(metadata, {
+      sourceType,
+      sourceKind: item.sourceKind,
+      sourceId: item.sourceId,
+    }),
+    entities: extractLoreEntityRefsFromMetadata(metadata),
+  };
+}
+
 function arcTypeForTrack(track: ArcTrack): Exclude<ArcType, 'occasion'> {
   if (track === 'career') return 'work';
   if (track === 'creative' || track === 'health') return 'skill';
@@ -138,7 +162,7 @@ export function buildArcProposalsFromItems(items: StitchedTimelineItem[]): LifeA
       confidence,
       dateMs,
       track: textTrack(item),
-      ...buildLoreEvidenceProvenance(item),
+      ...evidenceProvenance(item),
     }];
   });
 
