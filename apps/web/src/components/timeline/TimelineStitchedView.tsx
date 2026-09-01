@@ -22,11 +22,10 @@ import {
 } from '../../lib/stitchedTimelineChat';
 import type { TimelineSubjectLorebookOffer } from '../../lib/timelineSubjectLorebook';
 import { sortStitchedItemsNewestFirst } from '../../lib/unifiedTimeline';
+import { EventDetailModal, makeEventStub, type Event as EventDetail } from '../events/EventDetailModal';
 import { LorebookContentMeter } from '../lorebook/LorebookContentMeter';
 import { LorebookTierMenu } from '../lorebook/LorebookTierMenu';
-import { MobileBottomSheet } from '../ui/MobileBottomSheet';
 
-import { TimelineInlineDate } from './TimelineDateDisplay';
 import { TimelineReorderableList } from './TimelineReorderableList';
 
 type TimelineStitchedViewProps = {
@@ -91,6 +90,7 @@ export const TimelineStitchedView = ({
   });
 
   const [selected, setSelected] = useState<StitchedTimelineItem | null>(null);
+  const [openEvent, setOpenEvent] = useState<EventDetail | null>(null);
   const displayedItems = useMemo(
     () => newestFirst
       ? sortStitchedItemsNewestFirst(items)
@@ -142,6 +142,15 @@ export const TimelineStitchedView = ({
         start_time: item.sortTime,
         date: item.sortTime,
       });
+    } else {
+      setOpenEvent(
+        makeEventStub({
+          id: item.sourceId,
+          title: item.title,
+          summary: item.body || null,
+          start_time: item.sortTime,
+        }),
+      );
     }
   };
 
@@ -481,42 +490,13 @@ export const TimelineStitchedView = ({
         )}
       </div>
 
-      {selected && selected.kind === 'event' && (
-        isMobile ? (
-          <MobileBottomSheet
-            open
-            onClose={() => setSelected(null)}
-            title="Event details"
-          >
-            <TimelineInlineDate
-              iso={selected.sortTime}
-              size="lg"
-              precision={selected.timePrecision}
-              confidence={selected.timeConfidence}
-            />
-            <p className="text-sm font-medium text-white mt-3">{selected.title}</p>
-            {selected.body && (
-              <p className="text-sm text-white/60 mt-2 leading-relaxed">{selected.body}</p>
-            )}
-          </MobileBottomSheet>
-        ) : (
-          <div className="flex-shrink-0 border-t border-white/10 px-4 sm:px-6 py-3 bg-black/90 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-            <TimelineInlineDate
-              iso={selected.sortTime}
-              size="lg"
-              precision={selected.timePrecision}
-              confidence={selected.timeConfidence}
-            />
-            <p className="text-sm text-white/70 mt-2">{selected.title}</p>
-            {selected.body && (
-              <p className="text-xs text-white/50 mt-1 line-clamp-3">{selected.body}</p>
-            )}
-          </div>
-        )
-      )}
     </div>
   );
 
-  if (embedded || typeof document === 'undefined') return content;
-  return createPortal(content, document.body);
+  return (
+    <>
+      {embedded || typeof document === 'undefined' ? content : createPortal(content, document.body)}
+      {openEvent && <EventDetailModal event={openEvent} onClose={() => setOpenEvent(null)} />}
+    </>
+  );
 };
