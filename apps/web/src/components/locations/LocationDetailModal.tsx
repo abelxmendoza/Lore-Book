@@ -2109,28 +2109,28 @@ export const LocationDetailModal = ({
             </div>
           )}
 
-          {/* ── CHAT ── */}
+          {/* ── CHAT — hand off to main chat (no in-modal composer) ── */}
           {activeTab === 'chat' && (
-            <div className="space-y-3" data-testid="location-chat-panel">
-              <button
+            <div
+              className="rounded-2xl border border-teal-500/20 bg-teal-500/[0.06] px-4 py-8 text-center space-y-4"
+              data-testid="location-chat-panel"
+            >
+              <MessageSquare className="h-10 w-10 mx-auto text-teal-300/70" />
+              <div className="space-y-1.5">
+                <h3 className="text-base font-semibold text-white">Chat about {location.name}</h3>
+                <p className="text-sm text-white/50 max-w-md mx-auto">
+                  Quick questions about {location.name} — or open main chat for a full thread.
+                </p>
+              </div>
+              <Button
                 type="button"
+                className="gap-2 bg-teal-500/25 border border-teal-400/35 text-teal-100 hover:bg-teal-500/35"
                 onClick={() => openLocationMainChat()}
                 data-testid="location-chat-open-main-chat"
-                className="group flex w-full items-center justify-between gap-3 rounded-xl border border-teal-400/30 bg-gradient-to-r from-teal-500/15 via-cyan-500/10 to-transparent px-3.5 py-3 text-left transition hover:border-teal-300/50 hover:from-teal-500/25 focus:outline-none focus:ring-2 focus:ring-teal-400/40"
               >
-                <div className="min-w-0">
-                  <p className="flex items-center gap-2 text-sm font-semibold text-teal-50">
-                    <MessageSquare className="h-4 w-4 text-teal-300" />
-                    Ask about {location.name} in main chat
-                  </p>
-                  <p className="mt-1 text-[11px] text-white/50">
-                    Visits, people, and memories connected to this place.
-                  </p>
-                </div>
-                <span className="shrink-0 rounded-full border border-teal-300/25 bg-teal-300/10 px-2.5 py-1 text-[11px] font-medium text-teal-100 transition group-hover:bg-teal-300/20">
-                  Open in chat
-                </span>
-              </button>
+                <MessageSquare className="h-4 w-4" />
+                Open main chat with focus
+              </Button>
             </div>
           )}
 
