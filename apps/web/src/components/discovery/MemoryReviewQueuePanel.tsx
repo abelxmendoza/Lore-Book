@@ -277,8 +277,9 @@ function ProposalCard({ proposal, onApprove, onReject, onDefer }: ProposalCardPr
 type ProposalGroup = { key: string; label: string; proposals: MemoryProposal[]; evidenceCount: number };
 
 export function MemoryReviewQueuePanel() {
-  const { proposals, loading, error, refetch, approveProposal, rejectProposal, deferProposal } = useMemoryReviewQueue();
+  const { proposals, loading, error, refetch, approveProposal, approveProposalsBatch, rejectProposal, deferProposal } = useMemoryReviewQueue();
   const [copied, setCopied] = useState(false);
+  const [batchBusyKey, setBatchBusyKey] = useState<string | null>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -360,6 +361,7 @@ export function MemoryReviewQueuePanel() {
               <p className="mt-1 max-w-3xl text-sm leading-relaxed text-white/55">
                 Compiled propositions awaiting confirmation. Related evidence is merged, confidence and impact are separate,
                 and every card shows subject, domain, durability, and the exact mutation before you approve it.
+                Approved timeline lore can refresh your Swimlanes automatically.
               </p>
             </div>
           </div>
@@ -397,10 +399,32 @@ export function MemoryReviewQueuePanel() {
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-primary/65">Story group</p>
                 <h4 id={headingId} className="mt-0.5 text-lg font-semibold text-white">{group.label}</h4>
+                {group.label.startsWith('ChatGPT import') && (
+                  <p className="mt-1 text-xs text-white/40">
+                    Approving this group can build swimlane bars from dated chapters.
+                  </p>
+                )}
               </div>
-              <p className="text-xs text-white/40">
-                {group.proposals.length} {group.proposals.length === 1 ? 'belief' : 'beliefs'} · {group.evidenceCount} evidence passages
-              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                {group.proposals.length > 1 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={batchBusyKey === group.key}
+                    onClick={() => {
+                      setBatchBusyKey(group.key);
+                      void approveProposalsBatch(group.proposals.map((proposal) => proposal.id))
+                        .finally(() => setBatchBusyKey(null));
+                    }}
+                    className="border-emerald-400/30 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/15"
+                  >
+                    {batchBusyKey === group.key ? 'Approving…' : `Approve group (${group.proposals.length})`}
+                  </Button>
+                )}
+                <p className="text-xs text-white/40">
+                  {group.proposals.length} {group.proposals.length === 1 ? 'belief' : 'beliefs'} · {group.evidenceCount} evidence passages
+                </p>
+              </div>
             </div>
             <div className="space-y-3">
               {group.proposals.map(proposal => (

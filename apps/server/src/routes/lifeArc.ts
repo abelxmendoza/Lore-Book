@@ -104,9 +104,23 @@ router.post(
   '/proposals/build',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const body = z.object({ persist: z.boolean().default(false) }).parse(req.body ?? {});
-    const result = await lifeArcProposalService.build(req.user!.id, body.persist);
+    const body = z.object({
+      persist: z.boolean().default(false),
+      auto_create_ready: z.boolean().default(false),
+    }).parse(req.body ?? {});
+    const result = await lifeArcProposalService.build(req.user!.id, body.persist, {
+      autoCreateReady: body.auto_create_ready,
+    });
     res.json({ success: true, dry_run: !body.persist, ...result });
+  }),
+);
+
+router.post(
+  '/proposals/create-ready',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const result = await lifeArcProposalService.createReadyArcs(req.user!.id);
+    res.json({ success: true, ...result });
   }),
 );
 
@@ -172,7 +186,7 @@ router.post(
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const body = upsertSchema.parse(req.body);
     const arc = await arcService.upsert(req.user!.id, { ...body, source: body.source ?? 'user_created' });
-    res.status(201).json({ success: true, arc });
+    res.status(201).json({ success: true, arc: withEligibility(arc) });
   })
 );
 
@@ -183,7 +197,7 @@ router.patch(
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const body = patchSchema.parse(req.body);
     const arc = await arcService.update(req.user!.id, routeParam(req.params.id), body);
-    res.json({ success: true, arc });
+    res.json({ success: true, arc: withEligibility(arc) });
   })
 );
 

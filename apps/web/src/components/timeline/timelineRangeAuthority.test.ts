@@ -5,6 +5,7 @@ import {
   computeFullTimelineSpan,
   computeReliableTimelineSpan,
   defaultScaleForSpanDays,
+  getSwimlaneArcBarEligibility,
   shouldDrawSwimlaneArcBar,
 } from './timelineRangeAuthority';
 
@@ -138,5 +139,18 @@ describe('timelineRangeAuthority', () => {
         }),
       ),
     ).toBe(false);
+  });
+
+  it('returns the same explicit reason diagnostics use for hidden bars', () => {
+    expect(getSwimlaneArcBarEligibility(arc({ id: 'missing', title: 'Missing', start_date: null })))
+      .toEqual({ drawable: false, reason: 'missing_start_date' });
+    expect(getSwimlaneArcBarEligibility(arc({
+      id: 'reversed',
+      title: 'Reversed',
+      start_date: '2026-07-20',
+      end_date: '2026-07-10',
+    }))).toEqual({ drawable: false, reason: 'invalid_dates' });
+    expect(getSwimlaneArcBarEligibility(arc({ id: 'valid', title: 'Valid' })))
+      .toEqual({ drawable: true, reason: null });
   });
 });

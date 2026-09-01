@@ -1,8 +1,19 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { StitchedTimelineItem } from '../../chronologyV2/stitchedTimelineService';
+import { stitchedTimelineService, type StitchedTimelineItem } from '../../chronologyV2/stitchedTimelineService';
 
-import { buildArcProposalsFromItems, proposalMatchesPriorDecision } from './lifeArcProposalService';
+import { arcService } from './arcService';
+import {
+  buildArcProposalsFromItems,
+  buildMergeUpdatePatch,
+  LifeArcProposalService,
+  proposalMatchesPriorDecision,
+  proposalReadyForAutoCreate,
+} from './lifeArcProposalService';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function event(overrides: Partial<StitchedTimelineItem>): StitchedTimelineItem {
   const sourceId = overrides.sourceId ?? 'event-1';
@@ -43,6 +54,29 @@ describe('buildArcProposalsFromItems', () => {
     expect(proposals[0].fingerprint).toMatch(/^[a-f0-9]{64}$/);
   });
 
+  it('captures intake channel, sources, and entities on evidence', () => {
+    const proposals = buildArcProposalsFromItems([
+      event({
+        sourceId: 'one',
+        sourceType: 'chat',
+        metadata: { source_message_id: 'msg-1', people: ['char-1'] },
+        occurredAt: '2026-01-01T00:00:00.000Z',
+      }),
+      event({
+        sourceId: 'two',
+        sourceType: 'document_upload',
+        metadata: { source_file_id: 'file-1' },
+        occurredAt: '2026-03-01T00:00:00.000Z',
+      }),
+    ]);
+
+    expect(proposals).toHaveLength(1);
+    const first = proposals[0]?.evidence[0];
+    expect(first?.intakeChannel).toBe('chat');
+    expect(first?.sources.some((source) => source.kind === 'chat_message' && source.id === 'msg-1')).toBe(true);
+    expect(first?.entities).toEqual([{ kind: 'character', id: 'char-1' }]);
+  });
+
   it('is deterministic and ignores single-day or unresolved material', () => {
     const items = [
       event({ sourceId: 'two', occurredAt: '2026-03-01T00:00:00.000Z' }),
@@ -74,6 +108,35 @@ describe('buildArcProposalsFromItems', () => {
     expect(proposals[0]).toMatchObject({ start_date: '2012-02-01', end_date: '2012-05-01' });
   });
 
+  it('links sparse import-tagged lore across longer gaps', () => {
+    const proposals = buildArcProposalsFromItems([
+      event({
+        sourceId: 'import-one',
+        sourceType: 'chatgpt_export',
+        metadata: { source: 'chatgpt_export' },
+        title: 'Career start at Vanguard Robotics',
+        body: 'Began work at Vanguard Robotics in early 2020.',
+        occurredAt: '2020-02-01T00:00:00.000Z',
+      }),
+      event({
+        sourceId: 'import-two',
+        sourceType: 'chatgpt_export',
+        metadata: { source: 'chatgpt_export' },
+        title: 'Shipped MemoVault at Vanguard Robotics',
+        body: 'Led the MemoVault launch at work before leaving Vanguard Robotics.',
+        occurredAt: '2021-08-01T00:00:00.000Z',
+      }),
+    ]);
+
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]).toMatchObject({
+      track: 'career',
+      start_date: '2020-02-01',
+      end_date: '2021-08-01',
+      metadata: { import_tagged: true },
+    });
+  });
+
   it('keeps a dismissed overlapping proposal resolved when new evidence expands it', () => {
     const draft = buildArcProposalsFromItems([
       event({ sourceId: 'one', occurredAt: '2026-01-01T00:00:00.000Z' }),
@@ -94,5 +157,108 @@ describe('buildArcProposalsFromItems', () => {
       source_record_ids: ['resolved_event:one'],
       status: 'dismissed',
     })).toBe(false);
+  });
+});
+
+describe('proposalReadyForAutoCreate', () => {
+  it('matches web readiness thresholds', () => {
+    const draft = buildArcProposalsFromItems([
+      event({ sourceId: 'one', occurredAt: '2026-01-01T00:00:00.000Z' }),
+      event({ sourceId: 'two', occurredAt: '2026-03-01T00:00:00.000Z' }),
+    ])[0];
+    expect(proposalReadyForAutoCreate(draft)).toBe(true);
+  });
+});
+
+describe('buildMergeUpdatePatch', () => {
+  it('promotes a multi-day occasion so the merged record can render as a bar', () => {
+    const patch = buildMergeUpdatePatch(
+      {
+        arc_type: 'occasion',
+        track: null,
+        start_date: '2025-01-01',
+        end_date: '2025-01-01',
+        confidence: 0.4,
+        metadata: {
+          occasion_key: '2025-01-01:vanguard',
+          occasion_day: '2025-01-01',
+          source_record_ids: ['resolved_event:one'],
+        },
+      },
+      {
+        arc_type: 'work',
+        track: 'career',
+        start_date: '2025-01-01',
+        end_date: '2025-06-01',
+        confidence: 0.9,
+        source_record_ids: ['resolved_event:one', 'resolved_event:two'],
+        fingerprint: 'fp-career',
+      },
+    );
+
+    expect(patch).toMatchObject({
+      arc_type: 'work',
+      track: 'career',
+      start_date: '2025-01-01',
+      end_date: '2025-06-01',
+      confidence: 0.9,
+    });
+    expect(patch.metadata).toMatchObject({
+      promoted_from_occasion: true,
+      source_record_ids: ['resolved_event:one', 'resolved_event:two'],
+      merged_proposal_fingerprints: ['fp-career'],
+    });
+    expect(patch.metadata).not.toHaveProperty('occasion_key');
+    expect(patch.metadata).not.toHaveProperty('occasion_day');
+  });
+
+  it('leaves non-occasion targets typed as-is', () => {
+    const patch = buildMergeUpdatePatch(
+      {
+        arc_type: 'work',
+        track: 'career',
+        start_date: '2025-01-01',
+        end_date: '2025-03-01',
+        confidence: 0.7,
+        metadata: { source_record_ids: ['resolved_event:one'] },
+      },
+      {
+        arc_type: 'work',
+        track: 'career',
+        start_date: '2025-02-01',
+        end_date: '2025-06-01',
+        confidence: 0.85,
+        source_record_ids: ['resolved_event:two'],
+        fingerprint: 'fp-2',
+      },
+    );
+    expect(patch.arc_type).toBeUndefined();
+    expect(patch.end_date).toBe('2025-06-01');
+  });
+});
+
+describe('LifeArcProposalService audit', () => {
+  it('loads canonical timeline evidence and existing arcs through their services', async () => {
+    vi.spyOn(stitchedTimelineService, 'getStitchedTimeline').mockResolvedValue({
+      items: [
+        event({ sourceId: 'one', occurredAt: '2026-01-01T00:00:00.000Z' }),
+        event({ sourceId: 'two', occurredAt: '2026-03-01T00:00:00.000Z' }),
+      ],
+      unresolved_items: [],
+      data_errors: [{ source: 'timeline_events', message: 'PGRST205: missing from schema cache' }],
+    } as never);
+    vi.spyOn(arcService, 'listForUser').mockResolvedValue([]);
+
+    const result = await new LifeArcProposalService().audit('synthetic-user');
+
+    expect(result.audit).toMatchObject({
+      canonicalItems: 2,
+      datedItems: 2,
+      existingArcs: 0,
+      drawableArcs: 0,
+      proposedArcs: 1,
+      dataErrors: [],
+    });
+    expect(result.drafts).toHaveLength(1);
   });
 });

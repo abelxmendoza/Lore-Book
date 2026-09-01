@@ -2,7 +2,7 @@
  * Stitched timeline: moments + events in one chronological stream, user-reorderable.
  */
 
-import { BookMarked, BookOpen, CheckCircle2, Layers, MessageCircle, Target, X } from 'lucide-react';
+import { BookMarked, BookOpen, CheckCircle2, Layers, MapPin, MessageCircle, Target, Users, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -331,8 +331,6 @@ export const TimelineStitchedView = ({
               )}
             </p>
           </div>
-
-          {!loading && headerTools}
         </div>
       )}
 
@@ -344,7 +342,10 @@ export const TimelineStitchedView = ({
           <div className="py-16 text-center text-white/40 text-sm animate-pulse">Stitching timeline…</div>
         ) : (
           <>
-            {hideHeader && <div className="mb-4">{headerTools}</div>}
+            {/* Was pinned in the flex-shrink-0 header — on mobile it ate ~40%
+                of the visible area permanently, leaving almost no room to
+                scroll the actual timeline. Scrolls away with content now. */}
+            <div className="mb-4">{headerTools}</div>
 
             {data?.chapter && (
               <section className="mb-5 rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/12 via-white/[0.03] to-transparent px-4 py-4 sm:px-5">
@@ -378,6 +379,40 @@ export const TimelineStitchedView = ({
                     <span className="text-white/35">{chapterDate}</span>
                   )}
                 </div>
+                {(data.chapter.participants.length > 0 || data.chapter.locations.length > 0) && (
+                  <div className="mt-3 flex flex-col gap-2">
+                    {data.chapter.participants.length > 0 && (
+                      <div className="flex items-start gap-2">
+                        <Users className="h-3.5 w-3.5 text-white/35 shrink-0 mt-0.5" />
+                        <div className="flex flex-wrap gap-1.5">
+                          {data.chapter.participants.map((name) => (
+                            <span
+                              key={name}
+                              className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/60"
+                            >
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {data.chapter.locations.length > 0 && (
+                      <div className="flex items-start gap-2">
+                        <MapPin className="h-3.5 w-3.5 text-white/35 shrink-0 mt-0.5" />
+                        <div className="flex flex-wrap gap-1.5">
+                          {data.chapter.locations.map((place) => (
+                            <span
+                              key={place}
+                              className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/60"
+                            >
+                              {place}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </section>
             )}
 

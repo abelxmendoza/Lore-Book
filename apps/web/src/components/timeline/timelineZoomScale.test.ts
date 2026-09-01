@@ -37,6 +37,15 @@ describe('timelineZoomScale', () => {
     expect(fit).toBeLessThan(five);
   });
 
+  it('fit-life can go below the old 0.30 floor for multi-decade spans', () => {
+    const longLife = zoomForScale('fit-life', {
+      ...ctx,
+      totalDays: 365 * 20, // ~20 years
+    });
+    expect(longLife).toBeLessThan(0.3);
+    expect(longLife).toBeGreaterThanOrEqual(0.05);
+  });
+
   it('maps raw zoom back to the nearest named scale', () => {
     const yearZoom = zoomForScale('year', ctx);
     expect(scaleFromZoom(yearZoom, ctx)).toBe('year');

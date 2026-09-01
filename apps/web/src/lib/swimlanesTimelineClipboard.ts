@@ -8,6 +8,8 @@ import { TRACK_LABELS } from '../hooks/useLifeArcs';
 import type { ChronologyEntry } from '../types/timelineV2';
 import type { EntryCluster, KnowledgeGap, SubLaneMap } from '../components/timeline/swimlaneOverlap';
 import type { TimelineZoomScaleId } from '../components/timeline/timelineZoomScale';
+import { getSwimlaneArcBarEligibility } from '../components/timeline/timelineRangeAuthority';
+import type { StitchedTimelineItem } from '../api/stitchedTimeline';
 import { formatClipboardFields } from './listClipboard';
 
 const DAY_MS = 86_400_000;
@@ -35,11 +37,17 @@ export type SwimlanesClipboardSnapshot = {
   tracks: ArcTrack[];
   /** Flat + nested arcs as loaded (children / parent_id). */
   arcs: LifeArc[];
+  /** All loaded top-level arcs grouped by their assigned track. */
   arcsByTrack: Partial<Record<ArcTrack, LifeArc[]>>;
+  /** The subset that passed the shared bar-eligibility rule and is rendered. */
+  drawableArcsByTrack: Partial<Record<ArcTrack, LifeArc[]>>;
   subLaneByTrack: Partial<Record<ArcTrack, SubLaneMap>>;
   gapsByTrack: Partial<Record<ArcTrack, KnowledgeGap[]>>;
   entries: ChronologyEntry[];
   clusters: EntryCluster[];
+  unresolvedItems: StitchedTimelineItem[];
+  viewportScrollLeftPx: number;
+  viewportWidthPx: number;
   /** Pixel x for a date (same math as the canvas). */
   xOf: (date: Date | string) => number;
 };
@@ -113,6 +121,219 @@ function entrySnippet(entry: ChronologyEntry, max = 120): string {
   const raw = (entry.title || entry.content || '').replace(/\s+/g, ' ').trim();
   if (!raw) return '(no text)';
   return raw.length > max ? `${raw.slice(0, max - 1)}…` : raw;
+}
+
+type DiagnosticSeverity = 'ERROR' | 'WARNING' | 'INFO';
+
+type SwimlanesDiagnostic = {
+  severity: DiagnosticSeverity;
+  code: string;
+  subject: string;
+  detail: string;
+  correction?: string;
+};
+
+const EXPECTED_SUPPRESSION_REASONS = new Set(['occasion', 'explicitly_suppressed', 'single_day_span']);
+
+function collectArcOccurrences(arcs: LifeArc[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  const visitedObjects = new WeakSet<object>();
+  const visit = (list: LifeArc[]) => {
+    for (const arc of list) {
+      counts.set(arc.id, (counts.get(arc.id) ?? 0) + 1);
+      if (visitedObjects.has(arc)) continue;
+      visitedObjects.add(arc);
+      if (arc.children?.length) visit(arc.children);
+    }
+  };
+  visit(arcs);
+  return counts;
+}
+
+/** Produce actionable, privacy-safe structural findings for the copied dump. */
+export function diagnoseSwimlanesSnapshot(snap: SwimlanesClipboardSnapshot): SwimlanesDiagnostic[] {
+  const findings: SwimlanesDiagnostic[] = [];
+  const sourceArcs = snap.arcs.length > 0
+    ? snap.arcs
+    : Object.values(snap.arcsByTrack).flatMap((items) => items ?? []);
+  const flatArcs = flattenLifeArcs(sourceArcs);
+  const arcIds = new Set(flatArcs.map((arc) => arc.id));
+  const arcById = new Map(flatArcs.map((arc) => [arc.id, arc]));
+  const drawableIds = new Set(
+    Object.values(snap.drawableArcsByTrack).flatMap((items) => items ?? []).map((arc) => arc.id),
+  );
+
+  for (const [id, count] of collectArcOccurrences(sourceArcs)) {
+    if (count > 1) {
+      findings.push({
+        severity: 'ERROR', code: 'DUPLICATE_ARC_ID', subject: `arc ${id}`,
+        detail: `The canonical arc tree contains this id ${count} times.`,
+        correction: 'Merge or remove duplicate records while preserving the strongest provenance.',
+      });
+    }
+  }
+
+  const reportedCycles = new Set<string>();
+  for (const arc of flatArcs) {
+    const path: string[] = [];
+    const pathIndexes = new Map<string, number>();
+    let cursor: LifeArc | undefined = arc;
+    while (cursor) {
+      const cycleStart = pathIndexes.get(cursor.id);
+      if (cycleStart != null) {
+        const cycle = path.slice(cycleStart).concat(cursor.id);
+        const cycleKey = [...new Set(cycle)].sort().join('|');
+        if (!reportedCycles.has(cycleKey)) {
+          reportedCycles.add(cycleKey);
+          findings.push({
+            severity: 'ERROR', code: 'ARC_PARENT_CYCLE', subject: cycle.join(' → '),
+            detail: 'The parent chain forms a cycle, so the arc tree cannot be represented reliably.',
+            correction: 'Remove the incorrect parent_id link that closes the cycle.',
+          });
+        }
+        break;
+      }
+      pathIndexes.set(cursor.id, path.length);
+      path.push(cursor.id);
+      cursor = cursor.parent_id ? arcById.get(cursor.parent_id) : undefined;
+    }
+  }
+
+  for (const arc of flatArcs) {
+    const title = arc.title?.trim();
+    const assignedTrack = arc.track ?? 'inner';
+    const eligibility = getSwimlaneArcBarEligibility(arc);
+    const listedTracks = snap.tracks.filter((track) =>
+      (snap.arcsByTrack[track] ?? []).some((candidate) => candidate.id === arc.id),
+    );
+    const isTopLevelCandidate = !arc.parent_id || listedTracks.length > 0;
+
+    if (!title) {
+      findings.push({
+        severity: 'ERROR', code: 'UNTITLED_ARC', subject: `arc ${arc.id}`,
+        detail: 'This arc has no readable title.', correction: 'Add a concise evidence-backed arc title.',
+      });
+    }
+    if (arc.parent_id && !arcIds.has(arc.parent_id)) {
+      findings.push({
+        severity: 'ERROR', code: 'MISSING_PARENT', subject: title || `arc ${arc.id}`,
+        detail: `parent_id ${arc.parent_id} does not exist in the loaded arc set.`,
+        correction: 'Clear the stale parent_id or restore/link the intended parent arc.',
+      });
+    }
+    if (arc.parent_id === arc.id) {
+      findings.push({
+        severity: 'ERROR', code: 'SELF_PARENT', subject: title || `arc ${arc.id}`,
+        detail: 'The arc points to itself as its parent.', correction: 'Clear parent_id or select a different parent.',
+      });
+    }
+    if (isTopLevelCandidate && listedTracks.length === 0) {
+      findings.push({
+        severity: 'ERROR', code: 'ARC_NOT_GROUPED', subject: title || `arc ${arc.id}`,
+        detail: `The arc is assigned to ${assignedTrack} but is absent from arcsByTrack.`,
+        correction: 'Rebuild the track grouping from the canonical arc list.',
+      });
+    } else if (isTopLevelCandidate && !listedTracks.includes(assignedTrack)) {
+      findings.push({
+        severity: 'ERROR', code: 'TRACK_MISMATCH', subject: title || `arc ${arc.id}`,
+        detail: `Arc track is ${assignedTrack}, but it was grouped under ${listedTracks.join(', ')}.`,
+        correction: 'Group the arc under its canonical track or correct the track value.',
+      });
+    }
+
+    if (isTopLevelCandidate && eligibility.drawable && !drawableIds.has(arc.id)) {
+      findings.push({
+        severity: 'ERROR', code: 'DRAWABLE_ARC_MISSING_BAR', subject: title || `arc ${arc.id}`,
+        detail: 'The shared eligibility rule says this arc is drawable, but no bar was rendered.',
+        correction: 'Check track grouping, filtering, and sub-lane layout for this arc id.',
+      });
+    } else if (isTopLevelCandidate && !eligibility.drawable && drawableIds.has(arc.id)) {
+      findings.push({
+        severity: 'ERROR', code: 'SUPPRESSED_ARC_DRAWN', subject: title || `arc ${arc.id}`,
+        detail: `A bar was rendered despite suppression reason: ${eligibility.reason ?? 'unknown'}.`,
+        correction: 'Use the shared bar-eligibility result when building drawable tracks.',
+      });
+    } else if (isTopLevelCandidate && !eligibility.drawable) {
+      const expected = EXPECTED_SUPPRESSION_REASONS.has(eligibility.reason ?? '');
+      findings.push({
+        severity: expected ? 'INFO' : 'WARNING',
+        code: `BAR_SUPPRESSED_${String(eligibility.reason ?? 'unknown').toUpperCase()}`,
+        subject: title || `arc ${arc.id}`,
+        detail: `No duration bar is drawn because: ${eligibility.reason ?? 'unknown reason'}.`,
+        correction: expected
+          ? 'Expected behavior; keep it as a dot/occasion or remove explicit suppression if a duration bar is intended.'
+          : 'Correct the dates/evidence, then rebuild arc proposals.',
+      });
+    }
+
+    if (arc.is_active && arc.end_date) {
+      findings.push({
+        severity: 'WARNING', code: 'ACTIVE_ARC_HAS_END', subject: title || `arc ${arc.id}`,
+        detail: `The arc is active but has end_date ${isoDay(arc.end_date)}.`,
+        correction: 'Either clear end_date or mark the arc inactive.',
+      });
+    }
+  }
+
+  const entryCounts = new Map<string, number>();
+  const clusteredCounts = new Map<string, number>();
+  for (const cluster of snap.clusters) {
+    for (const entry of cluster.entries) {
+      clusteredCounts.set(entry.id, (clusteredCounts.get(entry.id) ?? 0) + 1);
+    }
+  }
+  for (const entry of snap.entries) {
+    entryCounts.set(entry.id, (entryCounts.get(entry.id) ?? 0) + 1);
+    const time = new Date(entry.start_time).getTime();
+    const subject = entry.title?.trim() || entrySnippet(entry, 60);
+    if (!Number.isFinite(time)) {
+      findings.push({
+        severity: 'ERROR', code: 'INVALID_MOMENT_DATE', subject,
+        detail: `start_time is not a valid date: ${String(entry.start_time)}`,
+        correction: 'Correct or resolve the canonical occurrence date.',
+      });
+    }
+    if (!entry.source_id && !entry.journal_entry_id) {
+      findings.push({
+        severity: 'WARNING', code: 'MISSING_MOMENT_PROVENANCE', subject,
+        detail: 'No source_id or journal_entry_id is available for this moment.',
+        correction: 'Relink the moment to its canonical source record before editing it.',
+      });
+    }
+    const clusterCount = clusteredCounts.get(entry.id) ?? 0;
+    if (clusterCount === 0) {
+      findings.push({
+        severity: 'ERROR', code: 'MOMENT_NOT_CLUSTERED', subject,
+        detail: 'The moment is loaded but absent from the rendered marker clusters.',
+        correction: 'Re-run marker clustering and inspect invalid x/date calculations.',
+      });
+    } else if (clusterCount > 1) {
+      findings.push({
+        severity: 'ERROR', code: 'MOMENT_CLUSTERED_MULTIPLE_TIMES', subject,
+        detail: `The moment appears in ${clusterCount} rendered clusters.`,
+        correction: 'Deduplicate cluster membership by canonical moment id.',
+      });
+    }
+  }
+  for (const [id, count] of entryCounts) {
+    if (count > 1) {
+      findings.push({
+        severity: 'ERROR', code: 'DUPLICATE_MOMENT_ID', subject: `moment ${id}`,
+        detail: `The loaded chronology contains this id ${count} times.`,
+        correction: 'Deduplicate the stitched chronology response by canonical id.',
+      });
+    }
+  }
+
+  for (const item of snap.unresolvedItems) {
+    findings.push({
+      severity: 'WARNING', code: 'UNRESOLVED_TIMELINE_DATE', subject: item.title || item.id,
+      detail: `This ${item.kind} cannot be placed on the wall-calendar axis (${item.temporal?.occurred.expression || item.sortTime || 'no usable date expression'}).`,
+      correction: 'Review the supporting source and assign an occurrence date/range, or leave it explicitly unresolved.',
+    });
+  }
+
+  return findings;
 }
 
 /** Flatten arcs including nested `children`, deduped by id. */
@@ -270,7 +491,8 @@ function formatArcBlock(
   const days = daysBetweenIso(start, end, snap.todayIso);
   const subLane = laneMap?.get(arc.id);
   const title = arc.title?.trim() || '(untitled arc)';
-  const drawnOnCanvas = subLane != null || role === 'ARC';
+  const drawnOnCanvas = Object.values(snap.drawableArcsByTrack)
+    .some((items) => (items ?? []).some((candidate) => candidate.id === arc.id));
 
   const lines: string[] = [
     line(depth, `${indexLabel} [${role}] ${title}`),
@@ -343,7 +565,16 @@ export function buildSwimlanesTimelineClipboardText(snap: SwimlanesClipboardSnap
       : Object.values(snap.arcsByTrack).flatMap((a) => a ?? []);
   const forest = buildArcForest(sourceArcs);
   const flatCount = flattenLifeArcs(sourceArcs).length;
-  const topLevelDrawn = Object.values(snap.arcsByTrack).reduce((n, a) => n + (a?.length ?? 0), 0);
+  const topLevelLoaded = Object.values(snap.arcsByTrack).reduce((n, a) => n + (a?.length ?? 0), 0);
+  const topLevelDrawn = Object.values(snap.drawableArcsByTrack).reduce((n, a) => n + (a?.length ?? 0), 0);
+  const diagnostics = diagnoseSwimlanesSnapshot(snap);
+  const diagnosticCounts = diagnostics.reduce<Record<DiagnosticSeverity, number>>(
+    (counts, finding) => ({ ...counts, [finding.severity]: counts[finding.severity] + 1 }),
+    { ERROR: 0, WARNING: 0, INFO: 0 },
+  );
+  const timelineStartMs = new Date(snap.timelineStartIso).getTime();
+  const viewportStart = new Date(timelineStartMs + (snap.viewportScrollLeftPx / snap.pixelsPerDay) * DAY_MS);
+  const viewportEnd = new Date(timelineStartMs + ((snap.viewportScrollLeftPx + snap.viewportWidthPx) / snap.pixelsPerDay) * DAY_MS);
 
   const canvasState = [
     '## Canvas state',
@@ -358,12 +589,32 @@ export function buildSwimlanesTimelineClipboardText(snap: SwimlanesClipboardSnap
       { label: 'Cluster threshold px', value: snap.clusterPx },
       { label: 'Era bands visible', value: snap.showEraBands },
       { label: 'Tracks shown', value: snap.tracks.map((t) => TRACK_LABELS[t] ?? t).join(', ') },
-      { label: 'Top-level arcs (drawn bars)', value: topLevelDrawn },
+      { label: 'Top-level arcs loaded', value: topLevelLoaded },
+      { label: 'Top-level arcs drawn as bars', value: topLevelDrawn },
+      { label: 'Top-level arcs not drawn', value: Math.max(0, topLevelLoaded - topLevelDrawn) },
       { label: 'Arcs including nested', value: flatCount },
       { label: 'Moments', value: snap.entries.length },
       { label: 'Moment clusters drawn', value: snap.clusters.length },
+      { label: 'Temporally unresolved items', value: snap.unresolvedItems.length },
       { label: 'Eras provided', value: snap.eras.length },
+      { label: 'Viewport scroll left px', value: Math.round(snap.viewportScrollLeftPx) },
+      { label: 'Viewport width px', value: Math.round(snap.viewportWidthPx) },
+      { label: 'Viewport starts near', value: isoDay(viewportStart) },
+      { label: 'Viewport ends near', value: isoDay(viewportEnd) },
     ]),
+  ].join('\n');
+
+  const diagnosticsSection = [
+    '## Diagnostics',
+    `Health: ${diagnosticCounts.ERROR === 0 ? 'no structural errors detected' : `${diagnosticCounts.ERROR} error(s) detected`} · ${diagnosticCounts.WARNING} warning(s) · ${diagnosticCounts.INFO} expected suppression(s)`,
+    'Diagnostics are read-only. Correction hints describe the safest next inspection; this export does not mutate lore.',
+    diagnostics.length === 0
+      ? '(No findings.)'
+      : diagnostics.map((finding, index) => [
+          `${index + 1}. [${finding.severity}] ${finding.code} — ${finding.subject}`,
+          line(1, `Detail: ${finding.detail}`),
+          ...(finding.correction ? [line(1, `Correction: ${finding.correction}`)] : []),
+        ].join('\n')).join('\n\n'),
   ].join('\n');
 
   const eraSection = [
@@ -390,7 +641,8 @@ export function buildSwimlanesTimelineClipboardText(snap: SwimlanesClipboardSnap
   ].join('\n');
 
   const trackSections = snap.tracks.map((track) => {
-    const trackArcs = snap.arcsByTrack[track] ?? [];
+    const trackArcs = snap.drawableArcsByTrack[track] ?? [];
+    const loadedTrackArcs = snap.arcsByTrack[track] ?? [];
     const roots = buildArcForest(trackArcs);
     const laneMap = snap.subLaneByTrack[track];
     const gaps = snap.gapsByTrack[track] ?? [];
@@ -403,7 +655,7 @@ export function buildSwimlanesTimelineClipboardText(snap: SwimlanesClipboardSnap
 
     const blocks: string[] = [
       `### Track: ${label} (\`${track}\`)`,
-      `Drawn top-level bars: ${trackArcs.length} · Nodes including nested: ${nestedCount} · Gaps: ${gaps.length}`,
+      `Loaded top-level arcs: ${loadedTrackArcs.length} · Drawn bars: ${trackArcs.length} · Nodes under drawn bars: ${nestedCount} · Gaps: ${gaps.length}`,
     ];
 
     roots.forEach((arc, i) => {
@@ -486,12 +738,35 @@ export function buildSwimlanesTimelineClipboardText(snap: SwimlanesClipboardSnap
       : chronoMoments.map((e, i) => formatMomentLines(e, 0, `${i + 1}.`, snap).join('\n')).join('\n\n'),
   ].join('\n');
 
+  const unresolvedSection = [
+    '## 6. Temporally unresolved items (not placed on the canvas)',
+    snap.unresolvedItems.length === 0
+      ? '(none)'
+      : snap.unresolvedItems.map((item, i) => [
+          `${i + 1}. [UNRESOLVED ${item.kind.toUpperCase()}] ${item.title || '(untitled)'}`,
+          ...fieldLines(1, [
+            { label: 'Id', value: item.id },
+            { label: 'Source kind', value: item.sourceKind },
+            { label: 'Source id', value: item.sourceId },
+            { label: 'Precision', value: item.timePrecision ?? item.temporal?.occurred.precision },
+            { label: 'Confidence', value: item.timeConfidence ?? item.confidence },
+            { label: 'Occurrence status', value: item.occurrenceStatus },
+            { label: 'Date expression', value: item.temporal?.occurred.expression },
+            { label: 'Recorded at', value: item.temporal?.recordedAt },
+          ]),
+          ...wrapBody(1, 'Content', item.body || ''),
+        ].join('\n')).join('\n\n'),
+  ].join('\n');
+
   return [
     '# Omni Swimlanes Timeline — Copy all',
+    'Privacy: this user-triggered export includes full lore text and source record ids. Share it deliberately.',
     '',
     SWIMLANES_ARCHITECTURE_LEGEND,
     '',
     canvasState,
+    '',
+    diagnosticsSection,
     '',
     eraSection,
     '',
@@ -503,6 +778,8 @@ export function buildSwimlanesTimelineClipboardText(snap: SwimlanesClipboardSnap
     clusterSection,
     '',
     chronoSection,
+    '',
+    unresolvedSection,
     '',
     '## End of swimlanes export',
   ].join('\n');

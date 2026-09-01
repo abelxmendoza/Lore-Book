@@ -192,7 +192,16 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
   const { readiness }                = useLoreReadiness();
   const isDemoMode = !user && (isGuest ? mockEnabled : mockEnabled);
 
-  const { arcs, activeArcs, arcsByTrack, loading: arcsLoading, error: arcsError, refresh: refreshArcs } = useLifeArcs();
+  const {
+    arcs,
+    activeArcs,
+    arcsByTrack,
+    loading: arcsLoading,
+    error: arcsError,
+    refresh: refreshArcs,
+    updateArc,
+    deleteArc,
+  } = useLifeArcs();
   const {
     items: stitchedItems,
     unresolvedItems,
@@ -764,6 +773,8 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
               canonicalItemCount={entries.length}
               arcs={arcs}
               onArcsChanged={refreshArcs}
+              onUpdateArc={updateArc}
+              onDeleteArc={deleteArc}
             />
             <TimelineSwimlanes
               arcs={arcs}

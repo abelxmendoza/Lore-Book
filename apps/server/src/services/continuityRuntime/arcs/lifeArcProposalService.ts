@@ -2,6 +2,14 @@ import { createHash } from 'node:crypto';
 
 import { logger } from '../../../logger';
 import {
+  extractLoreEntityRefsFromMetadata,
+  extractLoreSourcesFromMetadata,
+  intakeChannelFromSourceType,
+  type LoreEntityRef,
+  type LoreIntakeChannel,
+  type LoreSourceRef,
+} from '@lorebook/api-contracts';
+import {
   stitchedTimelineService,
   type StitchedTimelineItem,
 } from '../../chronologyV2/stitchedTimelineService';
@@ -12,7 +20,24 @@ import { lifeArcBarEligibility, type LifeArcSuppressionReason } from './lifeArcE
 
 const DAY_MS = 86_400_000;
 const MAX_CLUSTER_GAP_DAYS = 180;
+const IMPORT_CLUSTER_GAP_DAYS = 730;
 const MIN_EVIDENCE = 2;
+const IMPORT_MIN_EVIDENCE = 1;
+const MIN_ITEM_CONFIDENCE = 0.4;
+const IMPORT_MIN_ITEM_CONFIDENCE = 0.35;
+const MIN_CLUSTER_SPAN_DAYS = 2;
+const IMPORT_MIN_CLUSTER_SPAN_DAYS = 1;
+
+const IMPORT_SOURCE_TYPES = new Set(['chatgpt_export', 'chatgpt_memory_handoff']);
+
+function isImportTaggedTimelineItem(item: StitchedTimelineItem): boolean {
+  const sourceType = item.sourceType ?? item.sourceKind;
+  if (IMPORT_SOURCE_TYPES.has(sourceType)) return true;
+  const metadata = (item.metadata ?? {}) as Record<string, unknown>;
+  const source = metadata.source;
+  if (source === 'chatgpt_export' || source === 'chatgpt_memory_handoff') return true;
+  return intakeChannelFromSourceType(sourceType) === 'external_conversation';
+}
 
 export type LifeArcProposalEvidence = {
   sourceKind: StitchedTimelineItem['sourceKind'];
@@ -21,6 +46,10 @@ export type LifeArcProposalEvidence = {
   title: string;
   occurredAt: string;
   confidence: number;
+  sourceType: string;
+  intakeChannel: LoreIntakeChannel;
+  sources: LoreSourceRef[];
+  entities: LoreEntityRef[];
 };
 
 export type LifeArcProposalDraft = {
@@ -64,6 +93,7 @@ export type LifeArcProposalAudit = {
 type DatedEvidence = LifeArcProposalEvidence & {
   dateMs: number;
   track: ArcTrack;
+  importTagged: boolean;
 };
 
 const TRACK_TITLES: Record<ArcTrack, string> = {
@@ -91,10 +121,70 @@ function textTrack(item: StitchedTimelineItem): ArcTrack {
   return 'inner';
 }
 
+function evidenceProvenance(item: StitchedTimelineItem): Pick<
+  LifeArcProposalEvidence,
+  'sourceType' | 'intakeChannel' | 'sources' | 'entities'
+> {
+  const metadata = (item.metadata ?? {}) as Record<string, unknown>;
+  const sourceType = item.sourceType ?? item.sourceKind;
+  return {
+    sourceType,
+    intakeChannel: intakeChannelFromSourceType(sourceType),
+    sources: extractLoreSourcesFromMetadata(metadata, {
+      sourceType,
+      sourceKind: item.sourceKind,
+      sourceId: item.sourceId,
+    }),
+    entities: extractLoreEntityRefsFromMetadata(metadata),
+  };
+}
+
 function arcTypeForTrack(track: ArcTrack): Exclude<ArcType, 'occasion'> {
   if (track === 'career') return 'work';
   if (track === 'creative' || track === 'health') return 'skill';
   return 'life_era';
+}
+
+/** Pure merge patch — promote multi-day occasions so they can render as bars. */
+export function buildMergeUpdatePatch(
+  target: Pick<LifeArc, 'arc_type' | 'track' | 'start_date' | 'end_date' | 'confidence' | 'metadata'>,
+  proposal: Pick<LifeArcProposalDraft, 'arc_type' | 'track' | 'start_date' | 'end_date' | 'confidence' | 'source_record_ids' | 'fingerprint'>,
+): Partial<LifeArc> {
+  const startDate = [target.start_date, proposal.start_date].filter(Boolean).sort()[0] ?? proposal.start_date;
+  const endDate = [target.end_date, proposal.end_date].filter(Boolean).sort().at(-1) ?? proposal.end_date;
+  const priorSourceIds = Array.isArray((target.metadata as { source_record_ids?: unknown }).source_record_ids)
+    ? ((target.metadata as { source_record_ids: unknown[] }).source_record_ids.filter((id): id is string => typeof id === 'string'))
+    : [];
+  const spanDays = Math.round(
+    (new Date(endDate).getTime() - new Date(startDate).getTime()) / DAY_MS,
+  );
+  const promoteOccasion = target.arc_type === 'occasion' && Number.isFinite(spanDays) && spanDays >= 2;
+  const metadata: Record<string, unknown> = {
+    ...target.metadata,
+    source_record_ids: [...new Set([...priorSourceIds, ...proposal.source_record_ids])],
+    merged_proposal_fingerprints: [
+      ...new Set([
+        ...(Array.isArray(target.metadata.merged_proposal_fingerprints)
+          ? target.metadata.merged_proposal_fingerprints.filter((value): value is string => typeof value === 'string')
+          : []),
+        proposal.fingerprint,
+      ]),
+    ],
+  };
+  if (promoteOccasion) {
+    delete metadata.occasion_key;
+    delete metadata.occasion_day;
+    metadata.promoted_from_occasion = true;
+  }
+  return {
+    start_date: startDate,
+    end_date: endDate,
+    confidence: Math.max(target.confidence, proposal.confidence),
+    ...(promoteOccasion
+      ? { arc_type: proposal.arc_type, track: proposal.track }
+      : {}),
+    metadata,
+  };
 }
 
 function proposalFingerprint(track: ArcTrack, evidence: LifeArcProposalEvidence[]): string {
@@ -121,8 +211,10 @@ export function buildArcProposalsFromItems(items: StitchedTimelineItem[]): LifeA
     if (!occurredAt || item.occurrenceStatus === 'unresolved' || item.projectionRole === 'unresolved') return [];
     const dateMs = new Date(occurredAt).getTime();
     if (!Number.isFinite(dateMs)) return [];
+    const importTagged = isImportTaggedTimelineItem(item);
     const confidence = Math.max(0, Math.min(1, Number(item.timeConfidence ?? item.confidence ?? 0.5)));
-    if (confidence < 0.4) return [];
+    const minConfidence = importTagged ? IMPORT_MIN_ITEM_CONFIDENCE : MIN_ITEM_CONFIDENCE;
+    if (confidence < minConfidence) return [];
     return [{
       sourceKind: item.sourceKind,
       sourceId: item.sourceId,
@@ -132,6 +224,8 @@ export function buildArcProposalsFromItems(items: StitchedTimelineItem[]): LifeA
       confidence,
       dateMs,
       track: textTrack(item),
+      importTagged,
+      ...evidenceProvenance(item),
     }];
   });
 
@@ -142,7 +236,10 @@ export function buildArcProposalsFromItems(items: StitchedTimelineItem[]): LifeA
     for (const item of trackItems) {
       const current = clusters.at(-1);
       const previous = current?.at(-1);
-      if (!current || !previous || (item.dateMs - previous.dateMs) / DAY_MS > MAX_CLUSTER_GAP_DAYS) {
+      const gapLimit = item.importTagged || previous?.importTagged
+        ? IMPORT_CLUSTER_GAP_DAYS
+        : MAX_CLUSTER_GAP_DAYS;
+      if (!current || !previous || (item.dateMs - previous.dateMs) / DAY_MS > gapLimit) {
         clusters.push([item]);
       } else {
         current.push(item);
@@ -150,11 +247,14 @@ export function buildArcProposalsFromItems(items: StitchedTimelineItem[]): LifeA
     }
 
     for (const cluster of clusters) {
-      if (cluster.length < MIN_EVIDENCE) continue;
+      const importCluster = cluster.some((item) => item.importTagged);
+      const minEvidence = importCluster ? IMPORT_MIN_EVIDENCE : MIN_EVIDENCE;
+      if (cluster.length < minEvidence) continue;
       const startMs = cluster[0].dateMs;
       const endMs = cluster.at(-1)!.dateMs;
-      if (Math.round((endMs - startMs) / DAY_MS) < 2) continue;
-      const evidence = cluster.map(({ dateMs: _dateMs, track: _track, ...item }) => item);
+      const minSpanDays = importCluster ? IMPORT_MIN_CLUSTER_SPAN_DAYS : MIN_CLUSTER_SPAN_DAYS;
+      if (Math.round((endMs - startMs) / DAY_MS) < minSpanDays) continue;
+      const evidence = cluster.map(({ dateMs: _dateMs, track: _track, importTagged: _importTagged, ...item }) => item);
       const confidence = Number((evidence.reduce((sum, item) => sum + item.confidence, 0) / evidence.length).toFixed(3));
       const startDate = asDateOnly(startMs);
       const endDate = asDateOnly(endMs);
@@ -166,14 +266,59 @@ export function buildArcProposalsFromItems(items: StitchedTimelineItem[]): LifeA
         start_date: startDate,
         end_date: endDate,
         confidence,
-        explanation: `${evidence.length} dated moments in the ${TRACK_TITLES[track].toLowerCase()} connect across ${startDate} to ${endDate}.`,
+        explanation: `${evidence.length} dated moment${evidence.length === 1 ? '' : 's'} in the ${TRACK_TITLES[track].toLowerCase()} connect across ${startDate} to ${endDate}.`,
         source_record_ids: [...new Set(evidence.flatMap((item) => item.sourceIds.map((id) => `${item.sourceKind}:${id}`)))],
         evidence,
-        metadata: { detector: 'canonical_stitched_chronology', evidence_count: evidence.length },
+        metadata: {
+          detector: 'canonical_stitched_chronology',
+          evidence_count: evidence.length,
+          ...(importCluster ? { import_tagged: true } : {}),
+        },
       });
     }
   }
   return proposals;
+}
+
+export const AUTO_CREATE_MIN_CONFIDENCE = 0.75;
+export const AUTO_CREATE_MIN_SPAN_DAYS = 14;
+export const AUTO_CREATE_MIN_EVIDENCE = 2;
+export const AUTO_CREATE_STRONG_EVIDENCE = 3;
+
+function proposalSpanDays(proposal: Pick<LifeArcProposalDraft, 'start_date' | 'end_date'>): number {
+  const start = new Date(proposal.start_date).getTime();
+  const end = new Date(proposal.end_date).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
+  return Math.round((end - start) / DAY_MS);
+}
+
+/** High-signal proposals safe to materialize without per-card review. */
+export function proposalReadyForAutoCreate(
+  proposal: Pick<LifeArcProposalDraft, 'confidence' | 'start_date' | 'end_date' | 'evidence'>,
+): boolean {
+  if (proposal.confidence < AUTO_CREATE_MIN_CONFIDENCE) return false;
+  if (proposal.evidence.length < AUTO_CREATE_MIN_EVIDENCE) return false;
+  const spanDays = proposalSpanDays(proposal);
+  if (spanDays < 2) return false;
+  if (spanDays < AUTO_CREATE_MIN_SPAN_DAYS && proposal.evidence.length < AUTO_CREATE_STRONG_EVIDENCE) {
+    return false;
+  }
+  return true;
+}
+
+function overlapsExistingArc(
+  proposal: Pick<LifeArcProposalDraft, 'track' | 'start_date' | 'end_date'>,
+  existing: LifeArc[],
+): boolean {
+  const start = new Date(proposal.start_date).getTime();
+  const end = new Date(proposal.end_date).getTime();
+  return existing.some((arc) => {
+    if (arc.track !== proposal.track || arc.arc_type === 'occasion') return false;
+    if (!arc.start_date) return false;
+    const arcStart = new Date(arc.start_date).getTime();
+    const arcEnd = new Date(arc.end_date ?? arc.start_date).getTime();
+    return start <= arcEnd && arcStart <= end;
+  });
 }
 
 export function proposalMatchesPriorDecision(
@@ -211,6 +356,10 @@ export class LifeArcProposalService {
       const date = item.occurredAt ?? item.temporalProjection?.occurredStart;
       return Boolean(date && Number.isFinite(new Date(date).getTime()));
     }).length;
+    const dataErrors = (timeline.data_errors ?? []).filter((error) => !(
+      error.source === 'timeline_events'
+      && /does not exist|schema cache|PGRST205/i.test(error.message)
+    ));
     return {
       drafts,
       audit: {
@@ -222,12 +371,20 @@ export class LifeArcProposalService {
         drawableArcs: arcs.filter((arc) => lifeArcBarEligibility(arc).drawable).length,
         suppressedArcs: countSuppressed(arcs),
         proposedArcs: drafts.length,
-        dataErrors: timeline.data_errors ?? [],
+        dataErrors,
       },
     };
   }
 
-  async build(userId: string, persist: boolean): Promise<{ audit: LifeArcProposalAudit; proposals: LifeArcProposal[] | LifeArcProposalDraft[] }> {
+  async build(
+    userId: string,
+    persist: boolean,
+    opts: { autoCreateReady?: boolean } = {},
+  ): Promise<{
+    audit: LifeArcProposalAudit;
+    proposals: LifeArcProposal[] | LifeArcProposalDraft[];
+    autoCreated?: LifeArc[];
+  }> {
     const { audit, drafts } = await this.audit(userId);
     if (!persist || drafts.length === 0) return { audit, proposals: drafts };
 
@@ -235,15 +392,20 @@ export class LifeArcProposalService {
     const reviewable = drafts.filter((draft) => !prior.some((row) => proposalMatchesPriorDecision(draft, row)));
     const rows = reviewable.map((draft) => ({ ...draft, user_id: userId, status: 'pending' }));
     if (rows.length === 0) {
-      return { audit: { ...audit, proposedArcs: 0 }, proposals: await this.list(userId, 'pending') };
+      const pending = await this.list(userId, 'pending');
+      const autoCreated = opts.autoCreateReady ? (await this.createReadyArcs(userId)).created : undefined;
+      return { audit: { ...audit, proposedArcs: 0 }, proposals: pending, autoCreated };
     }
     const { error } = await supabaseAdmin
       .from('life_arc_proposals')
       .upsert(rows, { onConflict: 'user_id,fingerprint', ignoreDuplicates: true });
     if (error) throw error;
+
+    const autoCreated = opts.autoCreateReady ? (await this.createReadyArcs(userId)).created : undefined;
     return {
       audit: { ...audit, proposedArcs: reviewable.length },
       proposals: await this.list(userId, 'pending'),
+      autoCreated,
     };
   }
 
@@ -285,6 +447,30 @@ export class LifeArcProposalService {
     await this.linkCanonicalEvidence(userId, arc.id, proposal);
     const decided = await this.decide(userId, proposalId, { status: 'created', created_arc_id: arc.id });
     return { proposal: decided, arc };
+  }
+
+  async createReadyArcs(userId: string): Promise<{ created: LifeArc[]; skipped: number }> {
+    const pending = await this.list(userId, 'pending');
+    const existing = await arcService.listForUser(userId);
+    const created: LifeArc[] = [];
+    let skipped = 0;
+
+    for (const proposal of pending) {
+      if (!proposalReadyForAutoCreate(proposal) || overlapsExistingArc(proposal, existing)) {
+        skipped += 1;
+        continue;
+      }
+      try {
+        const result = await this.createArc(userId, proposal.id);
+        created.push(result.arc);
+        existing.push(result.arc);
+      } catch (err) {
+        logger.warn({ err, userId, proposalId: proposal.id }, 'lifeArcProposal auto-create skipped');
+        skipped += 1;
+      }
+    }
+
+    return { created, skipped };
   }
 
   private async linkCanonicalEvidence(userId: string, arcId: string, proposal: LifeArcProposal): Promise<void> {
@@ -360,28 +546,7 @@ export class LifeArcProposalService {
     const proposal = await this.requirePending(userId, proposalId);
     const target = await arcService.getById(userId, arcId);
     if (!target) throw new Error('Target arc not found');
-    const startDate = [target.start_date, proposal.start_date].filter(Boolean).sort()[0] ?? proposal.start_date;
-    const endDate = [target.end_date, proposal.end_date].filter(Boolean).sort().at(-1) ?? proposal.end_date;
-    const priorSourceIds = Array.isArray((target.metadata as { source_record_ids?: unknown }).source_record_ids)
-      ? ((target.metadata as { source_record_ids: unknown[] }).source_record_ids.filter((id): id is string => typeof id === 'string'))
-      : [];
-    await arcService.update(userId, target.id, {
-      start_date: startDate,
-      end_date: endDate,
-      confidence: Math.max(target.confidence, proposal.confidence),
-      metadata: {
-        ...target.metadata,
-        source_record_ids: [...new Set([...priorSourceIds, ...proposal.source_record_ids])],
-        merged_proposal_fingerprints: [
-          ...new Set([
-            ...(Array.isArray(target.metadata.merged_proposal_fingerprints)
-              ? target.metadata.merged_proposal_fingerprints.filter((value): value is string => typeof value === 'string')
-              : []),
-            proposal.fingerprint,
-          ]),
-        ],
-      },
-    });
+    await arcService.update(userId, target.id, buildMergeUpdatePatch(target, proposal));
     await this.linkCanonicalEvidence(userId, target.id, proposal);
     return this.decide(userId, proposalId, { status: 'merged', merged_into_arc_id: target.id });
   }

@@ -88,7 +88,7 @@ describe('LifeArc API Routes', () => {
   it('builds proposals in dry-run mode by default', async () => {
     const { lifeArcProposalService } = await import('../../src/services/continuityRuntime/arcs/lifeArcProposalService');
     const res = await request(app).post('/api/life-arc/proposals/build').send({}).expect(200);
-    expect(lifeArcProposalService.build).toHaveBeenCalledWith('u1', false);
+    expect(lifeArcProposalService.build).toHaveBeenCalledWith('u1', false, { autoCreateReady: false });
     expect(res.body).toMatchObject({ success: true, dry_run: true });
   });
 

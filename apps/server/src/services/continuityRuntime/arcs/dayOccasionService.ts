@@ -54,6 +54,11 @@ function dayOf(iso: string): string {
   return iso.slice(0, 10);
 }
 
+function eventSpansMultipleDays(event: ResolvedEventRow): boolean {
+  if (!event.end_time) return false;
+  return dayOf(event.start_time) !== dayOf(event.end_time);
+}
+
 function normalizeKey(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 48);
 }
@@ -304,6 +309,10 @@ export class DayOccasionService {
 
   private async upsertOccasionArc(userId: string, cluster: DayCluster): Promise<boolean> {
     if (cluster.events.length === 0) return false;
+    if (cluster.events.some(eventSpansMultipleDays)) {
+      logger.debug({ userId, day: cluster.day }, 'dayOccasion: skipped multi-day event span');
+      return false;
+    }
 
     const anchor =
       cluster.events.find(e => cluster.anchorEventIds.includes(e.id)) ?? cluster.events[0];
