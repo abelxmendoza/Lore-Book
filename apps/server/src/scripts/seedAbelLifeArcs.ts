@@ -238,24 +238,24 @@ const SEED_ARCS: SeedArc[] = [
   },
   {
     originalLane: 'Relationships + Social',
-    title: 'LA/OC Scene Chapter',
+    title: 'Local Music Community Chapter',
     arc_type: 'life_era',
     track: 'relationships',
     start_date: '2025-01-01',
     end_date: null,
     datePrecision: 'approximate',
-    summary: 'Increasing involvement in punk, ska, metal, nightlife, shows, and related LA/OC communities.',
+    summary: 'Increasing involvement in local music, nightlife, shows, and related communities.',
   },
   {
     originalLane: 'Relationships + Social',
-    title: 'Scene Rupture',
+    title: 'Community Withdrawal Period',
     arc_type: 'life_era',
     track: 'relationships',
     start_date: '2026-06-01',
     end_date: '2026-08-31',
     datePrecision: 'approximate',
     summary:
-      'Major social break involving withdrawal from parts of the ska scene, reassessment of community, reputation concerns, and a shift away from previous social environments.',
+      'Major social break involving withdrawal from a previous community, reassessment of belonging, and a shift away from earlier social environments.',
   },
 
   // --- Life ---
@@ -351,7 +351,12 @@ async function main() {
     const { originalLane, datePrecision, ...payload } = arc;
     const result = await upsertArcByTitle(userId, {
       ...payload,
-      is_active: true,
+      // Seeded, not yet confirmed by the account owner — is_active stays
+      // false and needs_review stays true until reviewed and corrected via
+      // arcService.update()/delete(), same as any other arc. Nothing about
+      // seeding makes this data more permanent or "locked in" than a
+      // manually created arc.
+      is_active: false,
       confidence: 1,
       source: 'user_created',
       tags: [`lane:${laneSlug(originalLane)}`],
@@ -359,6 +364,7 @@ async function main() {
         original_lane: originalLane,
         date_precision: datePrecision,
         seed_source: 'abel_life_arcs_blueprint_v1',
+        needs_review: true,
       },
     });
     if (result === 'created') created += 1;
