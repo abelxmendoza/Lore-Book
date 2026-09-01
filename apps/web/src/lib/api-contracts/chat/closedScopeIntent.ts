@@ -20,7 +20,9 @@ export type ClosedScopeReason =
   | 'romance_write_request'
   | 'event_write_request'
   | 'life_arc_write_request'
-  | 'life_arc_brainstorm_request';
+  | 'life_arc_brainstorm_request'
+  | 'character_epithet_write_request'
+  | 'character_epithet_brainstorm_request';
 
 // General-purpose ReDoS-safe "short filler phrase" token pattern, replacing
 // every `.{0,N}` / `.{1,N}` construct below that sat directly against a
@@ -591,6 +593,35 @@ export function isLifeArcBrainstormRequest(message: string): boolean {
   return LIFE_ARC_BRAINSTORM_VERB_RE.test(text);
 }
 
+// Explicit apply-a-picked-title write — "set X's title/epithet to Y". Requires
+// the possessive + title/epithet noun so it can't collide with
+// CHARACTER_BOOK_RENAME_RE's "rename the character X to Y" phrasing.
+const CHARACTER_EPITHET_WRITE_RE = new RegExp(
+  `\\b(?:set|change|update|make)\\s+(${phraseTokens(7)})(?:'s|’s)\\s+(?:card\\s+)?(?:title|epithet)\\s+(?:to\\s+)?(.{1,60})$`,
+  'i',
+);
+
+export function isCharacterEpithetWriteRequest(message: string): boolean {
+  const text = message.trim();
+  if (!text) return false;
+  return CHARACTER_EPITHET_WRITE_RE.test(text);
+}
+
+// Read-only fan-out of title/epithet OPTIONS for a character — same shape as
+// LIFE_ARC_BRAINSTORM_*, scoped by a title/epithet noun so it doesn't swallow
+// unrelated "give me some ideas" chat.
+const CHARACTER_EPITHET_BRAINSTORM_SCOPE_RE = /\b(?:title|epithet|nickname|retitle)s?\b/i;
+const CHARACTER_EPITHET_BRAINSTORM_VERB_RE =
+  /\b(?:brainstorm|suggest)\s+(?:some\s+|a\s+few\s+|new\s+|other\s+|different\s+)?(?:title|epithet|nickname)s?(?:\s*ideas?)?\b|\bgive\s+me\s+(?:some\s+|a\s+few\s+|other\s+|different\s+)?(?:title|epithet|nickname)\s*ideas?\b|\bhelp\s+me\s+(?:title|retitle)\s+(?:[a-zA-Z0-9][\w'-]*\s+){0,3}[a-zA-Z0-9][\w'-]*\b/i;
+
+export function isCharacterEpithetBrainstormRequest(message: string): boolean {
+  const text = message.trim();
+  if (!text) return false;
+  if (isCharacterEpithetWriteRequest(text)) return false;
+  if (!CHARACTER_EPITHET_BRAINSTORM_SCOPE_RE.test(text)) return false;
+  return CHARACTER_EPITHET_BRAINSTORM_VERB_RE.test(text);
+}
+
 export function isClosedScopeQuery(message: string): { closedScope: boolean; reason?: ClosedScopeReason } {
   if (isEntityReclassifyWriteRequest(message)) {
     return { closedScope: true, reason: 'entity_reclassify_write_request' };
@@ -627,6 +658,12 @@ export function isClosedScopeQuery(message: string): { closedScope: boolean; rea
   }
   if (isLifeArcBrainstormRequest(message)) {
     return { closedScope: true, reason: 'life_arc_brainstorm_request' };
+  }
+  if (isCharacterEpithetWriteRequest(message)) {
+    return { closedScope: true, reason: 'character_epithet_write_request' };
+  }
+  if (isCharacterEpithetBrainstormRequest(message)) {
+    return { closedScope: true, reason: 'character_epithet_brainstorm_request' };
   }
   if (isCastRosterQuery(message)) return { closedScope: true, reason: 'cast_roster_query' };
   if (isCharacterBookWriteRequest(message)) return { closedScope: true, reason: 'character_book_write_request' };

@@ -105,6 +105,12 @@ class ModeHandlers {
       case 'LIFE_ARC_BRAINSTORM':
         return await this.handleLifeArcBrainstorm(userId, message);
 
+      case 'CHARACTER_EPITHET_WRITE':
+        return await this.handleCharacterEpithetWrite(userId, message);
+
+      case 'CHARACTER_EPITHET_BRAINSTORM':
+        return await this.handleCharacterEpithetBrainstorm(userId, message);
+
       case 'SUGGESTION_DISMISS_WRITE':
         return await this.handleSuggestionDismissWrite(userId, message, options?.threadId);
 
@@ -821,6 +827,46 @@ class ModeHandlers {
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Could not brainstorm arc name ideas right now.';
       return { content: msg, response_mode: 'LIFE_ARC_BRAINSTORM', confidence: 0.5 };
+    }
+  }
+
+  private async handleCharacterEpithetWrite(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const { writeCharacterEpithetFromChat } = await import('../chat/characterEpithetWriteService');
+      const result = await writeCharacterEpithetFromChat(userId, message);
+      return {
+        content: result.summary,
+        response_mode: 'CHARACTER_EPITHET_WRITE',
+        confidence: 0.92,
+        metadata: {
+          characterId: result.characterId,
+          characterName: result.characterName,
+          characterEpithetTitle: result.title,
+        },
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Could not update that character\'s title.';
+      return { content: msg, response_mode: 'CHARACTER_EPITHET_WRITE', confidence: 0.55 };
+    }
+  }
+
+  private async handleCharacterEpithetBrainstorm(userId: string, message: string): Promise<ModeHandlerResponse> {
+    try {
+      const { brainstormCharacterEpithets } = await import('../chat/characterEpithetBrainstormService');
+      const result = await brainstormCharacterEpithets(userId, message);
+      return {
+        content: result.summary,
+        response_mode: 'CHARACTER_EPITHET_BRAINSTORM',
+        confidence: 0.85,
+        metadata: {
+          characterId: result.characterId,
+          characterName: result.characterName,
+          characterEpithetSuggestions: result.suggestions,
+        },
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Could not brainstorm title ideas right now.';
+      return { content: msg, response_mode: 'CHARACTER_EPITHET_BRAINSTORM', confidence: 0.5 };
     }
   }
 

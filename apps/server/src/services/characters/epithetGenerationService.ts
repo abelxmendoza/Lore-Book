@@ -73,7 +73,7 @@ function buildMentionPattern(names: string[]): RegExp | null {
   return new RegExp(`\\b(?:${terms.map(escapeRegExp).join('|')})\\b`, 'i');
 }
 
-async function loadStorySnippets(
+export async function loadStorySnippets(
   userId: string,
   characterId: string,
   mentionNames: string[],

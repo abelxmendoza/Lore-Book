@@ -46,6 +46,8 @@ export {
   isEventWriteRequest,
   isLifeArcWriteRequest,
   isLifeArcBrainstormRequest,
+  isCharacterEpithetWriteRequest,
+  isCharacterEpithetBrainstormRequest,
   isClosedScopeQuery,
   isFocusEntityRelevant,
   isPronounPersonQuery,
