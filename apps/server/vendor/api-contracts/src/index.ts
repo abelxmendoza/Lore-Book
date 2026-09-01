@@ -44,6 +44,7 @@ export {
   isHouseholdWriteRequest,
   isRomanceWriteRequest,
   isEventWriteRequest,
+  isLifeArcWriteRequest,
   isClosedScopeQuery,
   isFocusEntityRelevant,
   isPronounPersonQuery,

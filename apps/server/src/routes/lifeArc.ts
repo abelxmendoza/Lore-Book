@@ -14,6 +14,7 @@ const router = Router();
 const upsertSchema = z.object({
   title: z.string().min(1).max(120),
   arc_type: z.enum(['life_era', 'skill', 'location', 'work', 'custom', 'occasion']),
+  track: z.enum(['career', 'romance', 'relationships', 'creative', 'health', 'inner', 'mixed', 'custom']).nullable().optional(),
   parent_id: z.string().uuid().nullable().optional(),
   start_date: z.string().nullable().optional(),
   end_date: z.string().nullable().optional(),
