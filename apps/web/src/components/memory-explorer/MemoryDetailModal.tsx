@@ -532,38 +532,6 @@ export const MemoryDetailModal = ({ memory, onClose, onNavigate, allMemories = [
                   </div>
                 )}
 
-                {/* Timeline Hierarchy */}
-                {(memory.eraTitle || memory.sagaTitle || memory.arcTitle || memory.chapterTitle) && (
-                  <div>
-                    <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                      <Sparkles className="h-5 w-5 text-primary" />
-                      Timeline Hierarchy
-                    </h3>
-                    <div className="flex flex-wrap gap-2">
-                      {memory.eraTitle && (
-                        <Badge variant="outline" className="border-blue-500/50 text-blue-300 px-3 py-1">
-                          Era: {memory.eraTitle}
-                        </Badge>
-                      )}
-                      {memory.sagaTitle && (
-                        <Badge variant="outline" className="border-green-500/50 text-green-300 px-3 py-1">
-                          Saga: {memory.sagaTitle}
-                        </Badge>
-                      )}
-                      {memory.arcTitle && (
-                        <Badge variant="outline" className="border-purple-500/50 text-purple-300 px-3 py-1">
-                          Arc: {memory.arcTitle}
-                        </Badge>
-                      )}
-                      {memory.chapterTitle && (
-                        <Badge variant="outline" className="border-yellow-500/50 text-yellow-300 px-3 py-1">
-                          Chapter: {memory.chapterTitle}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                )}
-
                 {/* Characters */}
                 {memory.characters.length > 0 && (
                   <div>
@@ -604,66 +572,6 @@ export const MemoryDetailModal = ({ memory, onClose, onNavigate, allMemories = [
             {/* Context Tab */}
             {activeTab === 'context' && (
               <div className="space-y-6">
-                {/* Timeline Hierarchy Details */}
-                {(memory.eraTitle || memory.sagaTitle || memory.arcTitle || memory.chapterTitle) && (
-                  <div>
-                    <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                      <Layers className="h-5 w-5 text-primary" />
-                      Timeline Hierarchy
-                    </h3>
-                    <div className="space-y-3">
-                      {memory.eraTitle && (
-                        <Card className="bg-black/40 border-border/50">
-                          <CardContent className="p-4">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Badge variant="outline" className="border-blue-500/50 text-blue-300">
-                                Era
-                              </Badge>
-                              <span className="text-white font-semibold">{memory.eraTitle}</span>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      )}
-                      {memory.sagaTitle && (
-                        <Card className="bg-black/40 border-border/50">
-                          <CardContent className="p-4">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Badge variant="outline" className="border-green-500/50 text-green-300">
-                                Saga
-                              </Badge>
-                              <span className="text-white font-semibold">{memory.sagaTitle}</span>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      )}
-                      {memory.arcTitle && (
-                        <Card className="bg-black/40 border-border/50">
-                          <CardContent className="p-4">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Badge variant="outline" className="border-purple-500/50 text-purple-300">
-                                Arc
-                              </Badge>
-                              <span className="text-white font-semibold">{memory.arcTitle}</span>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      )}
-                      {memory.chapterTitle && (
-                        <Card className="bg-black/40 border-border/50">
-                          <CardContent className="p-4">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Badge variant="outline" className="border-yellow-500/50 text-yellow-300">
-                                Chapter
-                              </Badge>
-                              <span className="text-white font-semibold">{memory.chapterTitle}</span>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      )}
-                    </div>
-                  </div>
-                )}
-
                 {/* Temporal Context */}
                 {temporalMemories.length > 0 && (
                   <div>

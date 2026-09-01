@@ -1,14 +1,11 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, MessageSquare, Network, Calendar, MapPin, User, FileText, Sparkles, Link2, Save, RefreshCw, Loader2, Search } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { X, MessageSquare, Network, MapPin, User, FileText, Sparkles, Link2, Save, Loader2, Search, ArrowRight } from 'lucide-react';
 import { useEntityModal } from '../../contexts/EntityModalContext';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
-import { ChatComposer } from '../../features/chat/composer/ChatComposer';
-import { ChatMessage, type Message } from '../../features/chat/message/ChatMessage';
-import { useChatStream } from '../../hooks/useChatStream';
+import { openChatWithFocus } from '../../lib/openChatWithFocus';
 import { fetchJson } from '../../lib/api';
-import { fetchCharacterList } from '../../api/characterList';
 import { searchTimelines, fetchTimeline } from '../../api/timelineV2';
 import { useTimelineV2 } from '../../hooks/useTimelineV2';
 import type { ChronologyEntry, Timeline } from '../../types/timelineV2';
@@ -42,13 +39,12 @@ interface EntityDetailModalProps {
   onUpdate?: (entity: EntityData) => void;
 }
 
-type TabKey = 'chat' | 'details' | 'connections' | 'timeline' | 'search';
+type TabKey = 'chat' | 'details' | 'connections' | 'search';
 
 const tabs: Array<{ key: TabKey; label: string; icon: typeof MessageSquare }> = [
   { key: 'chat', label: 'Chat', icon: MessageSquare },
   { key: 'details', label: 'Details', icon: FileText },
   { key: 'connections', label: 'Connections', icon: Network },
-  { key: 'timeline', label: 'Timeline', icon: Calendar },
   { key: 'search', label: 'Search', icon: Search }
 ];
 
@@ -74,16 +70,11 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
     confidence: number;
   }>>([]);
   const [loading, setLoading] = useState(false);
-  const [updating, setUpdating] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Array<{ id: string; title: string; type: string; description?: string; start_date?: string; end_date?: string | null }>>([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [associatedTimelines, setAssociatedTimelines] = useState<Timeline[]>([]);
-  const chatMessagesEndRef = useRef<HTMLDivElement>(null);
+  const [, setAssociatedTimelines] = useState<Timeline[]>([]);
 
-  const { streamChat } = useChatStream();
   const { timelines: allTimelines } = useTimelineV2();
 
   // Load entity details and connections
@@ -205,105 +196,17 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
   loadEntityData();
 }, [entity, allTimelines]);
 
-  // Auto-scroll chat to bottom
-  useEffect(() => {
-    if (chatMessagesEndRef.current) {
-      chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages]);
-
-  // Handle chat with entity context
-  const handleChatMessage = useCallback(async (message: string) => {
-    if (!message.trim() || isLoading) return;
-
-    const userMessage: Message = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: message,
-      timestamp: new Date()
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setIsLoading(true);
-
-    try {
-      const contextPrompt = buildContextPrompt(entityData);
-      const fullMessage = `${contextPrompt}\n\nUser: ${message}`;
-      
-      const assistantMessage: Message = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: '',
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, assistantMessage]);
-
-      let accumulatedContent = '';
-      await streamChat(
-        fullMessage,
-        [], // conversation history
-        (chunk: string) => {
-          accumulatedContent += chunk;
-          setMessages(prev => {
-            const updated = [...prev];
-            const lastMsg = updated[updated.length - 1];
-            if (lastMsg && lastMsg.role === 'assistant') {
-              lastMsg.content = accumulatedContent;
-            }
-            return updated;
-          });
-        },
-        () => {}, // onMetadata
-        () => {
-          setIsLoading(false);
-        },
-        (error: string) => {
-          console.error('Chat error:', error);
-          setIsLoading(false);
-        },
-        {
-          type: 'ENTITY',
-          id: entityData.id
-        }
-      );
-    } catch (error) {
-      console.error('Error sending message:', error);
-      setIsLoading(false);
-    }
-  }, [entityData, isLoading, streamChat]);
-
-  // Build context prompt for chat
-  const buildContextPrompt = (entity: EntityData): string => {
-    let prompt = `You are discussing ${getEntityName(entity)}.\n\n`;
-    
-    if (entity.type === 'character' && entity.character) {
-      prompt += `Character: ${entity.character.name}\n`;
-      if (entity.character.summary) prompt += `Summary: ${entity.character.summary}\n`;
-      if (entity.character.role) prompt += `Role: ${entity.character.role}\n`;
-      if (entity.character.archetype) prompt += `Archetype: ${entity.character.archetype}\n`;
-    } else if (entity.type === 'location' && entity.location) {
-      prompt += `Location: ${entity.location.name}\n`;
-      if (entity.location.type) prompt += `Type: ${entity.location.type}\n`;
-      if (entity.location.description) prompt += `Description: ${entity.location.description}\n`;
-    } else if (entity.type === 'memory' && entity.memory) {
-      prompt += `Memory from ${new Date(entity.memory.start_time).toLocaleDateString()}\n`;
-      if ((entity.memory as any).summary) {
-        prompt += `Summary: ${(entity.memory as any).summary}\n`;
-      }
-      prompt += `Content: ${entity.memory.content}\n`;
-      if ((entity.memory as any).mood) {
-        prompt += `Mood: ${(entity.memory as any).mood}\n`;
-      }
-      if ((entity.memory as any).tags && (entity.memory as any).tags.length > 0) {
-        prompt += `Tags: ${(entity.memory as any).tags.join(', ')}\n`;
-      }
-    }
-    
-    prompt += `\nHelp the user understand, update, and explore this ${entity.type}. `;
-    prompt += `When they mention other characters, locations, or events, suggest updating the lore book. `;
-    prompt += `Be conversational and helpful.`;
-    
-    return prompt;
+  const openInMainChat = () => {
+    onClose();
+    openChatWithFocus({
+      entityId: entityData.id,
+      entityName: getEntityName(entityData),
+      entityType: entityData.type,
+      sourceSurface: 'lorebook',
+      sourceLabel: 'Entity Detail',
+      knowledgeScope: `${getEntityName(entityData)}, its details, connections, and context`,
+      startNewThread: true,
+    });
   };
 
   const getEntityName = (entity: EntityData): string => {
@@ -311,38 +214,6 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
     if (entity.type === 'location') return entity.location?.name || entity.name || 'Location';
     if (entity.type === 'memory') return entity.memory?.content.substring(0, 50) || 'Memory';
     return 'Entity';
-  };
-
-  const handleUpdateEntity = async () => {
-    setUpdating(true);
-    try {
-      // Auto-detect and update entities from chat messages
-      const lastUserMessage = messages.filter(m => m.role === 'user').pop()?.content || '';
-      const lastAssistantMessage = messages.filter(m => m.role === 'assistant').pop()?.content || '';
-      
-      // Call backend to extract and update entities
-      const response = await fetchJson<{ updated: boolean; entities: any[] }>('/api/entities/auto-update', {
-        method: 'POST',
-        body: JSON.stringify({
-          entity_type: entityData.type,
-          entity_id: entityData.id,
-          conversation: {
-            user_message: lastUserMessage,
-            assistant_message: lastAssistantMessage
-          }
-        })
-      });
-
-      if (response.updated) {
-        // Reload entity data
-        setEntityData(prev => ({ ...prev, ...response }));
-        onUpdate?.(entityData);
-      }
-    } catch (error) {
-      console.error('Error updating entity:', error);
-    } finally {
-      setUpdating(false);
-    }
   };
 
   const handleConnectionClick = useCallback((connection: { type: EntityType; id: string; name: string }) => {
@@ -359,58 +230,6 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
       }
     }, 100);
   }, [onClose, openCharacter, openLocation, openMemory]);
-
-  // Extract entity names from text
-  const extractEntityNames = (text: string): Array<{ name: string; type: 'character' | 'location' }> => {
-    const entities: Array<{ name: string; type: 'character' | 'location' }> = [];
-    
-    // Character patterns
-    const characterPattern = /\b([A-Z][a-z]+ [A-Z][a-z]+)\b/g;
-    let match;
-    while ((match = characterPattern.exec(text)) !== null) {
-      entities.push({ name: match[1], type: 'character' });
-    }
-    
-    // Location patterns
-    const locationPattern = /\b(?:in|at|to|from)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b/g;
-    while ((match = locationPattern.exec(text)) !== null) {
-      entities.push({ name: match[1], type: 'location' });
-    }
-    
-    // Remove duplicates
-    return entities.filter((entity, index, self) =>
-      index === self.findIndex(e => e.name === entity.name)
-    );
-  };
-
-  // Handle clicking on entity name in chat
-  const handleEntityNameClick = async (name: string) => {
-    try {
-      // Try to find character first
-      const characters = await fetchCharacterList<{ id: string; name: string }>();
-      const character = characters.find(c => c.name.toLowerCase() === name.toLowerCase());
-      if (character) {
-        openCharacter(character);
-        return;
-      }
-      
-      // Try to find location
-      const locations = await fetchJson<Array<{ id: string; name: string }>>('/api/locations');
-      const location = locations.find(l => l.name.toLowerCase() === name.toLowerCase());
-      if (location) {
-        openLocation(location);
-        return;
-      }
-      
-      // If not found, suggest creating it
-      if (confirm(`"${name}" not found. Would you like to create it?`)) {
-        // Could open a create modal here
-        console.log('Create entity:', name);
-      }
-    } catch (error) {
-      console.error('Error finding entity:', error);
-    }
-  };
 
   // Handle timeline search
   const handleTimelineSearch = useCallback(async (query: string) => {
@@ -485,18 +304,6 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
               }}
               testId="entity-modal-lorebook-compile"
             />
-            {updating && (
-              <Loader2 className="w-4 h-4 animate-spin text-primary" />
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleUpdateEntity}
-              title="Auto-update from conversation"
-              disabled={updating}
-            >
-              <RefreshCw className="w-4 h-4" />
-            </Button>
             <Button
               variant="ghost"
               size="icon"
@@ -535,75 +342,31 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
           ) : activeTab === 'chat' ? (
-            <div className="h-full flex flex-col">
-              {/* Chat Messages */}
-              <div className="flex-1 overflow-y-auto space-y-4 mb-4">
-                {messages.length === 0 ? (
-                  <div className="text-center py-12">
-                    <MessageSquare className="w-12 h-12 text-white/30 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-white mb-2">Start a conversation</h3>
-                    <p className="text-sm text-white/60 mb-4">
-                      Ask questions, update information, or explore connections about {getEntityName(entityData)}
-                    </p>
-                    <div className="flex flex-wrap gap-2 justify-center">
-                      <button
-                        onClick={() => handleChatMessage(`Tell me more about ${getEntityName(entityData)}`)}
-                        className="text-xs px-3 py-1.5 bg-primary/20 text-primary border border-primary/30 rounded hover:bg-primary/30 transition-colors"
-                      >
-                        Tell me more
-                      </button>
-                      <button
-                        onClick={() => handleChatMessage(`What are the key details about ${getEntityName(entityData)}?`)}
-                        className="text-xs px-3 py-1.5 bg-primary/20 text-primary border border-primary/30 rounded hover:bg-primary/30 transition-colors"
-                      >
-                        Key details
-                      </button>
-                      <button
-                        onClick={() => handleChatMessage(`What connections does ${getEntityName(entityData)} have?`)}
-                        className="text-xs px-3 py-1.5 bg-primary/20 text-primary border border-primary/30 rounded hover:bg-primary/30 transition-colors"
-                      >
-                        Show connections
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  messages.map((message) => (
-                    <div key={message.id}>
-                      <ChatMessage message={message} />
-                      {/* Auto-detect and make entity names clickable in assistant messages */}
-                      {message.role === 'assistant' && (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {/* Extract potential entity names and make them clickable */}
-                          {extractEntityNames(message.content).map((entity, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => {
-                                // Try to find and open entity
-                                handleEntityNameClick(entity.name);
-                              }}
-                              className="text-xs px-2 py-1 bg-primary/20 text-primary border border-primary/30 rounded hover:bg-primary/30 transition-colors"
-                            >
-                              {entity.name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
-                <div ref={chatMessagesEndRef} />
+            <section className="mx-auto max-w-xl rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-500/15 via-violet-500/[0.06] to-transparent p-4 sm:p-6">
+              <div className="mb-4 flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/20 text-violet-200">
+                  <MessageSquare className="h-5 w-5" />
+                </span>
+                <div>
+                  <h3 className="font-semibold text-white">Start a focused chat</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-white/60 sm:text-sm">
+                    Continue in main chat with {getEntityName(entityData)} focused. LoreBook responds first with a grounded view of it.
+                  </p>
+                </div>
               </div>
-
-              {/* Chat Input */}
-              <div className="border-t border-border/60 pt-4">
-                <ChatComposer
-                  onSubmit={handleChatMessage}
-                  loading={isLoading}
-                  disabled={isLoading}
-                  threadId={`entity-chat:${entityData.id}`}
-                />
-              </div>
-            </div>
+              <Button
+                type="button"
+                onClick={openInMainChat}
+                data-testid="entity-open-main-chat"
+                className="group min-h-11 w-full bg-violet-500 text-white hover:bg-violet-400"
+              >
+                Open focused chat
+                <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </Button>
+              <p className="mt-3 text-center text-[11px] text-white/40">
+                Opens a fresh focused thread. LoreBook will not invent missing details.
+              </p>
+            </section>
           ) : activeTab === 'details' ? (
             <div className="space-y-4">
               {entityData.type === 'character' && entityData.character && (
@@ -863,86 +626,6 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
                 <div className="text-center py-12">
                   <Network className="w-12 h-12 text-white/30 mx-auto mb-4" />
                   <p className="text-sm text-white/60">No connections found</p>
-                </div>
-              )}
-            </div>
-          ) : activeTab === 'timeline' ? (
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-primary" />
-                Timeline
-              </h3>
-              {entityData.type === 'memory' && entityData.memory && (
-                <Card className="bg-black/40 border-border/60">
-                  <CardContent className="p-4">
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-sm text-white/80">
-                        <Calendar className="w-4 h-4" />
-                        {new Date(entityData.memory.start_time).toLocaleDateString()}
-                        {entityData.memory.end_time && (
-                          <> - {new Date(entityData.memory.end_time).toLocaleDateString()}</>
-                        )}
-                      </div>
-                      <div className="text-xs text-white/60">
-                        Precision: {entityData.memory.time_precision} • Confidence: {(entityData.memory.time_confidence * 100).toFixed(0)}%
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-              {associatedTimelines.length > 0 && (
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium text-white/80">Associated Timelines</h4>
-                  <div className="space-y-3">
-                    {associatedTimelines.map((timeline) => {
-                      const startDate = new Date(timeline.start_date);
-                      const endDate = timeline.end_date ? new Date(timeline.end_date) : new Date();
-                      const now = new Date();
-                      const totalDays = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
-                      const currentDays = (now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
-                      const progressPercent = totalDays > 0 ? Math.min(100, Math.max(0, (currentDays / totalDays) * 100)) : 50;
-                      
-                      return (
-                        <div
-                          key={timeline.id}
-                          className="bg-black/40 border border-border/60 rounded-lg p-3 hover:border-primary/40 transition-all cursor-pointer group"
-                          onClick={() => handleTimelineClick(timeline.id)}
-                        >
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-medium text-white group-hover:text-primary transition-colors">
-                                {timeline.title}
-                              </span>
-                              <Link2 className="w-3 h-3 text-white/40 group-hover:text-primary transition-colors" />
-                            </div>
-                            
-                            {/* Progress Bar Style */}
-                            <div className="relative h-6 bg-black/60 rounded-full overflow-hidden border border-border/40">
-                              <div className="absolute inset-0 bg-gradient-to-r from-primary/20 via-primary/30 to-primary/20" />
-                              <div
-                                className="absolute left-0 top-0 h-full bg-gradient-to-r from-primary via-primary/90 to-primary/70 rounded-full transition-all duration-500"
-                                style={{
-                                  width: `${progressPercent}%`,
-                                  boxShadow: '0 0 8px rgba(154, 77, 255, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
-                                }}
-                              />
-                              <div className="absolute inset-0 flex items-center justify-center">
-                                <span className="text-[10px] font-medium text-white/80 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
-                                  {Math.round(progressPercent)}%
-                                </span>
-                              </div>
-                            </div>
-                            
-                            <div className="flex items-center justify-between text-[10px] text-white/50">
-                              <span>{startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                              <span className="text-primary/70 font-medium capitalize">{timeline.timeline_type.replace('_', ' ')}</span>
-                              <span>{endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
                 </div>
               )}
             </div>
