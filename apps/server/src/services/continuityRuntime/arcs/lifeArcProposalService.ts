@@ -2,6 +2,14 @@ import { createHash } from 'node:crypto';
 
 import { logger } from '../../../logger';
 import {
+  extractLoreEntityRefsFromMetadata,
+  extractLoreSourcesFromMetadata,
+  intakeChannelFromSourceType,
+  type LoreEntityRef,
+  type LoreIntakeChannel,
+  type LoreSourceRef,
+} from '@lorebook/api-contracts';
+import {
   stitchedTimelineService,
   type StitchedTimelineItem,
 } from '../../chronologyV2/stitchedTimelineService';
@@ -21,6 +29,10 @@ export type LifeArcProposalEvidence = {
   title: string;
   occurredAt: string;
   confidence: number;
+  sourceType: string;
+  intakeChannel: LoreIntakeChannel;
+  sources: LoreSourceRef[];
+  entities: LoreEntityRef[];
 };
 
 export type LifeArcProposalDraft = {
@@ -91,6 +103,24 @@ function textTrack(item: StitchedTimelineItem): ArcTrack {
   return 'inner';
 }
 
+function evidenceProvenance(item: StitchedTimelineItem): Pick<
+  LifeArcProposalEvidence,
+  'sourceType' | 'intakeChannel' | 'sources' | 'entities'
+> {
+  const metadata = (item.metadata ?? {}) as Record<string, unknown>;
+  const sourceType = item.sourceType ?? item.sourceKind;
+  return {
+    sourceType,
+    intakeChannel: intakeChannelFromSourceType(sourceType),
+    sources: extractLoreSourcesFromMetadata(metadata, {
+      sourceType,
+      sourceKind: item.sourceKind,
+      sourceId: item.sourceId,
+    }),
+    entities: extractLoreEntityRefsFromMetadata(metadata),
+  };
+}
+
 function arcTypeForTrack(track: ArcTrack): Exclude<ArcType, 'occasion'> {
   if (track === 'career') return 'work';
   if (track === 'creative' || track === 'health') return 'skill';
@@ -132,6 +162,7 @@ export function buildArcProposalsFromItems(items: StitchedTimelineItem[]): LifeA
       confidence,
       dateMs,
       track: textTrack(item),
+      ...evidenceProvenance(item),
     }];
   });
 
@@ -211,6 +242,10 @@ export class LifeArcProposalService {
       const date = item.occurredAt ?? item.temporalProjection?.occurredStart;
       return Boolean(date && Number.isFinite(new Date(date).getTime()));
     }).length;
+    const dataErrors = (timeline.data_errors ?? []).filter((error) => !(
+      error.source === 'timeline_events'
+      && /does not exist|schema cache|PGRST205/i.test(error.message)
+    ));
     return {
       drafts,
       audit: {
@@ -222,7 +257,7 @@ export class LifeArcProposalService {
         drawableArcs: arcs.filter((arc) => lifeArcBarEligibility(arc).drawable).length,
         suppressedArcs: countSuppressed(arcs),
         proposedArcs: drafts.length,
-        dataErrors: timeline.data_errors ?? [],
+        dataErrors,
       },
     };
   }
