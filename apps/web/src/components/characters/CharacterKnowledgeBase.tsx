@@ -111,9 +111,36 @@ type CharacterKnowledgeBaseProps = {
   chatMentions?: CharacterChatMention[];
   /** When true, copy addresses the app user in second person (your profile). */
   isSelfProfile?: boolean;
+  /**
+   * When true, show Edit / Remove on reviewable facts. Defaults to true for
+   * real (non-demo) characters so every character modal can correct lore.
+   */
+  allowFactEdit?: boolean;
   /** Jump to the exact thread/message a mention came from (closes the modal and navigates). */
   onOpenThread?: (sessionId: string, messageId: string) => void;
 };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Real entity_facts rows, or attribute-derived rows with a durable UUID. */
+export function canMutateKnowledgeFact(factId: string): boolean {
+  if (factId.startsWith('attr-')) {
+    return UUID_RE.test(factId.slice('attr-'.length));
+  }
+  return UUID_RE.test(factId);
+}
+
+/** Attribute rows can be removed; freeform text edit is only for entity_facts. */
+export function canEditKnowledgeFactText(factId: string): boolean {
+  return UUID_RE.test(factId) && !factId.startsWith('attr-');
+}
+
+function factMutationPath(characterId: string, factId: string): string {
+  if (factId.startsWith('attr-')) {
+    return `/api/characters/${characterId}/attributes/${factId.slice('attr-'.length)}`;
+  }
+  return `/api/characters/${characterId}/facts/${factId}`;
+}
 
 const catLabel: Record<string, string> = {
   personality: 'Personality',
@@ -405,8 +432,10 @@ export function CharacterKnowledgeBase({
   skipFetch = false,
   chatMentions = [],
   isSelfProfile = false,
+  allowFactEdit,
   onOpenThread,
 }: CharacterKnowledgeBaseProps) {
+  const factEditEnabled = allowFactEdit ?? !mockMode;
   const [data, setData] = useState<CharacterKnowledgeBaseData | null>(() =>
     resolveInitialData(characterId, characterName, mockMode, initialData, character),
   );
@@ -492,6 +521,10 @@ export function CharacterKnowledgeBase({
 
   const confirmSaveFactEdit = async (factId: string) => {
     if (savingFactId || removingFactId) return;
+    if (!canEditKnowledgeFactText(factId)) {
+      setFactActionError('This structured attribute can only be removed, not rewritten here.');
+      return;
+    }
     const next = editDraft.replace(/\s+/g, ' ').trim();
     if (!next) {
       setFactActionError('Enter a corrected fact before saving.');
@@ -506,13 +539,14 @@ export function CharacterKnowledgeBase({
         const res = await fetchJson<{
           success: boolean;
           fact: { id: string; fact: string; status?: string; previous_value?: string; confidence?: number };
-        }>(`/api/characters/${characterId}/facts/${factId}`, {
+        }>(factMutationPath(characterId, factId), {
           method: 'PATCH',
           body: JSON.stringify({ fact: next }),
         });
         updated = res.fact;
         invalidateCache(`/api/characters/${characterId}/knowledge-base`);
         invalidateCache(`/api/characters/${characterId}/facts`);
+        invalidateCache(`/api/characters/${characterId}/attributes`);
       } else {
         updated = {
           id: factId,
@@ -551,15 +585,20 @@ export function CharacterKnowledgeBase({
 
   const confirmRemoveFact = async (factId: string) => {
     if (removingFactId || savingFactId) return;
+    if (!canMutateKnowledgeFact(factId)) {
+      setFactActionError('This fact cannot be removed from here yet.');
+      return;
+    }
     setFactActionError(null);
     setRemovingFactId(factId);
     try {
       if (!mockMode) {
-        await fetchJson<{ success: boolean }>(`/api/characters/${characterId}/facts/${factId}`, {
+        await fetchJson<{ success: boolean }>(factMutationPath(characterId, factId), {
           method: 'DELETE',
         });
         invalidateCache(`/api/characters/${characterId}/knowledge-base`);
         invalidateCache(`/api/characters/${characterId}/facts`);
+        invalidateCache(`/api/characters/${characterId}/attributes`);
       }
       setData((prev) => {
         if (!prev) return prev;
@@ -853,8 +892,8 @@ export function CharacterKnowledgeBase({
           title={isSelfProfile ? 'Facts About You' : 'Facts From Conversations'}
           subtitle={
             isSelfProfile
-              ? 'Extracted from your chats and uploads — updated as you share more.'
-              : 'Extracted directly from chats — updated as new information comes in.'
+              ? 'Extracted from your chats and uploads — edit or remove anything that is wrong.'
+              : 'Extracted from your chats — edit or remove anything that is wrong.'
           }
         />
         {!kb?.facts.length ? (
@@ -1041,7 +1080,7 @@ export function CharacterKnowledgeBase({
                               Why?
                             </button>
                           )}
-                          {isSelfProfile && (
+                          {factEditEnabled && canMutateKnowledgeFact(fact.id) && (
                             editing ? (
                               <div className="flex flex-col items-stretch gap-1.5 mt-0.5 min-w-[7.5rem]">
                                 <button
@@ -1074,15 +1113,17 @@ export function CharacterKnowledgeBase({
                                 >
                                   {busyRemove ? 'Removing…' : 'Confirm remove'}
                                 </button>
-                                <button
-                                  type="button"
-                                  disabled={busyRemove}
-                                  onClick={() => beginEditFact(fact)}
-                                  className="text-[10px] font-semibold px-2 py-1 rounded border border-amber-400/40 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20 disabled:opacity-50"
-                                  data-testid={`edit-instead-fact-${fact.id}`}
-                                >
-                                  Edit instead
-                                </button>
+                                {canEditKnowledgeFactText(fact.id) && (
+                                  <button
+                                    type="button"
+                                    disabled={busyRemove}
+                                    onClick={() => beginEditFact(fact)}
+                                    className="text-[10px] font-semibold px-2 py-1 rounded border border-amber-400/40 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20 disabled:opacity-50"
+                                    data-testid={`edit-instead-fact-${fact.id}`}
+                                  >
+                                    Edit instead
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   disabled={busyRemove}
@@ -1098,17 +1139,19 @@ export function CharacterKnowledgeBase({
                               </div>
                             ) : (
                               <div className="flex items-center gap-1 mt-0.5">
-                                <button
-                                  type="button"
-                                  disabled={actionsLocked}
-                                  onClick={() => beginEditFact(fact)}
-                                  className="inline-flex items-center gap-1 text-[10px] px-1.5 py-1 rounded border border-white/10 text-white/40 hover:text-amber-100 hover:border-amber-400/40 hover:bg-amber-500/10 disabled:opacity-50"
-                                  aria-label="Edit fact"
-                                  data-testid={`arm-edit-fact-${fact.id}`}
-                                >
-                                  <Pencil className="h-3 w-3" aria-hidden="true" />
-                                  Edit
-                                </button>
+                                {canEditKnowledgeFactText(fact.id) && (
+                                  <button
+                                    type="button"
+                                    disabled={actionsLocked}
+                                    onClick={() => beginEditFact(fact)}
+                                    className="inline-flex items-center gap-1 text-[10px] px-1.5 py-1 rounded border border-white/10 text-white/40 hover:text-amber-100 hover:border-amber-400/40 hover:bg-amber-500/10 disabled:opacity-50"
+                                    aria-label="Edit fact"
+                                    data-testid={`arm-edit-fact-${fact.id}`}
+                                  >
+                                    <Pencil className="h-3 w-3" aria-hidden="true" />
+                                    Edit
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   disabled={actionsLocked}

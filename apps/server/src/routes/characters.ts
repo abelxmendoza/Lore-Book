@@ -3189,8 +3189,8 @@ router.get('/:id/facts', requireAuth, async (req: AuthenticatedRequest, res) => 
 });
 
 // DELETE /api/characters/:id/facts/:factId
-// Soft-retract a single fact (status → contradicted). Used by self-profile
-// "What Lore Knows" so users can remove incorrect facts about themselves.
+// Soft-retract a single fact (status → contradicted). Used by character
+// "What I Know" / self "What Lore Knows" so users can remove incorrect facts.
 router.delete('/:id/facts/:factId', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user?.id;
   const characterId = String(req.params.id);
@@ -3253,6 +3253,44 @@ router.patch('/:id/facts/:factId', requireAuth, async (req: AuthenticatedRequest
     }
     logger.error({ error, characterId, factId }, 'Failed to correct character fact');
     res.status(500).json({ error: 'Failed to correct fact' });
+  }
+});
+
+// DELETE /api/characters/:id/attributes/:attributeId
+// Remove a structured attribute that was folded into the character fact list.
+router.delete('/:id/attributes/:attributeId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  const characterId = String(req.params.id);
+  const attributeId = String(req.params.attributeId);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  if (!characterId || !attributeId) {
+    return res.status(400).json({ error: 'character id and attribute id required' });
+  }
+
+  try {
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from('entity_attributes')
+      .select('id')
+      .eq('id', attributeId)
+      .eq('user_id', userId)
+      .eq('entity_id', characterId)
+      .eq('entity_type', 'character')
+      .maybeSingle();
+    if (existingError) throw existingError;
+    if (!existing) return res.status(404).json({ error: 'Attribute not found' });
+
+    const { error } = await supabaseAdmin
+      .from('entity_attributes')
+      .delete()
+      .eq('id', attributeId)
+      .eq('user_id', userId)
+      .eq('entity_id', characterId)
+      .eq('entity_type', 'character');
+    if (error) throw error;
+    res.json({ success: true, attributeId });
+  } catch (error) {
+    logger.error({ error, characterId, attributeId }, 'Failed to delete character attribute');
+    res.status(500).json({ error: 'Failed to remove attribute' });
   }
 });
 
