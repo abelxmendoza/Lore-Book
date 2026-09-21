@@ -124,7 +124,7 @@
     "@vitest/ui": "^4.1.9",
     "cypress": "^15.21.0",
     "esbuild": "^0.28.1",
-    "eslint": "^9.39.4",
+    "eslint": "^10.9.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-cypress": "^7.0.0",
     "eslint-plugin-import": "^2.32.0",
