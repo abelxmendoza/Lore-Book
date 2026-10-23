@@ -20,6 +20,7 @@ import {
   buildOAuthAuthorizationServerMetadata,
   buildOpenIdConfigurationMetadata,
 } from '../mcp/oauth/mcpOAuthMetadata';
+import { issueHivemindAgentToken } from '../mcp/oauth/mcpAgentToken';
 
 export const mcpOAuthRouter = Router();
 
@@ -271,5 +272,31 @@ mcpOAuthApproveRouter.post(
     }
 
     res.json({ redirectUrl: result.redirectUrl });
+  })
+);
+
+/**
+ * POST /api/mcp/oauth/agent-token
+ * Signed-in user mints a propose-only hivemind credential bound to their account.
+ * Shown once. Does not grant memory:write.
+ */
+mcpOAuthApproveRouter.post(
+  '/agent-token',
+  authMiddleware,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    try {
+      const issued = await issueHivemindAgentToken(req.user!.id);
+      res.status(201).json({
+        ...issued,
+        mcp_url: `${requestBaseUrl(req)}/mcp`,
+        client_id: 'hivemind',
+        note:
+          'Propose-only. propose_chronicle and propose_fact land in Memory Review and do not become canon. ' +
+          'Put access_token in LOREBOOK_AGENT_TOKEN on machines that run hivemind sync. This response is the only time the secret is shown.',
+      });
+    } catch (error) {
+      logger.error({ error }, 'Hivemind agent token mint failed');
+      res.status(500).json({ error: 'agent_token_failed' });
+    }
   })
 );
