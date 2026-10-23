@@ -10,6 +10,13 @@ import {
 } from './mcpDomainService';
 import { correctLoreInputSchema, mcpCorrectLore } from './mcpLoreCorrect';
 import { ingestStoryInputSchema, mcpIngestStory } from './mcpLoreIngest';
+import {
+  mcpProposeChronicle,
+  mcpProposeFact,
+  proposeChronicleInputSchema,
+  proposeFactInputSchema,
+} from './mcpPropose';
+import { canDirectWriteMemory, canProposeMemory } from './mcpScopes';
 import type { McpAuthContext } from './types';
 import { MCP_SERVER_INSTRUCTIONS } from './types';
 
@@ -21,7 +28,7 @@ function jsonText(result: unknown) {
 
 export function createMcpServerForUser(ctx: McpAuthContext): McpServer {
   const server = new McpServer(
-    { name: 'lorebook-memory', version: '1.0.0' },
+    { name: 'lorebook-memory', version: '1.1.0' },
     {
       instructions: MCP_SERVER_INSTRUCTIONS,
       capabilities: { tools: {} },
@@ -102,27 +109,53 @@ export function createMcpServerForUser(ctx: McpAuthContext): McpServer {
     async (args) => jsonText(await mcpGetRelationships(ctx, args))
   );
 
-  server.registerTool(
-    'ingest_story',
-    {
-      description:
-        "Store a piece of the user's life story into LoreBook's memory. Use when the user shares autobiographical narrative during a development session (people, events, places, relationships). Send ONLY the story text — never code, specs, or technical discussion. LoreBook extracts entities, deduplicates against known lore, and records provenance.",
-      inputSchema: ingestStoryInputSchema,
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-    },
-    async (args) => jsonText(await mcpIngestStory(ctx, args))
-  );
+  if (canProposeMemory(ctx)) {
+    server.registerTool(
+      'propose_chronicle',
+      {
+        description:
+          'Queue a life-chronicle entry for Memory Review. Use only when a real event, decision, person, or commitment changed. Send the life fact, not code, diffs, or tool noise. This does NOT become canon.',
+        inputSchema: proposeChronicleInputSchema,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      },
+      async (args) => jsonText(await mcpProposeChronicle(ctx, args))
+    );
 
-  server.registerTool(
-    'correct_lore',
-    {
-      description:
-        "Apply the user's explicit correction to their lore: rename a character (rename_character: character_id + new_name), fix a romantic classification (set_romantic_classification: relationship_id + relationship_type/status), remove a wrong Dating & Romance card (exclude_from_dating: relationship_id), or confirm a real one (confirm_romantic: relationship_id). Only use when the user explicitly states the correction; pass their words as note. Corrections are permanent user authority — ingestion never overwrites them.",
-      inputSchema: correctLoreInputSchema,
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    },
-    async (args) => jsonText(await mcpCorrectLore(ctx, args))
-  );
+    server.registerTool(
+      'propose_fact',
+      {
+        description:
+          'Queue a candidate canon fact for Memory Review, with the evidence you actually saw. Never invent biography. This does NOT write canon, rename entities, or delete anything.',
+        inputSchema: proposeFactInputSchema,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      },
+      async (args) => jsonText(await mcpProposeFact(ctx, args))
+    );
+  }
+
+  if (canDirectWriteMemory(ctx)) {
+    server.registerTool(
+      'ingest_story',
+      {
+        description:
+          "Store a piece of the user's life story into LoreBook's memory. Use when the user shares autobiographical narrative during a development session (people, events, places, relationships). Send ONLY the story text. Never code, specs, or technical discussion. LoreBook extracts entities, deduplicates against known lore, and records provenance. Requires memory:write. Prefer propose_chronicle when the caller only has memory:propose.",
+        inputSchema: ingestStoryInputSchema,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+      },
+      async (args) => jsonText(await mcpIngestStory(ctx, args))
+    );
+
+    server.registerTool(
+      'correct_lore',
+      {
+        description:
+          "Apply the user's explicit correction to their lore. Requires memory:write. Only use when the user explicitly states the correction. Hivemind propose tokens cannot call this.",
+        inputSchema: correctLoreInputSchema,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      },
+      async (args) => jsonText(await mcpCorrectLore(ctx, args))
+    );
+  }
 
   return server;
 }
