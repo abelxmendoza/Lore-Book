@@ -2,7 +2,13 @@ import type { AuthUser } from '../types/runtime/express';
 
 export const MCP_TOOL_VERSION = '1';
 
-export const MCP_SERVER_INSTRUCTIONS = `LoreBook MCP exposes the user's personal memory graph. Always call search_memories or search_entities before asserting facts. Prefer get_entity + get_relationships over guessing. All results include provenance sources; cite them in responses. Write tools require explicit user intent (not available in v1 read-only mode).`;
+export const MCP_SERVER_INSTRUCTIONS = `LoreBook MCP exposes the user's personal memory graph. Always call search_memories or search_entities before asserting facts. Prefer get_entity + get_relationships over guessing. All results include provenance sources; cite them in responses.
+
+Write access is scope-gated and never silent canon:
+- memory:read — search only.
+- memory:propose — propose_chronicle and propose_fact. Both land in Memory Review as PENDING. They are not canon. Do not tell the user the lore was saved.
+- memory:write — ingest_story and correct_lore. Hivemind agent tokens do not have this scope.
+Never invent biography. Do not send code, diffs, stack traces, or tool noise. File a proposal only when a real event, decision, person, or commitment changed.`;
 
 export type ProvenanceSource = {
   artifact_type: string;
