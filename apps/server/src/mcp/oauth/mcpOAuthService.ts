@@ -39,6 +39,45 @@ export type TokenResponse = {
 
 const CODE_TTL_SEC = 600;
 
+type PostgrestErrorLike = {
+  code?: string;
+  message?: string;
+  details?: string | null;
+  hint?: string | null;
+};
+
+/**
+ * Log the real PostgREST error behind a failed MCP OAuth store write.
+ *
+ * The OAuth tables sit behind RLS with zero policies, so the production
+ * failure modes (key without service-role access vs. table missing from
+ * the schema cache) are only distinguishable by the PostgREST error code.
+ * Discarding the error makes registration/token failures undiagnosable
+ * from logs. Only error fields are logged — never row payloads, which can
+ * carry client secrets.
+ */
+function logOAuthStoreError(
+  operation: string,
+  error: PostgrestErrorLike,
+  context: Record<string, unknown> = {}
+): void {
+  logger.error(
+    {
+      ...context,
+      operation,
+      postgrestCode: error.code ?? null,
+      postgrestMessage: error.message ?? null,
+      postgrestDetails: error.details ?? null,
+      postgrestHint: error.hint ?? null,
+    },
+    'MCP OAuth store write failed'
+  );
+}
+
+function oauthStoreErrorCode(error: PostgrestErrorLike): string {
+  return typeof error.code === 'string' && error.code.length > 0 ? error.code : 'unknown';
+}
+
 function normalizeRedirectUri(uri: string): string {
   return uri.trim();
 }
@@ -137,8 +176,8 @@ export async function issueAuthorizationCode(params: {
   });
 
   if (error) {
-    logger.error({ error, clientId: params.clientId }, 'Failed to store MCP authorization code');
-    throw new Error('authorization_code_store_failed');
+    logOAuthStoreError('store_authorization_code', error, { clientId: params.clientId });
+    throw new Error(`authorization_code_store_failed:${oauthStoreErrorCode(error)}`);
   }
 
   return code;
@@ -205,7 +244,10 @@ async function issueRefreshToken(params: {
     expires_at: expiresAt,
   });
 
-  if (error) throw new Error('refresh_token_store_failed');
+  if (error) {
+    logOAuthStoreError('store_refresh_token', error, { clientId: params.clientId });
+    throw new Error(`refresh_token_store_failed:${oauthStoreErrorCode(error)}`);
+  }
   return refreshToken;
 }
 
@@ -286,7 +328,10 @@ export async function registerOAuthClient(params: {
     metadata: clientSecret ? { client_secret: clientSecret } : {},
   });
 
-  if (error) throw new Error('client_registration_failed');
+  if (error) {
+    logOAuthStoreError('register_oauth_client', error, { clientName: params.clientName });
+    throw new Error(`client_registration_failed:${oauthStoreErrorCode(error)}`);
+  }
 
   return {
     client_id: clientId,

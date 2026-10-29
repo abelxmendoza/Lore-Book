@@ -212,7 +212,12 @@ mcpOAuthRouter.post('/oauth/token', mcpOAuthLimit, async (req, res) => {
 
     oauthError(res, 'unsupported_grant_type');
   } catch (error) {
-    logger.error({ error }, 'OAuth token exchange failed');
+    // Store-write failures from the service layer carry the PostgREST
+    // error code in the thrown message; log it verbatim (see /oauth/register).
+    logger.error(
+      { error, errorMessage: error instanceof Error ? error.message : String(error) },
+      'OAuth token exchange failed'
+    );
     oauthError(res, 'server_error', undefined, 500);
   }
 });
@@ -243,7 +248,14 @@ mcpOAuthRouter.post('/oauth/register', mcpOAuthLimit, async (req, res) => {
       token_endpoint_auth_method: registered.client_secret ? 'client_secret_post' : 'none',
     });
   } catch (error) {
-    logger.error({ error }, 'OAuth client registration failed');
+    // The service layer embeds the PostgREST error code in the thrown
+    // message (e.g. client_registration_failed:PGRST205); log the message
+    // verbatim so the failure is diagnosable from server logs. The HTTP
+    // response stays a generic server_error — no internals leak to clients.
+    logger.error(
+      { error, errorMessage: error instanceof Error ? error.message : String(error) },
+      'OAuth client registration failed'
+    );
     oauthError(res, 'server_error', undefined, 500);
   }
 });
