@@ -88,7 +88,7 @@
     "tailwindcss": "^4.3.3",
     "vis-data": "^8.0.5",
     "vis-timeline": "^8.5.4",
-    "vite": "^8.2.2",
+    "vite": "^8.3.5",
     "zod": "^4.3.6",
     "zustand": "^5.0.15"
   },
