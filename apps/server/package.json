@@ -127,7 +127,7 @@
     "swagger-ui-dist": "^5.32.6",
     "qs": "^6.15.1",
     "path-to-regexp": "^8.4.2",
-    "@xmldom/xmldom": "^0.8.13",
+    "@xmldom/xmldom": "^0.8.15",
     "picomatch": "^4.0.4",
     "flatted": "^3.4.2",
     "underscore": "^1.13.8",
