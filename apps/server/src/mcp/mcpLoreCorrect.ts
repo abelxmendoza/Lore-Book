@@ -11,6 +11,7 @@
 import { z } from 'zod';
 
 import { auditMcpToolCall } from './mcpAuditService';
+import { insufficientScopeMessage, missingScopes } from './mcpScopes';
 import type { McpAuthContext } from './types';
 
 export const ROMANTIC_TYPES = [
@@ -127,6 +128,14 @@ export async function mcpCorrectLore(
       errorCode,
     });
   };
+
+  // Defensive scope check: registration already hides this tool from
+  // under-scoped contexts, but a direct call must be denied too.
+  const missing = missingScopes(ctx, 'correct_lore');
+  if (missing.length > 0) {
+    await finish('denied', 'insufficient_scope');
+    return { success: false, action: args.action, error: insufficientScopeMessage('correct_lore', missing) };
+  }
 
   const valid = validateCorrection(args);
   if (!valid.ok) {

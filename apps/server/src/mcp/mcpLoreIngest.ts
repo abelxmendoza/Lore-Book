@@ -11,6 +11,7 @@
 import { z } from 'zod';
 
 import { auditMcpToolCall } from './mcpAuditService';
+import { insufficientScopeMessage, missingScopes } from './mcpScopes';
 import type { McpAuthContext } from './types';
 
 export const ingestStoryInputSchema = {
@@ -67,6 +68,25 @@ export async function mcpIngestStory(
 ): Promise<IngestStoryResult> {
   const started = Date.now();
   const sourceTool = (args.source_tool ?? 'unknown_agent').replace(/[^a-z0-9_-]/gi, '_').slice(0, 60);
+
+  // Defensive scope check: registration already hides this tool from
+  // under-scoped contexts, but a direct call must be denied too.
+  const missing = missingScopes(ctx, 'ingest_story');
+  if (missing.length > 0) {
+    void auditMcpToolCall({
+      ctx,
+      toolName: 'ingest_story',
+      input: { source_tool: sourceTool, story_chars: args.story.length },
+      status: 'denied',
+      latencyMs: Date.now() - started,
+      errorCode: 'insufficient_scope',
+    });
+    return {
+      accepted: false,
+      reason: 'insufficient_scope',
+      note: insufficientScopeMessage('ingest_story', missing),
+    };
+  }
 
   const assessment = assessNarrative(args.story);
   if (!assessment.isNarrative) {
