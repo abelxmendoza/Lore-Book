@@ -2,7 +2,7 @@ import type { AuthUser } from '../types/runtime/express';
 
 export const MCP_TOOL_VERSION = '1';
 
-export const MCP_SERVER_INSTRUCTIONS = `LoreBook MCP exposes the user's personal memory graph. Always call search_memories or search_entities before asserting facts. Prefer get_entity + get_relationships over guessing. All results include provenance sources; cite them in responses. Write tools require explicit user intent (not available in v1 read-only mode).`;
+export const MCP_SERVER_INSTRUCTIONS = `LoreBook MCP exposes the user's personal memory graph. Always call search_memories or search_entities before asserting facts. Prefer get_entity + get_relationships over guessing. All results include provenance sources; cite them in responses. Write tools require explicit user intent and are only available when the access token carries the required scopes (ingest_story: memory:write; correct_lore: memory:write + entity:write). If a write tool is not listed, this connection is read-only.`;
 
 export type ProvenanceSource = {
   artifact_type: string;

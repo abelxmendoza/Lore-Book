@@ -13,6 +13,7 @@ import {
   exchangeAuthorizationCode,
   exchangeRefreshToken,
   getOAuthClient,
+  parsePendingAuthorizeToken,
   registerOAuthClient,
   validateAuthorizeRequest,
 } from '../mcp/oauth/mcpOAuthService';
@@ -35,6 +36,35 @@ function jsonForScript(value: unknown): string {
     .replace(/&/g, '\\u0026')
     .replace(/\u2028/g, '\\u2028')
     .replace(/\u2029/g, '\\u2029');
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Human-readable description per OAuth scope, for the consent page.
+ *  The page must name the access actually being granted — it previously
+ *  said "read access" while the grant could include both write scopes. */
+const SCOPE_DESCRIPTIONS: Record<string, string> = {
+  'memory:read': 'Read your lore — characters, journal entries, relationships, and timeline',
+  'memory:write': 'Write new lore — store stories and memories to your graph',
+  'entity:write': 'Correct your lore — apply renames, classifications, and date fixes',
+  'memory:admin': 'Administrative access to your memory graph',
+};
+
+function consentScopeListHtml(scopes: string[] | null): string {
+  if (!scopes || scopes.length === 0) {
+    return '<p>This app is requesting access to your personal memory graph (characters, journal entries, relationships). Depending on the permissions it asked for, that can include reading your lore, writing new lore, and applying corrections — only approve if you trust this app with that access.</p>';
+  }
+  const items = scopes
+    .map((scope) => `<li><strong>${escapeHtml(scope)}</strong> — ${escapeHtml(SCOPE_DESCRIPTIONS[scope] ?? 'Access to your personal memory graph')}</li>`)
+    .join('');
+  return `<p>This app is requesting the following access to your personal memory graph:</p><ul>${items}</ul>`;
 }
 
 function requestBaseUrl(req: import('express').Request): string {
@@ -120,9 +150,21 @@ mcpOAuthRouter.get('/oauth/authorize', mcpOAuthLimit, async (req, res) => {
   }
 });
 
-mcpOAuthRouter.get('/oauth/consent', mcpOAuthLimit, (req, res) => {
+mcpOAuthRouter.get('/oauth/consent', mcpOAuthLimit, async (req, res) => {
   const pending = String(req.query.pending ?? '');
   const webApproveUrl = `${requestBaseUrl(req)}/api/mcp/oauth/approve`;
+
+  // The pending token is signed and carries the exact scopes that will be
+  // granted, so the consent page can name them instead of understating
+  // the grant as "read access".
+  const parsedPending = pending ? parsePendingAuthorizeToken(pending) : null;
+  const scopeListHtml = consentScopeListHtml(parsedPending ? parsedPending.scopes : null);
+  let clientNameHtml = '';
+  if (parsedPending?.clientId) {
+    const client = await getOAuthClient(parsedPending.clientId).catch(() => null);
+    const displayName = client?.clientName || parsedPending.clientId;
+    clientNameHtml = `<p>App: <strong>${escapeHtml(displayName)}</strong></p>`;
+  }
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(`<!DOCTYPE html>
@@ -138,7 +180,8 @@ mcpOAuthRouter.get('/oauth/consent', mcpOAuthLimit, (req, res) => {
 </head>
 <body>
   <h1>Connect LoreBook to this app</h1>
-  <p>This app is requesting read access to your personal memory graph (characters, journal entries, relationships).</p>
+  ${clientNameHtml}
+  ${scopeListHtml}
   <p>Sign in to LoreBook, then approve the connection.</p>
   <button id="approve">Approve connection</button>
   <p id="status"></p>

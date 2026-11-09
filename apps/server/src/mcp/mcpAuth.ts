@@ -7,6 +7,7 @@ import { isDevelopmentRuntime } from '../config/runtimePolicy';
 import { createServerSupabaseClient } from '../lib/createServerSupabaseClient';
 import type { AuthUser } from '../types/runtime/express';
 
+import { MCP_SESSION_CLIENT_ID, MCP_SESSION_TOKEN_SCOPES } from './mcpScopes';
 import type { McpAuthContext } from './types';
 import { verifyMcpAccessToken } from './oauth/mcpOAuthJwt';
 
@@ -30,11 +31,6 @@ try {
 function hashIp(ip: string | undefined): string | undefined {
   if (!ip) return undefined;
   return createHash('sha256').update(ip).digest('hex').slice(0, 16);
-}
-
-function parseScopes(header: string | undefined): string[] {
-  if (!header?.trim()) return ['memory:read'];
-  return header.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
 }
 
 function devBypassUser(): AuthUser | null {
@@ -85,6 +81,11 @@ export async function authenticateMcpBearer(token: string): Promise<McpBearerAut
       lastSignInAt: (data.user as { last_sign_in_at?: string | null }).last_sign_in_at ?? null,
       fullName: metadata?.full_name ?? metadata?.name ?? null,
     },
+    // Supabase session JWTs carry no OAuth grant. Their MCP scopes and
+    // client identity are fixed server-side (read-only; see mcpScopes.ts)
+    // — never taken from caller-supplied headers.
+    clientId: MCP_SESSION_CLIENT_ID,
+    scopes: [...MCP_SESSION_TOKEN_SCOPES],
   };
 }
 
@@ -99,7 +100,7 @@ export async function mcpAuthMiddleware(
       req.user = devUser;
       req.mcpContext = {
         user: devUser,
-        clientId: (req.headers['x-mcp-client-id'] as string | undefined) ?? 'lorebook-dev',
+        clientId: 'lorebook-dev',
         requestId: req.requestId ?? `mcp-${Date.now()}`,
         scopes: ['memory:read', 'memory:write', 'entity:write'],
         ipHash: hashIp(req.ip),
@@ -121,17 +122,15 @@ export async function mcpAuthMiddleware(
     }
 
     req.user = authResult.user;
-    const scopes =
-      authResult.scopes ??
-      parseScopes(req.headers['x-mcp-scopes'] as string | undefined);
+    // Scopes and client identity come only from the verified token
+    // (OAuth grant, dev bypass, or the fixed session-token set). Caller
+    // headers such as x-mcp-scopes / x-mcp-client-id are never trusted:
+    // they let any session holder assert write scopes for itself.
+    const scopes = authResult.scopes ?? [...MCP_SESSION_TOKEN_SCOPES];
 
     req.mcpContext = {
       user: authResult.user,
-      clientId:
-        authResult.clientId ||
-        (req.headers['x-mcp-client-id'] as string | undefined)?.trim() ||
-        (req.headers['mcp-client-id'] as string | undefined)?.trim() ||
-        'lorebook-mcp',
+      clientId: authResult.clientId || MCP_SESSION_CLIENT_ID,
       requestId: req.requestId ?? `mcp-${Date.now()}`,
       scopes,
       ipHash: hashIp(req.ip),

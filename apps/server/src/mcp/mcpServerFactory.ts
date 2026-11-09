@@ -10,6 +10,7 @@ import {
 } from './mcpDomainService';
 import { correctLoreInputSchema, mcpCorrectLore } from './mcpLoreCorrect';
 import { ingestStoryInputSchema, mcpIngestStory } from './mcpLoreIngest';
+import { hasToolScopes } from './mcpScopes';
 import type { McpAuthContext } from './types';
 import { MCP_SERVER_INSTRUCTIONS } from './types';
 
@@ -102,27 +103,35 @@ export function createMcpServerForUser(ctx: McpAuthContext): McpServer {
     async (args) => jsonText(await mcpGetRelationships(ctx, args))
   );
 
-  server.registerTool(
-    'ingest_story',
-    {
-      description:
-        "Store a piece of the user's life story into LoreBook's memory. Use when the user shares autobiographical narrative during a development session (people, events, places, relationships). Send ONLY the story text — never code, specs, or technical discussion. LoreBook extracts entities, deduplicates against known lore, and records provenance.",
-      inputSchema: ingestStoryInputSchema,
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-    },
-    async (args) => jsonText(await mcpIngestStory(ctx, args))
-  );
+  // Write tools are registered only when the context's scopes cover them
+  // (see mcpScopes.ts). A read-only token's tools/list therefore contains
+  // exactly the 5 read tools, and the write tools cannot be invoked
+  // through the protocol at all. The handlers re-check defensively.
+  if (hasToolScopes(ctx, 'ingest_story')) {
+    server.registerTool(
+      'ingest_story',
+      {
+        description:
+          "Store a piece of the user's life story into LoreBook's memory. Use when the user shares autobiographical narrative during a development session (people, events, places, relationships). Send ONLY the story text — never code, specs, or technical discussion. LoreBook extracts entities, deduplicates against known lore, and records provenance.",
+        inputSchema: ingestStoryInputSchema,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+      },
+      async (args) => jsonText(await mcpIngestStory(ctx, args))
+    );
+  }
 
-  server.registerTool(
-    'correct_lore',
-    {
-      description:
-        "Apply the user's explicit correction to their lore: rename a character (rename_character: character_id + new_name), fix a romantic classification (set_romantic_classification: relationship_id + relationship_type/status), remove a wrong Dating & Romance card (exclude_from_dating: relationship_id), or confirm a real one (confirm_romantic: relationship_id). Only use when the user explicitly states the correction; pass their words as note. Corrections are permanent user authority — ingestion never overwrites them.",
-      inputSchema: correctLoreInputSchema,
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    },
-    async (args) => jsonText(await mcpCorrectLore(ctx, args))
-  );
+  if (hasToolScopes(ctx, 'correct_lore')) {
+    server.registerTool(
+      'correct_lore',
+      {
+        description:
+          "Apply the user's explicit correction to their lore: rename a character (rename_character: character_id + new_name), fix a romantic classification (set_romantic_classification: relationship_id + relationship_type/status), remove a wrong Dating & Romance card (exclude_from_dating: relationship_id), or confirm a real one (confirm_romantic: relationship_id). Only use when the user explicitly states the correction; pass their words as note. Corrections are permanent user authority — ingestion never overwrites them.",
+        inputSchema: correctLoreInputSchema,
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      },
+      async (args) => jsonText(await mcpCorrectLore(ctx, args))
+    );
+  }
 
   return server;
 }
