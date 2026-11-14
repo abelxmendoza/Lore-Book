@@ -3,6 +3,7 @@
 import { LandingHeader } from '../components/landing/LandingHeader';
 import { LandingFooter } from '../components/landing/LandingFooter';
 import { HeroSection } from '../components/landing/HeroSection';
+import { MultiAiSection } from '../components/landing/MultiAiSection';
 import { LorebookShowcaseSection } from '../components/landing/LorebookShowcaseSection';
 import { FeatureCard } from '../components/landing/FeatureCard';
 import { IntelligenceSection } from '../components/landing/IntelligenceSection';
@@ -32,6 +33,8 @@ export default function Landing() {
 
       <main>
         <HeroSection />
+
+        <MultiAiSection />
 
         <section className="py-12 sm:py-20 px-4 sm:px-6 lg:px-8">
           <div className="max-w-7xl mx-auto">
