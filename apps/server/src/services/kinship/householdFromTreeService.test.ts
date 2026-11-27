@@ -84,6 +84,26 @@ describe('deriveHouseholdMembers', () => {
     expect(result).toEqual([{ characterId: 'rex', name: 'Rex', role: 'pet', species: 'dog', viaAnchorId: 'grace' }]);
   });
 
+  it('skips characters the user already removed from the family tree', async () => {
+    fromMock.mockImplementationOnce(() =>
+      chain([{ source_character_id: 'jamie', target_character_id: 'alex', relationship_type: 'spouse_of' }]),
+    );
+    fromMock.mockImplementationOnce(() => chain([]));
+    fromMock.mockImplementationOnce(() =>
+      chain([
+        {
+          id: 'alex',
+          name: 'Alex Friend',
+          species: null,
+          metadata: { family_excluded: { value: true, reason: 'tree_remove' } },
+        },
+      ]),
+    );
+
+    const result = await deriveHouseholdMembers('user-1', ['jamie']);
+    expect(result).toEqual([]);
+  });
+
   it('does not fabricate a member when the tree has no relations for the anchor', async () => {
     fromMock.mockImplementationOnce(() => chain([]));
     const result = await deriveHouseholdMembers('user-1', ['lonely']);

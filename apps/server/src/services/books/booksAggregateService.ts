@@ -195,14 +195,15 @@ export async function loadSkillsBook(userId: string) {
 }
 
 export async function loadFamilyBook(userId: string) {
-  const [graph, households, analytics, tree, counts, possibleFamilyMatches] = await Promise.all([
+  const [graph, analytics, tree, counts, possibleFamilyMatches] = await Promise.all([
     familyGraphService.getGraph(userId),
-    householdService.listHouseholds(userId),
     familyGraphService.getAnalytics(userId),
     familyTreeService.getUserFamilyTree(userId),
     loadCounts(userId),
     familySurnameSuggestionService.listPendingSuggestions(userId),
   ]);
+  const familyMemberIds = (tree.members ?? []).map((m) => m.id);
+  const households = await householdService.listHouseholds(userId, { familyMemberIds });
 
   const { data: familyGroups } = await supabaseAdmin
     .from('organizations')
