@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 
+import { isDevelopmentRuntime } from '../config/runtimePolicy';
+import { resolveAccountAuthority } from '../lib/accountAuthority';
 import { logger } from '../logger';
 
 import { mcpAuthMiddleware } from '../mcp/mcpAuth';
@@ -24,6 +26,12 @@ async function handleMcpRequest(
     return;
   }
 
+  // Account features are resolved server-side, only when the token could
+  // use them (saves an auth lookup for the common lore-only connection).
+  if (ctx.scopes.some((s) => s.startsWith('hivemind:'))) {
+    ctx.features = { ...ctx.features, hivemind: await resolveHivemindFeature(ctx.user.id) };
+  }
+
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
   });
@@ -43,6 +51,16 @@ async function handleMcpRequest(
     if (!res.headersSent) {
       res.status(500).json({ error: 'MCP transport error' });
     }
+  }
+}
+
+async function resolveHivemindFeature(userId: string): Promise<boolean> {
+  if (isDevelopmentRuntime() && process.env.DISABLE_AUTH_FOR_DEV === 'true') return true;
+  try {
+    return (await resolveAccountAuthority(userId)).canUseHivemind;
+  } catch (error) {
+    logger.warn({ error, userId }, 'Failed to resolve Hivemind access for MCP');
+    return false;
   }
 }
 

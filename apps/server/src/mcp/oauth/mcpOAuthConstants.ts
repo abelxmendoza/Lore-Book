@@ -3,6 +3,8 @@ export const MCP_OAUTH_SCOPES = [
   'memory:write',
   'entity:write',
   'memory:admin',
+  'hivemind:read',
+  'hivemind:write',
 ] as const;
 
 export type McpOAuthScope = (typeof MCP_OAUTH_SCOPES)[number];

@@ -8,6 +8,14 @@ import {
   mcpSearchEntities,
   mcpSearchMemories,
 } from './mcpDomainService';
+import {
+  canUseHivemindTool,
+  HIVEMIND_TOOL_NAMES,
+  hivemindInputSchemas,
+  hivemindToolDescriptions,
+  isHivemindReadTool,
+  runHivemindTool,
+} from './mcpHivemind';
 import { correctLoreInputSchema, mcpCorrectLore } from './mcpLoreCorrect';
 import { ingestStoryInputSchema, mcpIngestStory } from './mcpLoreIngest';
 import { hasToolScopes } from './mcpScopes';
@@ -130,6 +138,25 @@ export function createMcpServerForUser(ctx: McpAuthContext): McpServer {
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       },
       async (args) => jsonText(await mcpCorrectLore(ctx, args))
+    );
+  }
+
+  for (const name of HIVEMIND_TOOL_NAMES) {
+    if (!canUseHivemindTool(ctx, name)) continue;
+    const readOnly = isHivemindReadTool(name);
+    server.registerTool(
+      name,
+      {
+        description: hivemindToolDescriptions[name],
+        inputSchema: hivemindInputSchemas[name],
+        annotations: {
+          readOnlyHint: readOnly,
+          destructiveHint: false,
+          idempotentHint: readOnly || name !== 'hivemind_log_milestone',
+          openWorldHint: false,
+        },
+      },
+      async (args: Record<string, unknown>) => jsonText(await runHivemindTool(ctx, name, args))
     );
   }
 

@@ -143,6 +143,13 @@ type EnvConfig = {
   ownerEmail?: string;
   /** Developer test account — premium without billing. */
   developerEmail?: string;
+  /**
+   * Who can use Hivemind (cross-agent workspace):
+   * 'founder' (owner + admin, default), 'privileged' (owner/admin/developer),
+   * 'all' (every signed-in account). Per-account grants via
+   * app_metadata.hivemind_access=true work at every level.
+   */
+  hivemindAccess: 'founder' | 'privileged' | 'all';
   /** LoreBook MCP memory platform at POST/GET /mcp */
   mcpEnabled: boolean;
   /** Free-tier MCP read RPM */
@@ -280,6 +287,9 @@ export const config: EnvConfig = {
     ''
   ).trim().toLowerCase() || undefined,
   developerEmail: process.env.DEVELOPER_EMAIL?.trim().toLowerCase(),
+  hivemindAccess: (['founder', 'privileged', 'all'] as const).find(
+    (level) => level === process.env.HIVEMIND_ACCESS?.trim().toLowerCase()
+  ) ?? 'founder',
   mcpEnabled: process.env.ENABLE_MCP === 'true',
   mcpReadRpmFree: Number(process.env.MCP_READ_RPM_FREE ?? process.env.MCP_READ_RPM ?? 60),
   mcpReadRpmPremium: Number(process.env.MCP_READ_RPM_PREMIUM ?? 300),

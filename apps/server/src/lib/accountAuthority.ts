@@ -1,6 +1,8 @@
 import { config } from '../config';
 import { supabaseAdmin } from '../services/supabaseClient';
 
+import { canUseHivemind } from './hivemindAccess';
+
 /** Internal platform roles — highest authority first. */
 export type PlatformRole = 'owner' | 'admin' | 'developer' | 'standard_user' | 'beta_user';
 
@@ -24,6 +26,8 @@ export interface AccountAuthority {
   canBeBilled: boolean;
   canCancelSubscription: boolean;
   canLoseAccess: boolean;
+  /** Hivemind cross-agent workspace (see hivemindAccess.ts). */
+  canUseHivemind: boolean;
 }
 
 /** JSON shape returned by GET /api/user/authority */
@@ -39,6 +43,7 @@ export interface PublicAccountAuthority {
   canLoseAccess: boolean;
   canAccessAdmin: boolean;
   canAccessDevConsole: boolean;
+  canUseHivemind: boolean;
 }
 
 export type AuthUserLike = {
@@ -74,7 +79,11 @@ function privilegeSourceForRole(role: PlatformRole): PrivilegeSource | null {
   }
 }
 
-function buildAuthority(role: PlatformRole, isFounderAccount: boolean): AccountAuthority {
+function buildAuthority(
+  role: PlatformRole,
+  isFounderAccount: boolean,
+  appMetadata?: Record<string, unknown>,
+): AccountAuthority {
   const isPrivileged = PRIVILEGED_ROLES.has(role);
   return {
     role,
@@ -86,6 +95,7 @@ function buildAuthority(role: PlatformRole, isFounderAccount: boolean): AccountA
     canBeBilled: !isPrivileged,
     canCancelSubscription: !isPrivileged,
     canLoseAccess: !isPrivileged,
+    canUseHivemind: canUseHivemind({ role, appMetadata }),
   };
 }
 
@@ -122,6 +132,7 @@ export function serializeAccountAuthority(authority: AccountAuthority): PublicAc
     canLoseAccess: authority.canLoseAccess,
     canAccessAdmin: canAccessAdminConsole(authority.role),
     canAccessDevConsole: canAccessDevConsole(authority.role),
+    canUseHivemind: authority.canUseHivemind,
   };
 }
 
@@ -132,29 +143,30 @@ export function serializeAccountAuthority(authority: AccountAuthority): PublicAc
 export function resolveAccountAuthorityFromAuthUser(user: AuthUserLike): AccountAuthority {
   const email = normalizeEmail(user.email);
   const appRole = authoritativeAppRole(user);
+  const appMeta = user.app_metadata;
 
   const isFounderById = !!config.ownerUserId && user.id === config.ownerUserId;
   const isFounderByEmail = !!config.ownerEmail && email === config.ownerEmail;
 
   if (isFounderById || isFounderByEmail || appRole === 'owner') {
-    return buildAuthority('owner', true);
+    return buildAuthority('owner', true, appMeta);
   }
 
   if ((config.adminUserId && user.id === config.adminUserId) ||
       (config.adminEmail && email === config.adminEmail) ||
       appRole === 'admin') {
-    return buildAuthority('admin', false);
+    return buildAuthority('admin', false, appMeta);
   }
 
   if ((config.developerEmail && email === config.developerEmail) || appRole === 'developer') {
-    return buildAuthority('developer', false);
+    return buildAuthority('developer', false, appMeta);
   }
 
   if (appRole === 'beta_user') {
-    return buildAuthority('beta_user', false);
+    return buildAuthority('beta_user', false, appMeta);
   }
 
-  return buildAuthority('standard_user', false);
+  return buildAuthority('standard_user', false, appMeta);
 }
 
 export async function resolveAccountAuthority(userId: string): Promise<AccountAuthority> {

@@ -21,6 +21,8 @@ export interface ServerAccountAuthority {
   canLoseAccess: boolean;
   canAccessAdmin: boolean;
   canAccessDevConsole: boolean;
+  /** Hivemind cross-agent workspace. Optional for older servers. */
+  canUseHivemind?: boolean;
 }
 
 /** Subscription status may include a compatible authority block. */

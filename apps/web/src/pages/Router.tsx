@@ -28,6 +28,7 @@ const NotFound = lazy(() => import('../routes/NotFound'));
 const Terms = lazy(() => import('../routes/Terms'));
 const PrivacyPolicy = lazy(() => import('../routes/PrivacyPolicy'));
 const WhatAIKnows = lazy(() => import('../routes/WhatAIKnows'));
+const Hivemind = lazy(() => import('../routes/Hivemind'));
 const OntologyExplorerPage = lazy(() => import('../routes/OntologyExplorer'));
 
 // Lazy load landing pages
@@ -476,6 +477,14 @@ export const Router = () => {
         element={
           <LazyRoute>
             <ProtectedRoute access="authenticated"><WhatAIKnows /></ProtectedRoute>
+          </LazyRoute>
+        }
+      />
+      <Route
+        path="/hivemind"
+        element={
+          <LazyRoute>
+            <ProtectedRoute access="hivemind"><Hivemind /></ProtectedRoute>
           </LazyRoute>
         }
       />

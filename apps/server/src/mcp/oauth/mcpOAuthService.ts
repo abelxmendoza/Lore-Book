@@ -324,7 +324,7 @@ export async function registerOAuthClient(params: {
     client_name: params.clientName,
     client_type: params.clientType ?? 'public',
     redirect_uris: params.redirectUris,
-    allowed_scopes: ['memory:read', 'memory:write', 'entity:write'],
+    allowed_scopes: ['memory:read', 'memory:write', 'entity:write', 'hivemind:read', 'hivemind:write'],
     metadata: clientSecret ? { client_secret: clientSecret } : {},
   });
 

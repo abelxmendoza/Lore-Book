@@ -10,7 +10,7 @@ export function buildOAuthAuthorizationServerMetadata(baseUrl: string) {
     token_endpoint: `${root}/oauth/token`,
     registration_endpoint: `${root}/oauth/register`,
     revocation_endpoint: `${root}/oauth/revoke`,
-    scopes_supported: ['memory:read', 'memory:write', 'entity:write'],
+    scopes_supported: ['memory:read', 'memory:write', 'entity:write', 'hivemind:read', 'hivemind:write'],
     response_types_supported: ['code'],
     grant_types_supported: ['authorization_code', 'refresh_token'],
     code_challenge_methods_supported: ['S256'],

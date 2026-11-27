@@ -21,6 +21,8 @@ import type { McpAuthContext } from './types';
 export const MCP_SCOPE_READ = 'memory:read';
 export const MCP_SCOPE_WRITE = 'memory:write';
 export const MCP_SCOPE_ENTITY_WRITE = 'entity:write';
+export const MCP_SCOPE_HIVEMIND_READ = 'hivemind:read';
+export const MCP_SCOPE_HIVEMIND_WRITE = 'hivemind:write';
 
 /** Scopes each tool requires. Read tools need `memory:read` (already
  *  enforced for every MCP request by `mcpAuthMiddleware`). */
@@ -32,6 +34,14 @@ export const MCP_TOOL_REQUIRED_SCOPES: Record<string, readonly string[]> = {
   get_relationships: [MCP_SCOPE_READ],
   ingest_story: [MCP_SCOPE_WRITE],
   correct_lore: [MCP_SCOPE_WRITE, MCP_SCOPE_ENTITY_WRITE],
+  // Hivemind tools also require the account-level Hivemind feature
+  // (ctx.features.hivemind); see mcpHivemind.ts.
+  hivemind_where_i_left_off: [MCP_SCOPE_HIVEMIND_READ],
+  hivemind_recall: [MCP_SCOPE_HIVEMIND_READ],
+  hivemind_milestones: [MCP_SCOPE_HIVEMIND_READ],
+  hivemind_checkpoint: [MCP_SCOPE_HIVEMIND_WRITE],
+  hivemind_record_memory: [MCP_SCOPE_HIVEMIND_WRITE],
+  hivemind_log_milestone: [MCP_SCOPE_HIVEMIND_WRITE],
 };
 
 /**

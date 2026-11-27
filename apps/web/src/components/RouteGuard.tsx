@@ -16,6 +16,8 @@ function hasRoleAccess(access: ProtectedAccess, authority: ReturnType<typeof use
       return canAccessAdmin(authority);
     case 'dev-console':
       return canAccessDevConsole(authority);
+    case 'hivemind':
+      return authority?.canUseHivemind === true;
     default:
       return true;
   }

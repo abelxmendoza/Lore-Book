@@ -2,7 +2,7 @@ import type { AuthUser } from '../types/runtime/express';
 
 export const MCP_TOOL_VERSION = '1';
 
-export const MCP_SERVER_INSTRUCTIONS = `LoreBook MCP exposes the user's personal memory graph. Always call search_memories or search_entities before asserting facts. Prefer get_entity + get_relationships over guessing. All results include provenance sources; cite them in responses. Write tools require explicit user intent and are only available when the access token carries the required scopes (ingest_story: memory:write; correct_lore: memory:write + entity:write). If a write tool is not listed, this connection is read-only.`;
+export const MCP_SERVER_INSTRUCTIONS = `LoreBook MCP exposes the user's personal memory graph. Always call search_memories or search_entities before asserting facts. Prefer get_entity + get_relationships over guessing. All results include provenance sources; cite them in responses. Write tools require explicit user intent and are only available when the access token carries the required scopes (ingest_story: memory:write; correct_lore: memory:write + entity:write). If a write tool is not listed, this connection is read-only. Hivemind tools (hivemind_*) appear only for accounts with Hivemind enabled and tokens carrying hivemind:read / hivemind:write: call hivemind_where_i_left_off at the start of a coding session and hivemind_checkpoint at the end. Never store secrets in Hivemind.`;
 
 export type ProvenanceSource = {
   artifact_type: string;
@@ -32,6 +32,11 @@ export type McpAuthContext = {
   requestId: string;
   scopes: string[];
   ipHash?: string;
+  /** Account-level features resolved server-side before the MCP server is built. */
+  features?: {
+    /** Hivemind tools (lib/hivemindAccess.ts). */
+    hivemind?: boolean;
+  };
 };
 
 export type McpAuditStatus = 'ok' | 'error' | 'denied' | 'rate_limited';

@@ -5,7 +5,7 @@
  * ProtectedRoute enforces these at the router boundary; API routes enforce separately.
  */
 
-export type RouteAccessLevel = 'public' | 'authenticated' | 'admin' | 'dev-console';
+export type RouteAccessLevel = 'public' | 'authenticated' | 'admin' | 'dev-console' | 'hivemind';
 
 /** Paths that never require authentication. */
 export const PUBLIC_ROUTE_PREFIXES = [

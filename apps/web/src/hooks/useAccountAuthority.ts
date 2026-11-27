@@ -15,6 +15,7 @@ const DEFAULT_AUTHORITY: ServerAccountAuthority = {
   canLoseAccess: true,
   canAccessAdmin: false,
   canAccessDevConsole: false,
+  canUseHivemind: false,
 };
 
 /**

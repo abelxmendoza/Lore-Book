@@ -55,6 +55,8 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
   'memory:write': 'Write new lore — store stories and memories to your graph',
   'entity:write': 'Correct your lore — apply renames, classifications, and date fixes',
   'memory:admin': 'Administrative access to your memory graph',
+  'hivemind:read': 'Read your Hivemind — where your AI agents left off, shared agent memories, milestones',
+  'hivemind:write': 'Write to your Hivemind — save checkpoints, agent memories, and milestones',
 };
 
 function consentScopeListHtml(scopes: string[] | null): string {

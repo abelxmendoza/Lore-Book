@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BookMarked, CalendarDays, MessageSquareText, Search, Sparkles, Users, BookOpen, MapPin, Crown, Compass, Settings, UserCog, HelpCircle, Images, Eye, Hash, Building2, Zap, X, Heart, Target, ExternalLink, Briefcase, TreePine, FileText, Shield, ChevronRight, Anchor, Clock3 } from 'lucide-react';
+import { BookMarked, CalendarDays, MessageSquareText, Search, Sparkles, Users, BookOpen, MapPin, Crown, Compass, Settings, UserCog, HelpCircle, Images, Eye, Hash, Building2, Zap, X, Heart, Target, ExternalLink, Briefcase, TreePine, FileText, Shield, ChevronRight, Anchor, Clock3, BrainCircuit } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { Logo } from './Logo';
@@ -45,6 +45,7 @@ const SidebarContent = ({
   const { authority, loading: authorityLoading } = useAccountAuthority();
   const counts = useEntityCounts(user?.id ?? (demoRuntime ? 'demo' : isGuest ? 'guest' : 'anonymous'));
   const userIsAdmin = showRealAccount && canAccessAdmin(authority);
+  const userCanUseHivemind = showRealAccount && authority?.canUseHivemind === true;
   const runtimeRoute = (route: string) => demoRuntime ? `/demo${route}` : route;
 
   const handleSurfaceChange = (surface: SurfaceKey) => {
@@ -508,6 +509,25 @@ const SidebarContent = ({
             <Hash className="h-4 w-4 text-primary" aria-hidden="true" />
             Entities
           </button>
+
+          {userCanUseHivemind && (
+            <button
+              type="button"
+              onClick={() => { navigate('/hivemind'); onMobileDrawerClose?.(); }}
+              aria-label="Open Hivemind"
+              aria-current={isActiveRoute('/hivemind') ? 'page' : undefined}
+              data-testid="sidebar-hivemind"
+              className={cn(
+                "mt-1 flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
+                isActiveRoute('/hivemind')
+                  ? 'border-primary bg-primary/10 text-white'
+                  : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+              )}
+            >
+              <BrainCircuit className="h-4 w-4 text-primary" aria-hidden="true" />
+              Hivemind
+            </button>
+          )}
 
           {/* Admin platform tools — the Admin Console entry remains in the sticky footer. */}
           {userIsAdmin && (

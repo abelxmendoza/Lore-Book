@@ -93,6 +93,7 @@ import timeRouter from './time';
 import { privacyRouter } from './privacy';
 import { subscriptionRouter } from './subscription';
 import { userRouter } from './user';
+import { hivemindRouter } from './hivemind';
 import { securityRouter } from './security';
 import { essenceRouter } from './essence';
 import { verificationRouter } from './verification';
@@ -306,6 +307,12 @@ export const routeRegistry: RouteEntry[] = [
     router: userRouter,
     classification: 'CORE_RUNTIME',
     description: 'User profile, ToS acceptance, settings',
+  },
+  {
+    path: '/api/hivemind',
+    router: hivemindRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Hivemind cross-agent workspace — checkpoints, shared agent memories, milestones (role-gated)',
   },
   {
     path: '/api/account',
