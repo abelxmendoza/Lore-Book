@@ -447,13 +447,18 @@ export function ChatGPTLoreMigration({ onOpenMemoryReview }: Props) {
               )}
 
               {progress.completed && (
-                <button
-                  type="button"
-                  onClick={onOpenMemoryReview}
-                  className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm text-primary hover:bg-primary/15"
-                >
-                  Review before adding to LoreBook
-                </button>
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={onOpenMemoryReview}
+                    className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm text-primary hover:bg-primary/15"
+                  >
+                    Review before adding to LoreBook
+                  </button>
+                  <p className="text-[11px] text-white/40">
+                    After you approve dated timeline items, LoreBook can rebuild swimlane bars automatically.
+                  </p>
+                </div>
               )}
 
               {sourceDeleted && (

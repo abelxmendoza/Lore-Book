@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { fetchJson } from '../lib/api';
 import type { ArcTrack, ArcType, LifeArc } from './useLifeArcs';
+import type { LoreEntityRef, LoreIntakeChannel, LoreSourceRef } from '../lib/api-contracts';
 
 export type LifeArcProposalEvidence = {
   sourceKind: 'journal_entry' | 'resolved_event' | 'timeline_event';
@@ -10,6 +11,10 @@ export type LifeArcProposalEvidence = {
   title: string;
   occurredAt: string;
   confidence: number;
+  sourceType?: string;
+  intakeChannel?: LoreIntakeChannel;
+  sources?: LoreSourceRef[];
+  entities?: LoreEntityRef[];
 };
 
 export type LifeArcProposal = {
@@ -62,22 +67,54 @@ export function useLifeArcProposals(enabled = true) {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  const build = useCallback(async () => {
+  const build = useCallback(async (opts?: { autoCreateReady?: boolean }) => {
     setBuilding(true);
     setError(null);
     try {
-      const result = await fetchJson<{ audit: LifeArcProposalAudit; proposals: LifeArcProposal[] }>(
+      const result = await fetchJson<{
+        audit: LifeArcProposalAudit;
+        proposals: LifeArcProposal[];
+        autoCreated?: LifeArc[];
+      }>(
         '/api/life-arcs/proposals/build',
-        { method: 'POST', body: JSON.stringify({ persist: true }) },
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            persist: true,
+            auto_create_ready: opts?.autoCreateReady ?? false,
+          }),
+        },
       );
       setAudit(result.audit);
       setProposals(result.proposals ?? []);
+      return result;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not build arc suggestions');
+      return null;
     } finally {
       setBuilding(false);
     }
   }, []);
+
+  const [creatingReady, setCreatingReady] = useState(false);
+
+  const createReady = useCallback(async () => {
+    setCreatingReady(true);
+    setError(null);
+    try {
+      const result = await fetchJson<{ created: LifeArc[]; skipped: number }>(
+        '/api/life-arcs/proposals/create-ready',
+        { method: 'POST' },
+      );
+      await refresh();
+      return result;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create ready bars');
+      return null;
+    } finally {
+      setCreatingReady(false);
+    }
+  }, [refresh]);
 
   const update = useCallback(async (proposalId: string, patch: Partial<Pick<LifeArcProposal, 'title' | 'track' | 'arc_type' | 'start_date' | 'end_date'>>) => {
     const result = await fetchJson<{ proposal: LifeArcProposal }>(`/api/life-arcs/proposals/${proposalId}`, {
@@ -96,5 +133,5 @@ export function useLifeArcProposals(enabled = true) {
     setProposals((current) => current.filter((proposal) => proposal.id !== proposalId));
   }, []);
 
-  return { proposals, audit, loading, building, error, refresh, build, update, act };
+  return { proposals, audit, loading, building, creatingReady, error, refresh, build, createReady, update, act };
 }

@@ -91,10 +91,14 @@ describe('swimlanesTimelineClipboard nesting', () => {
       tracks: ['career', 'inner'],
       arcs: [parent],
       arcsByTrack: { career: [parent], inner: [] },
+      drawableArcsByTrack: { career: [parent], inner: [] },
       subLaneByTrack: { career: new Map([['a-parent', 0]]) },
       gapsByTrack: { career: [] },
       entries: [moment],
       clusters: [{ key: 'e1', x: 400, entries: [moment] }],
+      unresolvedItems: [],
+      viewportScrollLeftPx: 120,
+      viewportWidthPx: 860,
       xOf: (d) => {
         const t = typeof d === 'string' ? new Date(d).getTime() : d.getTime();
         return Math.round((t - Date.parse('2023-01-01T00:00:00.000Z')) / 86_400_000);
@@ -111,6 +115,60 @@ describe('swimlanesTimelineClipboard nesting', () => {
     expect(text).toContain('With a second line of detail.');
     expect(text).toContain('## 5. All moments chronological');
     expect(text).toContain('Arcs including nested: 2');
+    expect(text).toContain('## Diagnostics');
+    expect(text).toContain('no structural errors detected');
+    expect(text).toContain('Viewport scroll left px: 120');
     expect(text).toContain('## End of swimlanes export');
+  });
+
+  it('reports suppressed bars and actionable structural errors separately', () => {
+    const brokenArc = arc({
+      id: 'broken',
+      title: '',
+      start_date: null,
+      end_date: null,
+      parent_id: 'missing-parent',
+    });
+    const occasion = arc({
+      id: 'occasion',
+      title: 'Release party',
+      arc_type: 'occasion',
+      start_date: '2024-04-01',
+      end_date: '2024-04-01',
+    });
+    const invalidMoment = entry({ id: 'bad-moment', start_time: 'not-a-date', journal_entry_id: '' });
+    const text = buildSwimlanesTimelineClipboardText({
+      scaleId: 'year',
+      scaleLabel: 'Year',
+      zoom: 1,
+      pixelsPerDay: 3,
+      timelineStartIso: '2023-01-01T00:00:00.000Z',
+      todayIso: '2026-07-25T00:00:00.000Z',
+      totalDays: 1300,
+      totalWidthPx: 3900,
+      clusterPx: 52,
+      showEraBands: false,
+      eras: [],
+      tracks: ['career'],
+      arcs: [brokenArc, occasion],
+      arcsByTrack: { career: [brokenArc, occasion] },
+      drawableArcsByTrack: { career: [] },
+      subLaneByTrack: { career: new Map() },
+      gapsByTrack: { career: [] },
+      entries: [invalidMoment],
+      clusters: [],
+      unresolvedItems: [],
+      viewportScrollLeftPx: 0,
+      viewportWidthPx: 860,
+      xOf: () => 0,
+    });
+
+    expect(text).toContain('[ERROR] UNTITLED_ARC');
+    expect(text).toContain('[ERROR] MISSING_PARENT');
+    expect(text).toContain('[WARNING] BAR_SUPPRESSED_MISSING_START_DATE');
+    expect(text).toContain('[INFO] BAR_SUPPRESSED_OCCASION');
+    expect(text).toContain('[ERROR] INVALID_MOMENT_DATE');
+    expect(text).toContain('[ERROR] MOMENT_NOT_CLUSTERED');
+    expect(text).toContain('Correction:');
   });
 });

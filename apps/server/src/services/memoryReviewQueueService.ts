@@ -21,6 +21,11 @@ import type { Claim } from '../types/omegaMemory';
 import { extractTags } from '../utils/keywordDetector';
 
 import { continuityService } from './continuityService';
+import {
+  proposalMetadataAffectsSwimlanes,
+  scheduleLifeArcProposalRefresh,
+  shouldAutoCreateReadyAfterApproval,
+} from './continuityRuntime/arcs/lifeArcProposalRebuildEnqueue';
 import { embeddingService } from './embeddingService';
 import { essenceProfileService } from './essenceProfileService';
 import { memoirService } from './memoirService';
@@ -526,7 +531,11 @@ Identity-affecting claims include:
   /**
    * Approve a proposal
    */
-  async approveProposal(userId: string, proposalId: string): Promise<MemoryDecision> {
+  async approveProposal(
+    userId: string,
+    proposalId: string,
+    opts: { scheduleSwimlaneRefresh?: boolean } = {},
+  ): Promise<MemoryDecision> {
     try {
       const proposal = await this.getProposal(proposalId, userId);
       if (!proposal) {
@@ -572,11 +581,47 @@ Identity-affecting claims include:
       // Finalize proposal
       await this.finalizeProposal(proposalId, 'APPROVED');
 
+      if (proposalKind !== 'retraction' && (opts.scheduleSwimlaneRefresh ?? true)) {
+        const metadata = (proposal.metadata ?? {}) as Record<string, unknown>;
+        if (proposalMetadataAffectsSwimlanes(metadata)) {
+          scheduleLifeArcProposalRefresh(userId, {
+            reason: 'memory_review_approve',
+            autoCreateReady: shouldAutoCreateReadyAfterApproval(metadata),
+          });
+        }
+      }
+
       return decision;
     } catch (error) {
       logger.error({ err: error, userId, proposalId }, 'Failed to approve proposal');
       throw error;
     }
+  }
+
+  async approveProposalsBatch(userId: string, proposalIds: string[]): Promise<MemoryDecision[]> {
+    const uniqueIds = [...new Set(proposalIds.filter((id) => typeof id === 'string' && id.length > 0))];
+    if (uniqueIds.length === 0) return [];
+
+    const decisions: MemoryDecision[] = [];
+    let autoCreateReady = false;
+    let affectsSwimlanes = false;
+
+    for (const proposalId of uniqueIds) {
+      const proposal = await this.getProposal(proposalId, userId);
+      const metadata = (proposal?.metadata ?? {}) as Record<string, unknown>;
+      if (proposalMetadataAffectsSwimlanes(metadata)) affectsSwimlanes = true;
+      if (shouldAutoCreateReadyAfterApproval(metadata)) autoCreateReady = true;
+      decisions.push(await this.approveProposal(userId, proposalId, { scheduleSwimlaneRefresh: false }));
+    }
+
+    if (affectsSwimlanes) {
+      scheduleLifeArcProposalRefresh(userId, {
+        reason: 'memory_review_approve_batch',
+        autoCreateReady,
+      });
+    }
+
+    return decisions;
   }
 
   /**

@@ -7,12 +7,12 @@ describe('canonical entity candidate precedence', () => {
     const merged = mergeCanonicalEntityCandidates(
       [{ name: 'Angel', type: 'PERSON' }],
       [{
-        id: 'character-1', name: 'Ángel Negr0', type: 'character', confidence: 1,
+        id: 'character-1', name: 'Sam Rivera', type: 'character', confidence: 1,
         provenance: 'character_book',
       }],
     );
 
-    expect(merged).toEqual([{ name: 'Ángel Negr0', type: 'PERSON', bornConfirmed: true }]);
+    expect(merged).toEqual([{ name: 'Sam Rivera', type: 'PERSON', bornConfirmed: true }]);
   });
 
   it('rejects pronouns regardless of the extractor entity type', () => {

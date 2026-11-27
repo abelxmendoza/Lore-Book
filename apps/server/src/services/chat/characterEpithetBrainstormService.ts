@@ -121,7 +121,7 @@ export async function brainstormCharacterEpithets(userId: string, message: strin
   const name = extractCharacterName(message);
   if (!name) {
     return {
-      summary: 'Which character would you like title ideas for? Try "give me some title ideas for Genni".',
+      summary: 'Which character would you like title ideas for? Try "give me some title ideas for Jordan".',
       characterId: null,
       characterName: null,
       suggestions: [],

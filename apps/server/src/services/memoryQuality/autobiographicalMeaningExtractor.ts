@@ -298,7 +298,7 @@ export function extractAutobiographicalMeaning(text: string): AutobiographicalMe
   }
 
   // Interpersonal "pulled away" / "gave her space" without "because" still supports
-  // current_event when a lesson already exists (Genni → Catch One continuity).
+  // current_event when a lesson already exists (Jordan → Catch One continuity).
   if (lessons.length > 0) {
     const spaceRe =
       /\bI\s+(?:stopped|backed off|gave (?:her|him|them) space|respected (?:her|his|their) boundary|didn't pressure)\b[^.!?\n]{0,80}/gi;

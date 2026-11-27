@@ -28,6 +28,12 @@ vi.mock('../../src/services/perspectiveService', () => ({
     ingestClaimWithPerspective: vi.fn(),
   }
 }));
+vi.mock('../../src/services/continuityRuntime/arcs/lifeArcProposalRebuildEnqueue', () => ({
+  proposalMetadataAffectsSwimlanes: vi.fn().mockReturnValue(true),
+  shouldAutoCreateReadyAfterApproval: vi.fn().mockReturnValue(false),
+  scheduleLifeArcProposalRefresh: vi.fn(),
+  enqueueLifeArcProposalRebuild: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock('../../src/config', () => ({
   config: {
     openAiKey: 'test-key',

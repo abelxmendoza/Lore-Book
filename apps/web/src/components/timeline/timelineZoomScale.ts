@@ -84,8 +84,8 @@ export const TIMELINE_ZOOM_SCALES: readonly TimelineZoomScale[] = [
   },
   {
     id: 'fit-life',
-    label: 'Life',
-    shortLabel: 'Life',
+    label: 'Fit all',
+    shortLabel: 'All',
     ruler: 'quadyear',
     entryDetail: 'clustered',
     arcDetail: 'summary',

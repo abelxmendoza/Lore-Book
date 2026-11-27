@@ -128,6 +128,26 @@ export const useMemoryReviewQueue = (): MemoryReviewQueueState => {
     }
   }, [fetchProposals, shouldUseMock]);
 
+  const approveProposalsBatch = useCallback(async (ids: string[]) => {
+    try {
+      if (shouldUseMock) {
+        for (const id of ids) mockDataService.mutate.memoryProposals.approve(id);
+        setProposals(mockDataService.get.memoryProposals());
+        return;
+      }
+      await fetchJson('/api/mrq/proposals/approve-batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ proposal_ids: ids }),
+      });
+      await fetchProposals();
+    } catch (err) {
+      throw new Error(err instanceof Error ? err.message : 'Failed to approve proposals');
+    }
+  }, [fetchProposals, shouldUseMock]);
+
   const deferProposal = useCallback(async (id: string) => {
     try {
       if (shouldUseMock) {
@@ -164,6 +184,7 @@ export const useMemoryReviewQueue = (): MemoryReviewQueueState => {
     error,
     refetch: fetchProposals,
     approveProposal,
+    approveProposalsBatch,
     rejectProposal,
     editProposal,
     deferProposal,

@@ -3,7 +3,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { stitchedTimelineService, type StitchedTimelineItem } from '../../chronologyV2/stitchedTimelineService';
 
 import { arcService } from './arcService';
-import { buildArcProposalsFromItems, LifeArcProposalService, proposalMatchesPriorDecision } from './lifeArcProposalService';
+import {
+  buildArcProposalsFromItems,
+  buildMergeUpdatePatch,
+  LifeArcProposalService,
+  proposalMatchesPriorDecision,
+  proposalReadyForAutoCreate,
+} from './lifeArcProposalService';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -102,6 +108,35 @@ describe('buildArcProposalsFromItems', () => {
     expect(proposals[0]).toMatchObject({ start_date: '2012-02-01', end_date: '2012-05-01' });
   });
 
+  it('links sparse import-tagged lore across longer gaps', () => {
+    const proposals = buildArcProposalsFromItems([
+      event({
+        sourceId: 'import-one',
+        sourceType: 'chatgpt_export',
+        metadata: { source: 'chatgpt_export' },
+        title: 'Career start at Vanguard Robotics',
+        body: 'Began work at Vanguard Robotics in early 2020.',
+        occurredAt: '2020-02-01T00:00:00.000Z',
+      }),
+      event({
+        sourceId: 'import-two',
+        sourceType: 'chatgpt_export',
+        metadata: { source: 'chatgpt_export' },
+        title: 'Shipped MemoVault at Vanguard Robotics',
+        body: 'Led the MemoVault launch at work before leaving Vanguard Robotics.',
+        occurredAt: '2021-08-01T00:00:00.000Z',
+      }),
+    ]);
+
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]).toMatchObject({
+      track: 'career',
+      start_date: '2020-02-01',
+      end_date: '2021-08-01',
+      metadata: { import_tagged: true },
+    });
+  });
+
   it('keeps a dismissed overlapping proposal resolved when new evidence expands it', () => {
     const draft = buildArcProposalsFromItems([
       event({ sourceId: 'one', occurredAt: '2026-01-01T00:00:00.000Z' }),
@@ -122,6 +157,83 @@ describe('buildArcProposalsFromItems', () => {
       source_record_ids: ['resolved_event:one'],
       status: 'dismissed',
     })).toBe(false);
+  });
+});
+
+describe('proposalReadyForAutoCreate', () => {
+  it('matches web readiness thresholds', () => {
+    const draft = buildArcProposalsFromItems([
+      event({ sourceId: 'one', occurredAt: '2026-01-01T00:00:00.000Z' }),
+      event({ sourceId: 'two', occurredAt: '2026-03-01T00:00:00.000Z' }),
+    ])[0];
+    expect(proposalReadyForAutoCreate(draft)).toBe(true);
+  });
+});
+
+describe('buildMergeUpdatePatch', () => {
+  it('promotes a multi-day occasion so the merged record can render as a bar', () => {
+    const patch = buildMergeUpdatePatch(
+      {
+        arc_type: 'occasion',
+        track: null,
+        start_date: '2025-01-01',
+        end_date: '2025-01-01',
+        confidence: 0.4,
+        metadata: {
+          occasion_key: '2025-01-01:vanguard',
+          occasion_day: '2025-01-01',
+          source_record_ids: ['resolved_event:one'],
+        },
+      },
+      {
+        arc_type: 'work',
+        track: 'career',
+        start_date: '2025-01-01',
+        end_date: '2025-06-01',
+        confidence: 0.9,
+        source_record_ids: ['resolved_event:one', 'resolved_event:two'],
+        fingerprint: 'fp-career',
+      },
+    );
+
+    expect(patch).toMatchObject({
+      arc_type: 'work',
+      track: 'career',
+      start_date: '2025-01-01',
+      end_date: '2025-06-01',
+      confidence: 0.9,
+    });
+    expect(patch.metadata).toMatchObject({
+      promoted_from_occasion: true,
+      source_record_ids: ['resolved_event:one', 'resolved_event:two'],
+      merged_proposal_fingerprints: ['fp-career'],
+    });
+    expect(patch.metadata).not.toHaveProperty('occasion_key');
+    expect(patch.metadata).not.toHaveProperty('occasion_day');
+  });
+
+  it('leaves non-occasion targets typed as-is', () => {
+    const patch = buildMergeUpdatePatch(
+      {
+        arc_type: 'work',
+        track: 'career',
+        start_date: '2025-01-01',
+        end_date: '2025-03-01',
+        confidence: 0.7,
+        metadata: { source_record_ids: ['resolved_event:one'] },
+      },
+      {
+        arc_type: 'work',
+        track: 'career',
+        start_date: '2025-02-01',
+        end_date: '2025-06-01',
+        confidence: 0.85,
+        source_record_ids: ['resolved_event:two'],
+        fingerprint: 'fp-2',
+      },
+    );
+    expect(patch.arc_type).toBeUndefined();
+    expect(patch.end_date).toBe('2025-06-01');
   });
 });
 

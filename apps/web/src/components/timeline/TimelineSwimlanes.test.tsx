@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TimelineSwimlanes } from './TimelineSwimlanes';
+import { copyTextToClipboard } from '../../lib/listClipboard';
 import type { LifeArc } from '../../hooks/useLifeArcs';
 import type { ChronologyEntry } from '../../types/timelineV2';
 
@@ -11,6 +12,11 @@ vi.mock('../../hooks/useIsMobile', () => ({
 
 vi.mock('../../contexts/EntityModalContext', () => ({
   useEntityModal: vi.fn(() => ({ openMemory: vi.fn() })),
+}));
+
+vi.mock('../../lib/listClipboard', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/listClipboard')>()),
+  copyTextToClipboard: vi.fn(async () => true),
 }));
 
 function makeArc(overrides: Partial<LifeArc> = {}): LifeArc {
@@ -49,6 +55,7 @@ function makeEntry(overrides: Partial<ChronologyEntry> = {}): ChronologyEntry {
 
 describe('TimelineSwimlanes zoom scales', () => {
   beforeEach(() => {
+    vi.mocked(copyTextToClipboard).mockResolvedValue(true);
     Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
       configurable: true,
       get: () => 860,
@@ -153,5 +160,51 @@ describe('TimelineSwimlanes zoom scales', () => {
       'aria-label',
       'Copy all swimlanes timeline',
     );
+  });
+
+  it('copies the diagnostic dump and confirms success', async () => {
+    const user = userEvent.setup();
+    render(
+      <TimelineSwimlanes
+        arcs={[arc]}
+        arcsByTrack={{ career: [arc] }}
+        activeArcs={[arc]}
+        entries={[entry]}
+        loading={false}
+        lifeEras={eras}
+      />,
+    );
+
+    await user.click(screen.getByTestId('swimlanes-copy-all'));
+
+    expect(copyTextToClipboard).toHaveBeenCalledWith(expect.stringContaining('## Diagnostics'));
+    expect(screen.getByText('Diagnostics copied')).toBeInTheDocument();
+  });
+
+  it('keeps the arc title pinned to the visible part of a bar while scrolling', () => {
+    render(
+      <TimelineSwimlanes
+        arcs={[arc]}
+        arcsByTrack={{ career: [arc] }}
+        activeArcs={[arc]}
+        entries={[entry]}
+        loading={false}
+        lifeEras={eras}
+      />,
+    );
+
+    const title = screen.getByTestId('swimlane-arc-title');
+    const canvas = screen.getByTestId('swimlane-scroll-viewport');
+    expect(title).toHaveTextContent('Career chapter');
+    const initialLeft = Number.parseFloat(title.style.left);
+
+    Object.defineProperty(canvas, 'scrollLeft', {
+      configurable: true,
+      value: 500,
+    });
+    fireEvent.scroll(canvas);
+
+    expect(Number.parseFloat(title.style.left)).toBeGreaterThan(initialLeft);
+    expect(title).toHaveClass('absolute');
   });
 });

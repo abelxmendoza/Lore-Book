@@ -38,7 +38,7 @@ export function sensitivityGate(
   const goal = opts?.goalRelevance ?? 0;
   const semantic = opts?.semanticRelevance ?? 0;
 
-  // Strong causal/continuity bridge unlocks lessons (e.g. Genni → dancing boundaries)
+  // Strong causal/continuity bridge unlocks lessons (e.g. Jordan → dancing boundaries)
   // even when the earlier person is not renamed in the later message.
   // Family support around interviews/career is allowed when goal+semantic align.
   const familyCareerOk =

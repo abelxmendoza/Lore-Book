@@ -102,7 +102,10 @@ const ARC_BAR_H     = 28;   // px arc bar height
 const ARC_BAR_VPAD  = 8;    // px above the bar inside its sub-lane
 /** Soft floor so short eras stay readable / tappable (calendar truth preserved). */
 const ARC_MIN_W     = ARC_READABLE_MIN_PX;
-const MIN_ZOOM      = 0.3;
+// "Life" must be able to fit a real multi-decade history in one viewport.
+// The previous 0.3 floor left the export's 14 valid bars spread across a
+// ~4,800px canvas even when the Life scale was selected.
+const MIN_ZOOM      = 0.05;
 const MAX_ZOOM      = 8;
 const TRACK_ORDER: ArcTrack[] = ['career', 'romance', 'relationships', 'creative', 'health', 'inner', 'mixed'];
 
@@ -170,19 +173,42 @@ interface ArcBarProps {
   width: number;
   subLane: number;
   arcDetail: TimelineArcDetail;
+  viewportScrollLeft: number;
+  viewportWidth: number;
   onHover: (arc: LifeArc | null) => void;
   onClick: (arc: LifeArc) => void;
   onTouchSelect: (arc: LifeArc) => void;
 }
 
-const ArcBar = ({ arc, x, width, subLane, arcDetail, onHover, onClick, onTouchSelect }: ArcBarProps) => {
+const ArcBar = ({
+  arc,
+  x,
+  width,
+  subLane,
+  arcDetail,
+  viewportScrollLeft,
+  viewportWidth,
+  onHover,
+  onClick,
+  onTouchSelect,
+}: ArcBarProps) => {
   const track = (arc.track ?? 'inner') as ArcTrack;
   const c = TRACK_COLORS[track];
   const displayWidth = readableArcWidthPx(width, ARC_MIN_W);
   const isStoryArc = isNarrativeConsolidationArc(arc);
   const padded = displayWidth > width + 1;
-  const titleMinW = arcDetail === 'summary' ? 72 : ARC_MIN_W;
   const barH = arcDetail === 'summary' ? ARC_BAR_H - 4 : ARC_BAR_H;
+  const visibleStart = Math.max(0, viewportScrollLeft - x);
+  const visibleEnd = viewportWidth > 0
+    ? Math.min(displayWidth, viewportScrollLeft + viewportWidth - x)
+    : displayWidth;
+  const titleLeft = Math.min(
+    Math.max(8, visibleStart + 8),
+    Math.max(8, displayWidth - 8),
+  );
+  const barEndIsVisible = visibleEnd >= displayWidth - 1;
+  const titleRightPadding = barEndIsVisible && arc.is_active ? 28 : 8;
+  const titleMaxWidth = Math.max(0, visibleEnd - titleLeft - titleRightPadding);
 
   return (
     <button
@@ -205,13 +231,15 @@ const ArcBar = ({ arc, x, width, subLane, arcDetail, onHover, onClick, onTouchSe
         top: arcBarTop(subLane) + (arcDetail === 'summary' ? 2 : 0),
         height: barH,
       }}
-      className={`rounded-md border ${c.bg} ${isStoryArc ? 'border-dashed border-amber-400/50' : c.border} hover:brightness-125 transition-all group cursor-pointer`}
+      className={`rounded-md border text-left ${c.bg} ${isStoryArc ? 'border-dashed border-amber-400/50' : c.border} hover:brightness-125 transition-all group cursor-pointer`}
     >
-      {displayWidth >= titleMinW && (
-        <span className={`absolute inset-0 flex items-center px-2 text-[10px] sm:text-[11px] font-medium truncate ${c.text} pointer-events-none`}>
-          {arc.title}
-        </span>
-      )}
+      <span
+        data-testid="swimlane-arc-title"
+        style={{ left: titleLeft, maxWidth: titleMaxWidth }}
+        className={`absolute top-0 z-[1] flex h-full w-fit items-center overflow-hidden text-ellipsis whitespace-nowrap rounded-sm bg-black/15 px-1.5 text-[10px] sm:text-[11px] font-medium ${c.text} pointer-events-none`}
+      >
+        {arc.title}
+      </span>
       {arc.is_active && (
         <span className="absolute right-1.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white/80 animate-pulse pointer-events-none" />
       )}
@@ -456,7 +484,8 @@ export const TimelineSwimlanes = ({
   );
   const [viewportYear, setViewportYear] = useState(() => new Date().getFullYear());
   const [atPresent, setAtPresent] = useState(true);
-  const [copiedAll, setCopiedAll] = useState(false);
+  const [viewport, setViewport] = useState({ scrollLeft: 0, width: 0 });
+  const [copyAllStatus, setCopyAllStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [showUnresolved, setShowUnresolved] = useState(false);
   const cancelPresentScroll = useRef<(() => void) | null>(null);
   const copyAllTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -618,15 +647,19 @@ export const TimelineSwimlanes = ({
       maxZoom: MAX_ZOOM,
       totalDays,
     });
-    pendingZoomAnchor.current = {
-      days: Math.max(0, daysBetween(timelineStart, today)),
-      viewportX: el.clientWidth * PRESENT_VIEWPORT_ANCHOR,
-    };
+    // Fit all: show the full canvas from the start. Other scales keep present framing.
+    const fitAll = scaleId === 'fit-life';
+    pendingZoomAnchor.current = fitAll
+      ? { days: 0, viewportX: 0 }
+      : {
+          days: Math.max(0, daysBetween(timelineStart, today)),
+          viewportX: el.clientWidth * PRESENT_VIEWPORT_ANCHOR,
+        };
     setActiveScale(scaleId);
     if (Math.abs(nextZoom - zoom) < 0.001) {
       const prevBehavior = el.style.scrollBehavior;
       el.style.scrollBehavior = 'auto';
-      el.scrollLeft = scrollLeftForPresent(xOf(today), el.clientWidth);
+      el.scrollLeft = fitAll ? 0 : scrollLeftForPresent(xOf(today), el.clientWidth);
       el.style.scrollBehavior = prevBehavior;
       pendingZoomAnchor.current = null;
     } else {
@@ -640,6 +673,11 @@ export const TimelineSwimlanes = ({
   const syncViewportChrome = useCallback(() => {
     const el = scrollRef.current;
     if (!el || el.clientWidth <= 0 || ppd <= 0) return;
+    setViewport((prev) => (
+      prev.scrollLeft === el.scrollLeft && prev.width === el.clientWidth
+        ? prev
+        : { scrollLeft: el.scrollLeft, width: el.clientWidth }
+    ));
     const next = yearAtViewportCenter(el.scrollLeft, el.clientWidth, timelineStart, ppd);
     setViewportYear((prev) => (prev === next ? prev : next));
     const near = isNearPresentScroll(el.scrollLeft, xOf(today), el.clientWidth);
@@ -678,17 +716,20 @@ export const TimelineSwimlanes = ({
       tracks: visibleTracks,
       arcs,
       arcsByTrack,
+      drawableArcsByTrack,
       subLaneByTrack,
       gapsByTrack,
       entries: sortedEntries,
       clusters: entryClusters,
+      unresolvedItems,
+      viewportScrollLeftPx: viewport.scrollLeft,
+      viewportWidthPx: viewport.width,
       xOf,
     });
     const ok = await copyTextToClipboard(text);
-    if (!ok) return;
-    setCopiedAll(true);
+    setCopyAllStatus(ok ? 'copied' : 'failed');
     if (copyAllTimer.current) clearTimeout(copyAllTimer.current);
-    copyAllTimer.current = setTimeout(() => setCopiedAll(false), 2000);
+    copyAllTimer.current = setTimeout(() => setCopyAllStatus('idle'), 2400);
   }, [
     visibleTracks,
     subLaneData,
@@ -702,9 +743,13 @@ export const TimelineSwimlanes = ({
     lifeEras,
     arcs,
     arcsByTrack,
+    drawableArcsByTrack,
     gapsByTrack,
     sortedEntries,
     entryClusters,
+    unresolvedItems,
+    viewport.scrollLeft,
+    viewport.width,
     xOf,
   ]);
 
@@ -858,8 +903,9 @@ export const TimelineSwimlanes = ({
         </div>
         <div>
           <p className="text-white/60 font-medium">Your timeline is empty</p>
-          <p className="text-white/30 text-sm mt-1 max-w-xs">
-            Start chatting — your memories and life arcs will appear here as you share more.
+          <p className="text-white/30 text-sm mt-1 max-w-sm">
+            Share memories in chat or journal, import ChatGPT lore, then use{' '}
+            <span className="text-white/45">Build from my lore</span> above to turn dated chapters into swimlane bars.
           </p>
         </div>
       </div>
@@ -961,12 +1007,14 @@ export const TimelineSwimlanes = ({
             type="button"
             onClick={() => void handleCopyAll()}
             aria-label="Copy all swimlanes timeline"
-            title="Copy full swimlanes dump: architecture, nested arcs, moments, dates, pixel positions"
+            title="Copy full swimlanes diagnostic dump: loaded and drawn arcs, suppression reasons, dates, provenance, clusters, and pixel positions"
             data-testid="swimlanes-copy-all"
             className="timeline-copy-all"
           >
-            {copiedAll ? <Check className="h-3.5 w-3.5 shrink-0" /> : <Copy className="h-3.5 w-3.5 shrink-0" />}
-            <span>{copiedAll ? 'Copied' : 'Copy all'}</span>
+            {copyAllStatus === 'copied' ? <Check className="h-3.5 w-3.5 shrink-0" /> : <Copy className="h-3.5 w-3.5 shrink-0" />}
+            <span>
+              {copyAllStatus === 'copied' ? 'Diagnostics copied' : copyAllStatus === 'failed' ? 'Copy failed' : 'Copy all'}
+            </span>
           </button>
         </div>
         <span
@@ -1096,6 +1144,7 @@ export const TimelineSwimlanes = ({
         {/* Scrollable canvas */}
         <div
           ref={scrollRef}
+          data-testid="swimlane-scroll-viewport"
           className="flex-1 min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain"
           style={{ scrollBehavior: 'smooth', touchAction: 'pan-x pan-y' }}
           onScroll={syncViewportChrome}
@@ -1180,6 +1229,8 @@ export const TimelineSwimlanes = ({
                         width={w}
                         subLane={subLane}
                         arcDetail={scale.arcDetail}
+                        viewportScrollLeft={viewport.scrollLeft}
+                        viewportWidth={viewport.width}
                         onHover={setHoveredArc}
                         onClick={handleSelectArc}
                         onTouchSelect={handleSelectArc}

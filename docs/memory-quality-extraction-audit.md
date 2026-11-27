@@ -119,11 +119,11 @@ Run: vitest `memoryQuality.test.ts` → logs aggregate.
 **Baseline proxy:** entity-name bag without “taught me” / chain language.  
 **After:** full message through meaning extractors.
 
-Genni / Catch One fixture (expected):
+Jordan / Catch One fixture (expected):
 
 | Metric | Before (entity-only text) | After (full message) |
 |--------|---------------------------|----------------------|
-| eventQuality | low (no lessons) | high (lesson + past Genni + boundary behavior) |
+| eventQuality | low (no lessons) | high (lesson + past Jordan + boundary behavior) |
 | continuity | low (no chain) | ~1.0 (chain present) |
 | hallucination | 1.0 | 1.0 |
 

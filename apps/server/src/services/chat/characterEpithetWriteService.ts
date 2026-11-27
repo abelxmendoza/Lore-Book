@@ -1,6 +1,6 @@
 /**
  * Explicit chat write to apply a card title (epithet) the user picked — "set
- * Genni's title to Card Table Rival". Same shape as lifeArcWriteService.ts:
+ * Jordan's title to Card Table Rival". Same shape as lifeArcWriteService.ts:
  * regex extraction, no LLM field parsing, applied through the existing
  * persistCharacterEpithet persistence (no parallel write path).
  */
@@ -30,13 +30,13 @@ export async function writeCharacterEpithetFromChat(userId: string, message: str
   const text = message.trim();
   const match = text.match(CHARACTER_EPITHET_SET_RE);
   if (!match) {
-    throw new Error('Try "set Genni\'s title to Card Table Rival".');
+    throw new Error('Try "set Jordan\'s title to Card Table Rival".');
   }
 
   const rawName = cleanPhrase(match[1]);
   const rawTitle = cleanPhrase(match[2]);
   if (!rawName || !rawTitle) {
-    throw new Error('Try "set Genni\'s title to Card Table Rival".');
+    throw new Error('Try "set Jordan\'s title to Card Table Rival".');
   }
 
   // Normalize up front so the summary/return value match exactly what

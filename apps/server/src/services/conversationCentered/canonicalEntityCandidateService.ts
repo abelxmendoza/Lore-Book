@@ -44,7 +44,7 @@ function overlapsCanonicalName(candidate: string, canonical: string): boolean {
  * Gives tenant-scoped book entities precedence over speculative extractor
  * candidates. This prevents a short spelling such as "Angel" from becoming a
  * second person when the same message explicitly matched canonical
- * "Ángel Negr0". It also rejects pronouns before they can become people,
+ * "Night Shift". It also rejects pronouns before they can become people,
  * bands, or organizations.
  */
 export function mergeCanonicalEntityCandidates(

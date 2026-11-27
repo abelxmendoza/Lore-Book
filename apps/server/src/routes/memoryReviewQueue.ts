@@ -56,6 +56,17 @@ router.get('/proposals/:id', requireAuth, async (req: AuthenticatedRequest, res)
   }
 });
 
+router.post('/proposals/approve-batch', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const proposalIds = Array.isArray(req.body?.proposal_ids) ? req.body.proposal_ids : [];
+    const decisions = await memoryReviewQueueService.approveProposalsBatch(req.user!.id, proposalIds);
+    res.json({ decisions, success: true, approved: decisions.length });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to batch approve proposals');
+    res.status(500).json({ error: 'Failed to batch approve proposals' });
+  }
+});
+
 /**
  * POST /api/mrq/proposals/:id/approve
  * Approve a memory proposal

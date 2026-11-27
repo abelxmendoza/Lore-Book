@@ -115,7 +115,7 @@ Assembly path uses sorted knowledge-unit ids instead of title (stable across reo
 
 ## 5–7. Replay scenarios (SQL evidence on `lorekeeper_staging_qual`)
 
-Fixture text: Anime Expo / Catch One / Dollyfied / Stimkybun / Genni / tía house.
+Fixture text: Anime Expo / Catch One / Dollyfied / Stimkybun / Jordan / tía house.
 
 | Scenario | Result |
 |----------|--------|

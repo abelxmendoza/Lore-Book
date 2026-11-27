@@ -136,17 +136,28 @@ export function defaultScaleForSpanDays(spanDays: number): TimelineZoomScaleId {
   return 'fit-life';
 }
 
-/** Whether an arc should be drawn as a swimlane duration bar. */
-export function shouldDrawSwimlaneArcBar(arc: LifeArc): boolean {
-  if (arc.bar_eligibility) return arc.bar_eligibility.drawable;
-  if (arc.arc_type === 'occasion') return false;
+export type SwimlaneArcBarEligibility = NonNullable<LifeArc['bar_eligibility']>;
+
+/** Shared bar decision plus the reason needed by empty states and diagnostics. */
+export function getSwimlaneArcBarEligibility(arc: LifeArc): SwimlaneArcBarEligibility {
+  if (arc.bar_eligibility) return arc.bar_eligibility;
+  if (arc.arc_type === 'occasion') return { drawable: false, reason: 'occasion' };
   if (arc.metadata && (arc.metadata as { omni_draw_bar?: boolean }).omni_draw_bar === false) {
-    return false;
+    return { drawable: false, reason: 'explicitly_suppressed' };
   }
-  if (!arc.start_date) return false;
+  if (!arc.start_date) return { drawable: false, reason: 'missing_start_date' };
   const start = new Date(arc.start_date).getTime();
   const end = new Date(arc.end_date || arc.start_date).getTime();
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return false;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+    return { drawable: false, reason: 'invalid_dates' };
+  }
   const days = Math.round((end - start) / DAY_MS);
-  return days >= 2;
+  return days >= 2
+    ? { drawable: true, reason: null }
+    : { drawable: false, reason: 'single_day_span' };
+}
+
+/** Whether an arc should be drawn as a swimlane duration bar. */
+export function shouldDrawSwimlaneArcBar(arc: LifeArc): boolean {
+  return getSwimlaneArcBarEligibility(arc).drawable;
 }

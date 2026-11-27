@@ -74,6 +74,8 @@ interface UseLifeArcsResult {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
+  updateArc: (arcId: string, patch: Partial<Pick<LifeArc, 'title' | 'arc_type' | 'track' | 'start_date' | 'end_date' | 'is_active'>>) => Promise<LifeArc>;
+  deleteArc: (arcId: string) => Promise<void>;
 }
 
 export function useLifeArcs(opts: UseLifeArcsOptions = {}): UseLifeArcsResult {
@@ -130,6 +132,23 @@ export function useLifeArcs(opts: UseLifeArcsOptions = {}): UseLifeArcsResult {
 
   useEffect(() => { void load(); }, [load]);
 
+  const updateArc = useCallback(async (
+    arcId: string,
+    patch: Partial<Pick<LifeArc, 'title' | 'arc_type' | 'track' | 'start_date' | 'end_date' | 'is_active'>>,
+  ): Promise<LifeArc> => {
+    const result = await fetchJson<{ arc: LifeArc }>(`/api/life-arcs/${arcId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+    setArcs((current) => current.map((arc) => arc.id === arcId ? result.arc : arc));
+    return result.arc;
+  }, []);
+
+  const deleteArc = useCallback(async (arcId: string): Promise<void> => {
+    await fetchJson<{ success: boolean }>(`/api/life-arcs/${arcId}`, { method: 'DELETE' });
+    setArcs((current) => current.filter((arc) => arc.id !== arcId));
+  }, []);
+
   const minConf = opts.minConfidence ?? 0;
   const activeArcs = arcs.filter(a => a.is_active && a.confidence >= Math.max(minConf, 0.5));
 
@@ -141,5 +160,5 @@ export function useLifeArcs(opts: UseLifeArcsOptions = {}): UseLifeArcsResult {
     return acc;
   }, {});
 
-  return { arcs, activeArcs, arcsByTrack, loading, error, refresh: load };
+  return { arcs, activeArcs, arcsByTrack, loading, error, refresh: load, updateArc, deleteArc };
 }
