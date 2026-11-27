@@ -1,6 +1,6 @@
 ---
 name: lorebook
-description: Read and write a user's LoreBook lore through the LoreBook MCP server. Use when a conversation contains autobiographical information worth keeping — career moves, people, places, projects, decisions, life events — or when answering would be better grounded in what the user has lived before. Teaches any AI the LoreBook ritual: read before you write, write only through ingest_story, and never correct lore on the user's behalf.
+description: Read and write a user's LoreBook lore through the LoreBook MCP server. Use when a conversation contains autobiographical information worth keeping — career moves, people, places, projects, decisions, life events — or when answering would be better grounded in what the user has lived before. Teaches any AI the LoreBook ritual: read before you write, send autobiographical stories through ingest_story, and never correct lore on the user's behalf.
 ---
 
 # LoreBook — one lore, every AI
@@ -32,11 +32,11 @@ Connect recipes (give the user the one for the AI you are running in):
 |---|---|
 | Muse | Add LoreBook as a custom MCP connector and approve the OAuth consent. |
 | Claude | Customize → Connectors → Add custom connector → paste the MCP endpoint → Connect. In Claude Code: `claude mcp add --transport http lorebook https://lore-book-production.up.railway.app/mcp`, then `/mcp` to sign in. |
-| ChatGPT | Settings → Developer Mode on → create an MCP app with the endpoint → sign in with OAuth. |
+| ChatGPT | Plugins → + → Add custom MCP server → enter the endpoint and choose OAuth. If the option is unavailable, check the account or workspace's app permissions. |
 | Grok | Connectors → New Connector → Custom (Bring Your Own MCP) → paste the endpoint → sign in. |
 | Codex / other MCP clients | Add a remote HTTP MCP server with the endpoint and complete the OAuth flow. |
 
-If LoreBook is not connected in this AI yet, say so plainly and give the
+Discover the tools on the current connection. A repository change does not establish live availability. If LoreBook is not connected in this AI yet, say so plainly and give the
 user the recipe above. **Never claim you recorded something you did not.**
 
 ## Tools
@@ -51,20 +51,24 @@ Read (require `memory:read`):
 
 Write (require `memory:write`):
 
-- `ingest_story` — **the only write path an AI uses.** Stores a piece of
+- `ingest_story` — Stores a piece of
   autobiographical narrative. LoreBook extracts entities, dedupes against
   existing lore, and stamps the entry with which AI wrote it. Input is
   capped at 20,000 characters.
 - `correct_lore` — **never call this.** Corrections are permanent user
   authority in LoreBook. See "Corrections" below.
 
+For approved project handoffs and session summaries, use the companion
+[lorebook-session-handoff skill](../lorebook-session-handoff/SKILL.md). Use this
+skill for autobiographical lore.
+
 ## The ritual
 
 ### 1. Verify before anything (first connection only)
 
 Immediately after connecting, read first: run `search_memories` and confirm
-it returns the user's real, recognisable lore. If it returns an empty or
-unfamiliar graph, stop — do not write anything — and tell the user the
+it returns the user's real, recognisable lore. An empty graph can belong to a new account. Verify the account with the user
+before writing. If it returns unfamiliar lore, stop — do not write anything — and tell the user the
 connection looks bound to the wrong account.
 
 ### 2. Read before you write (every time)
