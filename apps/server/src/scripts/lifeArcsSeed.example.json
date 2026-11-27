@@ -1,0 +1,22 @@
+[
+  {
+    "originalLane": "Career",
+    "title": "First Studio Job",
+    "arc_type": "life_era",
+    "track": "career",
+    "start_date": "2019-01-01",
+    "end_date": "2021-12-31",
+    "datePrecision": "year",
+    "summary": "Fictional example: junior designer at a small studio."
+  },
+  {
+    "originalLane": "Creative",
+    "title": "Learning Guitar",
+    "arc_type": "life_era",
+    "track": "creative",
+    "start_date": "2022-03-01",
+    "end_date": null,
+    "datePrecision": "month",
+    "summary": "Fictional example: picked up guitar and played open mics."
+  }
+]
