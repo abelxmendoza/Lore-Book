@@ -69,6 +69,31 @@ describe('familyEdgeWriter — type normalization', () => {
   });
 });
 
+describe('retireFamilyEdgesOfTypesBetween', () => {
+  beforeEach(() => {
+    fromMock.mockReset();
+  });
+
+  it('supersedes only the requested typed edges (and inverses), leaving other kinship intact', async () => {
+    const inSpy = vi.fn();
+    fromMock
+      .mockImplementationOnce(() =>
+        chain([
+          { id: 'e-parent', relationship_type: 'parent_of' },
+          { id: 'e-child', relationship_type: 'child_of' },
+          { id: 'e-sibling', relationship_type: 'sibling_of' },
+        ]),
+      )
+      .mockImplementationOnce(() => chain(null, null, { in: inSpy }));
+
+    const { retireFamilyEdgesOfTypesBetween } = await import('./familyEdgeWriter');
+    const n = await retireFamilyEdgesOfTypesBetween('user-1', 'you', 'riley', ['parent_of']);
+
+    expect(n).toBe(2);
+    expect(inSpy).toHaveBeenCalledWith('id', ['e-parent', 'e-child']);
+  });
+});
+
 describe('upsertBidirectionalFamilyEdge — stale edge retirement', () => {
   beforeEach(() => {
     fromMock.mockReset();

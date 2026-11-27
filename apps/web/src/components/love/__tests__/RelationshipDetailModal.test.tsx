@@ -252,6 +252,40 @@ describe('RelationshipDetailModal', () => {
     expect(fetchJson).not.toHaveBeenCalledWith(expect.stringContaining('/kids'));
   });
 
+  it('adds and unlinks kids in demo mode without calling the write API', async () => {
+    const onClose = vi.fn();
+    render(<RelationshipDetailModal relationshipId="rel-001" onClose={onClose} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Alex')).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getAllByRole('tab', { name: /kids & pets together/i })[0]);
+    await waitFor(() => {
+      expect(screen.getByTestId('kids-together-panel')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('kids-together-add-toggle'));
+    await user.type(screen.getByTestId('kids-together-name-search'), 'Casey');
+    await user.click(screen.getByTestId('kids-together-add-submit'));
+
+    expect(await screen.findByRole('button', { name: 'Casey' })).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText(/unlink mia from this relationship/i));
+    await user.click(screen.getByTestId('kids-together-unlink-confirm-yes'));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Mia' })).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: 'Casey' })).toBeInTheDocument();
+    expect(screen.getByText('Waffles')).toBeInTheDocument();
+    expect(fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining('/kids'),
+      expect.objectContaining({ method: expect.stringMatching(/POST|DELETE/) }),
+    );
+  });
+
   it('chat tab hands off to main chat with Dating & Romance focus', async () => {
     const onClose = vi.fn();
     render(<RelationshipDetailModal relationshipId="rel-001" onClose={onClose} />);

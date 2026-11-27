@@ -56,6 +56,7 @@ describe('KidsTogetherPanel — pets', () => {
   it('mentions pets in the empty state', () => {
     render(<KidsTogetherPanel kids={[]} pets={[]} loading={false} partnerName="Alex" />);
     expect(screen.getByTestId('kids-together-empty')).toHaveTextContent(/kids or pets/i);
+    expect(screen.queryByTestId('kids-together-add-toggle')).not.toBeInTheDocument();
   });
 });
 
@@ -123,5 +124,49 @@ describe('KidsTogetherPanel', () => {
 
     expect(screen.queryByTestId('kids-together-open-coparent')).not.toBeInTheDocument();
     expect(screen.getByText(/Unknown Parent/)).toBeInTheDocument();
+  });
+
+  it('adds a named child from the empty-state form', async () => {
+    const onAdd = vi.fn();
+    render(
+      <KidsTogetherPanel
+        kids={[]}
+        pets={[]}
+        loading={false}
+        partnerName="Alex"
+        onAddDependent={onAdd}
+        candidateCharacters={[{ id: 'demo-char-riley', name: 'Riley', archetype: 'family' }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('kids-together-add-toggle'));
+    fireEvent.change(screen.getByTestId('kids-together-name-search'), { target: { value: 'Riley' } });
+    fireEvent.mouseDown(screen.getByRole('option', { name: 'Riley' }));
+    fireEvent.click(screen.getByTestId('kids-together-add-submit'));
+
+    expect(onAdd).toHaveBeenCalledWith({
+      kind: 'child',
+      belongsTo: 'both',
+      characterId: 'demo-char-riley',
+      name: 'Riley',
+      species: undefined,
+    });
+  });
+
+  it('unlinks a kid after confirm, leaving the character card to the caller', () => {
+    const onRemove = vi.fn();
+    render(
+      <KidsTogetherPanel
+        kids={kids}
+        loading={false}
+        partnerName="Alex"
+        onAddDependent={vi.fn()}
+        onRemoveDependent={onRemove}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByTestId('kids-together-unlink')[0]);
+    fireEvent.click(screen.getByTestId('kids-together-unlink-confirm-yes'));
+    expect(onRemove).toHaveBeenCalledWith('kid-1', 'child');
   });
 });

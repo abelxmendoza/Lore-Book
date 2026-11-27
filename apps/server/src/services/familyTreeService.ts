@@ -16,6 +16,7 @@ import {
   normalizeFamilyEdgeType,
   syncSiblingsUnderParent as syncSiblingsUnderParentShared,
   upsertBidirectionalFamilyEdge,
+  retireFamilyEdgesOfTypesBetween,
   TREE_RELATION_GENERATION,
   normalizeTreeRelation,
 } from './kinship/familyEdgeWriter';
@@ -33,6 +34,34 @@ export type FamilyRelationType =
   | 'aunt' | 'uncle' | 'niece' | 'nephew' | 'cousin' | 'spouse' | 'in_law'
   | 'step_parent' | 'step_child' | 'step_sibling' | 'half_sibling'
   | 'adopted_parent' | 'adopted_child' | 'godparent' | 'godchild' | 'related';
+
+export type RelationshipDependentKind = 'child' | 'pet';
+export type RelationshipDependentBelongsTo = 'both' | 'self' | 'partner';
+
+export type RelationshipKidTogether = {
+  id: string;
+  name: string;
+  relation: 'together' | 'step';
+  belongsTo: 'both' | 'self' | 'partner';
+  coParents: Array<{ id: string; name: string }>;
+};
+
+export type RelationshipPetTogether = {
+  id: string;
+  name: string;
+  relation: 'together' | 'step';
+  belongsTo: 'both' | 'self' | 'partner';
+  species: string | null;
+};
+
+export type RelationshipDependentLists = {
+  kids: RelationshipKidTogether[];
+  pets: RelationshipPetTogether[];
+};
+
+export type RelationshipDependentWriteResult =
+  | ({ ok: true } & RelationshipDependentLists)
+  | { ok: false; status: number; error: string };
 
 export interface FamilyMemberDTO {
   id: string;
@@ -726,12 +755,14 @@ class FamilyTreeService {
           .select('source_character_id, target_character_id')
           .eq('user_id', userId)
           .eq('relationship_type', ownerType)
+          .eq('status', 'active')
           .in('source_character_id', anchors),
         supabaseAdmin
           .from('character_relationships')
           .select('source_character_id, target_character_id')
           .eq('user_id', userId)
           .eq('relationship_type', petType)
+          .eq('status', 'active')
           .in('target_character_id', anchors),
       ]);
 
@@ -780,6 +811,199 @@ class FamilyTreeService {
       logger.debug({ err, userId, partnerCharacterId }, 'getPetsTogetherForRelationship failed (non-fatal)');
       return [];
     }
+  }
+
+  /**
+   * Manually link a child or pet to a romantic relationship from the Dating &
+   * Romance "Kids & Pets Together" tab. Writes typed family edges (parent_of
+   * or owner_of) from self and/or the partner onto an existing character, or
+   * creates a card when only a name is supplied. Does not invent biography.
+   */
+  async linkDependentToRomanticRelationship(
+    userId: string,
+    partnerCharacterId: string,
+    relationshipType: string | null | undefined,
+    input: {
+      kind: RelationshipDependentKind;
+      belongsTo?: RelationshipDependentBelongsTo;
+      characterId?: string | null;
+      name?: string | null;
+      species?: string | null;
+    },
+  ): Promise<RelationshipDependentWriteResult> {
+    const selfId = await this.findUserCharacterId(userId);
+    if (!selfId) {
+      return { ok: false, status: 400, error: 'Add yourself to Family Tree before linking kids or pets here.' };
+    }
+    if (!partnerCharacterId || partnerCharacterId === selfId) {
+      return { ok: false, status: 400, error: 'This relationship is not linked to a partner character.' };
+    }
+
+    const belongsTo: RelationshipDependentBelongsTo = input.belongsTo ?? 'both';
+    const ownerIds =
+      belongsTo === 'self' ? [selfId] : belongsTo === 'partner' ? [partnerCharacterId] : [selfId, partnerCharacterId];
+
+    const resolved = await this.resolveRelationshipDependentCharacter(userId, {
+      kind: input.kind,
+      characterId: input.characterId,
+      name: input.name,
+      species: input.species,
+      forbiddenIds: [selfId, partnerCharacterId],
+    });
+    if (!resolved.ok) return resolved;
+
+    const edgeType = input.kind === 'pet' ? 'owner_of' : 'parent_of';
+    for (const ownerId of ownerIds) {
+      await upsertBidirectionalFamilyEdge(userId, ownerId, resolved.characterId, edgeType, {
+        source: 'relationship_kids_pets_tab',
+        inferenceStatus: 'asserted',
+      });
+      if (input.kind === 'child') {
+        await this.syncSiblingsUnderParent(userId, ownerId);
+      }
+    }
+
+    return {
+      ok: true,
+      ...(await this.listDependentsForRelationship(userId, partnerCharacterId, relationshipType)),
+    };
+  }
+
+  /**
+   * Unlink a child or pet from this romantic relationship. Retires the parent
+   * or owner edges to self and the partner; the character card stays in
+   * Character Book.
+   */
+  async unlinkDependentFromRomanticRelationship(
+    userId: string,
+    partnerCharacterId: string,
+    relationshipType: string | null | undefined,
+    characterId: string,
+    kind?: RelationshipDependentKind | null,
+  ): Promise<RelationshipDependentWriteResult> {
+    const selfId = await this.findUserCharacterId(userId);
+    if (!selfId) {
+      return { ok: false, status: 400, error: 'Add yourself to Family Tree before unlinking kids or pets here.' };
+    }
+    if (!partnerCharacterId || !characterId || characterId === selfId || characterId === partnerCharacterId) {
+      return { ok: false, status: 400, error: 'That person cannot be unlinked from this relationship.' };
+    }
+
+    const types: string[] =
+      kind === 'pet' ? ['owner_of'] : kind === 'child' ? ['parent_of'] : ['parent_of', 'owner_of'];
+    await Promise.all([
+      retireFamilyEdgesOfTypesBetween(userId, selfId, characterId, types),
+      retireFamilyEdgesOfTypesBetween(userId, partnerCharacterId, characterId, types),
+    ]);
+
+    return {
+      ok: true,
+      ...(await this.listDependentsForRelationship(userId, partnerCharacterId, relationshipType)),
+    };
+  }
+
+  private async listDependentsForRelationship(
+    userId: string,
+    partnerCharacterId: string,
+    relationshipType: string | null | undefined,
+  ): Promise<RelationshipDependentLists> {
+    const [kids, pets] = await Promise.all([
+      this.getKidsTogetherForRelationship(userId, partnerCharacterId, relationshipType),
+      this.getPetsTogetherForRelationship(userId, partnerCharacterId, relationshipType),
+    ]);
+    return { kids, pets };
+  }
+
+  private async resolveRelationshipDependentCharacter(
+    userId: string,
+    input: {
+      kind: RelationshipDependentKind;
+      characterId?: string | null;
+      name?: string | null;
+      species?: string | null;
+      forbiddenIds: string[];
+    },
+  ): Promise<{ ok: true; characterId: string } | { ok: false; status: number; error: string }> {
+    const requestedId = (input.characterId ?? '').trim();
+    if (requestedId) {
+      if (input.forbiddenIds.includes(requestedId) || isSyntheticNodeId(requestedId)) {
+        return { ok: false, status: 400, error: 'Pick someone other than you or this partner.' };
+      }
+      const { data } = await supabaseAdmin
+        .from('characters')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('id', requestedId)
+        .maybeSingle();
+      if (!data?.id) {
+        return { ok: false, status: 404, error: 'Character not found.' };
+      }
+      return { ok: true, characterId: data.id as string };
+    }
+
+    const cleanName = (input.name ?? '').trim();
+    if (!cleanName) {
+      return { ok: false, status: 400, error: 'Pick an existing person or pet, or type a name.' };
+    }
+
+    const { data: matches } = await supabaseAdmin
+      .from('characters')
+      .select('id, name')
+      .eq('user_id', userId)
+      .ilike('name', cleanName);
+    const exact = (matches ?? []).find(
+      (row) =>
+        typeof row.id === 'string' &&
+        !input.forbiddenIds.includes(row.id) &&
+        String(row.name ?? '').trim().toLowerCase() === cleanName.toLowerCase(),
+    );
+    if (exact?.id) return { ok: true, characterId: exact.id as string };
+
+    const parts = cleanName.split(/\s+/);
+    const now = new Date().toISOString();
+    const { data, error } = await supabaseAdmin
+      .from('characters')
+      .insert({
+        id: randomUUID(),
+        user_id: userId,
+        name: cleanName,
+        first_name: parts[0],
+        last_name: parts.slice(1).join(' ') || null,
+        status: 'active',
+        archetype: input.kind === 'pet' ? 'pet' : 'family',
+        species: input.kind === 'pet' ? (input.species?.trim() || null) : null,
+        has_met: true,
+        metadata: { created_via: 'relationship_kids_pets_tab' },
+        created_at: now,
+        updated_at: now,
+      })
+      .select('id')
+      .single();
+    if (error || !data?.id) {
+      logger.error({ error, userId, name: cleanName, kind: input.kind }, 'Failed to create relationship dependent card');
+      return { ok: false, status: 500, error: 'Could not create that character card.' };
+    }
+
+    try {
+      const { identityLedgerService } = await import('./identity/identityLedgerService');
+      await identityLedgerService.recordMutation({
+        userId,
+        entityId: data.id as string,
+        entityType: 'character',
+        mutationType: 'ENTITY_CREATED',
+        newValue: { name: cleanName },
+        reason:
+          input.kind === 'pet'
+            ? 'Created pet card from relationship Kids & Pets tab'
+            : 'Created child card from relationship Kids & Pets tab',
+        source: 'USER',
+        metadata: { operation_type: 'relationship_dependent_ensure_card', kind: input.kind },
+      });
+    } catch {
+      // ledger is best-effort
+    }
+
+    return { ok: true, characterId: data.id as string };
   }
 
   /**
