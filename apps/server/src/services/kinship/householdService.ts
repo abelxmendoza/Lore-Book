@@ -188,6 +188,7 @@ export class HouseholdService {
   private async loadFamilyMemberIds(userId: string): Promise<Set<string> | null> {
     try {
       const tree = await familyTreeService.getUserFamilyTree(userId);
+      if (!tree) return null;
       return new Set((tree.members ?? []).map((m) => m.id).filter(Boolean));
     } catch {
       return null;

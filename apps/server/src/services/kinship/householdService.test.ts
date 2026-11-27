@@ -56,7 +56,7 @@ vi.mock('../familyTreeService', async (orig) => {
 
 function chain(data: unknown, error: unknown = null) {
   const builder: Record<string, unknown> = {};
-  for (const m of ['select', 'eq', 'in']) {
+  for (const m of ['select', 'eq', 'in', 'or']) {
     builder[m] = () => builder;
   }
   builder.then = (resolve: (v: { data: unknown; error: unknown }) => unknown, reject: (e: unknown) => unknown) =>

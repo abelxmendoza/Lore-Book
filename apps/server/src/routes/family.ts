@@ -44,7 +44,7 @@ router.get(
       familyGraphService.getAnalytics(userId),
       familyTreeService.getUserFamilyTree(userId),
     ]);
-    const familyMemberIds = (tree.members ?? []).map((m) => m.id);
+    const familyMemberIds = tree ? (tree.members ?? []).map((m) => m.id) : undefined;
     const households = await householdService.listHouseholds(userId, { familyMemberIds });
 
     const { data: familyGroups } = await supabaseAdmin
@@ -84,7 +84,7 @@ router.get(
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
     const tree = await familyTreeService.getUserFamilyTree(userId);
-    const familyMemberIds = (tree.members ?? []).map((m) => m.id);
+    const familyMemberIds = tree ? (tree.members ?? []).map((m) => m.id) : undefined;
     const households = await householdService.listHouseholds(userId, { familyMemberIds });
     res.json({ success: true, households });
   })

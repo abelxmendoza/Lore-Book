@@ -36,6 +36,7 @@ export interface MemoryReviewQueueState {
   error: string | null;
   refetch: () => Promise<void>;
   approveProposal: (id: string) => Promise<void>;
+  approveProposalsBatch: (ids: string[]) => Promise<void>;
   rejectProposal: (id: string, reason?: string) => Promise<void>;
   editProposal: (id: string, newText: string, newConfidence?: number) => Promise<void>;
   deferProposal: (id: string) => Promise<void>;

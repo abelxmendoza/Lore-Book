@@ -346,13 +346,14 @@ class HouseholdWriteService {
     characterName: string,
   ): Promise<{ id: string; name: string } | null> {
     const select = 'id, name, archetype, metadata, species';
-    let row: {
+    type CandidateRow = {
       id: string;
       name: string;
       archetype?: string | null;
       metadata?: Record<string, unknown> | null;
       species?: string | null;
-    } | null = null;
+    };
+    let row = null as CandidateRow | null;
 
     if (characterId) {
       const { data } = await supabaseAdmin
@@ -361,7 +362,7 @@ class HouseholdWriteService {
         .eq('user_id', userId)
         .eq('id', characterId)
         .maybeSingle();
-      row = data as typeof row;
+      row = data as CandidateRow | null;
     } else if (characterName.trim()) {
       const { data } = await supabaseAdmin
         .from('characters')
@@ -369,7 +370,7 @@ class HouseholdWriteService {
         .eq('user_id', userId)
         .ilike('name', characterName.trim())
         .limit(2);
-      const matches = (data ?? []) as NonNullable<typeof row>[];
+      const matches = (data ?? []) as CandidateRow[];
       if (matches.length === 1) row = matches[0];
     }
 

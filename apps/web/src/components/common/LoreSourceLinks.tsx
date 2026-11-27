@@ -17,6 +17,7 @@ const INTAKE_ICONS: Record<LoreIntakeChannel, typeof MessageSquare> = {
   calendar: Calendar,
   manual: PenLine,
   integration: Plug,
+  external_conversation: MessageSquare,
   unknown: Link2,
 };
 

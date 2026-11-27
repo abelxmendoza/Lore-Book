@@ -198,7 +198,7 @@ describe('OmniTimeline layout and navigation', () => {
     entityModalMocks.openCharacter.mockReset();
     vi.mocked(useIsMobile).mockReturnValue(false);
     vi.mocked(useMockData).mockReturnValue({ useMockData: true } as ReturnType<typeof useMockData>);
-    vi.mocked(useAuth).mockReturnValue({ user: null, loading: false });
+    vi.mocked(useAuth).mockReturnValue({ user: null, loading: false } as never);
     vi.mocked(useLifeArcs).mockReturnValue({
       arcs: [],
       activeArcs: [],
@@ -206,7 +206,7 @@ describe('OmniTimeline layout and navigation', () => {
       loading: false,
       error: null,
       refresh: vi.fn(),
-    });
+    } as never);
     vi.mocked(useStitchedTimeline).mockReturnValue({
       data: null,
       items: [],
@@ -216,7 +216,7 @@ describe('OmniTimeline layout and navigation', () => {
       reload: vi.fn(),
       reorderItems: vi.fn(),
       persistOrder: vi.fn(),
-    });
+    } as never);
   });
 
   it('renders shell with vertical scroll region', () => {
@@ -329,7 +329,7 @@ describe('OmniTimeline layout and navigation', () => {
     const refetch = vi.fn();
 
     vi.mocked(useMockData).mockReturnValue({ useMockData: false } as ReturnType<typeof useMockData>);
-    vi.mocked(useAuth).mockReturnValue({ user: { id: 'user-1' } as never, loading: false });
+    vi.mocked(useAuth).mockReturnValue({ user: { id: 'user-1' } as never, loading: false } as never);
     vi.mocked(useLifeArcs).mockReturnValue({
       arcs: [],
       activeArcs: [],
@@ -337,7 +337,7 @@ describe('OmniTimeline layout and navigation', () => {
       loading: false,
       error: 'Failed to load life arcs',
       refresh,
-    });
+    } as never);
     vi.mocked(useStitchedTimeline).mockReturnValue({
       data: null,
       items: [],
@@ -347,7 +347,7 @@ describe('OmniTimeline layout and navigation', () => {
       reload: refetch,
       reorderItems: vi.fn(),
       persistOrder: vi.fn(),
-    });
+    } as never);
 
     renderOmniTimeline();
     expect(screen.getByTestId('omni-timeline-error')).toHaveTextContent('Failed to load life arcs');
@@ -364,7 +364,7 @@ describe('OmniTimeline layout and navigation', () => {
   it('uses the subject compiler for authenticated generated timelines', async () => {
     const user = userEvent.setup();
     vi.mocked(useMockData).mockReturnValue({ useMockData: false } as ReturnType<typeof useMockData>);
-    vi.mocked(useAuth).mockReturnValue({ user: { id: 'user-1' } as never, loading: false });
+    vi.mocked(useAuth).mockReturnValue({ user: { id: 'user-1' } as never, loading: false } as never);
     vi.mocked(subjectTimelineApi.compile).mockResolvedValue({
       query: 'My time at Vanguard Robotics',
       intent: {
@@ -475,7 +475,7 @@ describe('OmniTimeline layout and navigation', () => {
       loading: false,
       error: null,
       refresh: vi.fn(),
-    });
+    } as never);
 
     renderOmniTimeline();
     await user.click(screen.getByRole('button', { name: /Agency Years/i }));

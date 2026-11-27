@@ -17,7 +17,7 @@ type Props = {
   onUpdate: (
     proposalId: string,
     patch: Partial<Pick<LifeArcProposal, 'title' | 'track' | 'arc_type' | 'start_date' | 'end_date'>>,
-  ) => Promise<void>;
+  ) => Promise<unknown>;
   onCreate: (proposal: LifeArcProposal) => void;
   onMerge: (proposal: LifeArcProposal, arcId: string) => void;
   onDismiss: (proposal: LifeArcProposal) => void;

@@ -47,6 +47,7 @@ const state = (overrides: Partial<MemoryReviewQueueState> = {}): MemoryReviewQue
   error: null,
   refetch,
   approveProposal: approve,
+  approveProposalsBatch: vi.fn().mockResolvedValue(undefined),
   rejectProposal: reject,
   editProposal: edit,
   deferProposal: defer,

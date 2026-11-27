@@ -9,6 +9,7 @@ export const INTAKE_CHANNEL_LABELS: Record<LoreIntakeChannel, string> = {
   calendar: 'Calendar',
   manual: 'Manual entry',
   integration: 'Integration',
+  external_conversation: 'Imported conversation',
   unknown: 'Source',
 };
 
@@ -26,6 +27,8 @@ export const SOURCE_KIND_LABELS: Record<LoreSourceKind, string> = {
   x_post: 'Post',
   calendar: 'Calendar event',
   manual: 'Manual entry',
+  external_conversation: 'Imported conversation',
+  external_conversation_message: 'Imported message',
 };
 
 export function loreSourceRoute(source: LoreSourceRef): string | null {

@@ -202,7 +202,7 @@ export async function loadFamilyBook(userId: string) {
     loadCounts(userId),
     familySurnameSuggestionService.listPendingSuggestions(userId),
   ]);
-  const familyMemberIds = (tree.members ?? []).map((m) => m.id);
+  const familyMemberIds = tree ? (tree.members ?? []).map((m) => m.id) : undefined;
   const households = await householdService.listHouseholds(userId, { familyMemberIds });
 
   const { data: familyGroups } = await supabaseAdmin
