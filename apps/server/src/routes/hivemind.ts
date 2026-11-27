@@ -21,6 +21,7 @@ import {
   deleteCheckpoint,
   deleteMemory,
   getHivemindOverview,
+  HivemindSecretError,
   importAgentHivemindState,
   listCheckpoints,
   listMemories,
@@ -74,6 +75,10 @@ function handle(
     try {
       await fn(req, res);
     } catch (error) {
+      if (error instanceof HivemindSecretError) {
+        res.status(400).json({ error: 'secret_detected', message: error.message });
+        return;
+      }
       if (error instanceof z.ZodError) {
         res.status(400).json({ error: 'Invalid request', issues: error.issues });
         return;

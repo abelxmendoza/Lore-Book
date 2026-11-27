@@ -19,7 +19,7 @@ vi.mock('../../src/services/supabaseClient', () => {
   return { supabaseAdmin: { from: (t: string) => builder(t) } };
 });
 
-import { importAgentHivemindState } from '../../src/services/hivemind/hivemindService';
+import { HivemindSecretError, importAgentHivemindState, upsertMemory } from '../../src/services/hivemind/hivemindService';
 
 describe('importAgentHivemindState', () => {
   beforeEach(() => {
@@ -40,8 +40,27 @@ describe('importAgentHivemindState', () => {
         ],
       },
     });
-    expect(result).toEqual({ checkpoints: 1, milestonesAdded: 1, milestonesSkipped: 2 });
+    expect(result).toEqual({ checkpoints: 1, milestonesAdded: 1, milestonesSkipped: 2, skippedForSecrets: 0 });
     expect(inserted.checkpoints[0]).toMatchObject({ user_id: 'u1', project: 'Lore-Book', agent: 'Claude Code' });
     expect(inserted.milestones[0]).toMatchObject({ user_id: 'u1', project: 'Lore-Book', occurred_at: '2026-11-01T00:00:00Z' });
+  });
+
+  it('skips imported entries that contain secrets', async () => {
+    const result = await importAgentHivemindState('user-1', {
+      active_tasks: [
+        { repo: 'Safe', where_i_left_off: 'Wired the API' },
+        { repo: 'Leaky', where_i_left_off: 'token ghp_abcdefghijklmnopqrstuvwxyz1234' },
+      ],
+      career_ledger: { milestones: [{ track: 'Eng', project: 'X', highlight: 'key AKIAABCDEFGHIJKLMNOP' }] },
+    });
+    expect(result).toMatchObject({ checkpoints: 1, milestonesAdded: 0, skippedForSecrets: 2 });
+    expect(inserted.checkpoints).toHaveLength(1);
+  });
+
+  it('refuses to store a secret through the shared write path', async () => {
+    await expect(
+      upsertMemory('user-1', { title: 'deploy', content: 'use sk-abcdefghijklmnopqrstuv' }),
+    ).rejects.toBeInstanceOf(HivemindSecretError);
+    expect(inserted.checkpoints).toHaveLength(0);
   });
 });

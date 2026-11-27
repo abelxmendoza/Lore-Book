@@ -62,8 +62,18 @@ the scope:
 | `hivemind_where_i_left_off`, `hivemind_recall`, `hivemind_milestones` | `hivemind:read` |
 | `hivemind_checkpoint`, `hivemind_record_memory`, `hivemind_log_milestone` | `hivemind:write` |
 
-Writes that look like secrets (API keys, tokens, private keys) are refused,
-and the audit log stores only metadata, never memory text.
+## Privacy
+
+- Every row is stored under the account's user id. The API, MCP tools and
+  database RLS all scope reads and writes to that id, so one account never sees
+  another's board.
+- Writes that look like secrets (API keys, tokens, private keys) are refused on
+  every path: the web page, the REST API, the MCP tools and import (where the
+  entry is skipped and counted).
+- The MCP audit log stores only tool name and argument keys, never memory or
+  checkpoint text.
+- Import reads only checkpoints and milestones; machine paths, network details
+  and anything else in the file are ignored.
 
 Agents follow the check-in / check-out ritual in
 `skills/lorebook-session-handoff/SKILL.md`.

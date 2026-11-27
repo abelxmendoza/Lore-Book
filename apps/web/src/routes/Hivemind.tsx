@@ -94,7 +94,7 @@ export default function Hivemind() {
     setImportNote('');
     try {
       const state = JSON.parse(await file.text());
-      const result = await fetchJson<{ checkpoints: number; milestonesAdded: number; milestonesSkipped: number }>(
+      const result = await fetchJson<{ checkpoints: number; milestonesAdded: number; milestonesSkipped: number; skippedForSecrets?: number }>(
         '/api/hivemind/import',
         {
           method: 'POST',
@@ -104,7 +104,8 @@ export default function Hivemind() {
       );
       setImportNote(
         `Imported ${result.checkpoints} checkpoints and ${result.milestonesAdded} milestones` +
-          (result.milestonesSkipped ? ` (${result.milestonesSkipped} already here)` : '') + '.',
+          (result.milestonesSkipped ? ` (${result.milestonesSkipped} already here)` : '') + '.' +
+          (result.skippedForSecrets ? ` Skipped ${result.skippedForSecrets} that looked like they contained a secret.` : ''),
       );
       await load();
     } catch (err) {

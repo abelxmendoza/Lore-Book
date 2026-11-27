@@ -16,7 +16,10 @@ const svc = vi.hoisted(() => ({
 vi.mock('../../src/mcp/mcpAuditService', () => ({
   auditMcpToolCall: (...args: unknown[]) => mockAudit(...args),
 }));
-vi.mock('../../src/services/hivemind/hivemindService', () => svc);
+vi.mock('../../src/services/hivemind/hivemindService', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../src/services/hivemind/hivemindService')>();
+  return { ...svc, containsLikelySecret: real.containsLikelySecret };
+});
 vi.mock('../../src/mcp/mcpDomainService', () => ({
   mcpSearchMemories: vi.fn(),
   mcpSearchEntities: vi.fn(),

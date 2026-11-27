@@ -33,6 +33,25 @@ export const milestoneInputSchema = z.object({
   occurred_at: z.string().datetime({ offset: true }).optional(),
 });
 
+const SECRET_RE =
+  /(sk-[a-z0-9_-]{16,}|ghp_[a-z0-9]{20,}|github_pat_[a-z0-9_]{20,}|xox[abprs]-[a-z0-9-]{10,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|eyJ[a-z0-9_-]{10,}\.[a-z0-9_-]{10,}\.[a-z0-9_-]{10,})/i;
+
+/**
+ * Hivemind text is read back by every agent the account connects, so obvious
+ * secrets (API keys, tokens, private keys) are refused on every write path:
+ * REST, MCP and import.
+ */
+export function containsLikelySecret(...texts: Array<string | null | undefined>): boolean {
+  return texts.some((t) => !!t && SECRET_RE.test(t));
+}
+
+export class HivemindSecretError extends Error {
+  constructor() {
+    super('This looks like it contains a secret (API key, token, or private key). Remove it and try again.');
+    this.name = 'HivemindSecretError';
+  }
+}
+
 export type CheckpointInput = z.infer<typeof checkpointInputSchema>;
 export type MemoryInput = z.infer<typeof memoryInputSchema>;
 export type MilestoneInput = z.infer<typeof milestoneInputSchema>;
@@ -105,6 +124,7 @@ export async function listCheckpoints(userId: string, limit = 50): Promise<Hivem
 
 /** One live checkpoint per project: a new update replaces the previous one. */
 export async function upsertCheckpoint(userId: string, input: CheckpointInput): Promise<HivemindCheckpoint> {
+  if (containsLikelySecret(input.project, input.where_left_off, ...(input.next_steps ?? []))) throw new HivemindSecretError();
   const row = {
     user_id: userId,
     project: input.project,
@@ -152,6 +172,7 @@ export async function listMemories(
 
 /** Same title → same slug → the memory is updated in place, not duplicated. */
 export async function upsertMemory(userId: string, input: MemoryInput): Promise<HivemindMemory> {
+  if (containsLikelySecret(input.title, input.content)) throw new HivemindSecretError();
   const row = {
     user_id: userId,
     slug: slugify(input.title),
@@ -192,6 +213,7 @@ export async function listMilestones(userId: string, limit = 50): Promise<Hivemi
 }
 
 export async function addMilestone(userId: string, input: MilestoneInput): Promise<HivemindMilestone> {
+  if (containsLikelySecret(input.track, input.project, input.highlight)) throw new HivemindSecretError();
   const row = {
     user_id: userId,
     track: input.track,
@@ -268,7 +290,12 @@ function milestoneKey(project: string, highlight: string): string {
  */
 export async function importAgentHivemindState(userId: string, state: AgentHivemindState) {
   let checkpoints = 0;
+  let skippedForSecrets = 0;
   for (const task of state.active_tasks ?? []) {
+    if (containsLikelySecret(task.repo, task.where_i_left_off, ...(task.next_steps ?? []))) {
+      skippedForSecrets++;
+      continue;
+    }
     await upsertCheckpoint(userId, {
       project: task.repo,
       agent: (task.last_agent?.trim() || 'agent-hivemind').slice(0, 60),
@@ -290,6 +317,10 @@ export async function importAgentHivemindState(userId: string, state: AgentHivem
     if (error) fail('read milestones for import', error);
     const seen = new Set((data ?? []).map((m: { project: string; highlight: string }) => milestoneKey(m.project, m.highlight)));
     for (const m of incoming) {
+      if (containsLikelySecret(m.track, m.project, m.highlight)) {
+        skippedForSecrets++;
+        continue;
+      }
       const key = milestoneKey(m.project, m.highlight);
       if (seen.has(key)) {
         milestonesSkipped++;
@@ -307,7 +338,7 @@ export async function importAgentHivemindState(userId: string, state: AgentHivem
     }
   }
 
-  return { checkpoints, milestonesAdded, milestonesSkipped };
+  return { checkpoints, milestonesAdded, milestonesSkipped, skippedForSecrets };
 }
 
 export async function getHivemindOverview(userId: string) {

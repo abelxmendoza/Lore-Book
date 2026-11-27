@@ -17,6 +17,7 @@ import { z } from 'zod';
 
 import {
   addMilestone,
+  containsLikelySecret,
   listCheckpoints,
   listMemories,
   listMilestones,
@@ -106,13 +107,8 @@ export function canUseHivemindTool(ctx: McpAuthContext, name: HivemindToolName):
 
 type Denied = { ok: false; reason: string; note: string };
 
-const SECRET_RE =
-  /(sk-[a-z0-9_-]{16,}|ghp_[a-z0-9]{20,}|github_pat_[a-z0-9_]{20,}|xox[abprs]-[a-z0-9-]{10,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|eyJ[a-z0-9_-]{10,}\.[a-z0-9_-]{10,}\.[a-z0-9_-]{10,})/i;
-
 /** Hivemind text is shared with every connected agent — refuse obvious secrets. */
-export function containsLikelySecret(...texts: Array<string | undefined>): boolean {
-  return texts.some((t) => !!t && SECRET_RE.test(t));
-}
+export { containsLikelySecret };
 
 async function guard(
   ctx: McpAuthContext,
