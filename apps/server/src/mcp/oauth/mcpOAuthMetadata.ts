@@ -28,3 +28,11 @@ export function buildOpenIdConfigurationMetadata(baseUrl: string) {
     id_token_signing_alg_values_supported: ['HS256'],
   };
 }
+
+export function mcpResourceMetadataPath() {
+  return '/.well-known/oauth-protected-resource/mcp';
+}
+
+export function mcpPublicOrigin(baseUrl: string) {
+  return new URL(config.mcpOAuthIssuer || baseUrl).origin;
+}

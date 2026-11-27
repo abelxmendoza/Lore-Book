@@ -20,6 +20,8 @@ import {
 import {
   buildOAuthAuthorizationServerMetadata,
   buildOpenIdConfigurationMetadata,
+  mcpPublicOrigin,
+  mcpResourceMetadataPath,
 } from '../mcp/oauth/mcpOAuthMetadata';
 
 export const mcpOAuthRouter = Router();
@@ -86,6 +88,20 @@ function oauthError(res: import('express').Response, error: string, description?
 mcpOAuthRouter.get('/.well-known/oauth-authorization-server', mcpOAuthLimit, (req, res) => {
   res.json(buildOAuthAuthorizationServerMetadata(requestBaseUrl(req)));
 });
+
+mcpOAuthRouter.get(
+  [mcpResourceMetadataPath(), '/.well-known/oauth-protected-resource'],
+  mcpOAuthLimit,
+  (req, res) => {
+    const baseUrl = requestBaseUrl(req);
+    res.json({
+      resource: `${mcpPublicOrigin(baseUrl)}/mcp`,
+      authorization_servers: [buildOAuthAuthorizationServerMetadata(baseUrl).issuer],
+      scopes_supported: ['memory:read', 'memory:write', 'entity:write'],
+      bearer_methods_supported: ['header'],
+    });
+  }
+);
 
 mcpOAuthRouter.get('/.well-known/openid-configuration', mcpOAuthLimit, (req, res) => {
   res.json(buildOpenIdConfigurationMetadata(requestBaseUrl(req)));

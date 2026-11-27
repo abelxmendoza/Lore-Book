@@ -9,6 +9,7 @@ import type { AuthUser } from '../types/runtime/express';
 
 import { MCP_SESSION_CLIENT_ID, MCP_SESSION_TOKEN_SCOPES } from './mcpScopes';
 import type { McpAuthContext } from './types';
+import { mcpPublicOrigin, mcpResourceMetadataPath } from './oauth/mcpOAuthMetadata';
 import { verifyMcpAccessToken } from './oauth/mcpOAuthJwt';
 
 declare global {
@@ -89,6 +90,11 @@ export async function authenticateMcpBearer(token: string): Promise<McpBearerAut
   };
 }
 
+function setResourceChallenge(req: Request, res: Response) {
+  const origin = mcpPublicOrigin(`${req.protocol}://${req.get('host')}`);
+  res.set('WWW-Authenticate', `Bearer resource_metadata="${origin}${mcpResourceMetadataPath()}"`);
+}
+
 export async function mcpAuthMiddleware(
   req: Request,
   res: Response,
@@ -111,12 +117,14 @@ export async function mcpAuthMiddleware(
     const header = req.headers.authorization;
     const token = header?.startsWith('Bearer ') ? header.slice(7) : header;
     if (!token) {
+      setResourceChallenge(req, res);
       res.status(401).json({ error: 'Missing Authorization header' });
       return;
     }
 
     const authResult = await authenticateMcpBearer(token);
     if (!authResult) {
+      setResourceChallenge(req, res);
       res.status(401).json({ error: 'Invalid session' });
       return;
     }
