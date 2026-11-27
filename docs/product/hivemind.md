@@ -44,6 +44,14 @@ All routes require auth + Hivemind access (`403` otherwise).
 | DELETE | `/api/hivemind/memories/:id` | Remove |
 | GET / POST | `/api/hivemind/milestones` | List / add |
 
+### Importing from agent-hivemind
+
+The `/hivemind` page has an **Import** button that takes the local tool's
+`state/hivemind_state.json`. Only `active_tasks` (checkpoints) and
+`career_ledger.milestones` are read; machine paths and network details are
+ignored. Re-importing is safe: checkpoints update in place and milestones that
+already exist are skipped. API: `POST /api/hivemind/import`.
+
 ## MCP tools
 
 Registered only when **both** the account has Hivemind and the token carries
@@ -56,6 +64,9 @@ the scope:
 
 Writes that look like secrets (API keys, tokens, private keys) are refused,
 and the audit log stores only metadata, never memory text.
+
+Agents follow the check-in / check-out ritual in
+`skills/lorebook-session-handoff/SKILL.md`.
 
 ### Connecting an agent
 

@@ -13,6 +13,7 @@ const svc = {
   deleteMemory: vi.fn(async () => false),
   listMilestones: vi.fn(async () => []),
   addMilestone: vi.fn(async (_u: string, a: Record<string, unknown>) => ({ id: 'ms1', ...a })),
+  importAgentHivemindState: vi.fn(async () => ({ checkpoints: 1, milestonesAdded: 1, milestonesSkipped: 0 })),
 };
 
 vi.mock('../../src/middleware/auth', () => ({
@@ -78,5 +79,15 @@ describe('/api/hivemind', () => {
       .post('/api/hivemind/milestones')
       .send({ track: 'Full-stack', project: 'Lore-Book', highlight: 'Shipped Hivemind' })
       .expect(201);
+  });
+
+  it('imports an agent-hivemind state file', async () => {
+    await request(app).post('/api/hivemind/import').send({ active_tasks: [{ repo: '' }] }).expect(400);
+    const res = await request(app)
+      .post('/api/hivemind/import')
+      .send({ active_tasks: [{ repo: 'Lore-Book', where_i_left_off: 'Done' }] })
+      .expect(200);
+    expect(res.body).toEqual({ checkpoints: 1, milestonesAdded: 1, milestonesSkipped: 0 });
+    expect(svc.importAgentHivemindState).toHaveBeenCalledWith('user-123', expect.objectContaining({ active_tasks: expect.any(Array) }));
   });
 });

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, BrainCircuit, Flag, Milestone, NotebookPen, RefreshCw } from 'lucide-react';
+import { ArrowLeft, BrainCircuit, Flag, Milestone, NotebookPen, RefreshCw, Upload } from 'lucide-react';
 import { fetchJson } from '../lib/api';
 
 type Checkpoint = {
@@ -46,6 +46,7 @@ export default function Hivemind() {
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState({ project: '', where_left_off: '', next: '' });
   const [saving, setSaving] = useState(false);
+  const [importNote, setImportNote] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -85,6 +86,32 @@ export default function Hivemind() {
     }
   };
 
+  // Import the local agent-hivemind state file (state/hivemind_state.json).
+  // Only checkpoints and milestones are read; re-importing never duplicates.
+  const importStateFile = async (file: File | undefined) => {
+    if (!file) return;
+    setError('');
+    setImportNote('');
+    try {
+      const state = JSON.parse(await file.text());
+      const result = await fetchJson<{ checkpoints: number; milestonesAdded: number; milestonesSkipped: number }>(
+        '/api/hivemind/import',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ active_tasks: state.active_tasks, career_ledger: state.career_ledger }),
+        },
+      );
+      setImportNote(
+        `Imported ${result.checkpoints} checkpoints and ${result.milestonesAdded} milestones` +
+          (result.milestonesSkipped ? ` (${result.milestonesSkipped} already here)` : '') + '.',
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof SyntaxError ? 'That file is not valid JSON.' : err instanceof Error ? err.message : 'Import failed');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="border-b border-zinc-800 px-4 sm:px-6 py-5">
@@ -107,14 +134,31 @@ export default function Hivemind() {
               </p>
             </div>
           </div>
-          <button onClick={() => void load()} className="p-2 text-zinc-400 hover:text-white" aria-label="Refresh">
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <label
+              className="flex items-center gap-2 px-3 py-2 text-sm border border-zinc-700 rounded-lg text-zinc-300 hover:text-white hover:border-zinc-500 cursor-pointer"
+              title="Import state/hivemind_state.json from agent-hivemind"
+            >
+              <Upload className="w-4 h-4" />
+              <span className="hidden sm:inline">Import</span>
+              <input
+                type="file"
+                accept="application/json,.json"
+                className="sr-only"
+                aria-label="Import agent-hivemind state file"
+                onChange={(e) => { void importStateFile(e.target.files?.[0]); e.target.value = ''; }}
+              />
+            </label>
+            <button onClick={() => void load()} className="p-2 text-zinc-400 hover:text-white" aria-label="Refresh">
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-8">
         {error && <p className="text-sm text-red-400" role="alert">{error}</p>}
+        {importNote && <p className="text-sm text-emerald-300" role="status">{importNote}</p>}
 
         <section aria-labelledby="hm-checkpoints">
           <h2 id="hm-checkpoints" className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-400 mb-3">

@@ -209,6 +209,107 @@ export async function addMilestone(userId: string, input: MilestoneInput): Promi
   return data as HivemindMilestone;
 }
 
+/**
+ * Import format written by the local agent-hivemind tool
+ * (state/hivemind_state.json). Only the shareable parts are read:
+ * per-repo checkpoints and career milestones. Machine paths, Tailscale
+ * details, and anything else in the file are ignored.
+ */
+export const agentHivemindStateSchema = z.object({
+  active_tasks: z
+    .array(
+      z.object({
+        repo: z.string().trim().min(1).max(120),
+        last_agent: z.string().trim().max(60).optional().nullable(),
+        where_i_left_off: z.string().trim().min(1).max(4000),
+        next_steps: z.array(z.string().trim().min(1).max(500)).max(20).optional(),
+      }).passthrough(),
+    )
+    .max(200)
+    .optional(),
+  career_ledger: z
+    .object({
+      milestones: z
+        .array(
+          z.object({
+            date: z.string().trim().max(40).optional().nullable(),
+            track: z.string().trim().min(1).max(120),
+            project: z.string().trim().min(1).max(120),
+            highlight: z.string().trim().min(1).max(2000),
+          }).passthrough(),
+        )
+        .max(500)
+        .optional(),
+    })
+    .passthrough()
+    .optional(),
+}).passthrough();
+
+export type AgentHivemindState = z.infer<typeof agentHivemindStateSchema>;
+
+/** "2026-10" / "2026-10-05" / full ISO → ISO timestamp; anything else → undefined. */
+export function milestoneDateToIso(date?: string | null): string | undefined {
+  if (!date) return undefined;
+  const d = date.trim();
+  let iso: string | undefined;
+  if (/^\d{4}-\d{2}$/.test(d)) iso = `${d}-01T00:00:00Z`;
+  else if (/^\d{4}-\d{2}-\d{2}$/.test(d)) iso = `${d}T00:00:00Z`;
+  else if (!Number.isNaN(Date.parse(d)) && /^\d{4}-/.test(d)) iso = new Date(d).toISOString();
+  return iso && !Number.isNaN(Date.parse(iso)) ? iso : undefined;
+}
+
+function milestoneKey(project: string, highlight: string): string {
+  return `${project.trim().toLowerCase()}\u0000${highlight.trim().toLowerCase()}`;
+}
+
+/**
+ * Idempotent import: checkpoints upsert by project; milestones already present
+ * (same project + highlight) are skipped, so re-importing never duplicates.
+ */
+export async function importAgentHivemindState(userId: string, state: AgentHivemindState) {
+  let checkpoints = 0;
+  for (const task of state.active_tasks ?? []) {
+    await upsertCheckpoint(userId, {
+      project: task.repo,
+      agent: (task.last_agent?.trim() || 'agent-hivemind').slice(0, 60),
+      where_left_off: task.where_i_left_off,
+      next_steps: task.next_steps ?? [],
+    });
+    checkpoints++;
+  }
+
+  const incoming = state.career_ledger?.milestones ?? [];
+  let milestonesAdded = 0;
+  let milestonesSkipped = 0;
+  if (incoming.length > 0) {
+    const { data, error } = await supabaseAdmin
+      .from('hivemind_milestones')
+      .select('project, highlight')
+      .eq('user_id', userId)
+      .limit(5000);
+    if (error) fail('read milestones for import', error);
+    const seen = new Set((data ?? []).map((m: { project: string; highlight: string }) => milestoneKey(m.project, m.highlight)));
+    for (const m of incoming) {
+      const key = milestoneKey(m.project, m.highlight);
+      if (seen.has(key)) {
+        milestonesSkipped++;
+        continue;
+      }
+      seen.add(key);
+      await addMilestone(userId, {
+        track: m.track,
+        project: m.project,
+        highlight: m.highlight,
+        agent: 'agent-hivemind',
+        occurred_at: milestoneDateToIso(m.date),
+      });
+      milestonesAdded++;
+    }
+  }
+
+  return { checkpoints, milestonesAdded, milestonesSkipped };
+}
+
 export async function getHivemindOverview(userId: string) {
   const [checkpoints, memories, milestones] = await Promise.all([
     listCheckpoints(userId, 50),

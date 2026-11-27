@@ -69,6 +69,8 @@ export const hivemindInputSchemas = {
     project: z.string().min(1).max(120),
     highlight: z.string().min(1).max(2000),
     agent: z.string().min(1).max(60).optional(),
+    /** ISO date-time the milestone shipped; defaults to now. */
+    occurred_at: z.string().datetime({ offset: true }).optional(),
   },
 } as const;
 
@@ -174,7 +176,7 @@ export async function runHivemindTool(
         break;
       }
       case 'hivemind_log_milestone': {
-        const a = args as { track: string; project: string; highlight: string; agent?: string };
+        const a = args as { track: string; project: string; highlight: string; agent?: string; occurred_at?: string };
         if (containsLikelySecret(a.highlight)) return secretRejected(ctx, name, auditInput, started);
         data = await addMilestone(userId, a);
         break;

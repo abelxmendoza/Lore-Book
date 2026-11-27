@@ -16,10 +16,12 @@ import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import {
   addMilestone,
+  agentHivemindStateSchema,
   checkpointInputSchema,
   deleteCheckpoint,
   deleteMemory,
   getHivemindOverview,
+  importAgentHivemindState,
   listCheckpoints,
   listMemories,
   listMilestones,
@@ -126,4 +128,10 @@ hivemindRouter.get('/milestones', handle('list milestones', async (req, res) => 
 hivemindRouter.post('/milestones', handle('save milestone', async (req, res) => {
   const input = milestoneInputSchema.parse(req.body);
   res.status(201).json({ milestone: await addMilestone(req.user!.id, input) });
+}));
+
+/** One-click import of the local agent-hivemind state file (hivemind_state.json). */
+hivemindRouter.post('/import', handle('import hivemind state', async (req, res) => {
+  const state = agentHivemindStateSchema.parse(req.body);
+  res.json(await importAgentHivemindState(req.user!.id, state));
 }));
