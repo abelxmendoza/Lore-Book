@@ -66,27 +66,27 @@ async function listToolNames(ctx: McpAuthContext): Promise<string[]> {
   }
 }
 
-const READ_TOOLS = ['get_entity', 'get_relationships', 'get_timeline', 'search_entities', 'search_memories'];
+const READ_TOOLS = ['get_entity', 'get_relationships', 'get_timeline', 'list_session_summaries', 'search_entities', 'search_memories'];
 
 describe('MCP scope enforcement — tool registration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('a memory:read-only context sees exactly the 5 read tools', async () => {
+  it('a memory:read-only context sees only read tools', async () => {
     await expect(listToolNames(ctxWithScopes(['memory:read']))).resolves.toEqual(READ_TOOLS);
   });
 
   it('memory:write alone unlocks ingest_story but not correct_lore', async () => {
     await expect(listToolNames(ctxWithScopes(['memory:read', 'memory:write']))).resolves.toEqual(
-      [...READ_TOOLS, 'ingest_story'].sort()
+      [...READ_TOOLS, 'ingest_story', 'save_session_summary'].sort()
     );
   });
 
-  it('memory:write + entity:write unlocks both write tools', async () => {
+  it('memory:write + entity:write unlocks all write tools', async () => {
     await expect(
       listToolNames(ctxWithScopes(['memory:read', 'memory:write', 'entity:write']))
-    ).resolves.toEqual([...READ_TOOLS, 'correct_lore', 'ingest_story'].sort());
+    ).resolves.toEqual([...READ_TOOLS, 'correct_lore', 'ingest_story', 'save_session_summary'].sort());
   });
 });
 
