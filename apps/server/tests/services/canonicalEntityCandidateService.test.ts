@@ -5,7 +5,7 @@ import { mergeCanonicalEntityCandidates } from '../../src/services/conversationC
 describe('canonical entity candidate precedence', () => {
   it('replaces a short speculative person with the canonical Character Book identity', () => {
     const merged = mergeCanonicalEntityCandidates(
-      [{ name: 'Angel', type: 'PERSON' }],
+      [{ name: 'Sam', type: 'PERSON' }],
       [{
         id: 'character-1', name: 'Sam Rivera', type: 'character', confidence: 1,
         provenance: 'character_book',
