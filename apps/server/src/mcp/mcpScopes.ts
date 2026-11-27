@@ -30,6 +30,8 @@ export const MCP_TOOL_REQUIRED_SCOPES: Record<string, readonly string[]> = {
   get_entity: [MCP_SCOPE_READ],
   get_timeline: [MCP_SCOPE_READ],
   get_relationships: [MCP_SCOPE_READ],
+  list_session_summaries: [MCP_SCOPE_READ],
+  save_session_summary: [MCP_SCOPE_WRITE],
   ingest_story: [MCP_SCOPE_WRITE],
   correct_lore: [MCP_SCOPE_WRITE, MCP_SCOPE_ENTITY_WRITE],
 };
