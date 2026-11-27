@@ -19,9 +19,9 @@ Signup stays open to everyone. Hivemind is gated per account by
 
 | `HIVEMIND_ACCESS` | Who gets Hivemind |
 | --- | --- |
-| `founder` (default) | owner + admin (the founder account set by `OWNER_EMAIL` / `OWNER_USER_ID`) |
+| `all` (default) | every signed-in account |
 | `privileged` | owner + admin + developer |
-| `all` | every signed-in account |
+| `founder` | owner + admin (the founder account set by `OWNER_EMAIL` / `OWNER_USER_ID`) |
 
 A single account can be granted access at any level by setting the
 server-only flag `app_metadata.hivemind_access = true` (Supabase dashboard or

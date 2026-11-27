@@ -289,7 +289,7 @@ export const config: EnvConfig = {
   developerEmail: process.env.DEVELOPER_EMAIL?.trim().toLowerCase(),
   hivemindAccess: (['founder', 'privileged', 'all'] as const).find(
     (level) => level === process.env.HIVEMIND_ACCESS?.trim().toLowerCase()
-  ) ?? 'founder',
+  ) ?? 'all',
   mcpEnabled: process.env.ENABLE_MCP === 'true',
   mcpReadRpmFree: Number(process.env.MCP_READ_RPM_FREE ?? process.env.MCP_READ_RPM ?? 60),
   mcpReadRpmPremium: Number(process.env.MCP_READ_RPM_PREMIUM ?? 300),

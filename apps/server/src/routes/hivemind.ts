@@ -2,8 +2,8 @@
  * /api/hivemind — the Hivemind cross-agent workspace inside LoreBook.
  *
  * Every route requires a signed-in account AND Hivemind access
- * (lib/hivemindAccess.ts: founder-only by default, opened with
- * HIVEMIND_ACCESS or a per-account app_metadata.hivemind_access grant).
+ * (lib/hivemindAccess.ts: every account by default, narrowed with
+ * HIVEMIND_ACCESS; a per-account app_metadata.hivemind_access grant always admits).
  * The same data is exposed to AI agents through the hivemind_* MCP tools.
  */
 

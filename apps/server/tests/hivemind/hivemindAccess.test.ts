@@ -12,7 +12,7 @@ import { resolveAccountAuthorityFromAuthUser, serializeAccountAuthority } from '
 import { canUseHivemind } from '../../src/lib/hivemindAccess';
 
 describe('canUseHivemind', () => {
-  it('founder level (default) admits owner and admin only', () => {
+  it('founder level admits owner and admin only', () => {
     expect(canUseHivemind({ role: 'owner', level: 'founder' })).toBe(true);
     expect(canUseHivemind({ role: 'admin', level: 'founder' })).toBe(true);
     expect(canUseHivemind({ role: 'developer', level: 'founder' })).toBe(false);
@@ -43,7 +43,7 @@ describe('account authority exposes canUseHivemind', () => {
     expect(serializeAccountAuthority(authority).canUseHivemind).toBe(true);
   });
 
-  it('a newly signed-up account cannot, by default', () => {
+  it('a newly signed-up account cannot when narrowed to founder', () => {
     const authority = resolveAccountAuthorityFromAuthUser({ id: 'u2', email: 'new@example.com' });
     expect(authority.role).toBe('standard_user');
     expect(authority.canUseHivemind).toBe(false);
